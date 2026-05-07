@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eyelingo – Ucz się języków w tle</title>
+
+<!-- Supabase JS -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ── RESET & VARIABLES ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0b14;
+  --surface:   #111224;
+  --surface2:  #181a2e;
+  --border:    rgba(100,120,255,0.15);
+  --accent:    #5b6ef5;
+  --accent2:   #a78bfa;
+  --gold:      #f5c542;
+  --text:      #e8eaf6;
+  --text-dim:  rgba(232,234,246,0.55);
+  --radius:    16px;
+  --font-head: 'Syne', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── NOISE OVERLAY ─────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 0; opacity: 0.4;
+}
+
+/* ── GLOW BLOBS ────────────────────────────────────── */
+.blob {
+  position: fixed; border-radius: 50%;
+  filter: blur(120px); pointer-events: none; z-index: 0;
+  opacity: 0.18;
+}
+.blob-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -100px; }
+.blob-2 { width: 500px; height: 500px; background: var(--accent2); bottom: -100px; right: -100px; }
+
+/* ── NAV ───────────────────────────────────────────── */
+nav {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 48px;
+  background: rgba(10,11,20,0.7);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-logo {
+  font-family: var(--font-head);
+  font-weight: 800; font-size: 22px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  letter-spacing: -0.5px;
+}
+
+.nav-actions { display: flex; gap: 12px; align-items: center; }
+
+/* ── BUTTONS ───────────────────────────────────────── */
+.btn {
+  font-family: var(--font-body); font-size: 14px; font-weight: 500;
+  padding: 10px 22px; border-radius: 10px; cursor: pointer;
+  border: none; transition: all 0.2s ease; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+
+.btn-ghost {
+  background: transparent; color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { color: var(--text); border-color: rgba(100,120,255,0.4); }
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 0 30px rgba(91,110,245,0.35);
+}
+.btn-primary:hover {
+  background: #6b7ef7;
+  box-shadow: 0 0 40px rgba(91,110,245,0.5);
+  transform: translateY(-1px);
+}
+
+.btn-gold {
+  background: linear-gradient(135deg, #f5c542, #e8a800);
+  color: #1a1400; font-weight: 700;
+  box-shadow: 0 0 30px rgba(245,197,66,0.3);
+}
+.btn-gold:hover { transform: translateY(-1px); box-shadow: 0 0 40px rgba(245,197,66,0.45); }
+
+.btn-danger {
+  background: rgba(200,50,50,0.2); color: #ff6b6b;
+  border: 1px solid rgba(200,50,50,0.3);
+}
+.btn-danger:hover { background: rgba(200,50,50,0.35); }
+
+.btn-full { width: 100%; justify-content: center; }
+.btn-sm { padding: 8px 16px; font-size: 13px; }
+
+/* ── PAGES ─────────────────────────────────────────── */
+.page { display: none; min-height: 100vh; position: relative; z-index: 1; }
+.page.active { display: block; }
+
+/* ── HERO ──────────────────────────────────────────── */
+#page-home {
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 120px 24px 80px;
+  text-align: center;
+}
+#page-home.active { display: flex; }
+
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(91,110,245,0.12);
+  border: 1px solid rgba(91,110,245,0.3);
+  border-radius: 100px; padding: 6px 16px;
+  font-size: 13px; color: var(--accent2);
+  margin-bottom: 32px;
+  animation: fadeUp 0.6s ease both;
+}
+
+.hero-title {
+  font-family: var(--font-head);
+  font-size: clamp(42px, 7vw, 80px);
+  font-weight: 800; line-height: 1.05;
+  letter-spacing: -2px;
+  animation: fadeUp 0.6s 0.1s ease both;
+}
+
+.hero-title span {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+
+.hero-sub {
+  font-size: clamp(16px, 2vw, 20px);
+  color: var(--text-dim); max-width: 560px;
+  line-height: 1.7; margin: 24px auto 48px;
+  font-weight: 300;
+  animation: fadeUp 0.6s 0.2s ease both;
+}
+
+.hero-actions {
+  display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+  animation: fadeUp 0.6s 0.3s ease both;
+}
+
+.hero-langs {
+  display: flex; gap: 16px; margin-top: 64px;
+  animation: fadeUp 0.6s 0.4s ease both;
+}
+
+.lang-pill {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px; padding: 10px 20px;
+  font-size: 20px; display: flex; align-items: center; gap: 8px;
+  font-size: 15px; color: var(--text-dim);
+  transition: all 0.2s;
+}
+.lang-pill:hover {
+  border-color: rgba(91,110,245,0.4);
+  color: var(--text); transform: translateY(-2px);
+}
+.lang-pill span:first-child { font-size: 22px; }
+
+/* Features */
+.features {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px; max-width: 1000px; margin: 80px auto 0;
+  padding: 0 24px;
+  animation: fadeUp 0.6s 0.5s ease both;
+}
+
+.feature-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.feature-card:hover {
+  border-color: rgba(91,110,245,0.35);
+  transform: translateY(-3px);
+}
+
+.feature-icon { font-size: 32px; margin-bottom: 14px; }
+.feature-title {
+  font-family: var(--font-head); font-weight: 700; font-size: 17px;
+  margin-bottom: 8px;
+}
+.feature-desc { color: var(--text-dim); font-size: 14px; line-height: 1.6; }
+
+/* ── AUTH ──────────────────────────────────────────── */
+#page-auth {
+  display: none; align-items: center; justify-content: center;
+  min-height: 100vh; padding: 100px 24px 40px;
+}
+#page-auth.active { display: flex; }
+
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 40px;
+  width: 100%; max-width: 400px;
+  animation: fadeUp 0.5s ease both;
+}
+
+.auth-title {
+  font-family: var(--font-head);
+  font-size: 26px; font-weight: 800;
+  text-align: center; margin-bottom: 6px;
+}
+.auth-sub {
+  text-align: center; color: var(--text-dim);
+  font-size: 14px; margin-bottom: 28px;
+}
+
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block; font-size: 13px; font-weight: 500;
+  color: var(--text-dim); margin-bottom: 6px;
+}
+.form-input {
+  width: 100%; padding: 12px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text); font-size: 14px;
+  font-family: var(--font-body);
+  transition: border-color 0.2s;
+  outline: none;
+}
+.form-input:focus { border-color: var(--accent); }
+.form-input::placeholder { color: rgba(232,234,246,0.25); }
+
+.auth-msg {
+  font-size: 13px; text-align: center;
+  padding: 10px; border-radius: 8px;
+  margin-bottom: 16px; display: none;
+}
+.auth-msg.error { background: rgba(255,80,80,0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.2); }
+.auth-msg.success { background: rgba(80,255,130,0.1); color: #80ffaa; border: 1px solid rgba(80,255,130,0.2); }
+.auth-msg.show { display: block; }
+
+.auth-switch {
+  text-align: center; margin-top: 20px;
+  font-size: 13px; color: var(--text-dim);
+}
+.auth-switch a {
+  color: var(--accent2); cursor: pointer;
+  text-decoration: none; font-weight: 500;
+}
+.auth-switch a:hover { text-decoration: underline; }
+
+/* ── DASHBOARD ─────────────────────────────────────── */
+#page-dash {
+  display: none; flex-direction: column;
+  min-height: 100vh; padding: 100px 24px 60px;
+  max-width: 900px; margin: 0 auto;
+}
+#page-dash.active { display: flex; }
+
+.dash-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 40px; flex-wrap: wrap; gap: 16px;
+}
+
+.dash-greeting {
+  font-family: var(--font-head);
+  font-size: 32px; font-weight: 800;
+}
+.dash-greeting span { color: var(--accent2); }
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px; margin-bottom: 32px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  transition: border-color 0.2s;
+}
+.stat-card:hover { border-color: rgba(91,110,245,0.35); }
+
+.stat-label {
+  font-size: 12px; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.8px;
+  margin-bottom: 8px;
+}
+.stat-value {
+  font-family: var(--font-head);
+  font-size: 36px; font-weight: 800;
+}
+.stat-value.gold-val { color: var(--gold); }
+.stat-value.premium-val { color: #80ffaa; font-size: 20px; margin-top: 4px; }
+.stat-value.locked-val { color: var(--text-dim); font-size: 20px; margin-top: 4px; }
+
+.dash-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px; margin-bottom: 20px;
+}
+
+.dash-section-title {
+  font-family: var(--font-head);
+  font-size: 18px; font-weight: 700;
+  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+
+.download-box {
+  display: flex; align-items: center;
+  justify-content: space-between; flex-wrap: wrap; gap: 16px;
+}
+.download-info h3 {
+  font-family: var(--font-head); font-size: 18px; font-weight: 700;
+  margin-bottom: 4px;
+}
+.download-info p { color: var(--text-dim); font-size: 14px; }
+
+/* Premium code input */
+.code-form {
+  display: flex; gap: 10px;
+}
+.code-form .form-input { flex: 1; }
+
+/* ── ANIMATIONS ────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── RESPONSIVE ────────────────────────────────────── */
+@media (max-width: 600px) {
+  nav { padding: 16px 20px; }
+  .nav-logo { font-size: 18px; }
+  .hero-langs { flex-wrap: wrap; justify-content: center; }
+  .code-form { flex-direction: column; }
+  .download-box { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── LOADER ────────────────────────────────────────── */
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.divider {
+  height: 1px; background: var(--border);
+  margin: 20px 0;
+}
+</style>
+</head>
+<body>
+
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+
+<!-- ── NAV ─────────────────────────────────────────── -->
+<nav>
+  <div class="nav-logo">👁 Eyelingo</div>
+  <div class="nav-actions" id="nav-actions">
+    <button class="btn btn-ghost btn-sm" onclick="showAuth('login')">Zaloguj się</button>
+    <button class="btn btn-primary btn-sm" onclick="showAuth('register')">Zarejestruj się</button>
+  </div>
+</nav>
+
+<!-- ── HOME ────────────────────────────────────────── -->
+<div id="page-home" class="page active">
+
+  <div class="hero-badge">✨ Ucz się bez wysiłku</div>
+
+  <h1 class="hero-title">
+    Języki obce<br>
+    <span>uczą się same</span>
+  </h1>
+
+  <p class="hero-sub">
+    Eyelingo wyświetla fiszki w tle ekranu podczas normalnej pracy.
+    Mózg przyswaja słówka bez przerywania tego co robisz.
+  </p>
+
+  <div class="hero-actions">
+    <button class="btn btn-primary" onclick="showAuth('register')">
+      🚀 Zacznij za darmo
+    </button>
+    <a class="btn btn-ghost" href="#features">
+      Dowiedz się więcej
+    </a>
+  </div>
+
+  <div class="hero-langs">
+    <div class="lang-pill"><span>🇬🇧</span> Angielski</div>
+    <div class="lang-pill"><span>🇪🇸</span> Hiszpański</div>
+    <div class="lang-pill"><span>🇯🇵</span> Japoński</div>
+    <div class="lang-pill"><span>🇳🇱</span> Niderlandzki</div>
+  </div>
+
+  <div class="features" id="features">
+    <div class="feature-card">
+      <div class="feature-icon">🪟</div>
+      <div class="feature-title">Niewidoczne w tle</div>
+      <div class="feature-desc">Przezroczyste fiszki w rogu ekranu. Nie przeszkadzają, ale mózg je przyswaja.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📚</div>
+      <div class="feature-title">4 języki, 6 poziomów</div>
+      <div class="feature-desc">Od A1 do C2. Ponad 500 słów na każdym poziomie w 25 kategoriach tematycznych.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🏺</div>
+      <div class="feature-title">Zbieraj złoto</div>
+      <div class="feature-desc">Za każdą wyświetloną fiszkę i minutę nauki zbierasz złoto. Gamifikacja która motywuje.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">✏️</div>
+      <div class="feature-title">Własne zestawy</div>
+      <div class="feature-desc">Twórz własne fiszki na sprawdziany i egzaminy. Zapisywane w chmurze.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── AUTH ────────────────────────────────────────── -->
+<div id="page-auth" class="page">
+  <div class="auth-card">
+
+    <h2 class="auth-title" id="auth-title">Witaj z powrotem 👋</h2>
+    <p class="auth-sub" id="auth-sub">Zaloguj się aby kontynuować naukę</p>
+
+    <div id="auth-msg" class="auth-msg"></div>
+
+    <div class="form-group">
+      <label class="form-label">E-mail</label>
+      <input type="email" id="auth-email" class="form-input" placeholder="twoj@email.com">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Hasło</label>
+      <input type="password" id="auth-password" class="form-input" placeholder="min. 6 znaków">
+    </div>
+
+    <button class="btn btn-primary btn-full" id="auth-btn" onclick="submitAuth()">
+      <span id="auth-btn-text">Zaloguj się</span>
+      <div class="spinner" id="auth-spinner"></div>
+    </button>
+
+    <div class="auth-switch" id="auth-switch">
+      Nie masz konta? <a onclick="toggleAuthMode()">Zarejestruj się</a>
+    </div>
+
+    <div class="divider"></div>
+
+    <button class="btn btn-ghost btn-full btn-sm" onclick="showPage('home')">
+      ← Wróć na stronę główną
+    </button>
+
+  </div>
+</div>
+
+<!-- ── DASHBOARD ────────────────────────────────────── -->
+<div id="page-dash" class="page">
+
+  <div class="dash-header">
+    <div>
+      <div class="dash-greeting">Hej, <span id="dash-email">użytkowniku</span> 👋</div>
+      <div style="color: var(--text-dim); font-size: 14px; margin-top: 4px;">Twój panel nauki</div>
+    </div>
+    <button class="btn btn-danger btn-sm" onclick="logout()">Wyloguj</button>
+  </div>
+
+  <!-- Statystyki -->
+  <div class="dash-grid">
+    <div class="stat-card">
+      <div class="stat-label">🏺 Złoto</div>
+      <div class="stat-value gold-val" id="dash-gold">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">📖 Fiszek obejrzanych</div>
+      <div class="stat-value" id="dash-cards">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">⏱️ Czas nauki</div>
+      <div class="stat-value" id="dash-minutes">0 min</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">🏆 Status</div>
+      <div class="stat-value" id="dash-premium">Ładowanie...</div>
+    </div>
+  </div>
+
+  <!-- Pobierz aplikację -->
+  <div class="dash-section">
+    <div class="dash-section-title">⬇️ Pobierz aplikację</div>
+    <div class="download-box">
+      <div class="download-info">
+        <h3>Eyelingo dla Windows</h3>
+        <p>Wersja 1.0 · Wymaga Windows 10/11</p>
+      </div>
+      <a class="btn btn-primary" id="download-btn" href="#" onclick="handleDownload(event)">
+        ⬇️ Pobierz .exe
+      </a>
+    </div>
+  </div>
+
+  <!-- Aktywuj premium -->
+  <div class="dash-section" id="premium-section">
+    <div class="dash-section-title">🏆 Aktywuj Premium</div>
+    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
+      Masz kod? Wpisz go poniżej aby odblokować wszystkie poziomy (A2–C2).
+    </p>
+    <div class="code-form">
+      <input type="text" id="code-input" class="form-input"
+             placeholder="np. EYELINGO-VIP"
+             style="text-transform: uppercase;">
+      <button class="btn btn-gold" id="code-btn" onclick="activateCode()">
+        <span id="code-btn-text">Aktywuj</span>
+        <div class="spinner" id="code-spinner"></div>
+      </button>
+    </div>
+    <div id="code-msg" class="auth-msg" style="margin-top: 12px; margin-bottom: 0;"></div>
+  </div>
+
+</div>
+
+<!-- ── SCRIPT ───────────────────────────────────────── -->
+<script>
+// ── KONFIGURACJA SUPABASE ──────────────────────────
+// Zamień na swoje dane z Supabase → Settings → API
+const SUPABASE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
+
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Link do pobrania .exe (wstaw po wgraniu na GitHub Releases)
+const DOWNLOAD_URL = '#'; // np. 'https://github.com/twoj-login/eyelingo/releases/latest/download/Eyelingo.exe'
+
+// ── NAWIGACJA ──────────────────────────────────────
+let currentPage = 'home';
+let authMode    = 'login';
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(`page-${name}`).classList.add('active');
+  currentPage = name;
+  window.scrollTo(0, 0);
+}
+
+// ── AUTH MODE ──────────────────────────────────────
+function showAuth(mode) {
+  authMode = mode;
+  showPage('auth');
+  updateAuthUI();
+  clearAuthMsg();
+}
+
+function toggleAuthMode() {
+  authMode = authMode === 'login' ? 'register' : 'login';
+  updateAuthUI();
+  clearAuthMsg();
+}
+
+function updateAuthUI() {
+  const isLogin = authMode === 'login';
+  document.getElementById('auth-title').textContent   = isLogin ? 'Witaj z powrotem 👋' : 'Utwórz konto 🚀';
+  document.getElementById('auth-sub').textContent     = isLogin ? 'Zaloguj się aby kontynuować naukę' : 'Dołącz do Eyelingo za darmo';
+  document.getElementById('auth-btn-text').textContent = isLogin ? 'Zaloguj się' : 'Zarejestruj się';
+  document.getElementById('auth-switch').innerHTML    = isLogin
+    ? 'Nie masz konta? <a onclick="toggleAuthMode()">Zarejestruj się</a>'
+    : 'Masz już konto? <a onclick="toggleAuthMode()">Zaloguj się</a>';
+}
+
+// ── MESSAGES ───────────────────────────────────────
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = `auth-msg ${type} show`;
+}
+
+function clearAuthMsg() {
+  const el = document.getElementById('auth-msg');
+  el.className = 'auth-msg';
+}
+
+// ── SUBMIT AUTH ────────────────────────────────────
+async function submitAuth() {
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+
+  if (!email || !password) {
+    showMsg('auth-msg', 'Wypełnij e-mail i hasło.', 'error'); return;
+  }
+  if (password.length < 6) {
+    showMsg('auth-msg', 'Hasło musi mieć co najmniej 6 znaków.', 'error'); return;
+  }
+
+  setAuthLoading(true);
+
+  try {
+    let res;
+    if (authMode === 'login') {
+      res = await db.auth.signInWithPassword({ email, password });
+    } else {
+      res = await db.auth.signUp({ email, password });
+    }
+
+    if (res.error) throw res.error;
+
+    if (authMode === 'register' && !res.data.session) {
+      showMsg('auth-msg', '✅ Sprawdź e-mail i potwierdź konto.', 'success');
+    } else {
+      await loadDashboard();
+      showPage('dash');
+    }
+  } catch (err) {
+    const msg = err.message || '';
+    if (msg.includes('Invalid login')) showMsg('auth-msg', 'Nieprawidłowy e-mail lub hasło.', 'error');
+    else if (msg.includes('already registered')) showMsg('auth-msg', 'Ten e-mail jest już zarejestrowany.', 'error');
+    else showMsg('auth-msg', 'Błąd: ' + msg, 'error');
+  }
+
+  setAuthLoading(false);
+}
+
+function setAuthLoading(on) {
+  document.getElementById('auth-btn').disabled = on;
+  document.getElementById('auth-spinner').style.display = on ? 'block' : 'none';
+  document.getElementById('auth-btn-text').style.opacity = on ? '0.5' : '1';
+}
+
+// ── DASHBOARD ──────────────────────────────────────
+async function loadDashboard() {
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) return;
+
+  // email w nagłówku (skróć jeśli długi)
+  const emailShort = user.email.split('@')[0];
+  document.getElementById('dash-email').textContent = emailShort;
+
+  // statystyki
+  const { data: stats } = await db
+    .from('learning_stats')
+    .select('gold, cards_seen, minutes_active')
+    .eq('user_id', user.id)
+    .single();
+
+  if (stats) {
+    document.getElementById('dash-gold').textContent    = stats.gold ?? 0;
+    document.getElementById('dash-cards').textContent   = stats.cards_seen ?? 0;
+    document.getElementById('dash-minutes').textContent = (stats.minutes_active ?? 0) + ' min';
+  }
+
+  // premium
+  const { data: profile } = await db
+    .from('profiles')
+    .select('is_premium')
+    .eq('user_id', user.id)
+    .single();
+
+  const isPremium = profile?.is_premium ?? false;
+  const premiumEl = document.getElementById('dash-premium');
+  if (isPremium) {
+    premiumEl.textContent  = '🏆 Premium';
+    premiumEl.className    = 'stat-value premium-val';
+    document.getElementById('premium-section').style.display = 'none';
+  } else {
+    premiumEl.textContent  = '🔒 Darmowy';
+    premiumEl.className    = 'stat-value locked-val';
+  }
+
+  // nav
+  updateNav(true, emailShort);
+}
+
+function updateNav(loggedIn, email) {
+  const nav = document.getElementById('nav-actions');
+  if (loggedIn) {
+    nav.innerHTML = `
+      <span style="color: var(--text-dim); font-size: 13px;">${email}</span>
+      <button class="btn btn-ghost btn-sm" onclick="showPage('dash')">Panel</button>
+      <button class="btn btn-danger btn-sm" onclick="logout()">Wyloguj</button>`;
+  } else {
+    nav.innerHTML = `
+      <button class="btn btn-ghost btn-sm" onclick="showAuth('login')">Zaloguj się</button>
+      <button class="btn btn-primary btn-sm" onclick="showAuth('register')">Zarejestruj się</button>`;
+  }
+}
+
+// ── LOGOUT ─────────────────────────────────────────
+async function logout() {
+  await db.auth.signOut();
+  updateNav(false);
+  showPage('home');
+}
+
+// ── ACTIVATE CODE ──────────────────────────────────
+async function activateCode() {
+  const code = document.getElementById('code-input').value.trim().toUpperCase();
+  if (!code) { showMsg('code-msg', 'Wpisz kod.', 'error'); return; }
+
+  document.getElementById('code-btn').disabled = true;
+  document.getElementById('code-spinner').style.display = 'block';
+  document.getElementById('code-btn-text').style.opacity = '0.5';
+
+  try {
+    const { data, error } = await db.rpc('activate_premium_code', { p_code: code });
+    if (error) throw error;
+
+    if (data.success) {
+      showMsg('code-msg', '🏆 ' + data.message, 'success');
+      document.getElementById('dash-premium').textContent = '🏆 Premium';
+      document.getElementById('dash-premium').className   = 'stat-value premium-val';
+      setTimeout(() => {
+        document.getElementById('premium-section').style.display = 'none';
+      }, 2000);
+    } else {
+      showMsg('code-msg', '❌ ' + data.message, 'error');
+    }
+  } catch (err) {
+    showMsg('code-msg', 'Błąd: ' + (err.message || err), 'error');
+  }
+
+  document.getElementById('code-btn').disabled = false;
+  document.getElementById('code-spinner').style.display = 'none';
+  document.getElementById('code-btn-text').style.opacity = '1';
+}
+
+// ── DOWNLOAD ───────────────────────────────────────
+function handleDownload(e) {
+  if (DOWNLOAD_URL === '#') {
+    e.preventDefault();
+    alert('Plik .exe będzie dostępny wkrótce!');
+  }
+}
+
+// ── ENTER KEY ──────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (currentPage === 'auth') submitAuth();
+  }
+});
+
+// ── AUTO LOGIN ─────────────────────────────────────
+(async () => {
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    await loadDashboard();
+    showPage('dash');
+  }
+})();
+</script>
+</body>
+</html>
