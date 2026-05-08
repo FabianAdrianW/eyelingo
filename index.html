@@ -3,788 +3,724 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Eyelingo – Ucz się języków w tle</title>
-
-<!-- Supabase JS -->
+<title>Eyelingo – See The Progress</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet">
 <style>
-/* ── RESET & VARIABLES ─────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
 
-:root {
-  --bg:        #0a0b14;
-  --surface:   #111224;
-  --surface2:  #181a2e;
-  --border:    rgba(100,120,255,0.15);
-  --accent:    #5b6ef5;
-  --accent2:   #a78bfa;
-  --gold:      #f5c542;
-  --text:      #e8eaf6;
-  --text-dim:  rgba(232,234,246,0.55);
-  --radius:    16px;
-  --font-head: 'Syne', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-}
-
-html { scroll-behavior: smooth; }
-
-body {
-  font-family: var(--font-body);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
+:root{
+  --navy:   #1a2340;
+  --navy2:  #0f1729;
+  --orange: #c96a2a;
+  --orange2:#e07830;
+  --gold:   #f5c842;
+  --white:  #ffffff;
+  --paper:  #f8f7f4;
+  --paper2: #f0eee9;
+  --text:   #1a2340;
+  --dim:    #5a6480;
+  --dim2:   #8890aa;
+  --border: rgba(26,35,64,0.1);
+  --border2:rgba(26,35,64,0.18);
 }
 
-/* ── NOISE OVERLAY ─────────────────────────────────── */
-body::before {
-  content: '';
-  position: fixed; inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-  pointer-events: none; z-index: 0; opacity: 0.4;
-}
+body{font-family:'DM Sans',sans-serif;background:var(--white);color:var(--text);overflow-x:hidden;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:'DM Sans',sans-serif;font-weight:700;line-height:1.1;letter-spacing:-0.01em}
 
-/* ── GLOW BLOBS ────────────────────────────────────── */
-.blob {
-  position: fixed; border-radius: 50%;
-  filter: blur(120px); pointer-events: none; z-index: 0;
-  opacity: 0.18;
-}
-.blob-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -100px; }
-.blob-2 { width: 500px; height: 500px; background: var(--accent2); bottom: -100px; right: -100px; }
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:14px 56px;background:rgba(26,35,64,0.97);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,0.08)}
+.nav-logo img{height:44px;display:block}
+.nav-logo-text{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:var(--navy);letter-spacing:-0.5px}
+.nav-mid{display:flex;gap:32px}
+.nav-mid a{font-size:14px;color:rgba(255,255,255,.6);text-decoration:none;font-weight:500;transition:color .2s}
+.nav-mid a:hover{color:#fff}
+.nav-r{display:flex;gap:10px;align-items:center}
 
-/* ── NAV ───────────────────────────────────────────── */
-nav {
-  position: fixed; top: 0; left: 0; right: 0;
-  z-index: 100;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 48px;
-  background: rgba(10,11,20,0.7);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border);
-}
+/* BUTTONS */
+.btn{font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;padding:11px 24px;border-radius:100px;cursor:pointer;border:none;transition:all .2s;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+.btn-ghost{background:transparent;color:rgba(255,255,255,.8);border:1.5px solid rgba(255,255,255,.25)}
+.btn-ghost:hover{border-color:rgba(255,255,255,.6);color:#fff}
+.btn-navy{background:var(--navy);color:#fff}
+.btn-navy:hover{background:var(--navy2);transform:translateY(-1px)}
+.btn-orange{background:var(--orange);color:#fff;box-shadow:0 4px 20px rgba(201,106,42,.3)}
+.btn-orange:hover{background:var(--orange2);transform:translateY(-1px);box-shadow:0 6px 28px rgba(201,106,42,.4)}
+.btn-white{background:#fff;color:var(--navy);font-weight:600;box-shadow:0 2px 16px rgba(0,0,0,.12)}
+.btn-white:hover{transform:translateY(-1px);box-shadow:0 4px 24px rgba(0,0,0,.18)}
+.btn-lg{padding:16px 36px;font-size:16px}
+.btn-full{width:100%;justify-content:center}
+.btn-danger{background:transparent;color:#dc2626;border:1.5px solid rgba(220,38,38,.2)}
+.btn-danger:hover{background:rgba(220,38,38,.06)}
 
-.nav-logo {
-  font-family: var(--font-head);
-  font-weight: 800; font-size: 22px;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  letter-spacing: -0.5px;
-}
+/* PAGES */
+.page{display:none}
+.page.active{display:block}
+#page-auth.active{display:flex}
+#page-dash.active{display:flex}
 
-.nav-actions { display: flex; gap: 12px; align-items: center; }
+/* ═══════════════ HOME ═══════════════ */
 
-/* ── BUTTONS ───────────────────────────────────────── */
-.btn {
-  font-family: var(--font-body); font-size: 14px; font-weight: 500;
-  padding: 10px 22px; border-radius: 10px; cursor: pointer;
-  border: none; transition: all 0.2s ease; text-decoration: none;
-  display: inline-flex; align-items: center; gap: 8px;
-}
+/* HERO */
+.hero{min-height:100vh;display:grid;grid-template-columns:1fr 1fr;align-items:center;padding:120px 56px 80px;gap:80px;max-width:1300px;margin:0 auto}
 
-.btn-ghost {
-  background: transparent; color: var(--text-dim);
-  border: 1px solid var(--border);
-}
-.btn-ghost:hover { color: var(--text); border-color: rgba(100,120,255,0.4); }
+.hero-eyebrow{display:inline-flex;align-items:center;gap:10px;border:1.5px solid var(--border2);border-radius:100px;padding:6px 18px 6px 8px;font-size:13px;color:var(--dim);margin-bottom:28px;background:var(--paper)}
+.eyebrow-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
 
-.btn-primary {
-  background: var(--accent);
-  color: white;
-  box-shadow: 0 0 30px rgba(91,110,245,0.35);
-}
-.btn-primary:hover {
-  background: #6b7ef7;
-  box-shadow: 0 0 40px rgba(91,110,245,0.5);
-  transform: translateY(-1px);
-}
+.hero-h1{font-size:clamp(44px,5vw,72px);margin-bottom:20px;color:var(--navy)}
+.hero-h1 .accent{color:var(--orange);font-style:italic;font-family:'DM Sans',sans-serif;font-weight:300}
 
-.btn-gold {
-  background: linear-gradient(135deg, #f5c542, #e8a800);
-  color: #1a1400; font-weight: 700;
-  box-shadow: 0 0 30px rgba(245,197,66,0.3);
-}
-.btn-gold:hover { transform: translateY(-1px); box-shadow: 0 0 40px rgba(245,197,66,0.45); }
+.hero-sub{font-size:18px;line-height:1.75;color:var(--dim);max-width:460px;margin-bottom:40px;font-weight:300}
+.hero-sub strong{color:var(--navy);font-weight:600}
 
-.btn-danger {
-  background: rgba(200,50,50,0.2); color: #ff6b6b;
-  border: 1px solid rgba(200,50,50,0.3);
-}
-.btn-danger:hover { background: rgba(200,50,50,0.35); }
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:52px}
 
-.btn-full { width: 100%; justify-content: center; }
-.btn-sm { padding: 8px 16px; font-size: 13px; }
+.hero-stats{display:flex;gap:0;border:1.5px solid var(--border2);border-radius:16px;overflow:hidden;background:var(--paper)}
+.hstat{flex:1;padding:18px 24px;text-align:center;border-right:1px solid var(--border)}
+.hstat:last-child{border-right:none}
+.hstat-n{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--navy);letter-spacing:-1px}
+.hstat-l{font-size:12px;color:var(--dim2);margin-top:2px}
 
-/* ── PAGES ─────────────────────────────────────────── */
-.page { display: none; min-height: 100vh; position: relative; z-index: 1; }
-.page.active { display: block; }
+/* MOCKUP */
+.hero-right{position:relative}
+.mock{background:var(--navy);border-radius:24px;padding:28px;position:relative;overflow:hidden;box-shadow:0 32px 80px rgba(26,35,64,.25)}
+.mock::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 20% 20%,rgba(201,106,42,.15),transparent 55%),radial-gradient(ellipse at 85% 85%,rgba(245,200,66,.08),transparent 55%);pointer-events:none}
+.mock-bar{display:flex;gap:6px;margin-bottom:20px}
+.md{width:10px;height:10px;border-radius:50%}
+.md:nth-child(1){background:#ff5f57}.md:nth-child(2){background:#febc2e}.md:nth-child(3){background:#28c840}
+.fc{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:22px;margin-bottom:14px}
+.fc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.fc-badge{font-size:11px;color:rgba(255,255,255,.4);background:rgba(255,255,255,.08);border-radius:6px;padding:3px 9px}
+.fc-gold{font-size:12px;color:var(--gold);font-weight:700}
+.fc-word{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:5px}
+.fc-tr{font-size:16px;color:rgba(255,255,255,.55);font-weight:300}
+.fc-bar{width:100%;height:2px;background:rgba(255,255,255,.08);border-radius:1px;margin-top:16px;overflow:hidden}
+.fc-prog{height:100%;width:60%;background:linear-gradient(90deg,var(--orange),var(--gold));border-radius:1px;animation:prog 3s ease-in-out infinite alternate}
+@keyframes prog{from{width:15%}to{width:88%}}
+.mock-langs{display:flex;gap:8px}
+.lc{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:7px 12px;font-size:13px;color:rgba(255,255,255,.6);display:flex;align-items:center;gap:5px}
+.lc.on{background:rgba(201,106,42,.25);border-color:rgba(201,106,42,.4);color:#fff}
+.fbadge{position:absolute;background:#fff;border:1px solid var(--border);border-radius:14px;padding:11px 15px;box-shadow:0 8px 28px rgba(26,35,64,.15);font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;white-space:nowrap;color:var(--navy)}
+.fb1{bottom:-16px;left:-44px;animation:fl 4s ease-in-out infinite}
+.fb2{top:20px;right:-44px;animation:fl 4s 1.2s ease-in-out infinite}
+.fb-i{font-size:20px}
+.fb-l{font-size:11px;color:var(--dim2);font-weight:400;margin-top:1px}
+@keyframes fl{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
 
-/* ── HERO ──────────────────────────────────────────── */
-#page-home {
-  display: none; flex-direction: column;
-  align-items: center; justify-content: center;
-  padding: 120px 24px 80px;
-  text-align: center;
-}
-#page-home.active { display: flex; }
+/* PAIN STRIP */
+.pain-strip{background:var(--navy);padding:56px;border-top:1px solid rgba(255,255,255,.05)}
+.pain-strip-in{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr 2fr;gap:60px;align-items:center}
+.pain-strip-title{font-size:clamp(26px,3vw,38px);color:#fff;line-height:1.15}
+.pain-strip-title .accent{color:var(--orange)}
+.pain-items{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pi{display:flex;align-items:flex-start;gap:12px;padding:16px 18px;border-radius:14px;font-size:14px}
+.pi.bad{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+.pi.bad .pi-t{color:rgba(255,255,255,.5);text-decoration:line-through}
+.pi.good{background:rgba(201,106,42,.12);border:1px solid rgba(201,106,42,.25)}
+.pi.good .pi-t{color:#fff;font-weight:500}
+.pi-icon{font-size:18px;margin-top:1px}
+.pi-t{line-height:1.4}
+.pi-s{font-size:12px;color:rgba(255,255,255,.35);margin-top:3px}
 
-.hero-badge {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: rgba(91,110,245,0.12);
-  border: 1px solid rgba(91,110,245,0.3);
-  border-radius: 100px; padding: 6px 16px;
-  font-size: 13px; color: var(--accent2);
-  margin-bottom: 32px;
-  animation: fadeUp 0.6s ease both;
-}
+/* STATS ROW */
+.stats-row{background:var(--paper);padding:56px;border-bottom:1px solid var(--border)}
+.stats-row-in{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:0;text-align:center}
+.stat-item{padding:20px;border-right:1px solid var(--border)}
+.stat-item:last-child{border-right:none}
+.stat-n{font-family:'Syne',sans-serif;font-size:44px;font-weight:800;color:var(--orange);letter-spacing:-2px}
+.stat-l{font-size:13px;color:var(--dim);margin-top:4px;line-height:1.5}
 
-.hero-title {
-  font-family: var(--font-head);
-  font-size: clamp(42px, 7vw, 80px);
-  font-weight: 800; line-height: 1.05;
-  letter-spacing: -2px;
-  animation: fadeUp 0.6s 0.1s ease both;
-}
+/* SCIENCE */
+.sci{padding:100px 56px;background:var(--white)}
+.sci-in{max-width:1200px;margin:0 auto}
+.sec-tag{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--border2);border-radius:100px;padding:5px 16px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim2);margin-bottom:20px}
+.sci-hdr{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:start;margin-bottom:60px}
+.sci-title{font-size:clamp(30px,3.5vw,48px)}
+.sci-lead{font-size:17px;line-height:1.8;color:var(--dim);font-weight:300;padding-top:8px}
+.sci-lead strong{color:var(--navy);font-weight:600}
+.sci-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.sci-c{border:1.5px solid var(--border);border-radius:20px;padding:28px;background:var(--paper);transition:border-color .3s,transform .3s}
+.sci-c:hover{border-color:var(--orange);transform:translateY(-4px)}
+.sci-n{font-family:'Syne',sans-serif;font-size:44px;font-weight:800;color:var(--orange);letter-spacing:-2px;line-height:1;margin-bottom:8px}
+.sci-n span{font-size:22px}
+.sci-ct{font-size:17px;font-weight:700;margin-bottom:10px;color:var(--navy)}
+.sci-cx{font-size:14px;line-height:1.7;color:var(--dim);font-weight:300}
+.sci-src{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--dim2);font-style:italic}
 
-.hero-title span {
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-}
+/* ISOLATION — WŁASNE ZESTAWY */
+.iso{padding:100px 56px;background:var(--navy);position:relative;overflow:hidden}
+.iso::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%,rgba(245,200,66,.07),transparent 65%);pointer-events:none}
+.iso-in{max-width:960px;margin:0 auto;text-align:center;position:relative;z-index:1}
+.iso-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(245,200,66,.12);border:1px solid rgba(245,200,66,.25);border-radius:100px;padding:7px 20px;font-size:12px;font-weight:700;color:var(--gold);letter-spacing:.5px;margin-bottom:28px}
+.iso-title{font-size:clamp(34px,4.5vw,58px);color:#fff;margin-bottom:18px}
+.iso-title .accent{color:var(--gold)}
+.iso-sub{font-size:18px;line-height:1.75;color:rgba(255,255,255,.6);max-width:620px;margin:0 auto 48px;font-weight:300}
+.iso-sub strong{color:#fff;font-weight:500}
+.iso-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:44px;text-align:left}
+.iso-step{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:24px;transition:background .3s}
+.iso-step:hover{background:rgba(255,255,255,.08)}
+.iso-sn{width:32px;height:32px;border-radius:8px;background:rgba(245,200,66,.15);border:1px solid rgba(245,200,66,.2);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:var(--gold);margin-bottom:14px}
+.iso-st{font-size:16px;font-weight:700;color:#fff;margin-bottom:8px}
+.iso-sx{font-size:14px;color:rgba(255,255,255,.5);line-height:1.6;font-weight:300}
+.iso-cta{display:flex;gap:12px;justify-content:center;align-items:center}
+.iso-note{font-size:13px;color:rgba(255,255,255,.35)}
 
-.hero-sub {
-  font-size: clamp(16px, 2vw, 20px);
-  color: var(--text-dim); max-width: 560px;
-  line-height: 1.7; margin: 24px auto 48px;
-  font-weight: 300;
-  animation: fadeUp 0.6s 0.2s ease both;
-}
+/* HOW */
+.how{padding:100px 56px;background:var(--paper)}
+.how-in{max-width:1100px;margin:0 auto}
+.how-hdr{margin-bottom:56px}
+.how-title{font-size:clamp(30px,3.5vw,48px);margin-bottom:12px;color:var(--navy)}
+.how-sub{font-size:17px;color:var(--dim);font-weight:300;max-width:480px}
+.how-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
+.how-step{background:var(--white);border:1.5px solid var(--border);border-radius:20px;padding:36px;transition:border-color .3s,transform .3s}
+.how-step:hover{border-color:var(--orange);transform:translateY(-5px)}
+.how-n{width:38px;height:38px;border-radius:10px;background:var(--navy);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#fff;margin-bottom:20px}
+.how-icon{font-size:32px;margin-bottom:14px}
+.how-t{font-size:20px;margin-bottom:10px;color:var(--navy)}
+.how-x{font-size:14px;line-height:1.7;color:var(--dim);font-weight:300}
 
-.hero-actions {
-  display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
-  animation: fadeUp 0.6s 0.3s ease both;
-}
+/* FEATURES */
+.feats{padding:80px 56px;background:var(--white);border-top:1px solid var(--border)}
+.feats-in{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:40px}
+.feat-i{font-size:28px;margin-bottom:12px}
+.feat-t{font-size:16px;font-weight:700;margin-bottom:8px;color:var(--navy)}
+.feat-x{font-size:14px;line-height:1.65;color:var(--dim);font-weight:300}
 
-.hero-langs {
-  display: flex; gap: 16px; margin-top: 64px;
-  animation: fadeUp 0.6s 0.4s ease both;
-}
+/* LANGUAGES */
+.langs{padding:100px 56px;background:var(--navy)}
+.langs-in{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center}
+.langs-tag{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.15);border-radius:100px;padding:5px 16px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:20px}
+.langs-title{font-size:clamp(30px,3.5vw,46px);color:#fff;margin-bottom:14px}
+.langs-sub{font-size:16px;color:rgba(255,255,255,.55);line-height:1.7;font-weight:300;margin-bottom:32px}
+.lang-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.lang-item{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:15px 18px;display:flex;align-items:center;gap:12px;transition:border-color .2s,background .2s}
+.lang-item:hover{border-color:rgba(201,106,42,.4);background:rgba(201,106,42,.08)}
+.lang-flag{font-size:22px}
+.lang-name{font-size:15px;font-weight:600;color:#fff}
+.lang-lv{font-size:12px;color:rgba(255,255,255,.35);margin-top:1px}
+.lvl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.lvl-box{border-radius:12px;padding:18px;text-align:center;font-family:'Syne',sans-serif;font-weight:800;font-size:18px}
+.lvl-box.free{background:rgba(201,106,42,.2);color:var(--orange);border:1px solid rgba(201,106,42,.3)}
+.lvl-box.paid{background:rgba(255,255,255,.04);color:rgba(255,255,255,.3);border:1px solid rgba(255,255,255,.08)}
+.lvl-box .ls{font-size:10px;font-weight:400;display:block;margin-top:3px;font-family:'DM Sans',sans-serif}
+.lvl-note{font-size:13px;color:rgba(255,255,255,.35);margin-top:14px;line-height:1.6}
+.lvl-note strong{color:var(--gold)}
 
-.lang-pill {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 100px; padding: 10px 20px;
-  font-size: 20px; display: flex; align-items: center; gap: 8px;
-  font-size: 15px; color: var(--text-dim);
-  transition: all 0.2s;
-}
-.lang-pill:hover {
-  border-color: rgba(91,110,245,0.4);
-  color: var(--text); transform: translateY(-2px);
-}
-.lang-pill span:first-child { font-size: 22px; }
+/* CTA */
+.cta-sec{padding:120px 56px;background:var(--orange);position:relative;overflow:hidden}
+.cta-sec::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 80% 20%,rgba(255,255,255,.12),transparent 55%),radial-gradient(ellipse at 20% 80%,rgba(0,0,0,.08),transparent 55%);pointer-events:none}
+.cta-in{max-width:680px;margin:0 auto;text-align:center;position:relative;z-index:1}
+.cta-title{font-size:clamp(36px,5vw,62px);color:#fff;margin-bottom:18px;line-height:1.05;font-weight:800}
+.cta-sub{font-size:18px;color:rgba(255,255,255,.8);margin-bottom:40px;font-weight:300;line-height:1.7}
+.cta-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 
-/* Features */
-.features {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 20px; max-width: 1000px; margin: 80px auto 0;
-  padding: 0 24px;
-  animation: fadeUp 0.6s 0.5s ease both;
-}
+/* FOOTER */
+footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+.footer-logo{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:rgba(255,255,255,.4)}
+.footer-copy{font-size:13px;color:rgba(255,255,255,.3)}
+.footer-links{display:flex;gap:24px}
+.footer-links a{font-size:13px;color:rgba(255,255,255,.3);text-decoration:none;transition:color .2s}
+.footer-links a:hover{color:#fff}
 
-.feature-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 28px;
-  transition: border-color 0.2s, transform 0.2s;
-}
-.feature-card:hover {
-  border-color: rgba(91,110,245,0.35);
-  transform: translateY(-3px);
-}
+/* ═══════════════ AUTH ═══════════════ */
+#page-auth{min-height:100vh;align-items:center;justify-content:center;background:var(--paper);padding:100px 24px 40px}
+.auth-box{display:grid;grid-template-columns:1fr 1fr;max-width:880px;width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:24px;overflow:hidden;box-shadow:0 32px 80px rgba(26,35,64,.12)}
+.auth-l{background:var(--navy);padding:52px 44px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+.auth-l::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 30%,rgba(201,106,42,.2),transparent 60%);pointer-events:none}
+.auth-lc{position:relative;z-index:1}
+.auth-logo-sm{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;margin-bottom:40px}
+.auth-ltitle{font-size:28px;color:#fff;margin-bottom:12px;line-height:1.15}
+.auth-lsub{font-size:14px;color:rgba(255,255,255,.55);line-height:1.7;font-weight:300}
+.auth-fact{position:relative;z-index:1;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:18px;margin-top:32px}
+.auth-fnum{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--gold);letter-spacing:-1px}
+.auth-ftxt{font-size:12px;color:rgba(255,255,255,.4);margin-top:4px;line-height:1.5}
+.auth-r{padding:52px 44px}
+.auth-back{font-size:13px;color:var(--dim2);text-decoration:none;display:inline-flex;align-items:center;gap:6px;margin-bottom:28px;transition:color .2s}
+.auth-back:hover{color:var(--navy)}
+.auth-rtitle{font-size:24px;margin-bottom:4px;color:var(--navy)}
+.auth-rsub{font-size:14px;color:var(--dim2);margin-bottom:28px}
+.fg{margin-bottom:14px}
+.fl{display:block;font-size:12px;font-weight:600;color:var(--dim);margin-bottom:5px;letter-spacing:.3px;text-transform:uppercase}
+.fi{width:100%;padding:11px 15px;background:var(--paper);border:1.5px solid var(--border);border-radius:10px;color:var(--navy);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s}
+.fi:focus{border-color:var(--orange);background:#fff}
+.fi::placeholder{color:var(--dim2)}
+.amsg{font-size:13px;padding:10px 14px;border-radius:10px;margin-bottom:14px;display:none;font-weight:500}
+.amsg.error{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+.amsg.success{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+.amsg.show{display:block}
+.aswitch{text-align:center;margin-top:18px;font-size:13px;color:var(--dim2)}
+.aswitch a{color:var(--orange);cursor:pointer;font-weight:600;text-decoration:none}
+.aswitch a:hover{text-decoration:underline}
 
-.feature-icon { font-size: 32px; margin-bottom: 14px; }
-.feature-title {
-  font-family: var(--font-head); font-weight: 700; font-size: 17px;
-  margin-bottom: 8px;
-}
-.feature-desc { color: var(--text-dim); font-size: 14px; line-height: 1.6; }
+/* ═══════════════ DASHBOARD ═══════════════ */
+#page-dash{min-height:100vh;background:var(--paper);padding:100px 56px 60px;flex-direction:column}
+.di{max-width:980px;margin:0 auto;width:100%}
+.dash-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:36px;flex-wrap:wrap;gap:16px}
+.dash-wl{font-size:13px;color:var(--dim2);margin-bottom:4px}
+.dash-wn{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;letter-spacing:-1px;color:var(--navy)}
+.dash-acts{display:flex;gap:10px}
+.dstats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.dstat{background:var(--white);border:1.5px solid var(--border);border-radius:18px;padding:22px;transition:transform .2s,border-color .2s}
+.dstat:hover{transform:translateY(-3px);border-color:var(--orange)}
+.dstat-l{font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
+.dstat-v{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;letter-spacing:-1.5px;line-height:1;color:var(--navy)}
+.dstat-v.gold{color:var(--orange)}
+.dstat-v.green{color:#16a34a}
+.dstat-v.sm{font-size:16px;margin-top:6px}
+.dstat-s{font-size:11px;color:var(--dim2);margin-top:4px}
+.drow{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px}
+.dcard{background:var(--white);border:1.5px solid var(--border);border-radius:18px;padding:26px}
+.dcard-t{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px;color:var(--navy)}
+.drow2{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
+.drow2 h3{font-size:16px;font-weight:700;margin-bottom:3px;color:var(--navy)}
+.drow2 p{font-size:13px;color:var(--dim2)}
+.code-r{display:flex;gap:8px}
+.code-r .fi{flex:1}
+.tip{background:linear-gradient(135deg,#fef9ee,#fff8e8);border:1.5px solid rgba(245,200,66,.3);border-radius:18px;padding:22px;display:flex;gap:16px;align-items:flex-start}
+.tip-i{font-size:28px}
+.tip-t{font-size:15px;font-weight:700;margin-bottom:6px;color:var(--navy)}
+.tip-x{font-size:13px;color:var(--dim);line-height:1.65}
+.tip-x strong{color:var(--navy)}
 
-/* ── AUTH ──────────────────────────────────────────── */
-#page-auth {
-  display: none; align-items: center; justify-content: center;
-  min-height: 100vh; padding: 100px 24px 40px;
-}
-#page-auth.active { display: flex; }
+/* ANIMATIONS */
+@keyframes up{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
 
-.auth-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 40px;
-  width: 100%; max-width: 400px;
-  animation: fadeUp 0.5s ease both;
-}
-
-.auth-title {
-  font-family: var(--font-head);
-  font-size: 26px; font-weight: 800;
-  text-align: center; margin-bottom: 6px;
-}
-.auth-sub {
-  text-align: center; color: var(--text-dim);
-  font-size: 14px; margin-bottom: 28px;
-}
-
-.form-group { margin-bottom: 16px; }
-.form-label {
-  display: block; font-size: 13px; font-weight: 500;
-  color: var(--text-dim); margin-bottom: 6px;
-}
-.form-input {
-  width: 100%; padding: 12px 16px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--text); font-size: 14px;
-  font-family: var(--font-body);
-  transition: border-color 0.2s;
-  outline: none;
-}
-.form-input:focus { border-color: var(--accent); }
-.form-input::placeholder { color: rgba(232,234,246,0.25); }
-
-.auth-msg {
-  font-size: 13px; text-align: center;
-  padding: 10px; border-radius: 8px;
-  margin-bottom: 16px; display: none;
-}
-.auth-msg.error { background: rgba(255,80,80,0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.2); }
-.auth-msg.success { background: rgba(80,255,130,0.1); color: #80ffaa; border: 1px solid rgba(80,255,130,0.2); }
-.auth-msg.show { display: block; }
-
-.auth-switch {
-  text-align: center; margin-top: 20px;
-  font-size: 13px; color: var(--text-dim);
-}
-.auth-switch a {
-  color: var(--accent2); cursor: pointer;
-  text-decoration: none; font-weight: 500;
-}
-.auth-switch a:hover { text-decoration: underline; }
-
-/* ── DASHBOARD ─────────────────────────────────────── */
-#page-dash {
-  display: none; flex-direction: column;
-  min-height: 100vh; padding: 100px 24px 60px;
-  max-width: 900px; margin: 0 auto;
-}
-#page-dash.active { display: flex; }
-
-.dash-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 40px; flex-wrap: wrap; gap: 16px;
-}
-
-.dash-greeting {
-  font-family: var(--font-head);
-  font-size: 32px; font-weight: 800;
-}
-.dash-greeting span { color: var(--accent2); }
-
-.dash-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px; margin-bottom: 32px;
-}
-
-.stat-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 24px;
-  transition: border-color 0.2s;
-}
-.stat-card:hover { border-color: rgba(91,110,245,0.35); }
-
-.stat-label {
-  font-size: 12px; color: var(--text-dim);
-  text-transform: uppercase; letter-spacing: 0.8px;
-  margin-bottom: 8px;
-}
-.stat-value {
-  font-family: var(--font-head);
-  font-size: 36px; font-weight: 800;
-}
-.stat-value.gold-val { color: var(--gold); }
-.stat-value.premium-val { color: #80ffaa; font-size: 20px; margin-top: 4px; }
-.stat-value.locked-val { color: var(--text-dim); font-size: 20px; margin-top: 4px; }
-
-.dash-section {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 28px; margin-bottom: 20px;
-}
-
-.dash-section-title {
-  font-family: var(--font-head);
-  font-size: 18px; font-weight: 700;
-  margin-bottom: 16px;
-  display: flex; align-items: center; gap: 10px;
-}
-
-.download-box {
-  display: flex; align-items: center;
-  justify-content: space-between; flex-wrap: wrap; gap: 16px;
-}
-.download-info h3 {
-  font-family: var(--font-head); font-size: 18px; font-weight: 700;
-  margin-bottom: 4px;
-}
-.download-info p { color: var(--text-dim); font-size: 14px; }
-
-/* Premium code input */
-.code-form {
-  display: flex; gap: 10px;
-}
-.code-form .form-input { flex: 1; }
-
-/* ── ANIMATIONS ────────────────────────────────────── */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(24px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* ── RESPONSIVE ────────────────────────────────────── */
-@media (max-width: 600px) {
-  nav { padding: 16px 20px; }
-  .nav-logo { font-size: 18px; }
-  .hero-langs { flex-wrap: wrap; justify-content: center; }
-  .code-form { flex-direction: column; }
-  .download-box { flex-direction: column; align-items: flex-start; }
-}
-
-/* ── LOADER ────────────────────────────────────────── */
-.spinner {
-  width: 18px; height: 18px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  display: none;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.divider {
-  height: 1px; background: var(--border);
-  margin: 20px 0;
+/* RESPONSIVE */
+@media(max-width:900px){
+  nav{padding:14px 24px}
+  .nav-mid{display:none}
+  .hero{grid-template-columns:1fr;padding:100px 24px 60px;gap:40px}
+  .hero-right{display:none}
+  .pain-strip{padding:40px 24px}
+  .pain-strip-in{grid-template-columns:1fr;gap:32px}
+  .pain-items{grid-template-columns:1fr}
+  .stats-row{padding:40px 24px}
+  .stats-row-in{grid-template-columns:1fr 1fr}
+  .sci,.how,.feats,.langs,.iso{padding:72px 24px}
+  .sci-hdr{grid-template-columns:1fr;gap:32px}
+  .sci-cards,.how-grid,.iso-steps{grid-template-columns:1fr}
+  .feats-in{grid-template-columns:1fr 1fr;gap:28px}
+  .langs-in{grid-template-columns:1fr;gap:48px}
+  .cta-sec{padding:80px 24px}
+  .cta-btns{flex-direction:column;align-items:center}
+  footer{flex-direction:column;text-align:center;padding:28px 24px}
+  .auth-box{grid-template-columns:1fr}
+  .auth-l{display:none}
+  .auth-r{padding:40px 28px}
+  #page-dash{padding:100px 24px 40px}
+  .dstats{grid-template-columns:1fr 1fr}
+  .drow{grid-template-columns:1fr}
 }
 </style>
 </head>
 <body>
 
-<div class="blob blob-1"></div>
-<div class="blob blob-2"></div>
-
-<!-- ── NAV ─────────────────────────────────────────── -->
+<!-- NAV -->
 <nav>
-  <div class="nav-logo">👁 Eyelingo</div>
-  <div class="nav-actions" id="nav-actions">
-    <button class="btn btn-ghost btn-sm" onclick="showAuth('login')">Zaloguj się</button>
-    <button class="btn btn-primary btn-sm" onclick="showAuth('register')">Zarejestruj się</button>
+  <div class="nav-logo">
+    <img src="eyelingo_logo.png" alt="Eyelingo" style="height:44px;display:block" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+    <span class="nav-logo-text" style="display:none;color:#fff">EYELINGO</span>
+  </div>
+  <div class="nav-mid">
+    <a href="#science" onclick="return navSection('#science')">Nauka</a>
+    <a href="#isolation" onclick="return navSection('#isolation')">Własne zestawy</a>
+    <a href="#languages" onclick="return navSection('#languages')">Języki</a>
+  </div>
+  <div class="nav-r" id="nav-r">
+    <button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button>
+    <button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>
   </div>
 </nav>
 
-<!-- ── HOME ────────────────────────────────────────── -->
+<!-- ═══ HOME ═══ -->
 <div id="page-home" class="page active">
 
-  <div class="hero-badge">✨ Ucz się bez wysiłku</div>
-
-  <h1 class="hero-title">
-    Języki obce<br>
-    <span>uczą się same</span>
-  </h1>
-
-  <p class="hero-sub">
-    Eyelingo wyświetla fiszki w tle ekranu podczas normalnej pracy.
-    Mózg przyswaja słówka bez przerywania tego co robisz.
-  </p>
-
-  <div class="hero-actions">
-    <button class="btn btn-primary" onclick="showAuth('register')">
-      🚀 Zacznij za darmo
-    </button>
-    <a class="btn btn-ghost" href="#features">
-      Dowiedz się więcej
-    </a>
-  </div>
-
-  <div class="hero-langs">
-    <div class="lang-pill"><span>🇬🇧</span> Angielski</div>
-    <div class="lang-pill"><span>🇪🇸</span> Hiszpański</div>
-    <div class="lang-pill"><span>🇯🇵</span> Japoński</div>
-    <div class="lang-pill"><span>🇳🇱</span> Niderlandzki</div>
-  </div>
-
-  <div class="features" id="features">
-    <div class="feature-card">
-      <div class="feature-icon">🪟</div>
-      <div class="feature-title">Niewidoczne w tle</div>
-      <div class="feature-desc">Przezroczyste fiszki w rogu ekranu. Nie przeszkadzają, ale mózg je przyswaja.</div>
+<!-- HERO -->
+<section class="hero">
+  <div>
+    <div class="hero-eyebrow"><span class="eyebrow-dot"></span> Potwierdzone naukowo · Bez dodatkowego czasu</div>
+    <h1 class="hero-h1">Spędzasz godziny<br>przy komputerze.<br><span class="accent" style="display:block;font-size:1.05em;font-weight:800">Marnujesz je.</span></h1>
+    <p class="hero-sub">Twój mózg przyswaja słowa które pojawiają się w jego polu widzenia — <strong>nawet gdy nie próbujesz się uczyć.</strong> Eyelingo robi to za Ciebie, codziennie, w tle.</p>
+    <div class="hero-cta">
+      <button class="btn btn-orange btn-lg" onclick="showAuth('register')">🚀 Zacznij za darmo</button>
+      <a href="#science" class="btn btn-ghost btn-lg" onclick="return navSection('#science')">Jak to działa?</a>
     </div>
-    <div class="feature-card">
-      <div class="feature-icon">📚</div>
-      <div class="feature-title">4 języki, 6 poziomów</div>
-      <div class="feature-desc">Od A1 do C2. Ponad 500 słów na każdym poziomie w 25 kategoriach tematycznych.</div>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">🏺</div>
-      <div class="feature-title">Zbieraj złoto</div>
-      <div class="feature-desc">Za każdą wyświetloną fiszkę i minutę nauki zbierasz złoto. Gamifikacja która motywuje.</div>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon">✏️</div>
-      <div class="feature-title">Własne zestawy</div>
-      <div class="feature-desc">Twórz własne fiszki na sprawdziany i egzaminy. Zapisywane w chmurze.</div>
+    <div class="hero-stats">
+      <div class="hstat"><div class="hstat-n">150+</div><div class="hstat-l">nowych słów miesięcznie</div></div>
+      <div class="hstat"><div class="hstat-n">4</div><div class="hstat-l">języki obce</div></div>
+      <div class="hstat"><div class="hstat-n">0</div><div class="hstat-l">minut wysiłku dziennie</div></div>
     </div>
   </div>
 
-</div>
-
-<!-- ── AUTH ────────────────────────────────────────── -->
-<div id="page-auth" class="page">
-  <div class="auth-card">
-
-    <h2 class="auth-title" id="auth-title">Witaj z powrotem 👋</h2>
-    <p class="auth-sub" id="auth-sub">Zaloguj się aby kontynuować naukę</p>
-
-    <div id="auth-msg" class="auth-msg"></div>
-
-    <div class="form-group">
-      <label class="form-label">E-mail</label>
-      <input type="email" id="auth-email" class="form-input" placeholder="twoj@email.com">
-    </div>
-
-    <div class="form-group">
-      <label class="form-label">Hasło</label>
-      <input type="password" id="auth-password" class="form-input" placeholder="min. 6 znaków">
-    </div>
-
-    <button class="btn btn-primary btn-full" id="auth-btn" onclick="submitAuth()">
-      <span id="auth-btn-text">Zaloguj się</span>
-      <div class="spinner" id="auth-spinner"></div>
-    </button>
-
-    <div class="auth-switch" id="auth-switch">
-      Nie masz konta? <a onclick="toggleAuthMode()">Zarejestruj się</a>
-    </div>
-
-    <div class="divider"></div>
-
-    <button class="btn btn-ghost btn-full btn-sm" onclick="showPage('home')">
-      ← Wróć na stronę główną
-    </button>
-
-  </div>
-</div>
-
-<!-- ── DASHBOARD ────────────────────────────────────── -->
-<div id="page-dash" class="page">
-
-  <div class="dash-header">
-    <div>
-      <div class="dash-greeting">Hej, <span id="dash-email">użytkowniku</span> 👋</div>
-      <div style="color: var(--text-dim); font-size: 14px; margin-top: 4px;">Twój panel nauki</div>
-    </div>
-    <button class="btn btn-danger btn-sm" onclick="logout()">Wyloguj</button>
-  </div>
-
-  <!-- Statystyki -->
-  <div class="dash-grid">
-    <div class="stat-card">
-      <div class="stat-label">🏺 Złoto</div>
-      <div class="stat-value gold-val" id="dash-gold">0</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">📖 Fiszek obejrzanych</div>
-      <div class="stat-value" id="dash-cards">0</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">⏱️ Czas nauki</div>
-      <div class="stat-value" id="dash-minutes">0 min</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">🏆 Status</div>
-      <div class="stat-value" id="dash-premium">Ładowanie...</div>
-    </div>
-  </div>
-
-  <!-- Pobierz aplikację -->
-  <div class="dash-section">
-    <div class="dash-section-title">⬇️ Pobierz aplikację</div>
-    <div class="download-box">
-      <div class="download-info">
-        <h3>Eyelingo dla Windows</h3>
-        <p>Wersja 1.0 · Wymaga Windows 10/11</p>
+  <div class="hero-right">
+    <div class="mock">
+      <div class="mock-bar"><div class="md"></div><div class="md"></div><div class="md"></div></div>
+      <div class="fc">
+        <div class="fc-top">
+          <div class="fc-badge">Angielski · Poziom A2</div>
+          <div class="fc-gold">🏺 312</div>
+        </div>
+        <div class="fc-word">achievement</div>
+        <div class="fc-tr">osiągnięcie</div>
+        <div class="fc-bar"><div class="fc-prog"></div></div>
       </div>
-      <a class="btn btn-primary" id="download-btn" href="#" onclick="handleDownload(event)">
-        ⬇️ Pobierz .exe
-      </a>
+      <div class="mock-langs">
+        <div class="lc on">🇬🇧 EN</div>
+        <div class="lc">🇪🇸 ES</div>
+        <div class="lc">🇯🇵 JP</div>
+        <div class="lc">🇳🇱 NL</div>
+      </div>
+    </div>
+    <div class="fbadge fb1"><span class="fb-i">🔥</span><div><div>7 dni z rzędu</div><div class="fb-l">Streak aktywny!</div></div></div>
+    <div class="fbadge fb2"><span class="fb-i">🧠</span><div><div>+18 słów dziś</div><div class="fb-l">Bez wysiłku</div></div></div>
+  </div>
+</section>
+
+<!-- PAIN STRIP -->
+<div class="pain-strip">
+  <div class="pain-strip-in">
+    <div>
+      <h2 class="pain-strip-title">Inne metody wymagają<br><span class="accent">Twojego czasu.</span><br>Eyelingo — nie.</h2>
+    </div>
+    <div class="pain-items">
+      <div class="pi bad"><span class="pi-icon">📱</span><div><div class="pi-t">Aplikacje mobilne</div><div class="pi-s">Kolejna rzecz do sprawdzenia i zapomnienia</div></div></div>
+      <div class="pi bad"><span class="pi-icon">📚</span><div><div class="pi-t">Kursy online</div><div class="pi-s">Drogie, długie i zazwyczaj niedokończone</div></div></div>
+      <div class="pi bad"><span class="pi-icon">🎧</span><div><div class="pi-t">Podcasty językowe</div><div class="pi-s">Wymagają skupienia — nie możesz nic innego robić</div></div></div>
+      <div class="pi good" style="background:rgba(201,106,42,.15);border:1.5px solid rgba(201,106,42,.35);border-radius:14px"><span class="pi-icon">👁</span><div><div class="pi-t" style="color:#fff;font-weight:700">Eyelingo działa w tle</div><div class="pi-s" style="color:rgba(255,255,255,.7);margin-top:3px">Zero czasu. Zero wysiłku. Mózg uczy się sam.</div></div></div>
     </div>
   </div>
-
-  <!-- Aktywuj premium -->
-  <div class="dash-section" id="premium-section">
-    <div class="dash-section-title">🏆 Aktywuj Premium</div>
-    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
-      Masz kod? Wpisz go poniżej aby odblokować wszystkie poziomy (A2–C2).
-    </p>
-    <div class="code-form">
-      <input type="text" id="code-input" class="form-input"
-             placeholder="np. EYELINGO-VIP"
-             style="text-transform: uppercase;">
-      <button class="btn btn-gold" id="code-btn" onclick="activateCode()">
-        <span id="code-btn-text">Aktywuj</span>
-        <div class="spinner" id="code-spinner"></div>
-      </button>
-    </div>
-    <div id="code-msg" class="auth-msg" style="margin-top: 12px; margin-bottom: 0;"></div>
-  </div>
-
 </div>
 
-<!-- ── SCRIPT ───────────────────────────────────────── -->
+<!-- STATS ROW -->
+<div class="stats-row">
+  <div class="stats-row-in">
+    <div class="stat-item"><div class="stat-n">150+</div><div class="stat-l">nowych słów miesięcznie<br>bez żadnego dodatkowego czasu</div></div>
+    <div class="stat-item"><div class="stat-n">10×</div><div class="stat-l">tyle ekspozycji na słowo<br>wystarczy do trwałego zapamiętania</div></div>
+    <div class="stat-item"><div class="stat-n">∞</div><div class="stat-l">słowa przyswojone incydentalnie<br>zostają z Tobą na zawsze</div></div>
+    <div class="stat-item"><div class="stat-n">SRS</div><div class="stat-l">inteligentny algorytm powtórek<br>który maksymalizuje zapamiętywanie</div></div>
+  </div>
+</div>
+
+<!-- SCIENCE -->
+<section class="sci" id="science">
+  <div class="sci-in">
+    <div class="sci-hdr">
+      <div>
+        <div class="sec-tag">🔬 Nauka za tym stoi</div>
+        <h2 class="sci-title">Twój mózg zapamiętuje<br>to co widzi regularnie</h2>
+      </div>
+      <div class="sci-lead">
+        Uczenie się incydentalne — <strong>bez wysiłku i intencji</strong> — to udokumentowany mechanizm neurobiologiczny. Mózg automatycznie buduje skojarzenia z elementami otoczenia które pojawiają się regularnie. Eyelingo sprawia, że słówka stają się częścią Twojego codziennego środowiska.
+      </div>
+    </div>
+    <div class="sci-cards">
+      <div class="sci-c">
+        <div class="sci-n">2<span>×</span></div>
+        <div class="sci-ct">Wystarczą 2 spotkania ze słowem</div>
+        <div class="sci-cx">Badania pokazują że incydentalne przyswojenie słów zachodzi już po zaledwie 2 kontaktach. Eyelingo wyświetla każde słówko wielokrotnie w ciągu dnia — naturalnie, bez przerywania pracy.</div>
+        <div class="sci-src">Bisson et al., Language Learning, 2014</div>
+      </div>
+      <div class="sci-c">
+        <div class="sci-n">10<span>×</span></div>
+        <div class="sci-ct">Powtarzalność tworzy trwałą pamięć</div>
+        <div class="sci-cx">10 ekspozycji na słowo w naturalnym kontekście wystarczy do jego trwałego zapamiętania. Przy regularnym używaniu Eyelingo każde słówko osiąga ten próg w ciągu kilku dni.</div>
+        <div class="sci-src">Peters, Language Learning Journal, 2016</div>
+      </div>
+      <div class="sci-c">
+        <div class="sci-n">150<span>+</span></div>
+        <div class="sci-ct">Słów miesięcznie — bez nauki</div>
+        <div class="sci-cx">Regularne używanie Eyelingo podczas codziennej pracy przy komputerze przekłada się na przyswojenie ponad 150 nowych słów miesięcznie. Bez dodatkowego czasu, bez wysiłku.</div>
+        <div class="sci-src">Szacowanie oparte na: Webb & Chang, MLJ, 2022</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ISOLATION — WŁASNE ZESTAWY -->
+<section class="iso" id="isolation">
+  <div class="iso-in">
+    <div class="iso-badge">✨ Wyróżniona funkcja</div>
+    <h2 class="iso-title">Twoje własne fiszki.<br><span class="accent">Twoje własne tempo.</span></h2>
+    <p class="iso-sub">Masz sprawdzian? Rozmowę kwalifikacyjną? Egzamin z kanji? <strong>Stwórz własny zestaw w 2 minuty</strong> i pozwól Eyelingo uczyć Cię go w tle przez cały tydzień przed ważnym dniem.</p>
+    <div class="iso-steps">
+      <div class="iso-step">
+        <div class="iso-sn">1</div>
+        <div class="iso-st">Wpisz słówka</div>
+        <div class="iso-sx">Do 30 par słowo–tłumaczenie. Dowolna dziedzina — szkolna, zawodowa, hobbystyczna. Zapisane w chmurze, dostępne zawsze.</div>
+      </div>
+      <div class="iso-step">
+        <div class="iso-sn">2</div>
+        <div class="iso-st">Eyelingo uczy Cię w tle</div>
+        <div class="iso-sx">Twój zestaw pojawia się na ekranie podczas normalnej pracy. Mózg zapamiętuje — bez przerywania dnia i bez dodatkowego czasu.</div>
+      </div>
+      <div class="iso-step">
+        <div class="iso-sn">3</div>
+        <div class="iso-st">Sprawdź się przed ważnym dniem</div>
+        <div class="iso-sx">Test z algorytmem SRS pokaże co pamiętasz, a co wymaga powtórki. Wejdź na sprawdzian pewny siebie.</div>
+      </div>
+    </div>
+    <div class="iso-cta">
+      <button class="btn btn-lg" style="background:var(--gold);color:var(--navy);font-weight:700;box-shadow:0 4px 24px rgba(245,200,66,.4)" onclick="showAuth('register')">✏️ Stwórz pierwszy zestaw</button>
+      <span class="iso-note">Darmowe · Bez karty kredytowej</span>
+    </div>
+  </div>
+</section>
+
+<!-- HOW -->
+<section class="how">
+  <div class="how-in">
+    <div class="how-hdr">
+      <div class="sec-tag">⚡ Jak to działa</div>
+      <h2 class="how-title">Trzy kroki.<br>Potem zapomnij że istnieje.</h2>
+      <p class="how-sub">Skonfiguruj raz i wróć do normalnego życia. Eyelingo pracuje w tle.</p>
+    </div>
+    <div class="how-grid">
+      <div class="how-step">
+        <div class="how-n">01</div>
+        <div class="how-icon">⚙️</div>
+        <div class="how-t">Skonfiguruj raz</div>
+        <p class="how-x">Wybierz język, poziom i kategorię. Ustaw przezroczystość i interwał. Dwie minuty — i gotowe na zawsze.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-n">02</div>
+        <div class="how-icon">💻</div>
+        <div class="how-t">Pracuj normalnie</div>
+        <p class="how-x">Fiszka siedzi dyskretnie w rogu ekranu. Zmienia się automatycznie. Nie przeszkadza, nie wymaga kliknięć.</p>
+      </div>
+      <div class="how-step">
+        <div class="how-n">03</div>
+        <div class="how-icon">🧪</div>
+        <div class="how-t">Sprawdź wiedzę</div>
+        <p class="how-x">Po 15 ekspozycjach aplikacja zaproponuje krótki test. Algorytm SM-2 powtórzy trudniejsze słowa częściej.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="feats">
+  <div class="feats-in">
+    <div><div class="feat-i">🏺</div><div class="feat-t">Złoto i streak</div><p class="feat-x">Zbieraj złoto za minuty nauki i wyświetlone fiszki. Za 10 000 złota odblokujesz nowy poziom w sklepie.</p></div>
+    <div><div class="feat-i">🔁</div><div class="feat-t">Algorytm SRS</div><p class="feat-x">SuperMemo SM-2 — ten sam co Anki. Trudne słowa wracają częściej, łatwe rzadziej. Nauka zoptymalizowana.</p></div>
+    <div><div class="feat-i">⌨️</div><div class="feat-t">Skróty klawiszowe</div><p class="feat-x">Zmień kategorię, język lub wstrzymaj naukę bez odrywania rąk od klawiatury. ALT + strzałki.</p></div>
+    <div><div class="feat-i">🔒</div><div class="feat-t">6 poziomów trudności</div><p class="feat-x">Od A1 (darmowy) do C2. Każdy poziom to 500+ słów w 25 kategoriach tematycznych.</p></div>
+  </div>
+</section>
+
+<!-- LANGUAGES -->
+<section class="langs" id="languages">
+  <div class="langs-in">
+    <div>
+      <div class="langs-tag">🌍 Dostępne języki</div>
+      <h2 class="langs-title">4 języki,<br>6 poziomów każdy</h2>
+      <p class="langs-sub">Od podstawowego A1 po zaawansowany C2. Japoński z romaji dla każdego słówka. Ponad 500 słów na poziom w 25 kategoriach.</p>
+      <div class="lang-list">
+        <div class="lang-item"><span class="lang-flag">🇬🇧</span><div><div class="lang-name">Angielski</div><div class="lang-lv">A1–C2 · 500+ słów/poziom</div></div></div>
+        <div class="lang-item"><span class="lang-flag">🇪🇸</span><div><div class="lang-name">Hiszpański</div><div class="lang-lv">A1–C2 · 500+ słów/poziom</div></div></div>
+        <div class="lang-item"><span class="lang-flag">🇯🇵</span><div><div class="lang-name">Japoński</div><div class="lang-lv">A1–C2 · z romaji</div></div></div>
+        <div class="lang-item"><span class="lang-flag">🇳🇱</span><div><div class="lang-name">Niderlandzki</div><div class="lang-lv">A1–C2 · 500+ słów/poziom</div></div></div>
+      </div>
+    </div>
+    <div>
+      <p style="font-size:11px;font-weight:700;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px">Poziomy dostępności</p>
+      <div class="lvl-grid">
+        <div class="lvl-box free">A1<span class="ls">Zawsze darmowy</span></div>
+        <div class="lvl-box paid">A2<span class="ls">Premium</span></div>
+        <div class="lvl-box paid">B1<span class="ls">Premium</span></div>
+        <div class="lvl-box paid">B2<span class="ls">Premium</span></div>
+        <div class="lvl-box paid">C1<span class="ls">Premium</span></div>
+        <div class="lvl-box paid">C2<span class="ls">Premium</span></div>
+      </div>
+      <p class="lvl-note">💡 Wyższe poziomy odblokujesz kodem premium lub zbierając <strong>10 000 złota</strong> w aplikacji.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-sec">
+  <div class="cta-in">
+    <h2 class="cta-title">Przestań marnować<br>czas przy komputerze.</h2>
+    <p class="cta-sub">Zacznij przyswajać 150+ słów miesięcznie — bez kursu, bez aplikacji do sprawdzania, bez wyrzutów sumienia. Tylko Ty i Twój ekran.</p>
+    <div class="cta-btns">
+      <button class="btn btn-white btn-lg" onclick="showAuth('register')">🚀 Zacznij za darmo</button>
+      <button class="btn btn-ghost btn-lg" style="color:#fff;border-color:rgba(255,255,255,.4)" onclick="showAuth('login')">Zaloguj się</button>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-logo">EYELINGO · SEE THE PROGRESS.</div>
+  <div class="footer-copy">© 2025 Eyelingo. Wszelkie prawa zastrzeżone.</div>
+  <div class="footer-links"><a href="#">Prywatność</a><a href="#">Kontakt</a></div>
+</footer>
+
+</div><!-- /home -->
+
+<!-- ═══ AUTH ═══ -->
+<div id="page-auth" class="page">
+  <div class="auth-box">
+    <div class="auth-l">
+      <div class="auth-lc">
+        <div class="auth-logo-sm">EYELINGO</div>
+        <h2 class="auth-ltitle">Nauka języków<br>która działa sama.</h2>
+        <p class="auth-lsub">Fiszki w tle ekranu. Algorytm SRS. System złota. Twój mózg uczy się — Ty pracujesz.</p>
+        <div class="auth-fact">
+          <div class="auth-fnum">150+</div>
+          <div class="auth-ftxt">nowych słów miesięcznie — bez żadnego dodatkowego czasu przy komputerze</div>
+        </div>
+      </div>
+    </div>
+    <div class="auth-r">
+      <a href="#" onclick="return navHome()" class="auth-back">← Strona główna</a>
+      <h2 class="auth-rtitle" id="auth-title">Witaj z powrotem 👋</h2>
+      <p class="auth-rsub" id="auth-sub">Zaloguj się aby kontynuować naukę</p>
+      <div id="auth-msg" class="amsg"></div>
+      <div class="fg"><label class="fl">E-mail</label><input type="email" id="auth-email" class="fi" placeholder="twoj@email.com"></div>
+      <div class="fg"><label class="fl">Hasło</label><input type="password" id="auth-password" class="fi" placeholder="min. 6 znaków"></div>
+      <button class="btn btn-orange btn-full btn-lg" id="auth-btn" onclick="submitAuth()" style="margin-top:8px"><span id="auth-btn-text">Zaloguj się</span></button>
+      <div class="aswitch" id="auth-switch">Nie masz konta? <a onclick="toggleAuthMode()">Zarejestruj się za darmo</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DASHBOARD ═══ -->
+<div id="page-dash" class="page">
+  <div class="di">
+    <div class="dash-top">
+      <div>
+        <div class="dash-wl">Dzień dobry,</div>
+        <div class="dash-wn" id="dash-name">użytkowniku 👋</div>
+      </div>
+      <div class="dash-acts">
+        <a href="#" onclick="return navHome()" class="btn btn-ghost">← Strona główna</a>
+        <button class="btn btn-danger" onclick="logout()">Wyloguj</button>
+      </div>
+    </div>
+    <div class="dstats">
+      <div class="dstat"><div class="dstat-l">🏺 Złoto</div><div class="dstat-v gold" id="dash-gold">0</div><div class="dstat-s">zebrane punkty</div></div>
+      <div class="dstat"><div class="dstat-l">📖 Fiszki</div><div class="dstat-v" id="dash-cards">0</div><div class="dstat-s">obejrzanych</div></div>
+      <div class="dstat"><div class="dstat-l">⏱️ Czas nauki</div><div class="dstat-v" id="dash-minutes">0</div><div class="dstat-s">minut aktywnych</div></div>
+      <div class="dstat"><div class="dstat-l">🏆 Status</div><div class="dstat-v sm" id="dash-status">Ładowanie...</div></div>
+    </div>
+    <div class="drow">
+      <div class="dcard">
+        <div class="dcard-t">⬇️ Pobierz aplikację</div>
+        <div class="drow2">
+          <div><h3>Eyelingo dla Windows</h3><p>Wersja 1.0 · Windows 10/11</p></div>
+          <a class="btn btn-orange" href="#" onclick="handleDownload(event)">⬇️ Pobierz .exe</a>
+        </div>
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);font-size:13px;color:var(--dim2);line-height:1.6">
+          💡 <strong style="color:var(--navy)">Tip dla graczy:</strong> Ustaw grę w trybie <strong style="color:var(--navy)">Borderless Window</strong> — fiszki będą widoczne podczas grania.
+        </div>
+      </div>
+      <div class="dcard" id="premium-card">
+        <div class="dcard-t">🏆 Aktywuj Premium</div>
+        <p style="font-size:13px;color:var(--dim2);margin-bottom:14px;line-height:1.6">Masz kod dostępu? Wpisz go aby odblokować poziomy A2–C2.</p>
+        <div class="code-r">
+          <input type="text" id="code-input" class="fi" placeholder="np. EYELINGO-VIP" style="text-transform:uppercase">
+          <button class="btn btn-navy" id="code-btn" onclick="activateCode()"><span id="code-btn-text">Aktywuj</span></button>
+        </div>
+        <div id="code-msg" class="amsg" style="margin-top:10px;margin-bottom:0"></div>
+      </div>
+    </div>
+    <div class="tip">
+      <div class="tip-i">🏺</div>
+      <div>
+        <div class="tip-t">Jak zdobywać złoto?</div>
+        <div class="tip-x"><strong>+1 złoto</strong> co minutę aktywności &nbsp;·&nbsp; <strong>+1 złoto</strong> co 5 wyświetlonych fiszek &nbsp;·&nbsp; Za <strong>10 000 złota</strong> odblokujesz dowolny poziom w sklepie aplikacji</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-// ── KONFIGURACJA SUPABASE ──────────────────────────
-// Zamień na swoje dane z Supabase → Settings → API
-const SUPABASE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
+const SUPABASE_URL='https://TWOJ_PROJEKT.supabase.co';
+const SUPABASE_KEY='TWOJ_ANON_KEY';
+const DOWNLOAD_URL='#';
+const{createClient}=supabase;
+const db=createClient(SUPABASE_URL,SUPABASE_KEY);
+let authMode='login';
 
-const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Link do pobrania .exe (wstaw po wgraniu na GitHub Releases)
-const DOWNLOAD_URL = '#'; // np. 'https://github.com/twoj-login/eyelingo/releases/latest/download/Eyelingo.exe'
-
-// ── NAWIGACJA ──────────────────────────────────────
-let currentPage = 'home';
-let authMode    = 'login';
-
-function showPage(name) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById(`page-${name}`).classList.add('active');
-  currentPage = name;
-  window.scrollTo(0, 0);
+function showPage(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
+function navHome(){showPage('home');return false}
+function navSection(sel){showPage('home');setTimeout(()=>{const el=document.querySelector(sel);if(el)el.scrollIntoView({behavior:'smooth'})},60);return false}
+function showAuth(m){authMode=m;showPage('auth');updateAuthUI();clearMsg('auth-msg')}
+function toggleAuthMode(){authMode=authMode==='login'?'register':'login';updateAuthUI();clearMsg('auth-msg')}
+function updateAuthUI(){
+  const l=authMode==='login';
+  document.getElementById('auth-title').textContent=l?'Witaj z powrotem 👋':'Utwórz konto 🚀';
+  document.getElementById('auth-sub').textContent=l?'Zaloguj się aby kontynuować naukę':'Dołącz do Eyelingo — to nic nie kosztuje';
+  document.getElementById('auth-btn-text').textContent=l?'Zaloguj się':'Zarejestruj się';
+  document.getElementById('auth-switch').innerHTML=l
+    ?'Nie masz konta? <a onclick="toggleAuthMode()">Zarejestruj się za darmo</a>'
+    :'Masz już konto? <a onclick="toggleAuthMode()">Zaloguj się</a>';
 }
+function showMsg(id,t,tp){const e=document.getElementById(id);e.textContent=t;e.className='amsg '+tp+' show'}
+function clearMsg(id){document.getElementById(id).className='amsg'}
 
-// ── AUTH MODE ──────────────────────────────────────
-function showAuth(mode) {
-  authMode = mode;
-  showPage('auth');
-  updateAuthUI();
-  clearAuthMsg();
-}
-
-function toggleAuthMode() {
-  authMode = authMode === 'login' ? 'register' : 'login';
-  updateAuthUI();
-  clearAuthMsg();
-}
-
-function updateAuthUI() {
-  const isLogin = authMode === 'login';
-  document.getElementById('auth-title').textContent   = isLogin ? 'Witaj z powrotem 👋' : 'Utwórz konto 🚀';
-  document.getElementById('auth-sub').textContent     = isLogin ? 'Zaloguj się aby kontynuować naukę' : 'Dołącz do Eyelingo za darmo';
-  document.getElementById('auth-btn-text').textContent = isLogin ? 'Zaloguj się' : 'Zarejestruj się';
-  document.getElementById('auth-switch').innerHTML    = isLogin
-    ? 'Nie masz konta? <a onclick="toggleAuthMode()">Zarejestruj się</a>'
-    : 'Masz już konto? <a onclick="toggleAuthMode()">Zaloguj się</a>';
-}
-
-// ── MESSAGES ───────────────────────────────────────
-function showMsg(id, text, type) {
-  const el = document.getElementById(id);
-  el.textContent = text;
-  el.className = `auth-msg ${type} show`;
-}
-
-function clearAuthMsg() {
-  const el = document.getElementById('auth-msg');
-  el.className = 'auth-msg';
-}
-
-// ── SUBMIT AUTH ────────────────────────────────────
-async function submitAuth() {
-  const email    = document.getElementById('auth-email').value.trim();
-  const password = document.getElementById('auth-password').value;
-
-  if (!email || !password) {
-    showMsg('auth-msg', 'Wypełnij e-mail i hasło.', 'error'); return;
+async function submitAuth(){
+  const email=document.getElementById('auth-email').value.trim();
+  const pass=document.getElementById('auth-password').value;
+  if(!email||!pass){showMsg('auth-msg','Wypełnij e-mail i hasło.','error');return}
+  if(pass.length<6){showMsg('auth-msg','Hasło musi mieć co najmniej 6 znaków.','error');return}
+  const btn=document.getElementById('auth-btn');btn.disabled=true;
+  document.getElementById('auth-btn-text').textContent='Łączenie...';
+  try{
+    let res=authMode==='login'?await db.auth.signInWithPassword({email,password:pass}):await db.auth.signUp({email,password:pass});
+    if(res.error)throw res.error;
+    if(authMode==='register'&&!res.data.session){showMsg('auth-msg','✅ Sprawdź e-mail i potwierdź konto.','success')}
+    else{await loadDashboard();showPage('dash')}
+  }catch(e){
+    const m=e.message||'';
+    if(m.includes('Invalid login')||m.includes('invalid'))showMsg('auth-msg','Nieprawidłowy e-mail lub hasło.','error');
+    else if(m.includes('already'))showMsg('auth-msg','Ten e-mail jest już zarejestrowany.','error');
+    else showMsg('auth-msg','Błąd: '+m,'error');
   }
-  if (password.length < 6) {
-    showMsg('auth-msg', 'Hasło musi mieć co najmniej 6 znaków.', 'error'); return;
-  }
-
-  setAuthLoading(true);
-
-  try {
-    let res;
-    if (authMode === 'login') {
-      res = await db.auth.signInWithPassword({ email, password });
-    } else {
-      res = await db.auth.signUp({ email, password });
-    }
-
-    if (res.error) throw res.error;
-
-    if (authMode === 'register' && !res.data.session) {
-      showMsg('auth-msg', '✅ Sprawdź e-mail i potwierdź konto.', 'success');
-    } else {
-      await loadDashboard();
-      showPage('dash');
-    }
-  } catch (err) {
-    const msg = err.message || '';
-    if (msg.includes('Invalid login')) showMsg('auth-msg', 'Nieprawidłowy e-mail lub hasło.', 'error');
-    else if (msg.includes('already registered')) showMsg('auth-msg', 'Ten e-mail jest już zarejestrowany.', 'error');
-    else showMsg('auth-msg', 'Błąd: ' + msg, 'error');
-  }
-
-  setAuthLoading(false);
+  btn.disabled=false;
+  document.getElementById('auth-btn-text').textContent=authMode==='login'?'Zaloguj się':'Zarejestruj się';
 }
 
-function setAuthLoading(on) {
-  document.getElementById('auth-btn').disabled = on;
-  document.getElementById('auth-spinner').style.display = on ? 'block' : 'none';
-  document.getElementById('auth-btn-text').style.opacity = on ? '0.5' : '1';
+async function loadDashboard(){
+  const{data:{user}}=await db.auth.getUser();if(!user)return;
+  const email=user.email.split('@')[0];
+  document.getElementById('dash-name').textContent=email+' 👋';
+  updateNav(true,email);
+  const{data:s}=await db.from('learning_stats').select('gold,cards_seen,minutes_active').eq('user_id',user.id).single();
+  if(s){document.getElementById('dash-gold').textContent=(s.gold??0).toLocaleString('pl-PL');document.getElementById('dash-cards').textContent=s.cards_seen??0;document.getElementById('dash-minutes').textContent=s.minutes_active??0}
+  const{data:p}=await db.from('profiles').select('is_premium').eq('user_id',user.id).single();
+  const ip=p?.is_premium??false;
+  const se=document.getElementById('dash-status');
+  if(ip){se.textContent='🏆 Premium';se.style.color='#16a34a';document.getElementById('premium-card').style.display='none'}
+  else se.textContent='🔒 Darmowy';
 }
 
-// ── DASHBOARD ──────────────────────────────────────
-async function loadDashboard() {
-  const { data: { user } } = await db.auth.getUser();
-  if (!user) return;
-
-  // email w nagłówku (skróć jeśli długi)
-  const emailShort = user.email.split('@')[0];
-  document.getElementById('dash-email').textContent = emailShort;
-
-  // statystyki
-  const { data: stats } = await db
-    .from('learning_stats')
-    .select('gold, cards_seen, minutes_active')
-    .eq('user_id', user.id)
-    .single();
-
-  if (stats) {
-    document.getElementById('dash-gold').textContent    = stats.gold ?? 0;
-    document.getElementById('dash-cards').textContent   = stats.cards_seen ?? 0;
-    document.getElementById('dash-minutes').textContent = (stats.minutes_active ?? 0) + ' min';
-  }
-
-  // premium
-  const { data: profile } = await db
-    .from('profiles')
-    .select('is_premium')
-    .eq('user_id', user.id)
-    .single();
-
-  const isPremium = profile?.is_premium ?? false;
-  const premiumEl = document.getElementById('dash-premium');
-  if (isPremium) {
-    premiumEl.textContent  = '🏆 Premium';
-    premiumEl.className    = 'stat-value premium-val';
-    document.getElementById('premium-section').style.display = 'none';
-  } else {
-    premiumEl.textContent  = '🔒 Darmowy';
-    premiumEl.className    = 'stat-value locked-val';
-  }
-
-  // nav
-  updateNav(true, emailShort);
+function updateNav(li,email){
+  const n=document.getElementById('nav-r');
+  if(li)n.innerHTML=`<span style="font-size:13px;color:var(--dim2);font-weight:500">${email}</span><button class="btn btn-ghost" onclick="showPage('dash')">Panel</button><button class="btn btn-orange" onclick="logout()">Wyloguj</button>`;
+  else n.innerHTML=`<button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button><button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>`;
 }
 
-function updateNav(loggedIn, email) {
-  const nav = document.getElementById('nav-actions');
-  if (loggedIn) {
-    nav.innerHTML = `
-      <span style="color: var(--text-dim); font-size: 13px;">${email}</span>
-      <button class="btn btn-ghost btn-sm" onclick="showPage('dash')">Panel</button>
-      <button class="btn btn-danger btn-sm" onclick="logout()">Wyloguj</button>`;
-  } else {
-    nav.innerHTML = `
-      <button class="btn btn-ghost btn-sm" onclick="showAuth('login')">Zaloguj się</button>
-      <button class="btn btn-primary btn-sm" onclick="showAuth('register')">Zarejestruj się</button>`;
-  }
+async function logout(){await db.auth.signOut();updateNav(false);showPage('home')}
+
+async function activateCode(){
+  const code=document.getElementById('code-input').value.trim().toUpperCase();
+  if(!code){showMsg('code-msg','Wpisz kod.','error');return}
+  const btn=document.getElementById('code-btn');btn.disabled=true;document.getElementById('code-btn-text').textContent='...';
+  try{
+    const{data,error}=await db.rpc('activate_premium_code',{p_code:code});if(error)throw error;
+    if(data.success){showMsg('code-msg','🏆 '+data.message,'success');document.getElementById('dash-status').textContent='🏆 Premium';document.getElementById('dash-status').style.color='#16a34a';setTimeout(()=>document.getElementById('premium-card').style.display='none',2000)}
+    else showMsg('code-msg','❌ '+data.message,'error');
+  }catch(e){showMsg('code-msg','Błąd: '+e.message,'error')}
+  btn.disabled=false;document.getElementById('code-btn-text').textContent='Aktywuj';
 }
 
-// ── LOGOUT ─────────────────────────────────────────
-async function logout() {
-  await db.auth.signOut();
-  updateNav(false);
-  showPage('home');
-}
+function handleDownload(e){if(DOWNLOAD_URL==='#'){e.preventDefault();alert('Plik .exe będzie dostępny wkrótce!')}}
 
-// ── ACTIVATE CODE ──────────────────────────────────
-async function activateCode() {
-  const code = document.getElementById('code-input').value.trim().toUpperCase();
-  if (!code) { showMsg('code-msg', 'Wpisz kod.', 'error'); return; }
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('page-auth').classList.contains('active'))submitAuth()});
 
-  document.getElementById('code-btn').disabled = true;
-  document.getElementById('code-spinner').style.display = 'block';
-  document.getElementById('code-btn-text').style.opacity = '0.5';
-
-  try {
-    const { data, error } = await db.rpc('activate_premium_code', { p_code: code });
-    if (error) throw error;
-
-    if (data.success) {
-      showMsg('code-msg', '🏆 ' + data.message, 'success');
-      document.getElementById('dash-premium').textContent = '🏆 Premium';
-      document.getElementById('dash-premium').className   = 'stat-value premium-val';
-      setTimeout(() => {
-        document.getElementById('premium-section').style.display = 'none';
-      }, 2000);
-    } else {
-      showMsg('code-msg', '❌ ' + data.message, 'error');
-    }
-  } catch (err) {
-    showMsg('code-msg', 'Błąd: ' + (err.message || err), 'error');
-  }
-
-  document.getElementById('code-btn').disabled = false;
-  document.getElementById('code-spinner').style.display = 'none';
-  document.getElementById('code-btn-text').style.opacity = '1';
-}
-
-// ── DOWNLOAD ───────────────────────────────────────
-function handleDownload(e) {
-  if (DOWNLOAD_URL === '#') {
-    e.preventDefault();
-    alert('Plik .exe będzie dostępny wkrótce!');
-  }
-}
-
-// ── ENTER KEY ──────────────────────────────────────
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter') {
-    if (currentPage === 'auth') submitAuth();
-  }
-});
-
-// ── AUTO LOGIN ─────────────────────────────────────
-(async () => {
-  const { data: { session } } = await db.auth.getSession();
-  if (session) {
-    await loadDashboard();
-    showPage('dash');
-  }
-})();
+(async()=>{const{data:{session}}=await db.auth.getSession();if(session){await loadDashboard();showPage('dash')}})();
 </script>
 </body>
 </html>
