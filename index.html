@@ -328,7 +328,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
     <a href="#" onclick="return showPage('community')" id="nav-community">Materiały</a>
     <a href="#" onclick="return showPage('strefa')" id="nav-strefa">Strefa Nauki</a>
     <a href="#" onclick="return showPage('ranking')" id="nav-ranking">Ranking</a>
-    <a href="#" onclick="return showPage('tofix')" id="nav-tofix">To Fix</a>
+    <a href="#" onclick="return showPage('tofix')" id="nav-tofix">Zgłoszenia</a>
   </div>
   <div class="nav-r" id="nav-r">
     <button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button>
@@ -1477,7 +1477,7 @@ async function loadRanking(){
 </script>
 
 <!-- ═══ COMMUNITY PAGE ═══ -->
-<div id="page-community" class="page" style="min-height:100vh;padding:100px 20px 80px">
+<div id="page-community" class="page" style="min-height:100vh;padding:140px 20px 80px">
   <div style="max-width:1000px;margin:0 auto">
 
     <!-- Nagłówek -->
@@ -1522,7 +1522,7 @@ async function loadRanking(){
 </div>
 
 <!-- ═══ RANKING PAGE ═══ -->
-<div id="page-ranking" class="page" style="min-height:100vh;padding:100px 20px 80px">
+<div id="page-ranking" class="page" style="min-height:100vh;padding:140px 20px 80px">
   <div style="max-width:960px;margin:0 auto">
     <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Ranking</h2>
     <p style="color:var(--dim2);margin-bottom:32px">Najlepsi uczący się w społeczności Eyelingo</p>
@@ -1565,7 +1565,7 @@ async function loadRanking(){
 </div>
 
 <!-- ═══ TO FIX PAGE ═══ -->
-<div id="page-tofix" class="page" style="min-height:100vh;padding:100px 20px 80px">
+<div id="page-tofix" class="page" style="min-height:100vh;padding:140px 20px 80px">
   <div style="max-width:600px;margin:0 auto">
     <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">To Fix</h2>
     <p style="color:var(--dim2);margin-bottom:32px">Coś nie działa? Powiedz nam o tym — poprawimy to jak najszybciej.</p>
@@ -1738,7 +1738,7 @@ async function initToFixPage(){
 }
 </script>
 <!-- ═══ STREFA NAUKI ═══ -->
-<div id="page-strefa" class="page" style="min-height:100vh;padding:100px 20px 80px">
+<div id="page-strefa" class="page" style="min-height:100vh;padding:140px 20px 80px">
   <div style="max-width:900px;margin:0 auto">
     <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Strefa Nauki</h2>
     <p style="color:var(--dim2);margin-bottom:32px">Słówka w kontekście — zdania, tłumaczenia i wideo</p>
@@ -1980,91 +1980,67 @@ async function loadStrefaCard(){
 }
 
 async function loadContextSentence(word, translation, lang, level){
-  // Sprawdź cache
-  const{data:cached}=await db.from('context_sentences')
-    .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).single();
-  if(cached){
-    renderSentence(word,cached.sentence,cached.translation);
-    return;
-  }
-  // Gemini
+  try{
+    const{data:cached}=await db.from('context_sentences')
+      .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).single();
+    if(cached?.sentence){renderSentence(word,cached.sentence,cached.translation);return;}
+  }catch(e){}
+  const langName={en:'English',es:'Spanish',jp:'Japanese',nl:'Dutch'}[lang]||'English';
+  const levelDesc={A1:'very simple beginner A1',A2:'elementary A2',B1:'intermediate B1',B2:'upper-intermediate B2',C1:'advanced C1',C2:'proficient C2'}[level]||'simple';
   if(GEMINI_KEY_STREFA==='WPISZ_KLUCZ_GEMINI'){
-    renderSentence(word,`I use the word "${word}" every day.`,`Używam słowa "${word}" każdego dnia.`);
+    renderSentence(word,`She put the **${word}** on the table and smiled.`,`Położyła "${translation}" na stole i uśmiechnęła się.`);
     return;
   }
   try{
-    const langName={en:'English',es:'Spanish',jp:'Japanese',nl:'Dutch'}[lang]||'English';
-    const prompt=`Create one simple ${level} level ${langName} sentence using the word "${word}". 
-Return JSON only: {"sentence":"...","translation":"Polish translation"}
-The word "${word}" should be highlighted with **bold** in the sentence.
-Keep it simple and natural for ${level} level.`;
+    const prompt=`You are a ${langName} language teacher. Write ONE natural, realistic ${levelDesc} ${langName} sentence using the word "${word}" (meaning: "${translation}") in real-life context. Mark the word with **asterisks**. Return ONLY JSON: {"sentence":"...","translation":"polskie tłumaczenie"}`;
     const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY_STREFA}`,{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.7}})
+      body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.9,maxOutputTokens:200}})
     });
     const d=await res.json();
-    const text=d.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
-    const clean=text.replace(/```json|```/g,'').trim();
-    const parsed=JSON.parse(clean);
-    // Cache
-    await db.from('context_sentences').upsert({word,language:lang,level,sentence:parsed.sentence,translation:parsed.translation});
-    renderSentence(word,parsed.sentence,parsed.translation);
+    let text=(d.candidates?.[0]?.content?.parts?.[0]?.text||'').replace(/```json|```/g,'').trim();
+    const parsed=JSON.parse(text);
+    if(parsed.sentence&&parsed.translation){
+      try{await db.from('context_sentences').upsert({word,language:lang,level,sentence:parsed.sentence,translation:parsed.translation});}catch(e){}
+      renderSentence(word,parsed.sentence,parsed.translation);
+    } else throw new Error('bad json');
   }catch(e){
-    // Fallback
-    renderSentence(word,`This is the word **${word}**.`,`To jest słowo "${translation}".`);
+    console.error('[Gemini]',e);
+    renderSentence(word,`He saw the **${word}** and smiled.`,`Zobaczył "${translation}" i uśmiechnął się.`);
   }
-}
-
-function renderSentence(word,sentence,translation){
-  const html=sentence.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
-  document.getElementById('sc-sentence').innerHTML=html;
-  document.getElementById('sc-sentence-tr').textContent=translation;
-  document.getElementById('sc-audio').style.display='block';
-  // Zapisz do odtworzenia
-  window._currentSentence=sentence.replace(/\*\*/g,'');
-  window._currentLang={en:'en-US',es:'es-ES',jp:'ja-JP',nl:'nl-NL'}[_strefaLang]||'en-US';
-}
-
-function playAudio(){
-  if(!window._currentSentence)return;
-  const utt=new SpeechSynthesisUtterance(window._currentSentence);
-  utt.lang=window._currentLang;
-  utt.rate=0.85;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utt);
 }
 
 async function loadYouTubeVideo(word,lang){
-  // Sprawdź cache
-  const{data:cached}=await db.from('youtube_cache')
-    .select('video_id,video_title').eq('word',word).eq('language',lang).single();
-  if(cached?.video_id){
-    renderVideo(cached.video_id,cached.video_title);
-    return;
-  }
+  try{
+    const{data:cached}=await db.from('youtube_cache')
+      .select('video_id,video_title').eq('word',word).eq('language',lang).single();
+    if(cached?.video_id){renderVideo(cached.video_id,cached.video_title);return;}
+  }catch(e){}
   if(YOUTUBE_KEY==='WPISZ_KLUCZ_YOUTUBE'){
-    document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Wpisz klucz YouTube API</div></div>';
+    document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Brak klucza YouTube</div></div>';
     return;
   }
   try{
     const langFilter={en:'en',es:'es',jp:'ja',nl:'nl'}[lang]||'en';
-    const q=encodeURIComponent(`${word} ${LANG_LABELS[lang]} learn`);
-    const url=`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${q}&type=video&videoCaptions=closedCaption&relevanceLanguage=${langFilter}&safeSearch=strict&maxResults=5&key=${YOUTUBE_KEY}`;
+    const langName={en:'english',es:'spanish',jp:'japanese',nl:'dutch'}[lang]||'english';
+    const q=encodeURIComponent(`"${word}" ${langName} lesson`);
+    const url=`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${q}&type=video&relevanceLanguage=${langFilter}&safeSearch=strict&maxResults=5&videoEmbeddable=true&key=${YOUTUBE_KEY}`;
     const res=await fetch(url);
     const d=await res.json();
     const item=d.items?.[0];
     if(item){
       const vid=item.id.videoId;
       const title=item.snippet.title;
-      await db.from('youtube_cache').upsert({word,language:lang,video_id:vid,video_title:title});
+      try{await db.from('youtube_cache').upsert({word,language:lang,video_id:vid,video_title:title});}catch(e){}
       renderVideo(vid,title);
     } else {
-      document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Brak wideo dla tego słowa</div></div>';
+      document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Brak wideo</div></div>';
     }
   }catch(e){
-    document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Błąd wideo</div></div>';
+    document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div style="font-size:13px;color:var(--dim2)">Błąd wideo</div></div>';
   }
 }
+
 
 function renderVideo(videoId,title){
   document.getElementById('sc-video-wrap').innerHTML=`
