@@ -816,7 +816,7 @@ let _addedSets = new Set();
 
 async function loadCommunity(){
   const{data:{session}}=await db.auth.getSession();
-  _matMyUid = session?.user?.id || null;
+  _matMyUid=session?.user?.id||null;
 
   const{data,error}=await db.from('user_sets_with_profiles')
     .select('id,name,likes_count,user_id,created_at,username,user_set_cards(id,word,translation)')
@@ -826,9 +826,12 @@ async function loadCommunity(){
   if(error){showMatError(error.message);return;}
 
   // Pobierz lajki użytkownika
+  _likedSets=new Set();
   if(_matMyUid){
-    const{data:likes}=await db.from('set_likes').select('set_id').eq('user_id',_matMyUid);
-    _likedSets=new Set((likes||[]).map(l=>l.set_id));
+    const{data:likes}=await db.from('set_likes')
+      .select('set_id')
+      .eq('user_id',_matMyUid);
+    if(likes) likes.forEach(l=>_likedSets.add(l.set_id));
   }
 
   const now=Date.now();
@@ -878,39 +881,40 @@ function filterMat(q){renderMat(q)}
 
 function setCard(s){
   const isOwn=s.user_id===_matMyUid;
+  const isMineTab=_matTab==='mine';
   const cards=s.user_set_cards||[];
   const preview=cards.slice(0,3).map(c=>`
     <div class="mat-preview-row"><span class="mat-pf">${esc(c.word)}</span><span class="mat-pb">${esc(c.translation)}</span></div>
   `).join('');
   const liked=_likedSets.has(s.id);
   const added=_addedSets.has(s.id);
+  // Stopka: w Moje zestawy + własny = edytuj/usuń; w Społeczność lub cudzy = dodaj
+  const footOwn=`
+    ${!s.is_public?`<span class="mat-pub-badge priv">🔒 Prywatny</span>`:`<span></span>`}
+    <div class="mat-card-actions">
+      <button class="mat-btn-edit" onclick="event.stopPropagation();openEditSet(${s.id})">✏️ Edytuj</button>
+      <button class="mat-btn-del" onclick="event.stopPropagation();deleteSet(${s.id})">🗑️ Usuń</button>
+    </div>`;
+  const footAdd=`
+    <button class="mat-btn-add${added?' added':''}" id="add-btn-${s.id}"
+      onclick="event.stopPropagation();addSetToMine(${s.id})"
+      ${added?'disabled':''}>
+      ${added?'✓ Dodano do zestawów':'+ Dodaj do zestawów'}
+    </button>`;
+  const showOwn = isOwn && isMineTab;
   return`
     <div class="mat-card" onclick="openSet(${s.id})">
       <div class="mat-card-head">
         <div>
           <div class="mat-card-name">${esc(s.name)}</div>
-          <div class="mat-card-meta">${isOwn?'Twój zestaw':`by ${s.username||'Nieznany'}`} · ${cards.length} fiszek</div>
+          <div class="mat-card-meta">${isOwn?`Twój zestaw`:`by ${s.username||'Nieznany'}`} · ${cards.length} fiszek</div>
         </div>
         <div class="mat-card-likes${liked?' liked':''}" id="like-btn-${s.id}" onclick="event.stopPropagation();toggleLike(${s.id})">
           ${liked?'❤️':'🤍'} <span id="like-count-${s.id}">${s.likes_count||0}</span>
         </div>
       </div>
       ${preview?`<div class="mat-preview">${preview}</div>`:''}
-      <div class="mat-card-foot">
-        ${isOwn?`
-          ${!s.is_public?`<span class="mat-pub-badge priv">🔒 Prywatny</span>`:`<span></span>`}
-          <div class="mat-card-actions">
-            <button class="mat-btn-edit" onclick="event.stopPropagation();openEditSet(${s.id})">✏️ Edytuj</button>
-            <button class="mat-btn-del" onclick="event.stopPropagation();deleteSet(${s.id})">🗑️ Usuń</button>
-          </div>
-        `:`
-          <button class="mat-btn-add${added?' added':''}" id="add-btn-${s.id}"
-            onclick="event.stopPropagation();addSetToMine(${s.id})"
-            ${added?'disabled':''}>
-            ${added?'✓ Dodano do zestawów':'+ Dodaj do zestawów'}
-          </button>
-        `}
-      </div>
+      <div class="mat-card-foot">${showOwn?footOwn:footAdd}</div>
     </div>
   `;
 }
