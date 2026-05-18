@@ -845,13 +845,21 @@ async function loadCommunity(){
 }
 
 async function loadMySets(){
-  if(!_matMyUid) return;
+  const{data:{session}}=await db.auth.getSession();
+  if(!session){
+    document.getElementById('mat-grid').innerHTML='<div class="mat-empty">Zaloguj się aby zobaczyć swoje zestawy.</div>';
+    return;
+  }
+  _matMyUid=session.user.id;
   const{data,error}=await db.from('user_sets')
     .select('id,name,likes_count,is_public,created_at,user_set_cards(id,word,translation)')
     .eq('user_id',_matMyUid)
     .order('created_at',{ascending:false});
   if(error){showMatError(error.message);return;}
-  _matSets=data||[];
+  // Dodaj username do własnych zestawów
+  const{data:profile}=await db.from('profiles').select('username').eq('user_id',_matMyUid).single();
+  const username=profile?.username||'Ty';
+  _matSets=(data||[]).map(s=>({...s,username,user_id:_matMyUid}));
   renderMat();
 }
 
@@ -880,46 +888,80 @@ function renderMat(query=''){
 function filterMat(q){renderMat(q)}
 
 function setCard(s){
-  const isOwn=s.user_id===_matMyUid;
-  const isMineTab=_matTab==='mine';
-  const cards=s.user_set_cards||[];
-  const preview=cards.slice(0,3).map(c=>`
-    <div class="mat-preview-row"><span class="mat-pf">${esc(c.word)}</span><span class="mat-pb">${esc(c.translation)}</span></div>
-  `).join('');
-  const liked=_likedSets.has(s.id);
-  const added=_addedSets.has(s.id);
-  // Stopka: w Moje zestawy + własny = edytuj/usuń; w Społeczność lub cudzy = dodaj
-  const footOwn=`
-    ${!s.is_public?`<span class="mat-pub-badge priv">🔒 Prywatny</span>`:`<span></span>`}
-    <div class="mat-card-actions">
-      <button class="mat-btn-edit" onclick="event.stopPropagation();openEditSet(${s.id})">✏️ Edytuj</button>
-      <button class="mat-btn-del" onclick="event.stopPropagation();deleteSet(${s.id})">🗑️ Usuń</button>
+  const isOwn = s.user_id === _matMyUid;
+  const isMineTab = _matTab === 'mine';
+  const cards = s.user_set_cards || [];
+  const liked = _likedSets.has(s.id);
+  const added = _addedSets.has(s.id);
+
+  const preview = cards.slice(0,3).map(c=>`
+    <div class="mat-preview-row">
+      <span class="mat-pf">${esc(c.word)}</span>
+      <span class="mat-pb">${esc(c.translation)}</span>
+    </div>`).join('');
+
+  // Lajk — zawsze widoczny, ale nie można lajkować własnych
+  const likeBtn = `
+    <div class="mat-card-likes${liked?' liked':''}" id="like-btn-${s.id}"
+      onclick="event.stopPropagation();toggleLike(${s.id})"
+      title="${isOwn?'Nie możesz lajkować własnych zestawów':liked?'Usuń lajk':'Dodaj lajk'}">
+      ${liked?'❤️':'🤍'} <span id="like-count-${s.id}">${s.likes_count||0}</span>
     </div>`;
-  const footAdd=`
-    <button class="mat-btn-add${added?' added':''}" id="add-btn-${s.id}"
-      onclick="event.stopPropagation();addSetToMine(${s.id})"
-      ${added?'disabled':''}>
-      ${added?'✓ Dodano do zestawów':'+ Dodaj do zestawów'}
-    </button>`;
-  const showOwn = isOwn && isMineTab;
-  return`
+
+  // Stopka zależy od zakładki
+  let foot = '';
+  if(isMineTab){
+    // Moje zestawy: edytuj + usuń + publiczny/prywatny
+    foot = `
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <button class="mat-pub-toggle ${s.is_public?'pub':'priv'}"
+          onclick="event.stopPropagation();quickTogglePublic(${s.id},this)">
+          ${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}
+        </button>
+        <div class="mat-card-actions">
+          <button class="mat-btn-edit" onclick="event.stopPropagation();openEditSet(${s.id})">✏️ Edytuj</button>
+          <button class="mat-btn-del" onclick="event.stopPropagation();deleteSet(${s.id})">🗑️ Usuń</button>
+        </div>
+      </div>`;
+  } else {
+    // Społeczność: tylko "Dodaj do moich zestawów" (nie dla własnych)
+    if(!isOwn){
+      foot = `
+        <button class="mat-btn-add${added?' added':''}" id="add-btn-${s.id}"
+          onclick="event.stopPropagation();addSetToMine(${s.id})"
+          ${added?'disabled':''}>
+          ${added?'✓ Dodano do zestawów':'+ Dodaj do zestawów'}
+        </button>`;
+    }
+  }
+
+  return `
     <div class="mat-card" onclick="openSet(${s.id})">
       <div class="mat-card-head">
         <div>
           <div class="mat-card-name">${esc(s.name)}</div>
-          <div class="mat-card-meta">${isOwn?`Twój zestaw`:`by ${s.username||'Nieznany'}`} · ${cards.length} fiszek</div>
+          <div class="mat-card-meta">
+            by ${s.username||'Nieznany'} · ${cards.length} fiszek
+          </div>
         </div>
-        <div class="mat-card-likes${liked?' liked':''}" id="like-btn-${s.id}" onclick="event.stopPropagation();toggleLike(${s.id})">
-          ${liked?'❤️':'🤍'} <span id="like-count-${s.id}">${s.likes_count||0}</span>
-        </div>
+        ${likeBtn}
       </div>
       ${preview?`<div class="mat-preview">${preview}</div>`:''}
-      <div class="mat-card-foot">${showOwn?footOwn:footAdd}</div>
-    </div>
-  `;
+      ${foot?`<div class="mat-card-foot">${foot}</div>`:''}
+    </div>`;
 }
 
-function esc(s){return(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+async function quickTogglePublic(id, btn){
+  const s = _matSets.find(x=>x.id===id);
+  if(!s) return;
+  const newVal = !s.is_public;
+  await db.from('user_sets').update({is_public:newVal}).eq('id',id);
+  s.is_public = newVal;
+  btn.className = `mat-pub-toggle ${newVal?'pub':'priv'}`;
+  btn.textContent = newVal?'🌐 Publiczny':'🔒 Prywatny';
+}
+
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
 async function openSet(id){
   const s=_matSets.find(x=>x.id===id);
@@ -928,7 +970,7 @@ async function openSet(id){
   showSetModal(s,false);
 }
 
-function showSetModal(s, editMode){
+function showSetModal(s,editMode){
   const cards=s.user_set_cards||[];
   const isOwn=s.user_id===_matMyUid;
   document.getElementById('mat-modal-title').textContent=editMode?'Edytuj zestaw':s.name;
@@ -936,18 +978,39 @@ function showSetModal(s, editMode){
   document.getElementById('mat-modal').style.display='flex';
 }
 
-function renderViewCards(cards,s,isOwn){
+function renderViewCards(cards, s, isOwn){
+  const isMineTab = _matTab === 'mine';
+  const liked = _likedSets.has(s.id);
+  const added = _addedSets.has(s.id);
   return `
-    <div class="mat-modal-meta">by ${s.username||'Nieznany'} · ${cards.length} fiszek · ❤️ ${s.likes_count||0}</div>
-    <div class="mat-modal-cards">${cards.map(c=>`
-      <div class="mat-modal-row"><span>${esc(c.word)}</span><span class="mat-modal-tr">${esc(c.translation)}</span></div>
-    `).join('')}</div>
-    ${isOwn?`<div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-navy" onclick="switchToEdit()">✏️ Edytuj</button>
-      <button class="mat-btn-del" style="padding:10px 18px" onclick="deleteSet(${s.id})">🗑️ Usuń</button>
-      <button class="mat-pub-toggle ${s.is_public?'pub':'priv'}" onclick="togglePublic(${s.id})">${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}</button>
-    </div>`:`<button class="btn btn-orange" style="margin-top:16px;width:100%" onclick="addSetToMine(${s.id},this)">+ Dodaj do moich zestawów</button>`}
-  `;
+    <div class="mat-modal-meta">
+      by ${s.username||'Nieznany'} · ${cards.length} fiszek
+      <span class="mat-card-likes${liked?' liked':''}" style="display:inline-flex;margin-left:8px;cursor:pointer"
+        onclick="toggleLike(${s.id});this.textContent=(window._likedSets?.has(${s.id})?'❤️':'🤍')+' '+(${s.likes_count||0}+(window._likedSets?.has(${s.id})?1:-1))">
+        ${liked?'❤️':'🤍'} ${s.likes_count||0}
+      </span>
+    </div>
+    <div class="mat-modal-cards">
+      ${cards.map(c=>`
+        <div class="mat-modal-row">
+          <span>${esc(c.word)}</span>
+          <span class="mat-modal-tr">${esc(c.translation)}</span>
+        </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      ${isMineTab?`
+        <button class="btn btn-navy" onclick="switchToEdit()">✏️ Edytuj</button>
+        <button class="mat-btn-del" style="padding:10px 18px" onclick="deleteSet(${s.id})">🗑️ Usuń</button>
+        <button class="mat-pub-toggle ${s.is_public?'pub':'priv'}" onclick="togglePublic(${s.id})">
+          ${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}
+        </button>
+      `:`
+        ${!isOwn?`<button class="btn btn-orange" style="width:100%" id="modal-add-btn"
+          onclick="addSetToMine(${s.id})" ${added?'disabled':''}>
+          ${added?'✓ Dodano do zestawów':'+ Dodaj do moich zestawów'}
+        </button>`:''}
+      `}
+    </div>`;
 }
 
 function renderEditForm(s){
@@ -1027,15 +1090,20 @@ async function togglePublic(id){
 async function toggleLike(setId){
   const{data:{session}}=await db.auth.getSession();
   if(!session){showToast('Zaloguj się aby lajkować','error');return;}
+  const s=_matSets.find(x=>x.id===setId);
+  if(s&&s.user_id===_matMyUid){showToast('Nie możesz lajkować własnych zestawów','error');return;}
   try{
-    const{data}=await db.rpc('toggle_like',{p_set_id:setId});
+    const{data,error}=await db.rpc('toggle_like',{p_set_id:setId});
+    if(error)throw error;
     if(!data)return;
     if(data.liked){_likedSets.add(setId)}else{_likedSets.delete(setId)}
-    const s=_matSets.find(x=>x.id===setId);
     if(s) s.likes_count=(s.likes_count||0)+(data.liked?1:-1);
+    // Aktualizuj przycisk na karcie
     const btn=document.getElementById(`like-btn-${setId}`);
-    if(btn) btn.innerHTML=`${data.liked?'❤️':'🤍'} <span id="like-count-${setId}">${s?.likes_count||0}</span>`;
-    if(btn) btn.className='mat-card-likes'+(data.liked?' liked':'');
+    if(btn){
+      btn.className='mat-card-likes'+(data.liked?' liked':'');
+      btn.innerHTML=`${data.liked?'❤️':'🤍'} <span id="like-count-${setId}">${s?.likes_count||0}</span>`;
+    }
     if(data.reward>0) showToast(`🏺 Gratulacje! Otrzymałeś ${data.reward.toLocaleString('pl-PL')} złota!`,'success');
   }catch(e){showToast('Błąd: '+e.message,'error')}
 }
