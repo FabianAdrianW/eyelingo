@@ -1040,6 +1040,22 @@ function renderEditForm(s){
   `;
 }
 
+async function openEditSet(id){
+  let s=_matSets.find(x=>x.id===id);
+  if(!s)return;
+  if(!s.user_set_cards||!s.user_set_cards.length){
+    const{data}=await db.from('user_set_cards')
+      .select('id,word,translation,sort_order')
+      .eq('set_id',id)
+      .order('sort_order');
+    s.user_set_cards=data||[];
+  }
+  _matModal=s; _matEditMode=true;
+  document.getElementById('mat-modal-title').textContent='Edytuj zestaw';
+  document.getElementById('mat-modal-body').innerHTML=renderEditForm(s);
+  document.getElementById('mat-modal').style.display='flex';
+}
+
 function switchToEdit(){_matEditMode=true;showSetModal(_matModal,true)}
 function switchToView(){_matEditMode=false;showSetModal(_matModal,false)}
 
@@ -1090,15 +1106,13 @@ async function togglePublic(id){
 async function toggleLike(setId){
   const{data:{session}}=await db.auth.getSession();
   if(!session){showToast('Zaloguj się aby lajkować','error');return;}
-  const s=_matSets.find(x=>x.id===setId);
-  if(s&&s.user_id===_matMyUid){showToast('Nie możesz lajkować własnych zestawów','error');return;}
   try{
     const{data,error}=await db.rpc('toggle_like',{p_set_id:setId});
     if(error)throw error;
     if(!data)return;
     if(data.liked){_likedSets.add(setId)}else{_likedSets.delete(setId)}
+    const s=_matSets.find(x=>x.id===setId);
     if(s) s.likes_count=(s.likes_count||0)+(data.liked?1:-1);
-    // Aktualizuj przycisk na karcie
     const btn=document.getElementById(`like-btn-${setId}`);
     if(btn){
       btn.className='mat-card-likes'+(data.liked?' liked':'');
