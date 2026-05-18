@@ -1973,7 +1973,8 @@ async function loadStrefaCard(){
   document.getElementById('sc-sentence-tr').textContent='';
   document.getElementById('sc-audio').style.display='none';
   document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Szukam wideo...</div></div>';
-  document.getElementById('btn-prev').disabled=_strefaIdx===0;
+  document.getElementById('btn-prev').style.opacity = _strefaIdx===0 ? '0.3' : '1';
+  document.getElementById('btn-prev').style.pointerEvents = _strefaIdx===0 ? 'none' : 'auto';
   document.getElementById('btn-next').textContent=_strefaIdx===_strefaWords.length-1?'Zakończ':'Następna →';
 
   // Równolegle: zdanie AI + wideo
@@ -2047,24 +2048,8 @@ async function loadYouTubeVideo(word,lang){
     var cv=Array.isArray(cached)?cached[0]:cached; if(cv?.video_id){renderVideo(cv.video_id,cv.video_title);return;}
   }catch(e){}
   
-  try{
-    const session2 = (await db.auth.getSession()).data.session;
-    const token2 = session2?.access_token || '';
-    const yres=await fetch(SEARCH_YOUTUBE_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token2,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
-      body:JSON.stringify({word,lang})
-    });
-    const yd=await yres.json();
-    if(yd.found&&yd.video_id){
-      try{await db.from('youtube_cache').upsert({word,language:lang,video_id:yd.video_id,video_title:yd.video_title});}catch(e){}
-      renderVideo(yd.video_id,yd.video_title);
-    } else {
-      document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Brak wideo dla tego słowa</div></div>';
-    }
-  }catch(e){
-    document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div style="font-size:13px;color:var(--dim2)">Błąd wideo</div></div>';
-  }
+  // Youglish - pokazuje słowo w kontekście w filmach, bez API
+  renderYouglish(word, lang);
 }
 
 
@@ -2110,14 +2095,32 @@ function playAudio(){
   speechSynthesis.speak(utt);
 }
 
-function renderVideo(videoId,title){
+function renderVideo(videoId, title){
+  // Używamy Youglish - pokazuje to słowo w kontekście w filmach
   document.getElementById('sc-video-wrap').innerHTML=`
     <div style="width:100%">
-      <iframe width="100%" height="240" 
-        src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1" 
-        frameborder="0" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" 
-        allowfullscreen style="border-radius:12px;display:block"></iframe>
-      <div style="font-size:11px;color:var(--dim2);margin-top:6px;padding:0 4px;line-height:1.4">${title}</div>
+      <iframe width="100%" height="220"
+        src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1"
+        frameborder="0" allowfullscreen style="border-radius:12px;display:block"></iframe>
+      <div style="font-size:11px;color:var(--dim2);margin-top:6px;padding:0 4px">${title}</div>
+    </div>`;
+}
+
+function renderYouglish(word, lang){
+  const langMap = {en:'english',es:'spanish',jp:'japanese',nl:'dutch'};
+  const l = langMap[lang] || 'english';
+  const encoded = encodeURIComponent(word);
+  document.getElementById('sc-video-wrap').innerHTML=`
+    <div style="width:100%;height:100%;display:flex;flex-direction:column">
+      <div style="font-size:11px;color:var(--dim2);margin-bottom:6px">
+        🎬 Słowo "<strong>${word}</strong>" w filmach:
+      </div>
+      <iframe width="100%" height="200"
+        src="https://youglish.com/pronounce/${encoded}/${l}/us?width=auto&height=200&autoplay=1"
+        frameborder="0" allowfullscreen style="border-radius:12px"></iframe>
+      <div style="font-size:11px;color:var(--dim2);margin-top:4px;text-align:center">
+        Powered by <a href="https://youglish.com" target="_blank" style="color:var(--orange)">YouGlish</a>
+      </div>
     </div>`;
 }
 
