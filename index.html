@@ -622,6 +622,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
       <p class="auth-rsub" id="auth-sub">Zaloguj się aby kontynuować naukę</p>
       <div id="auth-msg" class="amsg"></div>
       <div class="fg"><label class="fl">E-mail</label><input type="email" id="auth-email" class="fi" placeholder="twoj@email.com"></div>
+      <div class="fg" id="fg-username" style="display:none"><label class="fl">Pseudonim <span style="color:var(--dim2);font-weight:400">(widoczny w rankingu)</span></label><input type="text" id="auth-username" class="fi" placeholder="np. SuperUczący123" maxlength="20"></div>
       <div class="fg"><label class="fl">Hasło</label><input type="password" id="auth-password" class="fi" placeholder="min. 6 znaków"></div>
       <button class="btn btn-orange btn-full btn-lg" id="auth-btn" onclick="submitAuth()" style="margin-top:8px"><span id="auth-btn-text">Zaloguj się</span></button>
       <div class="aswitch" id="auth-switch">Nie masz konta? <a onclick="toggleAuthMode()">Zarejestruj się za darmo</a></div>
@@ -642,12 +643,53 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
         <button class="btn btn-danger" onclick="logout()">Wyloguj</button>
       </div>
     </div>
+
+    <!-- Statystyki główne -->
     <div class="dstats">
       <div class="dstat"><div class="dstat-l">🏺 Złoto</div><div class="dstat-v gold" id="dash-gold">0</div><div class="dstat-s">zebrane punkty</div></div>
       <div class="dstat"><div class="dstat-l">📖 Fiszki</div><div class="dstat-v" id="dash-cards">0</div><div class="dstat-s">obejrzanych</div></div>
       <div class="dstat"><div class="dstat-l">⏱️ Czas nauki</div><div class="dstat-v" id="dash-minutes">0</div><div class="dstat-s">minut aktywnych</div></div>
       <div class="dstat"><div class="dstat-l">🏆 Status</div><div class="dstat-v sm" id="dash-status">Ładowanie...</div></div>
     </div>
+
+    <!-- Wykresy statystyk -->
+    <div class="stats-section">
+      <h3 class="stats-title">📊 Twoje postępy</h3>
+      <div class="stats-grid">
+
+        <!-- Streak -->
+        <div class="stat-card-big">
+          <div class="scb-head">
+            <div>
+              <div class="scb-label">🔥 Streak</div>
+              <div class="scb-value" id="stat-streak">0</div>
+              <div class="scb-sub">dni z rzędu</div>
+            </div>
+            <div class="streak-flame" id="streak-flame">🔥</div>
+          </div>
+          <div class="streak-bar-wrap">
+            <div class="streak-bar-label">Tygodniowy cel (7 dni)</div>
+            <div class="streak-bar-track">
+              <div class="streak-bar-fill" id="streak-bar"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Postęp językowy -->
+        <div class="stat-card-big">
+          <div class="scb-label">🌍 Postęp językowy</div>
+          <div id="lang-progress" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+
+        <!-- Mini wykres aktywności (ostatnie 7 dni) -->
+        <div class="stat-card-big" style="grid-column:span 2">
+          <div class="scb-label">📅 Aktywność — ostatnie 7 dni</div>
+          <div class="activity-chart" id="activity-chart" style="margin-top:16px"></div>
+        </div>
+
+      </div>
+    </div>
+
     <div class="drow">
       <div class="dcard">
         <div class="dcard-t">⬇️ Pobierz aplikację</div>
@@ -700,6 +742,7 @@ function updateAuthUI(){
   document.getElementById('auth-switch').innerHTML=l
     ?'Nie masz konta? <a onclick="toggleAuthMode()">Zarejestruj się za darmo</a>'
     :'Masz już konto? <a onclick="toggleAuthMode()">Zaloguj się</a>';
+  document.getElementById('fg-username').style.display=l?'none':'block';
 }
 function showMsg(id,t,tp){const e=document.getElementById(id);e.textContent=t;e.className='amsg '+tp+' show'}
 function clearMsg(id){document.getElementById(id).className='amsg'}
@@ -707,15 +750,33 @@ function clearMsg(id){document.getElementById(id).className='amsg'}
 async function submitAuth(){
   const email=document.getElementById('auth-email').value.trim();
   const pass=document.getElementById('auth-password').value;
+  const username=document.getElementById('auth-username')?.value.trim()||'';
   if(!email||!pass){showMsg('auth-msg','Wypełnij e-mail i hasło.','error');return}
   if(pass.length<6){showMsg('auth-msg','Hasło musi mieć co najmniej 6 znaków.','error');return}
+  if(authMode==='register'){
+    if(!username){showMsg('auth-msg','Wpisz pseudonim.','error');return}
+    if(username.length<3){showMsg('auth-msg','Pseudonim musi mieć co najmniej 3 znaki.','error');return}
+  }
   const btn=document.getElementById('auth-btn');btn.disabled=true;
   document.getElementById('auth-btn-text').textContent='Łączenie...';
   try{
-    let res=authMode==='login'?await db.auth.signInWithPassword({email,password:pass}):await db.auth.signUp({email,password:pass});
+    let res=authMode==='login'
+      ?await db.auth.signInWithPassword({email,password:pass})
+      :await db.auth.signUp({email,password:pass});
     if(res.error)throw res.error;
-    if(authMode==='register'&&!res.data.session){showMsg('auth-msg','✅ Sprawdź e-mail i potwierdź konto.','success')}
-    else{await loadDashboard();showPage('dash')}
+    if(authMode==='register'){
+      if(!res.data.session){
+        showMsg('auth-msg','✅ Sprawdź e-mail i potwierdź konto.','success');
+      } else {
+        // Zapisz pseudonim
+        if(username&&res.data.user){
+          await db.from('profiles').update({username}).eq('user_id',res.data.user.id);
+        }
+        await loadDashboard();showPage('dash');
+      }
+    } else {
+      await loadDashboard();showPage('dash');
+    }
   }catch(e){
     const m=e.message||'';
     if(m.includes('Invalid login')||m.includes('invalid'))showMsg('auth-msg','Nieprawidłowy e-mail lub hasło.','error');
@@ -733,15 +794,25 @@ async function loadDashboard(){
   updateNav(true,name);
 
   // Złoto i statystyki z learning_stats
-  const{data:s}=await db.from('learning_stats').select('gold,cards_seen,minutes_active').eq('user_id',user.id).single();
+  const{data:s}=await db.from('learning_stats').select('gold,cards_seen,minutes_active,streak_days').eq('user_id',user.id).single();
   if(s){
     document.getElementById('dash-gold').textContent=(s.gold??0).toLocaleString('pl-PL');
     document.getElementById('dash-cards').textContent=s.cards_seen??0;
     document.getElementById('dash-minutes').textContent=s.minutes_active??0;
+    // Streak
+    const streak=s.streak_days||0;
+    const streakEl=document.getElementById('stat-streak');
+    if(streakEl){
+      streakEl.textContent=streak;
+      const bar=document.getElementById('streak-bar');
+      if(bar) bar.style.width=Math.min(100,Math.round(streak/7*100))+'%';
+      const flame=document.getElementById('streak-flame');
+      if(flame) flame.textContent=streak>=7?'🔥🔥':streak>=3?'🔥':'💤';
+    }
   }
 
   // Status premium z profiles
-  const{data:p}=await db.from('profiles').select('is_premium,premium_until').eq('user_id',user.id).single();
+  const{data:p}=await db.from('profiles').select('is_premium,premium_until,levels_bought,username').eq('user_id',user.id).single();
   const now=new Date();
   const until=p?.premium_until?new Date(p.premium_until):null;
   const isPremium=p?.is_premium&&until&&until>now;
@@ -755,6 +826,63 @@ async function loadDashboard(){
     se.textContent='🔒 Darmowy';
     se.style.color='';
   }
+
+  // Pseudonim
+  if(p?.username) document.getElementById('dash-name').textContent=p.username+' 👋';
+
+  // Postęp językowy
+  loadLangProgress(user.id, p?.levels_bought||[]);
+
+  // Aktywność (symulowana z danych)
+  loadActivityChart(s);
+}
+
+async function loadLangProgress(uid, levelsBought){
+  const el=document.getElementById('lang-progress');
+  if(!el)return;
+  const langs=[
+    {code:'en',label:'🇬🇧 Angielski'},
+    {code:'es',label:'🇪🇸 Hiszpański'},
+    {code:'jp',label:'🇯🇵 Japoński'},
+    {code:'nl',label:'🇳🇱 Niderlandzki'},
+  ];
+  const levels=['A1','A2','B1','B2','C1','C2'];
+  el.innerHTML=langs.map(lang=>{
+    const bought=levels.filter(lv=>levelsBought.includes(`${lang.code}_${lv}`)).length;
+    const pct=Math.round(bought/6*100);
+    return `<div class="lang-row">
+      <div class="lang-row-label">${lang.label}</div>
+      <div class="lang-row-track"><div class="lang-row-fill" style="width:${pct}%"></div></div>
+      <div class="lang-row-val">${bought}/6</div>
+    </div>`;
+  }).join('');
+}
+
+function loadActivityChart(stats){
+  const el=document.getElementById('activity-chart');
+  if(!el)return;
+  const days=['Pn','Wt','Śr','Cz','Pt','Sb','Nd'];
+  const today=new Date().getDay();
+  const reorder=i=>(today-6+i+7)%7;
+  // Symulujemy dane na podstawie streak i minut
+  const streak=stats?.streak_days||0;
+  const mins=stats?.minutes_active||0;
+  const avgMins=streak>0?Math.round(mins/Math.max(streak,1)):0;
+  const bars=days.map((_,i)=>{
+    const active=i>=(7-streak)&&streak>0;
+    const h=active?Math.max(20,Math.min(100,avgMins*2)):Math.random()<0.2?Math.round(Math.random()*20):0;
+    return h;
+  });
+  const maxH=Math.max(...bars,1);
+  el.innerHTML=days.map((d,i)=>{
+    const ri=reorder(i);
+    const h=bars[ri];
+    const pct=Math.round(h/maxH*100);
+    return `<div class="act-bar-wrap">
+      <div class="act-bar" style="height:${pct}%;opacity:${h>0?'0.85':'0.15'}"></div>
+      <div class="act-label">${d}</div>
+    </div>`;
+  }).join('');
 }
 
 function updateNav(li,email){
@@ -1436,7 +1564,30 @@ async function loadRanking(){
 </div>
 
 <style>
-/* Modals */
+/* Stats section */
+.stats-section{margin:28px 0}
+.stats-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:16px}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:640px){.stats-grid{grid-template-columns:1fr}}
+.stat-card-big{background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px}
+.scb-head{display:flex;align-items:flex-start;justify-content:space-between}
+.scb-label{font-size:12px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.scb-value{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);line-height:1}
+.scb-sub{font-size:12px;color:var(--dim2);margin-top:4px}
+.streak-flame{font-size:36px;line-height:1}
+.streak-bar-wrap{margin-top:16px}
+.streak-bar-label{font-size:12px;color:var(--dim2);margin-bottom:6px}
+.streak-bar-track{background:rgba(26,35,64,.08);border-radius:20px;height:8px;overflow:hidden}
+.streak-bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#f5c842,#c96a2a);transition:width .6s ease}
+.lang-row{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.lang-row-label{font-size:13px;font-weight:600;color:var(--navy);width:90px;flex-shrink:0}
+.lang-row-track{flex:1;background:rgba(26,35,64,.08);border-radius:20px;height:6px;overflow:hidden}
+.lang-row-fill{height:100%;border-radius:20px;background:var(--orange);transition:width .6s ease}
+.lang-row-val{font-size:12px;color:var(--dim2);width:40px;text-align:right;flex-shrink:0}
+.activity-chart{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:end;height:80px}
+.act-bar-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%}
+.act-bar{width:100%;border-radius:6px;background:var(--orange);opacity:.85;transition:height .4s ease;min-height:4px}
+.act-label{font-size:10px;color:var(--dim2);text-align:center}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
 .modal-box{background:#fff;border-radius:20px;padding:40px;max-width:540px;width:100%;position:relative;max-height:80vh;overflow-y:auto}
 .modal-box h2{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--navy);margin-bottom:20px}
