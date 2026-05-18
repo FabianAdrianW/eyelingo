@@ -1989,8 +1989,8 @@ async function loadStrefaCard(){
 async function loadContextSentence(word, translation, lang, level){
   try{
     const{data:cached}=await db.from('context_sentences')
-      .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).maybeSingle();
-    if(cached?.sentence){renderSentence(word,cached.sentence,cached.translation);return;}
+      .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).limit(1);
+    var c=Array.isArray(cached)?cached[0]:cached; if(c?.sentence){renderSentence(word,c.sentence,c.translation);return;}
   }catch(e){}
   const langName={en:'English',es:'Spanish',jp:'Japanese',nl:'Dutch'}[lang]||'English';
   const levelDesc={A1:'very simple beginner A1',A2:'elementary A2',B1:'intermediate B1',B2:'upper-intermediate B2',C1:'advanced C1',C2:'proficient C2'}[level]||'simple';
@@ -2059,8 +2059,8 @@ Example for A1 "apple": {"sentence":"She ate a red **apple** for breakfast.","tr
 async function loadYouTubeVideo(word,lang){
   try{
     const{data:cached}=await db.from('youtube_cache')
-      .select('video_id,video_title').eq('word',word).eq('language',lang).maybeSingle();
-    if(cached?.video_id){renderVideo(cached.video_id,cached.video_title);return;}
+      .select('video_id,video_title').eq('word',word).eq('language',lang).limit(1);
+    var cv=Array.isArray(cached)?cached[0]:cached; if(cv?.video_id){renderVideo(cv.video_id,cv.video_title);return;}
   }catch(e){}
   if(!YOUTUBE_KEY || YOUTUBE_KEY.trim()==='WPISZ_KLUCZ_YOUTUBE' || YOUTUBE_KEY.length < 10){
     console.warn('[YouTube] Brak klucza YouTube API - key:', YOUTUBE_KEY ? YOUTUBE_KEY.substring(0,10)+'...' : 'empty');
