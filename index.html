@@ -325,6 +325,8 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
     <a href="#science" onclick="return navSection('#science')">Nauka</a>
     <a href="#isolation" onclick="return navSection('#isolation')">Własne zestawy</a>
     <a href="#languages" onclick="return navSection('#languages')">Języki</a>
+    <a href="#" onclick="return showPage('community')" id="nav-community">Materiały</a>
+    <a href="#" onclick="return showPage('ranking')" id="nav-ranking">Ranking</a>
   </div>
   <div class="nav-r" id="nav-r">
     <button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button>
@@ -354,26 +356,28 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
 
   <div class="hero-right">
     <div style="margin-bottom:20px"><img src="logo_transparent.png" alt="Eyelingo" style="width:100%;max-width:420px;display:block"></div>
-    <div class="mock" style="position:relative">
-      <div class="mock-bar"><div class="md"></div><div class="md"></div><div class="md"></div></div>
-      <div class="fc">
-        <div class="fc-top">
-          <div class="fc-badge">Angielski · Poziom A2</div>
-          <div class="fc-gold">🏺 312</div>
+    <div style="position:relative;display:inline-block">
+      <div class="mock">
+        <div class="mock-bar"><div class="md"></div><div class="md"></div><div class="md"></div></div>
+        <div class="fc">
+          <div class="fc-top">
+            <div class="fc-badge">Angielski · Poziom A2</div>
+            <div class="fc-gold">🏺 312</div>
+          </div>
+          <div class="fc-word">achievement</div>
+          <div class="fc-tr">osiągnięcie</div>
+          <div class="fc-bar"><div class="fc-prog"></div></div>
         </div>
-        <div class="fc-word">achievement</div>
-        <div class="fc-tr">osiągnięcie</div>
-        <div class="fc-bar"><div class="fc-prog"></div></div>
+        <div class="mock-langs">
+          <div class="lc on">🇬🇧 EN</div>
+          <div class="lc">🇪🇸 ES</div>
+          <div class="lc">🇯🇵 JP</div>
+          <div class="lc">🇳🇱 NL</div>
+          <div class="lc" style="opacity:.4">🇩🇪 DE</div>
+          <div class="lc" style="opacity:.4">🇫🇷 FR</div>
+        </div>
       </div>
-      <div class="mock-langs">
-        <div class="lc on">🇬🇧 EN</div>
-        <div class="lc">🇪🇸 ES</div>
-        <div class="lc">🇯🇵 JP</div>
-        <div class="lc">🇳🇱 NL</div>
-        <div class="lc" style="opacity:.4">🇩🇪 DE</div>
-        <div class="lc" style="opacity:.4">🇫🇷 FR</div>
-      </div>
-      <div class="fbadge" style="position:absolute;top:12px;right:-44px;animation:fl 4s 1.2s ease-in-out infinite"><span class="fb-i">🧠</span><div><div>+18 słów dziś</div><div class="fb-l">Bez wysiłku</div></div></div>
+      <div class="fbadge" style="position:absolute;top:-18px;right:-60px;animation:fl 4s 1.2s ease-in-out infinite"><span class="fb-i">🧠</span><div><div>+18 słów dziś</div><div class="fb-l">Bez wysiłku</div></div></div>
     </div>
     <div class="fbadge fb1"><span class="fb-i">🔥</span><div><div>7 dni z rzędu</div><div class="fb-l">Streak aktywny!</div></div></div>
   </div>
@@ -463,7 +467,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
       </div>
     </div>
     <div class="iso-cta">
-      <button class="btn btn-lg" style="background:var(--gold);color:var(--navy);font-weight:700;box-shadow:0 4px 24px rgba(245,200,66,.4)" onclick="showAuth('register')">✏️ Stwórz pierwszy zestaw</button>
+      <button class="btn btn-lg" style="background:var(--gold);color:var(--navy);font-weight:700;box-shadow:0 4px 24px rgba(245,200,66,.4)" onclick="handleCreateSet()">✏️ Stwórz pierwszy zestaw</button>
       <span class="iso-note">Darmowe · Bez karty kredytowej</span>
     </div>
   </div>
@@ -561,10 +565,39 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
 </section>
 
 <footer>
-  <div class="footer-logo"><img src="logo_transparent_navy.png" alt="Eyelingo" style="height:28px;display:block;opacity:0.6"></div>
+  <div class="footer-logo"><img src="logo_transparent_navy.png" alt="Eyelingo" style="height:48px;display:block;opacity:0.85"></div>
   <div class="footer-copy">© 2025 Eyelingo. Wszelkie prawa zastrzeżone.</div>
-  <div class="footer-links"><a href="#">Prywatność</a><a href="#">Kontakt</a></div>
+  <div class="footer-links">
+    <a href="#" onclick="showModal('privacy');return false">Prywatność</a>
+    <a href="#" onclick="showModal('contact');return false">Kontakt</a>
+  </div>
 </footer>
+
+<!-- Modal Prywatność -->
+<div id="modal-privacy" class="modal-overlay" onclick="if(event.target===this)closeModal('privacy')" style="display:none">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('privacy')">✕</button>
+    <h2>Polityka Prywatności</h2>
+    <p><strong>1. Administrator danych</strong><br>Administratorem Twoich danych jest Eyelingo, kontakt: eyelingo.app@gmail.com</p>
+    <p><strong>2. Zbierane dane</strong><br>Zbieramy: adres e-mail, pseudonim, statystyki nauki (liczba obejrzanych słów, czas aktywności, streak), informacje o zakupionych poziomach.</p>
+    <p><strong>3. Cel przetwarzania</strong><br>Dane służą do świadczenia usługi nauki języków, obsługi konta użytkownika, wyświetlania rankingu oraz realizacji płatności.</p>
+    <p><strong>4. Przechowywanie</strong><br>Dane są przechowywane na serwerach Supabase (UE) do momentu usunięcia konta.</p>
+    <p><strong>5. Prawa użytkownika</strong><br>Masz prawo do dostępu, poprawy i usunięcia swoich danych. Napisz do nas na adres e-mail powyżej.</p>
+    <p><strong>6. Płatności</strong><br>Płatności są obsługiwane przez Stripe. Nie przechowujemy danych kart płatniczych.</p>
+  </div>
+</div>
+
+<!-- Modal Kontakt -->
+<div id="modal-contact" class="modal-overlay" onclick="if(event.target===this)closeModal('contact')" style="display:none">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('contact')">✕</button>
+    <h2>Kontakt</h2>
+    <p>Masz pytanie, problem lub sugestię? Napisz do nas!</p>
+    <p><strong>E-mail:</strong> <a href="mailto:eyelingo.app@gmail.com" style="color:var(--orange)">eyelingo.app@gmail.com</a></p>
+    <p>Odpowiadamy w ciągu 24–48 godzin (dni robocze).</p>
+    <p style="margin-top:20px;color:var(--dim2);font-size:13px">Eyelingo to projekt rozwijany przez jedną osobę — Twoje opinie są dla nas bardzo cenne i pomagają nam się rozwijać! 🙏</p>
+  </div>
+</div>
 
 </div><!-- /home -->
 
@@ -743,11 +776,424 @@ async function activateCode(){
   btn.disabled=false;document.getElementById('code-btn-text').textContent='Aktywuj';
 }
 
+function showModal(name){document.getElementById('modal-'+name).style.display='flex'}
+function closeModal(name){document.getElementById('modal-'+name).style.display='none'}
+
+async function handleCreateSet(){
+  const{data:{session}}=await db.auth.getSession();
+  if(session){showPage('community');setTimeout(()=>{switchMatTab('mine');openCreateSet()},100)}
+  else showAuth('register');
+}
+
 function handleDownload(e){if(DOWNLOAD_URL==='#'){e.preventDefault();alert('Plik .exe będzie dostępny wkrótce!')}}
 
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('page-auth').classList.contains('active'))submitAuth()});
 
+// ── Strony Community i Ranking ──
+function showPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const pg = document.getElementById('page-'+name);
+  if(pg){ pg.classList.add('active'); window.scrollTo(0,0); }
+  if(name==='community') loadCommunity();
+  if(name==='ranking') loadRanking();
+  return false;
+}
+
+// ── Materiały - stan globalny ──
+let _matSets = [];
+let _matMyUid = null;
+let _matTab = 'community'; // 'community' | 'mine'
+let _matModal = null; // aktualnie otwarty zestaw
+let _matEditMode = false;
+
+async function loadCommunity(){
+  const{data:{session}}=await db.auth.getSession();
+  _matMyUid = session?.user?.id || null;
+
+  // Pobierz publiczne zestawy z podglądem fiszek
+  const{data,error}=await db.from('user_sets_with_profiles')
+    .select('id,name,likes_count,user_id,created_at,username,user_set_cards(id,word,translation)')
+    .eq('is_public',true)
+    .order('likes_count',{ascending:false})
+    .limit(60);
+  if(error){showMatError(error.message);return;}
+
+  // Algorytm hot score (lajki + nowość)
+  const now = Date.now();
+  _matSets = (data||[]).map(s=>{
+    const age = (now - new Date(s.created_at).getTime()) / (1000*3600);
+    const hot = (s.likes_count||0) / Math.pow(age+2, 1.5);
+    return {...s, _hot: hot};
+  }).sort((a,b)=>b._hot-a._hot);
+
+  renderMat();
+}
+
+async function loadMySets(){
+  if(!_matMyUid) return;
+  const{data,error}=await db.from('user_sets')
+    .select('id,name,likes_count,is_public,created_at,user_set_cards(id,word,translation)')
+    .eq('user_id',_matMyUid)
+    .order('created_at',{ascending:false});
+  if(error){showMatError(error.message);return;}
+  _matSets = data||[];
+  renderMat();
+}
+
+function renderMat(){
+  const el=document.getElementById('mat-grid');
+  if(!el)return;
+  if(!_matSets.length){
+    el.innerHTML=`<div class="mat-empty">${_matTab==='mine'?'Nie masz jeszcze żadnych zestawów. Stwórz pierwszy!':'Brak publicznych zestawów. Bądź pierwszy!'}${_matTab==='mine'&&_matMyUid?'<br><button class="btn btn-orange" style="margin-top:16px" onclick="openCreateSet()">+ Stwórz zestaw</button>':''}</div>`;
+    return;
+  }
+  el.innerHTML=_matSets.map(s=>setCard(s)).join('');
+}
+
+function setCard(s){
+  const isOwn = s.user_id===_matMyUid;
+  const cards = s.user_set_cards||[];
+  const preview = cards.slice(0,3).map(c=>`
+    <div class="mat-preview-row"><span class="mat-pf">${esc(c.word)}</span><span class="mat-pb">${esc(c.translation)}</span></div>
+  `).join('');
+  return `
+    <div class="mat-card" onclick="openSet(${s.id})">
+      <div class="mat-card-head">
+        <div>
+          <div class="mat-card-name">${esc(s.name)}</div>
+          <div class="mat-card-meta">${isOwn?'Twój zestaw':`by ${s.username||'Nieznany'}`} · ${cards.length} fiszek</div>
+        </div>
+        <div class="mat-card-likes" onclick="event.stopPropagation();toggleLike(${s.id},this)">
+          ❤️ ${s.likes_count||0}
+        </div>
+      </div>
+      ${preview?`<div class="mat-preview">${preview}</div>`:''}
+      <div class="mat-card-foot">
+        ${isOwn?`
+          <span class="mat-pub-badge ${s.is_public?'pub':'priv'}">${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}</span>
+          <div class="mat-card-actions">
+            <button class="mat-btn-edit" onclick="event.stopPropagation();openEditSet(${s.id})">✏️ Edytuj</button>
+            <button class="mat-btn-del" onclick="event.stopPropagation();deleteSet(${s.id})">🗑️ Usuń</button>
+          </div>
+        `:`<button class="mat-btn-add" onclick="event.stopPropagation();addSetToMine(${s.id},this)">+ Dodaj do moich</button>`}
+      </div>
+    </div>
+  `;
+}
+
+function esc(s){return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+async function openSet(id){
+  const s=_matSets.find(x=>x.id===id);
+  if(!s)return;
+  _matModal=s; _matEditMode=false;
+  showSetModal(s,false);
+}
+
+function showSetModal(s, editMode){
+  const cards=s.user_set_cards||[];
+  const isOwn=s.user_id===_matMyUid;
+  document.getElementById('mat-modal-title').textContent=editMode?'Edytuj zestaw':s.name;
+  document.getElementById('mat-modal-body').innerHTML=editMode?renderEditForm(s):renderViewCards(cards,s,isOwn);
+  document.getElementById('mat-modal').style.display='flex';
+}
+
+function renderViewCards(cards,s,isOwn){
+  return `
+    <div class="mat-modal-meta">by ${s.username||'Nieznany'} · ${cards.length} fiszek · ❤️ ${s.likes_count||0}</div>
+    <div class="mat-modal-cards">${cards.map(c=>`
+      <div class="mat-modal-row"><span>${esc(c.word)}</span><span class="mat-modal-tr">${esc(c.translation)}</span></div>
+    `).join('')}</div>
+    ${isOwn?`<div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-navy" onclick="switchToEdit()">✏️ Edytuj</button>
+      <button class="mat-btn-del" style="padding:10px 18px" onclick="deleteSet(${s.id})">🗑️ Usuń</button>
+      <button class="mat-pub-toggle ${s.is_public?'pub':'priv'}" onclick="togglePublic(${s.id})">${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}</button>
+    </div>`:`<button class="btn btn-orange" style="margin-top:16px;width:100%" onclick="addSetToMine(${s.id},this)">+ Dodaj do moich zestawów</button>`}
+  `;
+}
+
+function renderEditForm(s){
+  const cards=s.user_set_cards||[];
+  return `
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;color:var(--dim2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Nazwa zestawu</label>
+      <input id="edit-name" class="fi" value="${esc(s.name)}" style="width:100%;margin-top:4px">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">
+      <span>Słowo / pytanie</span><span>Tłumaczenie / odpowiedź</span>
+    </div>
+    <div id="edit-rows" style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto">
+      ${cards.map((c,i)=>`
+        <div class="edit-row" data-id="${c.id}">
+          <input class="fi edit-word" value="${esc(c.word)}" placeholder="słowo">
+          <input class="fi edit-translation" value="${esc(c.translation)}" placeholder="tłumaczenie">
+          <button onclick="removeEditRow(this)" style="background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;cursor:pointer;color:#c33">✕</button>
+        </div>
+      `).join('')}
+    </div>
+    <button onclick="addEditRow()" style="margin-top:8px;background:transparent;border:1px dashed var(--dim2);border-radius:8px;padding:8px;width:100%;cursor:pointer;color:var(--dim2);font-size:13px">+ Dodaj wiersz</button>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-navy" onclick="saveEdit(${s.id})" style="flex:1">💾 Zapisz</button>
+      <button class="btn btn-ghost" onclick="switchToView()" style="flex:1">Anuluj</button>
+    </div>
+  `;
+}
+
+function switchToEdit(){_matEditMode=true;showSetModal(_matModal,true)}
+function switchToView(){_matEditMode=false;showSetModal(_matModal,false)}
+
+function addEditRow(){
+  const row=document.createElement('div');
+  row.className='edit-row';
+  row.innerHTML=`<input class="fi edit-word" placeholder="słowo"><input class="fi edit-translation" placeholder="tłumaczenie"><button onclick="removeEditRow(this)" style="background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;cursor:pointer;color:#c33">✕</button>`;
+  document.getElementById('edit-rows').appendChild(row);
+}
+function removeEditRow(btn){btn.closest('.edit-row').remove()}
+
+async function saveEdit(setId){
+  const name=document.getElementById('edit-name').value.trim();
+  if(!name){alert('Wpisz nazwę zestawu');return}
+  const rows=[...document.querySelectorAll('.edit-row')];
+  const cards=rows.map(r=>({
+    word:r.querySelector('.edit-word').value.trim(),
+    translation:r.querySelector('.edit-translation').value.trim()
+  })).filter(c=>c.word&&c.translation);
+  if(!cards.length){alert('Dodaj co najmniej jedną fiszkę');return}
+  try{
+    await db.from('user_sets').update({name}).eq('id',setId);
+    await db.from('user_set_cards').delete().eq('set_id',setId);
+    await db.from('user_set_cards').insert(cards.map((c,i)=>({set_id:setId,word:c.word,translation:c.translation,sort_order:i})));
+    closeMatModal();
+    _matTab==='mine'?loadMySets():loadCommunity();
+  }catch(e){alert('Błąd: '+e.message)}
+}
+
+async function deleteSet(id){
+  if(!confirm('Usunąć ten zestaw? Tej operacji nie można cofnąć.'))return;
+  await db.from('user_sets').delete().eq('id',id);
+  closeMatModal();
+  _matTab==='mine'?loadMySets():loadCommunity();
+}
+
+async function togglePublic(id){
+  const s=_matSets.find(x=>x.id===id);
+  if(!s)return;
+  const newVal=!s.is_public;
+  await db.from('user_sets').update({is_public:newVal}).eq('id',id);
+  s.is_public=newVal;
+  s.user_set_cards=s.user_set_cards||[];
+  showSetModal(s,false);
+  _matTab==='mine'?loadMySets():loadCommunity();
+}
+
+async function toggleLike(setId,btn){
+  const{data:{session}}=await db.auth.getSession();
+  if(!session){showAuth('login');return;}
+  try{
+    const{data}=await db.rpc('toggle_like',{p_set_id:setId});
+    if(data?.reward>0){
+      showToast(`🏺 Gratulacje! Otrzymałeś ${data.reward.toLocaleString('pl-PL')} złota za popularność zestawu!`,'success');
+    }
+    _matTab==='mine'?loadMySets():loadCommunity();
+  }catch(e){showToast('Błąd: '+e.message,'error')}
+}
+
+async function addSetToMine(setId,btn){
+  const{data:{session}}=await db.auth.getSession();
+  if(!session){showAuth('login');return;}
+  btn.disabled=true;btn.textContent='Dodano ✓';
+  showToast('Zestaw dodany do Twoich materiałów!','success');
+}
+
+function openCreateSet(){
+  _matModal={id:null,name:'',user_set_cards:[],is_public:false,user_id:_matMyUid};
+  document.getElementById('mat-modal-title').textContent='Nowy zestaw';
+  document.getElementById('mat-modal-body').innerHTML=renderEditForm(_matModal);
+  document.getElementById('mat-modal').style.display='flex';
+}
+
+function closeMatModal(){document.getElementById('mat-modal').style.display='none';_matModal=null}
+
+function switchMatTab(tab){
+  _matTab=tab;
+  document.querySelectorAll('.mat-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  document.getElementById('mat-create-btn').style.display=tab==='mine'&&_matMyUid?'block':'none';
+  tab==='mine'?loadMySets():loadCommunity();
+}
+
+function showMatError(msg){
+  const el=document.getElementById('mat-grid');
+  if(el)el.innerHTML=`<div class="mat-empty" style="color:#f87">${msg}</div>`;
+}
+
+function showToast(msg,type='info'){
+  const t=document.createElement('div');
+  t.className=`toast toast-${type}`;t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.classList.add('show'),10);
+  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300)},3500);
+}
+
+async function loadRanking(){
+  for(const period of ['all','weekly']){
+    try{
+      const{data}=await db.rpc('get_ranking',{p_period:period});
+      if(!data) continue;
+      for(const cat of ['gold','streak','words']){
+        const el=document.getElementById(`rank-${period}-${cat}`);
+        if(!el||!data[cat]) continue;
+        el.innerHTML=data[cat].map((r,i)=>`
+          <div class="rank-row ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':''}">
+            <span class="rank-pos">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span>
+            <span class="rank-name">${r.username}</span>
+            <span class="rank-score">${Number(r.score).toLocaleString('pl-PL')}</span>
+          </div>
+        `).join('');
+      }
+    }catch(e){console.error(e);}
+  }
+}
+
 (async()=>{const{data:{session}}=await db.auth.getSession();if(session){await loadDashboard();showPage('dash')}})();
 </script>
-</body>
+
+<!-- ═══ COMMUNITY PAGE ═══ -->
+<div id="page-community" class="page" style="min-height:100vh;padding:100px 20px 80px">
+  <div style="max-width:960px;margin:0 auto">
+
+    <!-- Nagłówek -->
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:32px">
+      <div>
+        <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Materiały</h2>
+        <p style="color:var(--dim2);font-size:15px">Przeglądaj zestawy społeczności lub zarządzaj swoimi</p>
+      </div>
+      <button id="mat-create-btn" class="btn btn-orange" onclick="openCreateSet()" style="display:none">+ Stwórz zestaw</button>
+    </div>
+
+    <!-- Zakładki -->
+    <div class="mat-tabs">
+      <button class="mat-tab active" data-tab="community" onclick="switchMatTab('community')">🌐 Społeczność</button>
+      <button class="mat-tab" data-tab="mine" onclick="switchMatTab('mine')">📂 Moje zestawy</button>
+    </div>
+
+    <!-- Siatka zestawów -->
+    <div id="mat-grid" class="mat-grid">
+      <div class="mat-empty">Ładowanie...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal zestawu -->
+<div id="mat-modal" class="modal-overlay" onclick="if(event.target===this)closeMatModal()" style="display:none">
+  <div class="modal-box" style="max-width:600px;width:100%">
+    <button class="modal-close" onclick="closeMatModal()">✕</button>
+    <h2 id="mat-modal-title" style="margin-bottom:16px"></h2>
+    <div id="mat-modal-body"></div>
+  </div>
+</div>
+
+<!-- ═══ RANKING PAGE ═══ -->
+<div id="page-ranking" class="page" style="min-height:100vh;padding:120px 20px 60px">
+  <div style="max-width:900px;margin:0 auto">
+    <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:8px">Ranking</h2>
+    <p style="color:var(--dim2);margin-bottom:32px">Najlepsi uczący się w społeczności Eyelingo</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:48px">
+      <div class="rank-section">
+        <h3 class="rank-title">🏺 Złoto — Globalny</h3>
+        <div id="rank-all-gold"></div>
+      </div>
+      <div class="rank-section">
+        <h3 class="rank-title">🏺 Złoto — Tygodniowy</h3>
+        <div id="rank-weekly-gold"></div>
+      </div>
+      <div class="rank-section">
+        <h3 class="rank-title">🔥 Streak — Globalny</h3>
+        <div id="rank-all-streak"></div>
+      </div>
+      <div class="rank-section">
+        <h3 class="rank-title">🔥 Streak — Tygodniowy</h3>
+        <div id="rank-weekly-streak"></div>
+      </div>
+      <div class="rank-section">
+        <h3 class="rank-title">📚 Słowa — Globalny</h3>
+        <div id="rank-all-words"></div>
+      </div>
+      <div class="rank-section">
+        <h3 class="rank-title">📚 Słowa — Tygodniowy</h3>
+        <div id="rank-weekly-words"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Modals */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;
+  display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-box{background:#fff;border-radius:20px;padding:40px;max-width:540px;width:100%;
+  position:relative;max-height:80vh;overflow-y:auto}
+.modal-box h2{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;
+  color:var(--navy);margin-bottom:20px}
+.modal-box p{color:var(--dim2);line-height:1.7;margin-bottom:12px;font-size:14px}
+.modal-close{position:absolute;top:16px;right:16px;background:rgba(0,0,0,.08);
+  border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:14px}
+.modal-close:hover{background:rgba(0,0,0,.15)}
+
+/* ── Materiały ── */
+.mat-tabs{display:flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:14px;margin-bottom:28px;width:fit-content}
+.mat-tab{background:transparent;border:none;padding:10px 22px;border-radius:10px;font-weight:600;font-size:14px;color:var(--dim2);cursor:pointer;transition:.2s}
+.mat-tab.active{background:#fff;color:var(--navy);box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.mat-tab:hover:not(.active){color:var(--navy)}
+.mat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.mat-card{background:#fff;border:1px solid rgba(26,35,64,.1);border-radius:16px;padding:18px;cursor:pointer;transition:.2s;display:flex;flex-direction:column;gap:10px}
+.mat-card:hover{border-color:var(--orange);box-shadow:0 4px 20px rgba(201,106,42,.12);transform:translateY(-2px)}
+.mat-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.mat-card-name{font-weight:700;font-size:15px;color:var(--navy);line-height:1.3}
+.mat-card-meta{font-size:12px;color:var(--dim2);margin-top:3px}
+.mat-card-likes{font-size:13px;color:#e05;background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.2);border-radius:20px;padding:4px 10px;white-space:nowrap;cursor:pointer;transition:.2s;flex-shrink:0}
+.mat-card-likes:hover{background:rgba(255,80,80,.18)}
+.mat-preview{display:flex;flex-direction:column;gap:4px;border-top:1px solid rgba(26,35,64,.08);padding-top:10px}
+.mat-preview-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px}
+.mat-pf{color:var(--navy);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mat-pb{color:var(--dim2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mat-card-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;border-top:1px solid rgba(26,35,64,.08);padding-top:10px;margin-top:auto}
+.mat-pub-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px}
+.mat-pub-badge.pub{background:rgba(22,163,74,.1);color:#16a34a}
+.mat-pub-badge.priv{background:rgba(100,100,120,.1);color:var(--dim2)}
+.mat-card-actions{display:flex;gap:6px}
+.mat-btn-edit{background:rgba(26,35,64,.07);border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--navy);transition:.15s}
+.mat-btn-edit:hover{background:rgba(26,35,64,.14)}
+.mat-btn-del{background:rgba(200,50,50,.08);border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;color:#c33;transition:.15s}
+.mat-btn-del:hover{background:rgba(200,50,50,.18)}
+.mat-btn-add{background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s}
+.mat-btn-add:hover{background:var(--orange)}
+.mat-pub-toggle{border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;border:1px solid}
+.mat-pub-toggle.pub{background:rgba(22,163,74,.1);color:#16a34a;border-color:rgba(22,163,74,.3)}
+.mat-pub-toggle.priv{background:rgba(100,100,120,.1);color:var(--dim2);border-color:rgba(100,100,120,.3)}
+.mat-empty{text-align:center;color:var(--dim2);padding:60px 20px;font-size:15px;grid-column:1/-1}
+.mat-modal-meta{font-size:13px;color:var(--dim2);margin-bottom:16px}
+.mat-modal-cards{display:flex;flex-direction:column;gap:6px;max-height:360px;overflow-y:auto}
+.mat-modal-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:10px 12px;background:rgba(26,35,64,.04);border-radius:8px;font-size:14px}
+.mat-modal-tr{color:var(--dim2)}
+.edit-row{display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;align-items:center}
+/* Toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:12px 24px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;transition:.3s;z-index:2000;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.toast-success{background:#16a34a}
+.toast.toast-error{background:#c33}
+/* Ranking */
+.rank-section{background:rgba(26,35,64,.04);border:1px solid rgba(26,35,64,.1);
+  border-radius:16px;padding:20px}
+.rank-title{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:12px}
+.rank-row{display:flex;align-items:center;gap:12px;padding:8px 10px;
+  border-radius:8px;margin-bottom:4px;transition:.15s}
+.rank-row:hover{background:rgba(26,35,64,.06)}
+.rank-1{background:rgba(255,215,0,.12)!important}
+.rank-2{background:rgba(192,192,192,.12)!important}
+.rank-3{background:rgba(205,127,50,.12)!important}
+.rank-pos{font-size:18px;width:28px;text-align:center}
+.rank-name{flex:1;font-weight:600;color:var(--navy)}
+.rank-score{font-weight:700;color:var(--orange)}
+</style>
 </html>
