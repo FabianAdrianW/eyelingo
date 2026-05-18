@@ -326,6 +326,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
     <a href="#isolation" onclick="return navSection('#isolation')">Własne zestawy</a>
     <a href="#languages" onclick="return navSection('#languages')">Języki</a>
     <a href="#" onclick="return showPage('community')" id="nav-community">Materiały</a>
+    <a href="#" onclick="return showPage('strefa')" id="nav-strefa">Strefa Nauki</a>
     <a href="#" onclick="return showPage('ranking')" id="nav-ranking">Ranking</a>
     <a href="#" onclick="return showPage('tofix')" id="nav-tofix">To Fix</a>
   </div>
@@ -926,6 +927,7 @@ function showPage(name){
   if(name==='community') loadCommunity();
   if(name==='ranking') loadRanking();
   if(name==='tofix') initToFixPage();
+  if(name==='strefa') initStrefa();
   return false;
 }
 
@@ -1733,6 +1735,359 @@ async function initToFixPage(){
   if(!session){
     document.getElementById('fix-form-wrap').innerHTML='<div style="text-align:center;padding:40px 0"><p style="color:var(--dim2);margin-bottom:16px">Zaloguj się aby wysłać zgłoszenie.</p><button class="btn btn-navy" onclick="showAuth(\'login\')">Zaloguj się</button></div>';
   }
+}
+</script>
+<!-- ═══ STREFA NAUKI ═══ -->
+<div id="page-strefa" class="page" style="min-height:100vh;padding:100px 20px 80px">
+  <div style="max-width:900px;margin:0 auto">
+    <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Strefa Nauki</h2>
+    <p style="color:var(--dim2);margin-bottom:32px">Słówka w kontekście — zdania, tłumaczenia i wideo</p>
+
+    <div id="strefa-access-msg" style="display:none;text-align:center;padding:60px 20px">
+      <div style="font-size:48px;margin-bottom:16px">🔒</div>
+      <h3 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:var(--navy);margin-bottom:8px">Dostęp dla kupujących</h3>
+      <p style="color:var(--dim2);margin-bottom:24px">Strefa Nauki jest dostępna dla użytkowników którzy odblokali co najmniej jeden poziom.</p>
+      <button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>
+    </div>
+
+    <div id="strefa-main" style="display:none">
+      <!-- Selektor języka/poziomu/kategorii -->
+      <div class="strefa-selector" id="strefa-selector">
+        <div id="strefa-langs" class="strefa-grid"></div>
+      </div>
+
+      <!-- Widok fiszki kontekstowej -->
+      <div id="strefa-card-view" style="display:none">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
+          <button class="btn btn-ghost" onclick="strefaBack()" style="font-size:13px">← Wróć</button>
+          <div style="font-size:14px;color:var(--dim2)" id="strefa-breadcrumb"></div>
+        </div>
+
+        <div class="strefa-card" id="strefa-card">
+          <div class="strefa-card-inner">
+            <!-- Lewa strona: zdanie + audio -->
+            <div class="strefa-left">
+              <div class="strefa-word" id="sc-word"></div>
+              <div class="strefa-translation-word" id="sc-word-tr"></div>
+              <div class="strefa-divider"></div>
+              <div class="strefa-sentence" id="sc-sentence">
+                <div class="strefa-loading">🤖 Gemini generuje zdanie...</div>
+              </div>
+              <div class="strefa-sentence-tr" id="sc-sentence-tr"></div>
+              <button class="strefa-audio-btn" id="sc-audio" onclick="playAudio()" title="Odtwórz">
+                🔊 Posłuchaj
+              </button>
+            </div>
+            <!-- Prawa strona: wideo -->
+            <div class="strefa-right">
+              <div class="strefa-video-wrap" id="sc-video-wrap">
+                <div class="strefa-video-placeholder">
+                  <div style="font-size:32px;margin-bottom:8px">🎬</div>
+                  <div style="font-size:13px;color:var(--dim2)">Szukam wideo...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+          <div style="font-size:13px;color:var(--dim2)" id="strefa-progress"></div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-ghost" onclick="strefaPrev()" id="btn-prev">← Poprzednia</button>
+            <button class="btn btn-orange" onclick="strefaNext()" id="btn-next">Następna →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Strefa Nauki */
+.strefa-selector{}
+.strefa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px}
+.strefa-tile{background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;cursor:pointer;transition:.2s;text-align:center}
+.strefa-tile:hover{border-color:var(--orange);box-shadow:0 4px 20px rgba(201,106,42,.12);transform:translateY(-2px)}
+.strefa-tile.locked{opacity:.5;cursor:not-allowed}
+.strefa-tile.locked:hover{transform:none;border-color:var(--border);box-shadow:none}
+.strefa-tile-icon{font-size:28px;margin-bottom:8px}
+.strefa-tile-name{font-weight:700;color:var(--navy);font-size:15px}
+.strefa-tile-meta{font-size:12px;color:var(--dim2);margin-top:4px}
+.strefa-tile-lock{font-size:11px;color:var(--dim2);margin-top:6px}
+.strefa-card{background:#fff;border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06)}
+.strefa-card-inner{display:grid;grid-template-columns:1fr 1fr;min-height:400px}
+@media(max-width:640px){.strefa-card-inner{grid-template-columns:1fr}}
+.strefa-left{padding:32px;display:flex;flex-direction:column;gap:12px;border-right:1px solid var(--border)}
+.strefa-word{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy)}
+.strefa-translation-word{font-size:16px;color:var(--orange);font-weight:600}
+.strefa-divider{height:1px;background:var(--border);margin:4px 0}
+.strefa-sentence{font-size:18px;color:var(--navy);line-height:1.6;font-weight:500;flex:1}
+.strefa-sentence strong{color:var(--orange);font-weight:800}
+.strefa-sentence-tr{font-size:14px;color:var(--dim2);line-height:1.6;font-style:italic}
+.strefa-audio-btn{background:rgba(26,35,64,.06);border:1.5px solid var(--border);border-radius:10px;padding:10px 20px;cursor:pointer;font-size:14px;font-weight:600;color:var(--navy);transition:.2s;width:fit-content}
+.strefa-audio-btn:hover{background:rgba(201,106,42,.1);border-color:var(--orange);color:var(--orange)}
+.strefa-right{position:relative;background:rgba(26,35,64,.03)}
+.strefa-video-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+.strefa-video-placeholder{text-align:center;padding:20px}
+.strefa-loading{color:var(--dim2);font-size:14px;font-style:italic}
+</style>
+
+<script>
+const GEMINI_KEY_STREFA = 'WPISZ_KLUCZ_GEMINI';
+const YOUTUBE_KEY = 'WPISZ_KLUCZ_YOUTUBE';
+
+const LANG_LABELS = {en:'Angielski',es:'Hiszpański',jp:'Japoński',nl:'Niderlandzki'};
+const LANG_FLAGS = {en:'🇬🇧',es:'🇪🇸',jp:'🇯🇵',nl:'🇳🇱'};
+const LEVEL_DESC = {A1:'Początkujący',A2:'Podstawowy',B1:'Średniozaawansowany',B2:'Wyższy średni',C1:'Zaawansowany',C2:'Biegły'};
+
+let _strefaState = 'langs'; // langs | levels | cats | card
+let _strefaLang = null;
+let _strefaLevel = null;
+let _strefaCat = null;
+let _strefaWords = [];
+let _strefaIdx = 0;
+let _strefaLevels = [];
+let _strefaProfile = null;
+
+async function initStrefa(){
+  const{data:{session}}=await db.auth.getSession();
+  if(!session){
+    document.getElementById('strefa-access-msg').style.display='block';
+    document.getElementById('strefa-main').style.display='none';
+    return;
+  }
+  // Sprawdź czy ma zakup
+  const{data:p}=await db.from('profiles')
+    .select('is_premium,premium_until,levels_bought')
+    .eq('user_id',session.user.id).single();
+  _strefaProfile=p;
+  const levels=p?.levels_bought||[];
+  const isPremium=p?.is_premium&&p?.premium_until&&new Date(p.premium_until)>new Date();
+  if(!isPremium&&!levels.length){
+    document.getElementById('strefa-access-msg').style.display='block';
+    document.getElementById('strefa-main').style.display='none';
+    return;
+  }
+  document.getElementById('strefa-access-msg').style.display='none';
+  document.getElementById('strefa-main').style.display='block';
+  _strefaLevels=levels;
+  showStrefaLangs(isPremium);
+}
+
+function showStrefaLangs(isPremium){
+  _strefaState='langs';
+  document.getElementById('strefa-card-view').style.display='none';
+  document.getElementById('strefa-selector').style.display='block';
+  const langs=['en','es','jp','nl'];
+  document.getElementById('strefa-langs').innerHTML=langs.map(l=>{
+    const hasAny=isPremium||_strefaLevels.some(lv=>lv.startsWith(l+'_'));
+    return`<div class="strefa-tile${hasAny?'':' locked'}" onclick="${hasAny?`showStrefaLevels('${l}')`:''}">
+      <div class="strefa-tile-icon">${LANG_FLAGS[l]}</div>
+      <div class="strefa-tile-name">${LANG_LABELS[l]}</div>
+      <div class="strefa-tile-meta">${hasAny?'Dostępny':'Brak zakupów'}</div>
+      ${hasAny?'':'<div class="strefa-tile-lock">🔒 Odblokuj poziom</div>'}
+    </div>`;
+  }).join('');
+}
+
+function showStrefaLevels(lang){
+  _strefaLang=lang;
+  _strefaState='levels';
+  const levels=['A1','A2','B1','B2','C1','C2'];
+  const isPremium=_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date();
+  document.getElementById('strefa-langs').innerHTML=`
+    <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <button class="btn btn-ghost" onclick="showStrefaLangs(${isPremium})" style="font-size:13px">← Języki</button>
+      <span style="font-size:18px">${LANG_FLAGS[lang]} ${LANG_LABELS[lang]}</span>
+    </div>
+    ${levels.map(lv=>{
+      const key=`${lang}_${lv}`;
+      const unlocked=isPremium||_strefaLevels.includes(key);
+      return`<div class="strefa-tile${unlocked?'':' locked'}" onclick="${unlocked?`showStrefaCats('${lang}','${lv}')`:''}">
+        <div class="strefa-tile-icon">${unlocked?'📖':'🔒'}</div>
+        <div class="strefa-tile-name">Poziom ${lv}</div>
+        <div class="strefa-tile-meta">${LEVEL_DESC[lv]}</div>
+        ${unlocked?'':'<div class="strefa-tile-lock">Odblokuj w aplikacji</div>'}
+      </div>`;
+    }).join('')}`;
+}
+
+async function showStrefaCats(lang,level){
+  _strefaLang=lang;_strefaLevel=level;
+  _strefaState='cats';
+  // Pobierz kategorie które ma użytkownik
+  const{data:cats}=await db.from('flashcards')
+    .select('category_id,categories(code,label,icon)')
+    .eq('language_id',['en','es','jp','nl'].indexOf(lang)+1)
+    .eq('level_id',['A1','A2','B1','B2','C1','C2'].indexOf(level)+1)
+    .limit(200);
+  // Unikalne kategorie
+  const seen=new Set();
+  const uniq=(cats||[]).filter(c=>{
+    if(!c.categories||seen.has(c.category_id))return false;
+    seen.add(c.category_id);return true;
+  });
+  const isPremium=_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date();
+  document.getElementById('strefa-langs').innerHTML=`
+    <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <button class="btn btn-ghost" onclick="showStrefaLevels('${lang}')" style="font-size:13px">← Poziomy</button>
+      <span style="font-size:16px;font-weight:600;color:var(--navy)">${LANG_FLAGS[lang]} ${LANG_LABELS[lang]} · Poziom ${level}</span>
+    </div>
+    ${uniq.map(c=>`
+      <div class="strefa-tile" onclick="startStrefaCards('${lang}','${level}','${c.categories.code}','${c.categories.label}')">
+        <div class="strefa-tile-icon">${c.categories.icon||'📚'}</div>
+        <div class="strefa-tile-name">${c.categories.label}</div>
+        <div class="strefa-tile-meta">Kliknij aby ćwiczyć</div>
+      </div>`).join('')}`;
+}
+
+async function startStrefaCards(lang,level,catCode,catLabel){
+  _strefaLang=lang;_strefaLevel=level;_strefaCat=catCode;
+  _strefaIdx=0;
+  document.getElementById('strefa-breadcrumb').textContent=`${LANG_FLAGS[lang]} ${LANG_LABELS[lang]} · ${level} · ${catLabel}`;
+  // Pobierz słówka
+  const langId=['en','es','jp','nl'].indexOf(lang)+1;
+  const levelId=['A1','A2','B1','B2','C1','C2'].indexOf(level)+1;
+  const{data:cats}=await db.from('categories').select('id').eq('code',catCode).single();
+  const{data:words}=await db.from('flashcards')
+    .select('word,translation')
+    .eq('language_id',langId).eq('level_id',levelId).eq('category_id',cats.id)
+    .limit(30);
+  _strefaWords=words||[];
+  document.getElementById('strefa-selector').style.display='none';
+  document.getElementById('strefa-card-view').style.display='block';
+  loadStrefaCard();
+}
+
+async function loadStrefaCard(){
+  if(!_strefaWords.length)return;
+  const w=_strefaWords[_strefaIdx];
+  document.getElementById('strefa-progress').textContent=`${_strefaIdx+1} / ${_strefaWords.length}`;
+  document.getElementById('sc-word').textContent=w.word;
+  document.getElementById('sc-word-tr').textContent=w.translation;
+  document.getElementById('sc-sentence').innerHTML='<div class="strefa-loading">🤖 Gemini generuje zdanie...</div>';
+  document.getElementById('sc-sentence-tr').textContent='';
+  document.getElementById('sc-audio').style.display='none';
+  document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Szukam wideo...</div></div>';
+  document.getElementById('btn-prev').disabled=_strefaIdx===0;
+  document.getElementById('btn-next').textContent=_strefaIdx===_strefaWords.length-1?'Zakończ':'Następna →';
+
+  // Równolegle: zdanie AI + wideo
+  Promise.all([
+    loadContextSentence(w.word, w.translation, _strefaLang, _strefaLevel),
+    loadYouTubeVideo(w.word, _strefaLang)
+  ]);
+}
+
+async function loadContextSentence(word, translation, lang, level){
+  // Sprawdź cache
+  const{data:cached}=await db.from('context_sentences')
+    .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).single();
+  if(cached){
+    renderSentence(word,cached.sentence,cached.translation);
+    return;
+  }
+  // Gemini
+  if(GEMINI_KEY_STREFA==='WPISZ_KLUCZ_GEMINI'){
+    renderSentence(word,`I use the word "${word}" every day.`,`Używam słowa "${word}" każdego dnia.`);
+    return;
+  }
+  try{
+    const langName={en:'English',es:'Spanish',jp:'Japanese',nl:'Dutch'}[lang]||'English';
+    const prompt=`Create one simple ${level} level ${langName} sentence using the word "${word}". 
+Return JSON only: {"sentence":"...","translation":"Polish translation"}
+The word "${word}" should be highlighted with **bold** in the sentence.
+Keep it simple and natural for ${level} level.`;
+    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY_STREFA}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.7}})
+    });
+    const d=await res.json();
+    const text=d.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
+    const clean=text.replace(/```json|```/g,'').trim();
+    const parsed=JSON.parse(clean);
+    // Cache
+    await db.from('context_sentences').upsert({word,language:lang,level,sentence:parsed.sentence,translation:parsed.translation});
+    renderSentence(word,parsed.sentence,parsed.translation);
+  }catch(e){
+    // Fallback
+    renderSentence(word,`This is the word **${word}**.`,`To jest słowo "${translation}".`);
+  }
+}
+
+function renderSentence(word,sentence,translation){
+  const html=sentence.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  document.getElementById('sc-sentence').innerHTML=html;
+  document.getElementById('sc-sentence-tr').textContent=translation;
+  document.getElementById('sc-audio').style.display='block';
+  // Zapisz do odtworzenia
+  window._currentSentence=sentence.replace(/\*\*/g,'');
+  window._currentLang={en:'en-US',es:'es-ES',jp:'ja-JP',nl:'nl-NL'}[_strefaLang]||'en-US';
+}
+
+function playAudio(){
+  if(!window._currentSentence)return;
+  const utt=new SpeechSynthesisUtterance(window._currentSentence);
+  utt.lang=window._currentLang;
+  utt.rate=0.85;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(utt);
+}
+
+async function loadYouTubeVideo(word,lang){
+  // Sprawdź cache
+  const{data:cached}=await db.from('youtube_cache')
+    .select('video_id,video_title').eq('word',word).eq('language',lang).single();
+  if(cached?.video_id){
+    renderVideo(cached.video_id,cached.video_title);
+    return;
+  }
+  if(YOUTUBE_KEY==='WPISZ_KLUCZ_YOUTUBE'){
+    document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Wpisz klucz YouTube API</div></div>';
+    return;
+  }
+  try{
+    const langFilter={en:'en',es:'es',jp:'ja',nl:'nl'}[lang]||'en';
+    const q=encodeURIComponent(`${word} ${LANG_LABELS[lang]} learn`);
+    const url=`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${q}&type=video&videoCaptions=closedCaption&relevanceLanguage=${langFilter}&safeSearch=strict&maxResults=5&key=${YOUTUBE_KEY}`;
+    const res=await fetch(url);
+    const d=await res.json();
+    const item=d.items?.[0];
+    if(item){
+      const vid=item.id.videoId;
+      const title=item.snippet.title;
+      await db.from('youtube_cache').upsert({word,language:lang,video_id:vid,video_title:title});
+      renderVideo(vid,title);
+    } else {
+      document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Brak wideo dla tego słowa</div></div>';
+    }
+  }catch(e){
+    document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Błąd wideo</div></div>';
+  }
+}
+
+function renderVideo(videoId,title){
+  document.getElementById('sc-video-wrap').innerHTML=`
+    <div style="width:100%">
+      <iframe width="100%" height="240" 
+        src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1" 
+        frameborder="0" allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture" 
+        allowfullscreen style="border-radius:12px;display:block"></iframe>
+      <div style="font-size:11px;color:var(--dim2);margin-top:6px;padding:0 4px;line-height:1.4">${title}</div>
+    </div>`;
+}
+
+function strefaNext(){
+  if(_strefaIdx<_strefaWords.length-1){_strefaIdx++;loadStrefaCard();}
+  else{strefaBack();}
+}
+function strefaPrev(){if(_strefaIdx>0){_strefaIdx--;loadStrefaCard();}}
+function strefaBack(){
+  document.getElementById('strefa-card-view').style.display='none';
+  document.getElementById('strefa-selector').style.display='block';
+  if(_strefaLevel) showStrefaCats(_strefaLang,_strefaLevel);
+  else showStrefaLangs();
+  speechSynthesis.cancel();
 }
 </script>
 </html>
