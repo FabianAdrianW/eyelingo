@@ -840,15 +840,29 @@ async function loadMySets(){
   renderMat();
 }
 
-function renderMat(){
+function renderMat(query=''){
   const el=document.getElementById('mat-grid');
+  const countEl=document.getElementById('mat-count');
   if(!el)return;
-  if(!_matSets.length){
-    el.innerHTML=`<div class="mat-empty">${_matTab==='mine'?'Nie masz jeszcze żadnych zestawów. Stwórz pierwszy!':'Brak publicznych zestawów. Bądź pierwszy!'}${_matTab==='mine'&&_matMyUid?'<br><button class="btn btn-orange" style="margin-top:16px" onclick="openCreateSet()">+ Stwórz zestaw</button>':''}</div>`;
+  let filtered=_matSets;
+  if(query){
+    const q=query.toLowerCase();
+    filtered=_matSets.filter(s=>
+      s.name.toLowerCase().includes(q)||
+      (s.username||s.profiles?.username||'').toLowerCase().includes(q)
+    );
+  }
+  if(countEl) countEl.textContent=filtered.length?`${filtered.length} zestaw${filtered.length===1?'':'ów'}`:'';
+  if(!filtered.length){
+    el.innerHTML=`<div class="mat-empty">${query?`Brak wyników dla "${query}"`
+      :_matTab==='mine'?'Nie masz jeszcze żadnych zestawów.'
+      :'Brak publicznych zestawów.'}</div>`;
     return;
   }
-  el.innerHTML=_matSets.map(s=>setCard(s)).join('');
+  el.innerHTML=filtered.map(s=>setCard(s)).join('');
 }
+
+function filterMat(q){renderMat(q)}
 
 function setCard(s){
   const isOwn = s.user_id===_matMyUid;
@@ -1005,20 +1019,113 @@ async function addSetToMine(setId,btn){
   showToast('Zestaw dodany do Twoich materiałów!','success');
 }
 
+let _createIsPublic = false;
+
 function openCreateSet(){
-  _matModal={id:null,name:'',user_set_cards:[],is_public:false,user_id:_matMyUid};
+  _createIsPublic = false;
   document.getElementById('mat-modal-title').textContent='Nowy zestaw';
-  document.getElementById('mat-modal-body').innerHTML=renderEditForm(_matModal);
+  document.getElementById('mat-modal-body').innerHTML=`
+    <div style="margin-bottom:10px">
+      <label style="font-size:12px;color:var(--dim2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Nazwa zestawu</label>
+      <input id="create-name" class="fi" placeholder="np. Angielski – sprawdzian" style="width:100%;margin-top:4px">
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;flex:1;font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px">
+        <span>Słowo / pytanie</span><span>Tłumaczenie / odpowiedź</span><span></span>
+      </div>
+    </div>
+    <div id="create-rows" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto"></div>
+    <div style="margin-top:8px;font-size:12px;color:var(--dim2)">💡 Naciśnij <kbd style="background:rgba(0,0,0,.08);padding:1px 6px;border-radius:4px;font-family:monospace">Tab</kbd> aby szybko dodać nowy wiersz</div>
+    <button onclick="addCreateRow()" style="margin-top:8px;background:transparent;border:1px dashed var(--dim2);border-radius:8px;padding:8px;width:100%;cursor:pointer;color:var(--dim2);font-size:13px">+ Dodaj wiersz</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
+      <button id="create-pub-btn" onclick="toggleCreatePublic()" style="border:1px solid rgba(100,100,120,.3);background:rgba(100,100,120,.08);color:var(--dim2);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s">🔒 Prywatny</button>
+      <button class="btn btn-orange" style="flex:1" onclick="saveNewSet()">💾 Stwórz zestaw</button>
+    </div>
+    <div id="create-msg" style="margin-top:8px;font-size:13px;text-align:center;color:#c33"></div>
+  `;
   document.getElementById('mat-modal').style.display='flex';
+  // Dodaj 5 domyślnych wierszy
+  for(let i=0;i<5;i++) addCreateRow();
+  // Focus na pierwszym polu
+  setTimeout(()=>{const f=document.querySelector('#create-rows .cr-word');if(f)f.focus()},50);
+}
+
+function addCreateRow(){
+  const row=document.createElement('div');
+  row.className='edit-row';
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;align-items:center';
+  const wInp=document.createElement('input');
+  wInp.className='fi cr-word';wInp.placeholder='słowo';
+  const tInp=document.createElement('input');
+  tInp.className='fi cr-tr';tInp.placeholder='tłumaczenie';
+  const del=document.createElement('button');
+  del.textContent='✕';del.style.cssText='background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#c33;font-size:11px';
+  del.onclick=()=>row.remove();
+  // TAB z ostatniego pola tłumaczenia → nowy wiersz
+  tInp.addEventListener('keydown',e=>{
+    if(e.key==='Tab'&&!e.shiftKey){
+      const rows=[...document.querySelectorAll('#create-rows .edit-row')];
+      if(row===rows[rows.length-1]){
+        e.preventDefault();
+        addCreateRow();
+        setTimeout(()=>{const last=document.querySelectorAll('#create-rows .cr-word');if(last.length)last[last.length-1].focus()},20);
+      }
+    }
+  });
+  row.append(wInp,tInp,del);
+  document.getElementById('create-rows').appendChild(row);
+}
+
+function toggleCreatePublic(){
+  _createIsPublic=!_createIsPublic;
+  const btn=document.getElementById('create-pub-btn');
+  if(_createIsPublic){
+    btn.textContent='🌐 Publiczny';
+    btn.style.cssText='border:1px solid rgba(22,163,74,.3);background:rgba(22,163,74,.1);color:#16a34a;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s';
+  } else {
+    btn.textContent='🔒 Prywatny';
+    btn.style.cssText='border:1px solid rgba(100,100,120,.3);background:rgba(100,100,120,.08);color:var(--dim2);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s';
+  }
+}
+
+async function saveNewSet(){
+  const{data:{session}}=await db.auth.getSession();
+  if(!session){showAuth('login');return;}
+  const name=document.getElementById('create-name').value.trim();
+  if(!name){document.getElementById('create-msg').textContent='Wpisz nazwę zestawu.';return;}
+  const rows=[...document.querySelectorAll('#create-rows .edit-row')];
+  const cards=rows.map(r=>({
+    word:r.querySelector('.cr-word').value.trim(),
+    translation:r.querySelector('.cr-tr').value.trim()
+  })).filter(c=>c.word&&c.translation);
+  if(cards.length<1){document.getElementById('create-msg').textContent='Dodaj co najmniej jedną fiszkę.';return;}
+  try{
+    const{data:setData,error:se}=await db.from('user_sets').insert({
+      user_id:session.user.id,name,is_public:_createIsPublic
+    }).select().single();
+    if(se)throw se;
+    const{error:ce}=await db.from('user_set_cards').insert(
+      cards.map((c,i)=>({set_id:setData.id,word:c.word,translation:c.translation,sort_order:i}))
+    );
+    if(ce)throw ce;
+    closeMatModal();
+    showToast('✅ Zestaw został utworzony!','success');
+    switchMatTab('mine');
+  }catch(e){document.getElementById('create-msg').textContent='Błąd: '+e.message;}
 }
 
 function closeMatModal(){document.getElementById('mat-modal').style.display='none';_matModal=null}
 
-function switchMatTab(tab){
+async function switchMatTab(tab){
   _matTab=tab;
   document.querySelectorAll('.mat-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  document.getElementById('mat-create-btn').style.display=tab==='mine'&&_matMyUid?'block':'none';
-  tab==='mine'?loadMySets():loadCommunity();
+  const createBtn=document.getElementById('mat-create-btn');
+  if(createBtn) createBtn.style.display=(tab==='mine'&&_matMyUid)?'block':'none';
+  // Wyczyść wyszukiwarkę
+  const search=document.getElementById('mat-search');
+  if(search) search.value='';
+  document.getElementById('mat-grid').innerHTML='<div class="mat-empty">Ładowanie...</div>';
+  tab==='mine'?await loadMySets():await loadCommunity();
 }
 
 function showMatError(msg){
@@ -1054,15 +1161,23 @@ async function loadRanking(){
   }
 }
 
-(async()=>{const{data:{session}}=await db.auth.getSession();if(session){await loadDashboard();showPage('dash')}})();
+(async()=>{
+  const{data:{session}}=await db.auth.getSession();
+  if(session){await loadDashboard();showPage('dash')}
+  // Obsługa parametru ?page=
+  const urlParams=new URLSearchParams(window.location.search);
+  const pg=urlParams.get('page');
+  if(pg==='community'){showPage('community')}
+  else if(pg==='ranking'){showPage('ranking')}
+})();
 </script>
 
 <!-- ═══ COMMUNITY PAGE ═══ -->
 <div id="page-community" class="page" style="min-height:100vh;padding:100px 20px 80px">
-  <div style="max-width:960px;margin:0 auto">
+  <div style="max-width:1000px;margin:0 auto">
 
     <!-- Nagłówek -->
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:32px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:28px">
       <div>
         <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Materiały</h2>
         <p style="color:var(--dim2);font-size:15px">Przeglądaj zestawy społeczności lub zarządzaj swoimi</p>
@@ -1070,11 +1185,21 @@ async function loadRanking(){
       <button id="mat-create-btn" class="btn btn-orange" onclick="openCreateSet()" style="display:none">+ Stwórz zestaw</button>
     </div>
 
-    <!-- Zakładki -->
-    <div class="mat-tabs">
-      <button class="mat-tab active" data-tab="community" onclick="switchMatTab('community')">🌐 Społeczność</button>
-      <button class="mat-tab" data-tab="mine" onclick="switchMatTab('mine')">📂 Moje zestawy</button>
+    <!-- Zakładki + wyszukiwarka -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px">
+      <div class="mat-tabs">
+        <button class="mat-tab active" data-tab="community" onclick="switchMatTab('community')">🌐 Społeczność</button>
+        <button class="mat-tab" data-tab="mine" onclick="switchMatTab('mine')">📂 Moje zestawy</button>
+      </div>
+      <div style="position:relative">
+        <input id="mat-search" class="fi" placeholder="🔍 Szukaj zestawów..." 
+          style="width:260px;padding-left:14px;font-size:14px"
+          oninput="filterMat(this.value)">
+      </div>
     </div>
+
+    <!-- Licznik wyników -->
+    <div id="mat-count" style="font-size:13px;color:var(--dim2);margin-bottom:16px"></div>
 
     <!-- Siatka zestawów -->
     <div id="mat-grid" class="mat-grid">
