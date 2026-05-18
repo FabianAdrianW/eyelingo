@@ -327,6 +327,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
     <a href="#languages" onclick="return navSection('#languages')">Języki</a>
     <a href="#" onclick="return showPage('community')" id="nav-community">Materiały</a>
     <a href="#" onclick="return showPage('ranking')" id="nav-ranking">Ranking</a>
+    <a href="#" onclick="return showPage('tofix')" id="nav-tofix">To Fix</a>
   </div>
   <div class="nav-r" id="nav-r">
     <button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button>
@@ -792,25 +793,31 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
 // ── Strony Community i Ranking ──
 function showPage(name){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  const pg = document.getElementById('page-'+name);
-  if(pg){ pg.classList.add('active'); window.scrollTo(0,0); }
+  const pg=document.getElementById('page-'+name);
+  if(pg){pg.classList.add('active');window.scrollTo(0,0);}
   if(name==='community') loadCommunity();
   if(name==='ranking') loadRanking();
+  if(name==='tofix') initToFixPage();
   return false;
 }
 
+async function initToFixPage(){
+  const{data:{session}}=await db.auth.getSession();
+  if(!session){
+    document.getElementById('fix-form-wrap').innerHTML='<p style="color:var(--dim2);text-align:center;padding:40px 0">Zaloguj się aby wysłać zgłoszenie.</p>';
+    return;
+  }
+  if(session.user.email===ADMIN_EMAIL) loadAdminPanel();
+}
+
 // ── Materiały - stan globalny ──
-let _matSets = [];
-let _matMyUid = null;
-let _matTab = 'community'; // 'community' | 'mine'
-let _matModal = null; // aktualnie otwarty zestaw
-let _matEditMode = false;
+let _likedSets = new Set();
+let _addedSets = new Set();
 
 async function loadCommunity(){
   const{data:{session}}=await db.auth.getSession();
   _matMyUid = session?.user?.id || null;
 
-  // Pobierz publiczne zestawy z podglądem fiszek
   const{data,error}=await db.from('user_sets_with_profiles')
     .select('id,name,likes_count,user_id,created_at,username,user_set_cards(id,word,translation)')
     .eq('is_public',true)
@@ -818,12 +825,17 @@ async function loadCommunity(){
     .limit(60);
   if(error){showMatError(error.message);return;}
 
-  // Algorytm hot score (lajki + nowość)
-  const now = Date.now();
-  _matSets = (data||[]).map(s=>{
-    const age = (now - new Date(s.created_at).getTime()) / (1000*3600);
-    const hot = (s.likes_count||0) / Math.pow(age+2, 1.5);
-    return {...s, _hot: hot};
+  // Pobierz lajki użytkownika
+  if(_matMyUid){
+    const{data:likes}=await db.from('set_likes').select('set_id').eq('user_id',_matMyUid);
+    _likedSets=new Set((likes||[]).map(l=>l.set_id));
+  }
+
+  const now=Date.now();
+  _matSets=(data||[]).map(s=>{
+    const age=(now-new Date(s.created_at).getTime())/(1000*3600);
+    const hot=(s.likes_count||0)/Math.pow(age+2,1.5);
+    return{...s,_hot:hot};
   }).sort((a,b)=>b._hot-a._hot);
 
   renderMat();
@@ -836,7 +848,7 @@ async function loadMySets(){
     .eq('user_id',_matMyUid)
     .order('created_at',{ascending:false});
   if(error){showMatError(error.message);return;}
-  _matSets = data||[];
+  _matSets=data||[];
   renderMat();
 }
 
@@ -849,7 +861,7 @@ function renderMat(query=''){
     const q=query.toLowerCase();
     filtered=_matSets.filter(s=>
       s.name.toLowerCase().includes(q)||
-      (s.username||s.profiles?.username||'').toLowerCase().includes(q)
+      (s.username||'').toLowerCase().includes(q)
     );
   }
   if(countEl) countEl.textContent=filtered.length?`${filtered.length} zestaw${filtered.length===1?'':'ów'}`:'';
@@ -865,37 +877,45 @@ function renderMat(query=''){
 function filterMat(q){renderMat(q)}
 
 function setCard(s){
-  const isOwn = s.user_id===_matMyUid;
-  const cards = s.user_set_cards||[];
-  const preview = cards.slice(0,3).map(c=>`
+  const isOwn=s.user_id===_matMyUid;
+  const cards=s.user_set_cards||[];
+  const preview=cards.slice(0,3).map(c=>`
     <div class="mat-preview-row"><span class="mat-pf">${esc(c.word)}</span><span class="mat-pb">${esc(c.translation)}</span></div>
   `).join('');
-  return `
+  const liked=_likedSets.has(s.id);
+  const added=_addedSets.has(s.id);
+  return`
     <div class="mat-card" onclick="openSet(${s.id})">
       <div class="mat-card-head">
         <div>
           <div class="mat-card-name">${esc(s.name)}</div>
           <div class="mat-card-meta">${isOwn?'Twój zestaw':`by ${s.username||'Nieznany'}`} · ${cards.length} fiszek</div>
         </div>
-        <div class="mat-card-likes" onclick="event.stopPropagation();toggleLike(${s.id},this)">
-          ❤️ ${s.likes_count||0}
+        <div class="mat-card-likes${liked?' liked':''}" id="like-btn-${s.id}" onclick="event.stopPropagation();toggleLike(${s.id})">
+          ${liked?'❤️':'🤍'} <span id="like-count-${s.id}">${s.likes_count||0}</span>
         </div>
       </div>
       ${preview?`<div class="mat-preview">${preview}</div>`:''}
       <div class="mat-card-foot">
         ${isOwn?`
-          <span class="mat-pub-badge ${s.is_public?'pub':'priv'}">${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}</span>
+          ${!s.is_public?`<span class="mat-pub-badge priv">🔒 Prywatny</span>`:`<span></span>`}
           <div class="mat-card-actions">
             <button class="mat-btn-edit" onclick="event.stopPropagation();openEditSet(${s.id})">✏️ Edytuj</button>
             <button class="mat-btn-del" onclick="event.stopPropagation();deleteSet(${s.id})">🗑️ Usuń</button>
           </div>
-        `:`<button class="mat-btn-add" onclick="event.stopPropagation();addSetToMine(${s.id},this)">+ Dodaj do moich</button>`}
+        `:`
+          <button class="mat-btn-add${added?' added':''}" id="add-btn-${s.id}"
+            onclick="event.stopPropagation();addSetToMine(${s.id})"
+            ${added?'disabled':''}>
+            ${added?'✓ Dodano do zestawów':'+ Dodaj do zestawów'}
+          </button>
+        `}
       </div>
     </div>
   `;
 }
 
-function esc(s){return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function esc(s){return(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
 async function openSet(id){
   const s=_matSets.find(x=>x.id===id);
@@ -1000,23 +1020,30 @@ async function togglePublic(id){
   _matTab==='mine'?loadMySets():loadCommunity();
 }
 
-async function toggleLike(setId,btn){
+async function toggleLike(setId){
   const{data:{session}}=await db.auth.getSession();
-  if(!session){showAuth('login');return;}
+  if(!session){showToast('Zaloguj się aby lajkować','error');return;}
   try{
     const{data}=await db.rpc('toggle_like',{p_set_id:setId});
-    if(data?.reward>0){
-      showToast(`🏺 Gratulacje! Otrzymałeś ${data.reward.toLocaleString('pl-PL')} złota za popularność zestawu!`,'success');
-    }
-    _matTab==='mine'?loadMySets():loadCommunity();
+    if(!data)return;
+    if(data.liked){_likedSets.add(setId)}else{_likedSets.delete(setId)}
+    const s=_matSets.find(x=>x.id===setId);
+    if(s) s.likes_count=(s.likes_count||0)+(data.liked?1:-1);
+    const btn=document.getElementById(`like-btn-${setId}`);
+    if(btn) btn.innerHTML=`${data.liked?'❤️':'🤍'} <span id="like-count-${setId}">${s?.likes_count||0}</span>`;
+    if(btn) btn.className='mat-card-likes'+(data.liked?' liked':'');
+    if(data.reward>0) showToast(`🏺 Gratulacje! Otrzymałeś ${data.reward.toLocaleString('pl-PL')} złota!`,'success');
   }catch(e){showToast('Błąd: '+e.message,'error')}
 }
 
-async function addSetToMine(setId,btn){
+async function addSetToMine(setId){
   const{data:{session}}=await db.auth.getSession();
-  if(!session){showAuth('login');return;}
-  btn.disabled=true;btn.textContent='Dodano ✓';
-  showToast('Zestaw dodany do Twoich materiałów!','success');
+  if(!session){showToast('Zaloguj się aby dodać zestaw','error');return;}
+  if(_addedSets.has(setId))return;
+  _addedSets.add(setId);
+  const btn=document.getElementById(`add-btn-${setId}`);
+  if(btn){btn.disabled=true;btn.textContent='✓ Dodano do zestawów';btn.classList.add('added');}
+  showToast('✅ Zestaw dodany do Twoich materiałów!','success');
 }
 
 let _createIsPublic = false;
@@ -1142,6 +1169,7 @@ function showToast(msg,type='info'){
 }
 
 async function loadRanking(){
+  // Tabele rankingu
   for(const period of ['all','weekly']){
     try{
       const{data}=await db.rpc('get_ranking',{p_period:period});
@@ -1157,8 +1185,45 @@ async function loadRanking(){
           </div>
         `).join('');
       }
+      // Wyróżnieni z danych globalnych
+      if(period==='all'&&data.gold?.length){
+        const topGold=data.gold[0];
+        document.getElementById('feat-creator').textContent=topGold.username;
+        document.getElementById('feat-creator-meta').textContent=`🏺 ${Number(topGold.score).toLocaleString('pl-PL')} złota`;
+      }
+      if(period==='all'&&data.streak?.length){
+        const topStreak=data.streak[0];
+        document.getElementById('feat-streak').textContent=topStreak.username;
+        document.getElementById('feat-streak-meta').textContent=`🔥 ${topStreak.score} dni z rzędu`;
+      }
     }catch(e){console.error(e);}
   }
+  // Najlepsze zestawy
+  try{
+    const{data:sets}=await db.from('user_sets_with_profiles')
+      .select('id,name,likes_count,username')
+      .eq('is_public',true)
+      .order('likes_count',{ascending:false})
+      .limit(5);
+    const el=document.getElementById('rank-top-sets');
+    if(el&&sets?.length){
+      // Wyróżniony zestaw
+      if(sets[0]){
+        document.getElementById('feat-set').textContent=sets[0].name;
+        document.getElementById('feat-set-meta').textContent=`❤️ ${sets[0].likes_count||0} lajków · by ${sets[0].username||'Nieznany'}`;
+      }
+      el.innerHTML=sets.map((s,i)=>`
+        <div class="rank-row ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':''}">
+          <span class="rank-pos">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span>
+          <span class="rank-name">${s.name} <span style="font-size:12px;color:var(--dim2);font-weight:400">by ${s.username||'Nieznany'}</span></span>
+          <span class="rank-score">❤️ ${s.likes_count||0}</span>
+        </div>
+      `).join('');
+    }
+  }catch(e){console.error(e);}
+  // Załaduj panel admina jeśli admin
+  const{data:{session}}=await db.auth.getSession();
+  if(session?.user?.email===ADMIN_EMAIL) loadAdminPanel();
 }
 
 (async()=>{
@@ -1218,55 +1283,92 @@ async function loadRanking(){
 </div>
 
 <!-- ═══ RANKING PAGE ═══ -->
-<div id="page-ranking" class="page" style="min-height:100vh;padding:120px 20px 60px">
-  <div style="max-width:900px;margin:0 auto">
-    <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:8px">Ranking</h2>
+<div id="page-ranking" class="page" style="min-height:100vh;padding:100px 20px 80px">
+  <div style="max-width:960px;margin:0 auto">
+    <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Ranking</h2>
     <p style="color:var(--dim2);margin-bottom:32px">Najlepsi uczący się w społeczności Eyelingo</p>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:48px">
-      <div class="rank-section">
-        <h3 class="rank-title">🏺 Złoto — Globalny</h3>
-        <div id="rank-all-gold"></div>
+    <h3 style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:16px">⭐ Wyróżnieni tego miesiąca</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:40px">
+      <div class="featured-card"><div class="featured-icon">🏆</div><div>
+        <div class="featured-label">Twórca miesiąca</div>
+        <div class="featured-name" id="feat-creator">—</div>
+        <div class="featured-meta" id="feat-creator-meta"></div>
+        <div class="featured-badge">+10 000 🏺 złota</div>
+      </div></div>
+      <div class="featured-card"><div class="featured-icon">🔥</div><div>
+        <div class="featured-label">Najbardziej aktywny</div>
+        <div class="featured-name" id="feat-streak">—</div>
+        <div class="featured-meta" id="feat-streak-meta"></div>
+        <div class="featured-badge">+5 000 🏺 złota</div>
+      </div></div>
+      <div class="featured-card"><div class="featured-icon">📖</div><div>
+        <div class="featured-label">Najlepszy zestaw</div>
+        <div class="featured-name" id="feat-set">—</div>
+        <div class="featured-meta" id="feat-set-meta"></div>
+        <div class="featured-badge">+10 000 🏺 złota</div>
+      </div></div>
+    </div>
+
+    <h3 style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:16px">📊 Tabele rankingu</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:40px">
+      <div class="rank-section"><h3 class="rank-title">🏺 Złoto — Globalny</h3><div id="rank-all-gold"></div></div>
+      <div class="rank-section"><h3 class="rank-title">🏺 Złoto — Tygodniowy</h3><div id="rank-weekly-gold"></div></div>
+      <div class="rank-section"><h3 class="rank-title">🔥 Streak — Globalny</h3><div id="rank-all-streak"></div></div>
+      <div class="rank-section"><h3 class="rank-title">🔥 Streak — Tygodniowy</h3><div id="rank-weekly-streak"></div></div>
+      <div class="rank-section"><h3 class="rank-title">📚 Słowa — Globalny</h3><div id="rank-all-words"></div></div>
+      <div class="rank-section"><h3 class="rank-title">📚 Słowa — Tygodniowy</h3><div id="rank-weekly-words"></div></div>
+    </div>
+
+    <h3 style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:16px">❤️ Najpopularniejsze zestawy</h3>
+    <div id="rank-top-sets" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<!-- ═══ TO FIX PAGE ═══ -->
+<div id="page-tofix" class="page" style="min-height:100vh;padding:100px 20px 80px">
+  <div style="max-width:600px;margin:0 auto">
+    <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">To Fix</h2>
+    <p style="color:var(--dim2);margin-bottom:32px">Coś nie działa? Powiedz nam o tym — poprawimy to jak najszybciej.</p>
+
+    <div id="fix-form-wrap">
+      <label class="fix-label">Kategoria problemu</label>
+      <div class="fix-category">
+        <button class="fix-cat-btn" onclick="selectCat(this,'UI/UX')">🎨 UI/UX</button>
+        <button class="fix-cat-btn" onclick="selectCat(this,'Płatności')">💳 Płatności</button>
+        <button class="fix-cat-btn" onclick="selectCat(this,'Fiszki')">📚 Fiszki</button>
+        <button class="fix-cat-btn" onclick="selectCat(this,'Błąd techniczny')">⚙️ Błąd techniczny</button>
+        <button class="fix-cat-btn" onclick="selectCat(this,'Inne')">💬 Inne</button>
       </div>
-      <div class="rank-section">
-        <h3 class="rank-title">🏺 Złoto — Tygodniowy</h3>
-        <div id="rank-weekly-gold"></div>
+      <label class="fix-label" style="margin-top:16px;display:block">Opis problemu</label>
+      <textarea id="fix-desc" class="fi" rows="5" placeholder="Opisz co się dzieje, kiedy się pojawia i jak można to odtworzyć..." style="width:100%;margin-top:8px;resize:vertical;min-height:120px"></textarea>
+      <label class="fix-label" style="margin-top:16px;display:block">Screenshot (opcjonalny)</label>
+      <input type="file" id="fix-screenshot" accept="image/*" style="margin-top:8px;font-size:13px;color:var(--dim2)">
+      <div id="fix-msg" style="margin-top:12px;font-size:13px;text-align:center;color:#c33"></div>
+      <button class="btn btn-navy" style="width:100%;margin-top:16px" onclick="submitBugReport()">📤 Wyślij zgłoszenie</button>
+    </div>
+
+    <div id="fix-admin" style="display:none;margin-top:48px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <h3 style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--navy)">Panel zgłoszeń</h3>
+        <button class="btn btn-orange" onclick="analyzeReports()">🤖 Analizuj AI</button>
       </div>
-      <div class="rank-section">
-        <h3 class="rank-title">🔥 Streak — Globalny</h3>
-        <div id="rank-all-streak"></div>
-      </div>
-      <div class="rank-section">
-        <h3 class="rank-title">🔥 Streak — Tygodniowy</h3>
-        <div id="rank-weekly-streak"></div>
-      </div>
-      <div class="rank-section">
-        <h3 class="rank-title">📚 Słowa — Globalny</h3>
-        <div id="rank-all-words"></div>
-      </div>
-      <div class="rank-section">
-        <h3 class="rank-title">📚 Słowa — Tygodniowy</h3>
-        <div id="rank-weekly-words"></div>
-      </div>
+      <div id="fix-reports"></div>
+      <div id="fix-analysis" style="margin-top:24px;background:rgba(26,35,64,.04);border-radius:16px;padding:20px;display:none"></div>
     </div>
   </div>
 </div>
 
 <style>
 /* Modals */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;
-  display:flex;align-items:center;justify-content:center;padding:20px}
-.modal-box{background:#fff;border-radius:20px;padding:40px;max-width:540px;width:100%;
-  position:relative;max-height:80vh;overflow-y:auto}
-.modal-box h2{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;
-  color:var(--navy);margin-bottom:20px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-box{background:#fff;border-radius:20px;padding:40px;max-width:540px;width:100%;position:relative;max-height:80vh;overflow-y:auto}
+.modal-box h2{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--navy);margin-bottom:20px}
 .modal-box p{color:var(--dim2);line-height:1.7;margin-bottom:12px;font-size:14px}
-.modal-close{position:absolute;top:16px;right:16px;background:rgba(0,0,0,.08);
-  border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:14px}
+.modal-close{position:absolute;top:16px;right:16px;background:rgba(0,0,0,.08);border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:14px}
 .modal-close:hover{background:rgba(0,0,0,.15)}
-
-/* ── Materiały ── */
-.mat-tabs{display:flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:14px;margin-bottom:28px;width:fit-content}
+/* Materiały */
+.mat-tabs{display:flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:14px;width:fit-content}
 .mat-tab{background:transparent;border:none;padding:10px 22px;border-radius:10px;font-weight:600;font-size:14px;color:var(--dim2);cursor:pointer;transition:.2s}
 .mat-tab.active{background:#fff;color:var(--navy);box-shadow:0 2px 8px rgba(0,0,0,.1)}
 .mat-tab:hover:not(.active){color:var(--navy)}
@@ -1278,13 +1380,13 @@ async function loadRanking(){
 .mat-card-meta{font-size:12px;color:var(--dim2);margin-top:3px}
 .mat-card-likes{font-size:13px;color:#e05;background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.2);border-radius:20px;padding:4px 10px;white-space:nowrap;cursor:pointer;transition:.2s;flex-shrink:0}
 .mat-card-likes:hover{background:rgba(255,80,80,.18)}
+.mat-card-likes.liked{background:rgba(255,80,80,.18);border-color:rgba(255,80,80,.5);color:#c00;font-weight:700}
 .mat-preview{display:flex;flex-direction:column;gap:4px;border-top:1px solid rgba(26,35,64,.08);padding-top:10px}
 .mat-preview-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px}
 .mat-pf{color:var(--navy);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mat-pb{color:var(--dim2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mat-card-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;border-top:1px solid rgba(26,35,64,.08);padding-top:10px;margin-top:auto}
 .mat-pub-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px}
-.mat-pub-badge.pub{background:rgba(22,163,74,.1);color:#16a34a}
 .mat-pub-badge.priv{background:rgba(100,100,120,.1);color:var(--dim2)}
 .mat-card-actions{display:flex;gap:6px}
 .mat-btn-edit{background:rgba(26,35,64,.07);border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--navy);transition:.15s}
@@ -1292,7 +1394,8 @@ async function loadRanking(){
 .mat-btn-del{background:rgba(200,50,50,.08);border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;color:#c33;transition:.15s}
 .mat-btn-del:hover{background:rgba(200,50,50,.18)}
 .mat-btn-add{background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s}
-.mat-btn-add:hover{background:var(--orange)}
+.mat-btn-add:hover:not(:disabled){background:var(--orange)}
+.mat-btn-add.added{background:rgba(22,163,74,.1);color:#16a34a;border:1px solid rgba(22,163,74,.3)}
 .mat-pub-toggle{border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;border:1px solid}
 .mat-pub-toggle.pub{background:rgba(22,163,74,.1);color:#16a34a;border-color:rgba(22,163,74,.3)}
 .mat-pub-toggle.priv{background:rgba(100,100,120,.1);color:var(--dim2);border-color:rgba(100,100,120,.3)}
@@ -1308,11 +1411,9 @@ async function loadRanking(){
 .toast.toast-success{background:#16a34a}
 .toast.toast-error{background:#c33}
 /* Ranking */
-.rank-section{background:rgba(26,35,64,.04);border:1px solid rgba(26,35,64,.1);
-  border-radius:16px;padding:20px}
+.rank-section{background:rgba(26,35,64,.04);border:1px solid rgba(26,35,64,.1);border-radius:16px;padding:20px}
 .rank-title{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:12px}
-.rank-row{display:flex;align-items:center;gap:12px;padding:8px 10px;
-  border-radius:8px;margin-bottom:4px;transition:.15s}
+.rank-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;margin-bottom:4px;transition:.15s}
 .rank-row:hover{background:rgba(26,35,64,.06)}
 .rank-1{background:rgba(255,215,0,.12)!important}
 .rank-2{background:rgba(192,192,192,.12)!important}
@@ -1320,5 +1421,110 @@ async function loadRanking(){
 .rank-pos{font-size:18px;width:28px;text-align:center}
 .rank-name{flex:1;font-weight:600;color:var(--navy)}
 .rank-score{font-weight:700;color:var(--orange)}
+.featured-card{background:#fff;border:1px solid rgba(26,35,64,.1);border-radius:16px;padding:20px;display:flex;align-items:flex-start;gap:14px}
+.featured-icon{font-size:28px;margin-top:2px}
+.featured-label{font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.featured-name{font-weight:700;color:var(--navy);font-size:16px}
+.featured-meta{font-size:12px;color:var(--dim2);margin-top:2px}
+.featured-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(245,200,66,.2);color:#8a6d00;margin-top:6px;display:inline-block}
+/* To Fix */
+.fix-label{font-size:12px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px}
+.fix-category{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:8px}
+.fix-cat-btn{background:rgba(26,35,64,.05);border:1.5px solid transparent;border-radius:10px;padding:10px;cursor:pointer;text-align:center;font-size:13px;font-weight:600;color:var(--navy);transition:.2s}
+.fix-cat-btn:hover{border-color:var(--navy);background:rgba(26,35,64,.1)}
+.fix-cat-btn.active{border-color:var(--orange);background:rgba(201,106,42,.08);color:var(--orange)}
+.report-row{background:rgba(26,35,64,.04);border:1px solid rgba(26,35,64,.1);border-radius:12px;padding:16px;margin-bottom:10px;cursor:pointer;transition:.2s}
+.report-row:hover{background:rgba(26,35,64,.08)}
+.report-email{font-weight:700;color:var(--orange);text-decoration:underline}
+.report-cat{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(26,35,64,.08);color:var(--dim)}
 </style>
+
+<script>
+let _fixCategory = '';
+const ADMIN_EMAIL = 'fabian.wojtasik@o2.pl';
+
+function selectCat(btn, cat){
+  document.querySelectorAll('.fix-cat-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  _fixCategory = cat;
+}
+
+async function submitBugReport(){
+  const{data:{session}}=await db.auth.getSession();
+  if(!session){showToast('Zaloguj się aby wysłać zgłoszenie','error');return;}
+  if(!_fixCategory){document.getElementById('fix-msg').textContent='Wybierz kategorię problemu.';return;}
+  const desc=document.getElementById('fix-desc').value.trim();
+  if(desc.length<10){document.getElementById('fix-msg').textContent='Opisz problem dokładniej (min. 10 znaków).';return;}
+  document.getElementById('fix-msg').textContent='Wysyłanie...';
+  document.getElementById('fix-msg').style.color='var(--dim2)';
+  try{
+    const{error}=await db.from('bug_reports').insert({
+      user_id:session.user.id,
+      email:session.user.email,
+      category:_fixCategory,
+      description:desc
+    });
+    if(error)throw error;
+    document.getElementById('fix-form-wrap').innerHTML=`
+      <div style="text-align:center;padding:40px 0">
+        <div style="font-size:48px;margin-bottom:16px">✅</div>
+        <h3 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--navy);margin-bottom:8px">Zgłoszenie wysłane!</h3>
+        <p style="color:var(--dim2)">Dziękujemy! Przejrzymy je i poprawimy jak najszybciej.</p>
+        <button class="btn btn-navy" style="margin-top:24px" onclick="location.reload()">Wyślij kolejne</button>
+      </div>
+    `;
+    // Sprawdź czy admin
+    if(session.user.email===ADMIN_EMAIL) loadAdminPanel();
+  }catch(e){document.getElementById('fix-msg').textContent='Błąd: '+e.message;document.getElementById('fix-msg').style.color='#c33';}
+}
+
+async function loadAdminPanel(){
+  document.getElementById('fix-admin').style.display='block';
+  const{data}=await db.from('bug_reports').select('*').order('created_at',{ascending:false});
+  if(!data?.length){document.getElementById('fix-reports').innerHTML='<p style="color:var(--dim2)">Brak zgłoszeń.</p>';return;}
+  document.getElementById('fix-reports').innerHTML=data.map(r=>`
+    <div class="report-row" onclick="viewReport(${r.id})">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span class="report-cat">${r.category}</span>
+        <span class="report-email">${r.email}</span>
+        <span style="font-size:11px;color:var(--dim2);margin-left:auto">${new Date(r.created_at).toLocaleDateString('pl-PL')}</span>
+        ${r.analyzed?'<span style="font-size:11px;color:#16a34a">✓ Przeanalizowane</span>':''}
+      </div>
+      <p style="font-size:13px;color:var(--dim2);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.description}</p>
+    </div>
+  `).join('');
+}
+
+async function analyzeReports(){
+  const btn=event.target;btn.disabled=true;btn.textContent='Analizuję...';
+  const{data}=await db.from('bug_reports').select('*').eq('analyzed',false).limit(20);
+  if(!data?.length){showToast('Brak nowych zgłoszeń do analizy','error');btn.disabled=false;btn.textContent='🤖 Analizuj AI';return;}
+  const prompt=`Jesteś asystentem analizującym zgłoszenia błędów aplikacji Eyelingo (aplikacja do nauki języków). 
+Przeanalizuj poniższe ${data.length} zgłoszeń i stwórz zwięzły raport w języku polskim:
+1. Zgrupuj podobne problemy
+2. Wskaż najpilniejsze rzeczy do naprawy
+3. Podaj konkretne rekomendacje
+
+Zgłoszenia:
+${data.map((r,i)=>`${i+1}. [${r.category}] ${r.email}: ${r.description}`).join('\n')}
+
+Odpowiedz w formacie HTML z nagłówkami i listami.`;
+
+  try{
+    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyAUdpBq-jRx6fv9gCkGcmqxknG4i1_2-Nw`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+    });
+    const d=await res.json();
+    const text=d.candidates?.[0]?.content?.parts?.[0]?.text||'Brak odpowiedzi';
+    const el=document.getElementById('fix-analysis');
+    el.style.display='block';
+    el.innerHTML=`<h3 style="font-family:'Syne',sans-serif;font-weight:700;color:var(--navy);margin-bottom:12px">🤖 Analiza AI</h3>${text}`;
+    // Oznacz jako przeanalizowane
+    await db.from('bug_reports').update({analyzed:true}).in('id',data.map(r=>r.id));
+    showToast('Analiza gotowa!','success');
+  }catch(e){showToast('Błąd AI: '+e.message,'error');}
+  btn.disabled=false;btn.textContent='🤖 Analizuj AI';
+}
+</script>
 </html>
