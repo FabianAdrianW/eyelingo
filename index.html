@@ -1330,7 +1330,6 @@ async function loadRanking(){
   <div style="max-width:600px;margin:0 auto">
     <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">To Fix</h2>
     <p style="color:var(--dim2);margin-bottom:32px">Coś nie działa? Powiedz nam o tym — poprawimy to jak najszybciej.</p>
-
     <div id="fix-form-wrap">
       <label class="fix-label">Kategoria problemu</label>
       <div class="fix-category">
@@ -1346,15 +1345,6 @@ async function loadRanking(){
       <input type="file" id="fix-screenshot" accept="image/*" style="margin-top:8px;font-size:13px;color:var(--dim2)">
       <div id="fix-msg" style="margin-top:12px;font-size:13px;text-align:center;color:#c33"></div>
       <button class="btn btn-navy" style="width:100%;margin-top:16px" onclick="submitBugReport()">📤 Wyślij zgłoszenie</button>
-    </div>
-
-    <div id="fix-admin" style="display:none;margin-top:48px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <h3 style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--navy)">Panel zgłoszeń</h3>
-        <button class="btn btn-orange" onclick="analyzeReports()">🤖 Analizuj AI</button>
-      </div>
-      <div id="fix-reports"></div>
-      <div id="fix-analysis" style="margin-top:24px;background:rgba(26,35,64,.04);border-radius:16px;padding:20px;display:none"></div>
     </div>
   </div>
 </div>
@@ -1441,7 +1431,6 @@ async function loadRanking(){
 
 <script>
 let _fixCategory = '';
-const ADMIN_EMAIL = 'fabian.wojtasik@o2.pl';
 
 function selectCat(btn, cat){
   document.querySelectorAll('.fix-cat-btn').forEach(b=>b.classList.remove('active'));
@@ -1470,61 +1459,20 @@ async function submitBugReport(){
         <div style="font-size:48px;margin-bottom:16px">✅</div>
         <h3 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--navy);margin-bottom:8px">Zgłoszenie wysłane!</h3>
         <p style="color:var(--dim2)">Dziękujemy! Przejrzymy je i poprawimy jak najszybciej.</p>
-        <button class="btn btn-navy" style="margin-top:24px" onclick="location.reload()">Wyślij kolejne</button>
+        <button class="btn btn-navy" style="margin-top:24px" onclick="showPage('tofix')">Wyślij kolejne</button>
       </div>
     `;
-    // Sprawdź czy admin
-    if(session.user.email===ADMIN_EMAIL) loadAdminPanel();
-  }catch(e){document.getElementById('fix-msg').textContent='Błąd: '+e.message;document.getElementById('fix-msg').style.color='#c33';}
+  }catch(e){
+    document.getElementById('fix-msg').textContent='Błąd: '+e.message;
+    document.getElementById('fix-msg').style.color='#c33';
+  }
 }
 
-async function loadAdminPanel(){
-  document.getElementById('fix-admin').style.display='block';
-  const{data}=await db.from('bug_reports').select('*').order('created_at',{ascending:false});
-  if(!data?.length){document.getElementById('fix-reports').innerHTML='<p style="color:var(--dim2)">Brak zgłoszeń.</p>';return;}
-  document.getElementById('fix-reports').innerHTML=data.map(r=>`
-    <div class="report-row" onclick="viewReport(${r.id})">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <span class="report-cat">${r.category}</span>
-        <span class="report-email">${r.email}</span>
-        <span style="font-size:11px;color:var(--dim2);margin-left:auto">${new Date(r.created_at).toLocaleDateString('pl-PL')}</span>
-        ${r.analyzed?'<span style="font-size:11px;color:#16a34a">✓ Przeanalizowane</span>':''}
-      </div>
-      <p style="font-size:13px;color:var(--dim2);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.description}</p>
-    </div>
-  `).join('');
-}
-
-async function analyzeReports(){
-  const btn=event.target;btn.disabled=true;btn.textContent='Analizuję...';
-  const{data}=await db.from('bug_reports').select('*').eq('analyzed',false).limit(20);
-  if(!data?.length){showToast('Brak nowych zgłoszeń do analizy','error');btn.disabled=false;btn.textContent='🤖 Analizuj AI';return;}
-  const prompt=`Jesteś asystentem analizującym zgłoszenia błędów aplikacji Eyelingo (aplikacja do nauki języków). 
-Przeanalizuj poniższe ${data.length} zgłoszeń i stwórz zwięzły raport w języku polskim:
-1. Zgrupuj podobne problemy
-2. Wskaż najpilniejsze rzeczy do naprawy
-3. Podaj konkretne rekomendacje
-
-Zgłoszenia:
-${data.map((r,i)=>`${i+1}. [${r.category}] ${r.email}: ${r.description}`).join('\n')}
-
-Odpowiedz w formacie HTML z nagłówkami i listami.`;
-
-  try{
-    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyAUdpBq-jRx6fv9gCkGcmqxknG4i1_2-Nw`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
-    });
-    const d=await res.json();
-    const text=d.candidates?.[0]?.content?.parts?.[0]?.text||'Brak odpowiedzi';
-    const el=document.getElementById('fix-analysis');
-    el.style.display='block';
-    el.innerHTML=`<h3 style="font-family:'Syne',sans-serif;font-weight:700;color:var(--navy);margin-bottom:12px">🤖 Analiza AI</h3>${text}`;
-    // Oznacz jako przeanalizowane
-    await db.from('bug_reports').update({analyzed:true}).in('id',data.map(r=>r.id));
-    showToast('Analiza gotowa!','success');
-  }catch(e){showToast('Błąd AI: '+e.message,'error');}
-  btn.disabled=false;btn.textContent='🤖 Analizuj AI';
+async function initToFixPage(){
+  const{data:{session}}=await db.auth.getSession();
+  if(!session){
+    document.getElementById('fix-form-wrap').innerHTML='<div style="text-align:center;padding:40px 0"><p style="color:var(--dim2);margin-bottom:16px">Zaloguj się aby wysłać zgłoszenie.</p><button class="btn btn-navy" onclick="showAuth(\'login\')">Zaloguj się</button></div>';
+  }
 }
 </script>
 </html>
