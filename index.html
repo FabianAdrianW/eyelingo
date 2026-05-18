@@ -722,6 +722,8 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
   </div>
 </div>
 
+<!-- config.js - lokalny plik z kluczami API (nie wgrywać na GitHub) -->
+<script src="config.js" onerror="console.log('config.js nie znaleziony - użyj lokalnego pliku')"></script>
 <script>
 const SUPABASE_URL='https://sntlgkhktscezxpxrchl.supabase.co';
 const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
@@ -1836,8 +1838,10 @@ async function initToFixPage(){
 </style>
 
 <script>
-const GEMINI_KEY_STREFA = 'WPISZ_KLUCZ_GEMINI';
-const YOUTUBE_KEY = 'WPISZ_KLUCZ_YOUTUBE';
+// Klucze API - wczytywane z config.js (plik lokalny, nie na GitHub)
+// Jeśli config.js nie istnieje, użyj wartości domyślnych
+if(typeof GEMINI_KEY_STREFA === 'undefined') var GEMINI_KEY_STREFA = 'WPISZ_KLUCZ_GEMINI';
+if(typeof YOUTUBE_KEY === 'undefined') var YOUTUBE_KEY = 'WPISZ_KLUCZ_YOUTUBE';
 
 const LANG_LABELS = {en:'Angielski',es:'Hiszpański',jp:'Japoński',nl:'Niderlandzki'};
 const LANG_FLAGS = {en:'🇬🇧',es:'🇪🇸',jp:'🇯🇵',nl:'🇳🇱'};
@@ -1985,7 +1989,7 @@ async function loadStrefaCard(){
 async function loadContextSentence(word, translation, lang, level){
   try{
     const{data:cached}=await db.from('context_sentences')
-      .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).single();
+      .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).maybeSingle();
     if(cached?.sentence){renderSentence(word,cached.sentence,cached.translation);return;}
   }catch(e){}
   const langName={en:'English',es:'Spanish',jp:'Japanese',nl:'Dutch'}[lang]||'English';
@@ -2055,7 +2059,7 @@ Example for A1 "apple": {"sentence":"She ate a red **apple** for breakfast.","tr
 async function loadYouTubeVideo(word,lang){
   try{
     const{data:cached}=await db.from('youtube_cache')
-      .select('video_id,video_title').eq('word',word).eq('language',lang).single();
+      .select('video_id,video_title').eq('word',word).eq('language',lang).maybeSingle();
     if(cached?.video_id){renderVideo(cached.video_id,cached.video_title);return;}
   }catch(e){}
   if(!YOUTUBE_KEY || YOUTUBE_KEY.trim()==='WPISZ_KLUCZ_YOUTUBE' || YOUTUBE_KEY.length < 10){
