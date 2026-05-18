@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eyelingo Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--navy:#1a2340;--orange:#c96a2a;--dim:#8890aa;--border:rgba(26,35,64,.1)}
+body{font-family:'DM Sans',sans-serif;background:#f8f7f4;color:var(--navy);min-height:100vh}
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-box{background:#fff;border-radius:20px;padding:48px;max-width:400px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.1)}
+.login-box h1{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--navy);margin-bottom:6px}
+.login-box p{color:var(--dim);font-size:14px;margin-bottom:28px}
+.fi{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;outline:none;transition:.2s;margin-bottom:12px}
+.fi:focus{border-color:var(--navy)}
+.btn{padding:12px 24px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;border:none;transition:.2s;width:100%}
+.btn-navy{background:var(--navy);color:#fff}.btn-navy:hover{background:#0f1729}
+.btn-orange{background:var(--orange);color:#fff}.btn-orange:hover{opacity:.9}
+.err{color:#c33;font-size:13px;margin-top:8px;text-align:center}
+/* Admin panel */
+.admin-wrap{display:none;max-width:1000px;margin:0 auto;padding:32px 20px}
+.admin-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:12px}
+.admin-header h1{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--navy)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.filter-btn{background:rgba(26,35,64,.06);border:1.5px solid transparent;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;color:var(--navy);transition:.2s}
+.filter-btn.active{border-color:var(--orange);background:rgba(201,106,42,.08);color:var(--orange)}
+.report-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:12px;cursor:pointer;transition:.2s}
+.report-card:hover{border-color:var(--orange);box-shadow:0 4px 16px rgba(0,0,0,.06)}
+.report-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.cat-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(26,35,64,.08);color:var(--dim)}
+.cat-badge.UI{background:rgba(99,102,241,.1);color:#6366f1}
+.cat-badge.Pay{background:rgba(22,163,74,.1);color:#16a34a}
+.cat-badge.Fiszki{background:rgba(245,158,11,.1);color:#d97706}
+.cat-badge.Tech{background:rgba(239,68,68,.1);color:#dc2626}
+.email-link{font-weight:600;color:var(--orange);text-decoration:underline;cursor:pointer}
+.date-tag{font-size:11px;color:var(--dim);margin-left:auto}
+.analyzed-tag{font-size:11px;color:#16a34a;font-weight:600}
+.report-desc{font-size:14px;color:var(--dim);line-height:1.6;margin-top:4px}
+.ai-box{background:rgba(26,35,64,.03);border:1px solid var(--border);border-radius:16px;padding:24px;margin-top:24px}
+.ai-box h3{font-family:'Syne',sans-serif;font-weight:700;color:var(--navy);margin-bottom:16px;font-size:18px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center}
+.stat-num{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--orange)}
+.stat-label{font-size:12px;color:var(--dim);margin-top:4px}
+/* Modal */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;padding:20px}
+.modal.open{display:flex}
+.modal-box{background:#fff;border-radius:20px;padding:32px;max-width:580px;width:100%;max-height:80vh;overflow-y:auto;position:relative}
+.modal-close{position:absolute;top:16px;right:16px;background:rgba(0,0,0,.08);border:none;border-radius:50%;width:32px;height:32px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div class="login-wrap" id="login-wrap">
+  <div class="login-box">
+    <h1>🔐 Eyelingo Admin</h1>
+    <p>Panel dostępny tylko dla administratora</p>
+    <input type="password" class="fi" id="admin-pass" placeholder="Hasło admina" onkeydown="if(event.key==='Enter')checkPass()">
+    <button class="btn btn-navy" onclick="checkPass()">Zaloguj</button>
+    <div class="err" id="pass-err"></div>
+  </div>
+</div>
+
+<!-- Admin panel -->
+<div class="admin-wrap" id="admin-wrap">
+  <div class="admin-header">
+    <h1>🛠️ Panel zgłoszeń</h1>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-orange" style="width:auto" onclick="analyzeAI()">🤖 Analizuj AI</button>
+      <button class="btn btn-navy" style="width:auto;background:rgba(26,35,64,.1);color:var(--navy)" onclick="logout()">Wyloguj</button>
+    </div>
+  </div>
+
+  <!-- Statystyki -->
+  <div class="stats" id="stats"></div>
+
+  <!-- Filtry -->
+  <div class="filters">
+    <button class="filter-btn active" onclick="filterReports('all',this)">Wszystkie</button>
+    <button class="filter-btn" onclick="filterReports('UI/UX',this)">🎨 UI/UX</button>
+    <button class="filter-btn" onclick="filterReports('Płatności',this)">💳 Płatności</button>
+    <button class="filter-btn" onclick="filterReports('Fiszki',this)">📚 Fiszki</button>
+    <button class="filter-btn" onclick="filterReports('Błąd techniczny',this)">⚙️ Błąd techniczny</button>
+    <button class="filter-btn" onclick="filterReports('Inne',this)">💬 Inne</button>
+  </div>
+
+  <div id="reports-list"></div>
+
+  <!-- AI analiza -->
+  <div class="ai-box" id="ai-box" style="display:none">
+    <h3>🤖 Raport AI</h3>
+    <div id="ai-content"></div>
+  </div>
+</div>
+
+<!-- Modal szczegółów -->
+<div class="modal" id="report-modal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNudGxna2hrdHNjZXp4cHhyY2hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2MDUxNDcsImV4cCI6MjA2MjE4MTE0N30.Z2yYd4XHLS0d3nUFLFOXUXNgm1CinDLFzb0yiTExCFU';
+const ADMIN_PASS = 'eyelingo_admin_2025';
+const GEMINI_KEY = 'WPISZ_SWOJ_KLUCZ_GEMINI';
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let _allReports = [];
+let _isAuthed = false;
+
+function checkPass(){
+  const pass = document.getElementById('admin-pass').value;
+  if(pass === ADMIN_PASS){
+    _isAuthed = true;
+    document.getElementById('login-wrap').style.display = 'none';
+    document.getElementById('admin-wrap').style.display = 'block';
+    loadReports();
+  } else {
+    document.getElementById('pass-err').textContent = 'Nieprawidłowe hasło';
+  }
+}
+
+function logout(){
+  _isAuthed = false;
+  document.getElementById('login-wrap').style.display = 'flex';
+  document.getElementById('admin-wrap').style.display = 'none';
+  document.getElementById('admin-pass').value = '';
+}
+
+async function loadReports(){
+  const{data,error}=await db.from('bug_reports').select('*').order('created_at',{ascending:false});
+  if(error){alert('Błąd: '+error.message);return;}
+  _allReports = data||[];
+  renderStats();
+  renderReports(_allReports);
+}
+
+function renderStats(){
+  const total = _allReports.length;
+  const unanalyzed = _allReports.filter(r=>!r.analyzed).length;
+  const cats = {};
+  _allReports.forEach(r=>{cats[r.category]=(cats[r.category]||0)+1});
+  const topCat = Object.entries(cats).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card"><div class="stat-num">${total}</div><div class="stat-label">Wszystkich zgłoszeń</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:#c33">${unanalyzed}</div><div class="stat-label">Do przeanalizowania</div></div>
+    <div class="stat-card"><div class="stat-num">${topCat?topCat[1]:0}</div><div class="stat-label">Najczęstsza: ${topCat?topCat[0]:'—'}</div></div>
+  `;
+}
+
+function catClass(cat){
+  if(cat==='UI/UX') return 'UI';
+  if(cat==='Płatności') return 'Pay';
+  if(cat==='Fiszki') return 'Fiszki';
+  if(cat==='Błąd techniczny') return 'Tech';
+  return '';
+}
+
+function renderReports(reports){
+  const el = document.getElementById('reports-list');
+  if(!reports.length){el.innerHTML='<p style="color:var(--dim);text-align:center;padding:40px">Brak zgłoszeń.</p>';return;}
+  el.innerHTML = reports.map(r=>`
+    <div class="report-card" onclick="openReport(${r.id})">
+      <div class="report-head">
+        <span class="cat-badge ${catClass(r.category)}">${r.category}</span>
+        <a class="email-link" href="mailto:${r.email}" onclick="event.stopPropagation()">${r.email}</a>
+        <span class="date-tag">${new Date(r.created_at).toLocaleDateString('pl-PL')}</span>
+        ${r.analyzed?'<span class="analyzed-tag">✓ Przeanalizowane</span>':''}
+      </div>
+      <div class="report-desc">${r.description.substring(0,150)}${r.description.length>150?'...':''}</div>
+    </div>
+  `).join('');
+}
+
+function filterReports(cat, btn){
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const filtered = cat==='all' ? _allReports : _allReports.filter(r=>r.category===cat);
+  renderReports(filtered);
+}
+
+function openReport(id){
+  const r = _allReports.find(x=>x.id===id);
+  if(!r) return;
+  document.getElementById('modal-content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <span class="cat-badge ${catClass(r.category)}">${r.category}</span>
+      <a class="email-link" href="mailto:${r.email}">${r.email}</a>
+      <span style="font-size:12px;color:var(--dim);margin-left:auto">${new Date(r.created_at).toLocaleString('pl-PL')}</span>
+    </div>
+    <p style="font-size:15px;line-height:1.7;color:var(--navy);margin-bottom:16px">${r.description}</p>
+    ${r.screenshot_url?`<img src="${r.screenshot_url}" style="max-width:100%;border-radius:8px;margin-top:8px">`:''}
+  `;
+  document.getElementById('report-modal').classList.add('open');
+}
+
+function closeModal(){document.getElementById('report-modal').classList.remove('open')}
+
+async function analyzeAI(){
+  const unanalyzed = _allReports.filter(r=>!r.analyzed).limit?_allReports.filter(r=>!r.analyzed).slice(0,30):_allReports.filter(r=>!r.analyzed).slice(0,30);
+  if(!unanalyzed.length){alert('Brak nowych zgłoszeń do analizy.');return;}
+  const btn = event.target; btn.disabled=true; btn.textContent='Analizuję...';
+  
+  const prompt = `Jesteś ekspertem UX analizującym zgłoszenia błędów aplikacji Eyelingo (desktopowa aplikacja do nauki języków + strona www).
+
+Przeanalizuj ${unanalyzed.length} zgłoszeń i stwórz raport w języku polskim:
+
+**Format raportu:**
+1. **Podsumowanie** (2-3 zdania ogólnie)
+2. **Krytyczne problemy** (do natychmiastowej naprawy)
+3. **Problemy pogrupowane** (podobne razem z liczbą zgłoszeń)
+4. **Rekomendacje priorytetowe** (lista z priorytetami: Wysoki/Średni/Niski)
+5. **Użytkownicy do kontaktu** (email + ich problem)
+
+Zgłoszenia:
+${unanalyzed.map((r,i)=>`${i+1}. [${r.category}] ${r.email} (${new Date(r.created_at).toLocaleDateString('pl-PL')}):
+${r.description}`).join('\n\n')}`;
+
+  try{
+    if(GEMINI_KEY==='WPISZ_SWOJ_KLUCZ_GEMINI'){
+      document.getElementById('ai-box').style.display='block';
+      document.getElementById('ai-content').innerHTML='<p style="color:#c33">Wpisz klucz Gemini API w pliku admin.html (zmienna GEMINI_KEY).</p>';
+      btn.disabled=false; btn.textContent='🤖 Analizuj AI'; return;
+    }
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+    });
+    const d = await res.json();
+    const text = d.candidates?.[0]?.content?.parts?.[0]?.text||'Brak odpowiedzi';
+    // Markdown → HTML (prosty)
+    const html = text
+      .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+      .replace(/^### (.*)/gm,'<h4 style="margin:16px 0 8px;color:var(--navy)">$1</h4>')
+      .replace(/^## (.*)/gm,'<h3 style="margin:20px 0 10px;color:var(--navy);font-family:Syne">$1</h3>')
+      .replace(/^# (.*)/gm,'<h2 style="margin:24px 0 12px;color:var(--navy);font-family:Syne">$1</h2>')
+      .replace(/^- (.*)/gm,'<li style="margin:4px 0;color:var(--navy)">$1</li>')
+      .replace(/\n/g,'<br>');
+    document.getElementById('ai-box').style.display='block';
+    document.getElementById('ai-content').innerHTML=html;
+    // Oznacz jako przeanalizowane
+    await db.from('bug_reports').update({analyzed:true}).in('id',unanalyzed.map(r=>r.id));
+    _allReports.forEach(r=>{if(unanalyzed.find(u=>u.id===r.id)) r.analyzed=true;});
+    renderStats();
+  }catch(e){alert('Błąd AI: '+e.message);}
+  btn.disabled=false; btn.textContent='🤖 Analizuj AI';
+}
+</script>
+</body>
+</html>
