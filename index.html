@@ -943,33 +943,50 @@ let _likedSets = new Set();
 let _addedSets = new Set();
 
 async function loadCommunity(){
-  const{data:{session}}=await db.auth.getSession();
-  _matMyUid=session?.user?.id||null;
+  document.getElementById('mat-grid').innerHTML='<div class="mat-empty">Ładowanie...</div>';
+  try{
+    const{data:{session}}=await db.auth.getSession();
+    _matMyUid=session?.user?.id||null;
 
-  const{data,error}=await db.from('user_sets_with_profiles')
-    .select('id,name,likes_count,user_id,created_at,username,user_set_cards(id,word,translation)')
-    .eq('is_public',true)
-    .order('likes_count',{ascending:false})
-    .limit(60);
-  if(error){showMatError(error.message);return;}
+    // Pobierz publiczne zestawy
+    const{data,error}=await db.from('user_sets')
+      .select('id,name,likes_count,user_id,created_at,is_public,user_set_cards(id,word,translation)')
+      .eq('is_public',true)
+      .order('likes_count',{ascending:false})
+      .limit(60);
+    if(error)throw error;
 
-  // Pobierz lajki użytkownika
-  _likedSets=new Set();
-  if(_matMyUid){
-    const{data:likes}=await db.from('set_likes')
-      .select('set_id')
-      .eq('user_id',_matMyUid);
-    if(likes) likes.forEach(l=>_likedSets.add(l.set_id));
+    // Pobierz usernames osobno
+    const userIds=[...new Set((data||[]).map(s=>s.user_id))];
+    let usernameMap={};
+    if(userIds.length){
+      const{data:profiles}=await db.from('profiles')
+        .select('user_id,username')
+        .in('user_id',userIds);
+      (profiles||[]).forEach(p=>usernameMap[p.user_id]=p.username);
+    }
+
+    // Pobierz lajki użytkownika
+    _likedSets=new Set();
+    if(_matMyUid){
+      const{data:likes}=await db.from('set_likes')
+        .select('set_id')
+        .eq('user_id',_matMyUid);
+      if(likes) likes.forEach(l=>_likedSets.add(l.set_id));
+    }
+
+    const now=Date.now();
+    _matSets=(data||[]).map(s=>{
+      const age=(now-new Date(s.created_at).getTime())/(1000*3600);
+      const hot=(s.likes_count||0)/Math.pow(age+2,1.5);
+      return{...s,_hot:hot,username:usernameMap[s.user_id]||'Nieznany'};
+    }).sort((a,b)=>b._hot-a._hot);
+
+    renderMat();
+  }catch(e){
+    showMatError('Błąd: '+e.message);
+    console.error('[loadCommunity]',e);
   }
-
-  const now=Date.now();
-  _matSets=(data||[]).map(s=>{
-    const age=(now-new Date(s.created_at).getTime())/(1000*3600);
-    const hot=(s.likes_count||0)/Math.pow(age+2,1.5);
-    return{...s,_hot:hot};
-  }).sort((a,b)=>b._hot-a._hot);
-
-  renderMat();
 }
 
 async function loadMySets(){
@@ -1414,8 +1431,8 @@ async function loadRanking(){
   }
   // Najlepsze zestawy
   try{
-    const{data:sets}=await db.from('user_sets_with_profiles')
-      .select('id,name,likes_count,username')
+    const{data:sets}=await db.from('user_sets')
+      .select('id,name,likes_count,user_id')
       .eq('is_public',true)
       .order('likes_count',{ascending:false})
       .limit(5);
