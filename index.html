@@ -2029,8 +2029,8 @@ async function loadYouTubeVideo(word,lang){
       .select('video_id,video_title').eq('word',word).eq('language',lang).single();
     if(cached?.video_id){renderVideo(cached.video_id,cached.video_title);return;}
   }catch(e){}
-  if(YOUTUBE_KEY==='WPISZ_KLUCZ_YOUTUBE'){
-    console.warn('[YouTube] Brak klucza YouTube API');
+  if(!YOUTUBE_KEY || YOUTUBE_KEY.trim()==='WPISZ_KLUCZ_YOUTUBE' || YOUTUBE_KEY.length < 10){
+    console.warn('[YouTube] Brak klucza YouTube API - key:', YOUTUBE_KEY ? YOUTUBE_KEY.substring(0,10)+'...' : 'empty');
     document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Brak klucza YouTube</div></div>';
     return;
   }
@@ -2056,6 +2056,48 @@ async function loadYouTubeVideo(word,lang){
   }
 }
 
+
+function renderSentence(word, sentence, translation){
+  var html = sentence.replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--orange);font-weight:800">$1</strong>');
+  document.getElementById('sc-sentence').innerHTML = html;
+  document.getElementById('sc-sentence-tr').textContent = translation;
+  document.getElementById('sc-audio').style.display = 'block';
+  window._currentSentence = sentence.replace(/\*\*/g, '');
+  window._currentLang = {en:'en-US', es:'es-ES', jp:'ja-JP', nl:'nl-NL'}[_strefaLang] || 'en-US';
+  var reportEl = document.getElementById('sc-report');
+  if(reportEl){
+    reportEl.style.display = 'block';
+    reportEl.onclick = function(){ reportTranslation(word, sentence, translation); };
+  }
+}
+
+async function reportTranslation(word, sentence, translation){
+  var session = (await db.auth.getSession()).data.session;
+  if(!session){showToast('Zaloguj się aby zgłosić','error');return;}
+  try{
+    await db.from('bug_reports').insert({
+      user_id:session.user.id, email:session.user.email,
+      category:'Fiszki',
+      description:'Strefa Nauki - błędne tłumaczenie:\nSłowo: '+word+'\nZdanie: '+sentence+'\nTłumaczenie: '+translation
+    });
+    showToast('✅ Zgłoszenie wysłane!','success');
+  }catch(e){showToast('Błąd: '+e.message,'error');}
+}
+
+function playAudio(){
+  if(!window._currentSentence) return;
+  speechSynthesis.cancel();
+  var utt = new SpeechSynthesisUtterance(window._currentSentence);
+  utt.lang = window._currentLang || 'en-US';
+  utt.rate = 0.82;
+  utt.pitch = 1.0;
+  var voices = speechSynthesis.getVoices();
+  var langCode = (window._currentLang || 'en').split('-')[0];
+  var google = voices.find(function(v){return v.lang.startsWith(langCode) && v.name.includes('Google');});
+  var any = voices.find(function(v){return v.lang.startsWith(langCode);});
+  utt.voice = google || any || null;
+  speechSynthesis.speak(utt);
+}
 
 function renderVideo(videoId,title){
   document.getElementById('sc-video-wrap').innerHTML=`
