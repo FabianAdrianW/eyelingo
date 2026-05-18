@@ -1990,12 +1990,36 @@ async function loadContextSentence(word, translation, lang, level){
   }catch(e){}
   const langName={en:'English',es:'Spanish',jp:'Japanese',nl:'Dutch'}[lang]||'English';
   const levelDesc={A1:'very simple beginner A1',A2:'elementary A2',B1:'intermediate B1',B2:'upper-intermediate B2',C1:'advanced C1',C2:'proficient C2'}[level]||'simple';
-  if(GEMINI_KEY_STREFA==='WPISZ_KLUCZ_GEMINI'){
-    renderSentence(word,`She put the **${word}** on the table and smiled.`,`Położyła "${translation}" na stole i uśmiechnęła się.`);
+  if(!GEMINI_KEY_STREFA || GEMINI_KEY_STREFA==='WPISZ_KLUCZ_GEMINI'){
+    // Fallback kontekstowy - zdanie dopasowane do słowa
+    var fallbacks = {
+      A1: [`"**${word}**" — `, `to znaczy: "${translation}". Przykład: `],
+      A2: [`She said **${word}** clearly.`, `Powiedziała "${translation}" wyraźnie.`],
+    };
+    renderSentence(word, `She said **${word}** and everyone understood.`, `Powiedziała "${translation}" i wszyscy zrozumieli.`);
     return;
   }
   try{
-    const prompt=`You are a ${langName} language teacher. Write ONE natural, realistic ${levelDesc} ${langName} sentence using the word "${word}" (meaning: "${translation}") in real-life context. Mark the word with **asterisks**. Return ONLY JSON: {"sentence":"...","translation":"polskie tłumaczenie"}`;
+    const prompt=`You are a ${langName} language teacher creating example sentences.
+
+WORD: "${word}"
+POLISH MEANING: "${translation}"
+CEFR LEVEL: ${level} (${levelDesc})
+
+Write ONE natural, realistic ${langName} sentence that:
+- Matches ${level} vocabulary and grammar complexity
+- Uses "${word}" in a real, everyday situation
+- Is NOT generic (avoid "I use/see/have this word")
+- For A1/A2: very simple, short, about daily life (greetings, food, family, school)
+- For B1/B2: more complex situations (travel, work, relationships)
+- For C1/C2: nuanced, idiomatic usage
+
+Mark "${word}" with double asterisks: **${word}**
+
+Return ONLY this JSON (no markdown):
+{"sentence":"natural ${langName} sentence","translation":"naturalne polskie tłumaczenie całego zdania"}
+
+Example for A1 "apple": {"sentence":"She ate a red **apple** for breakfast.","translation":"Ona zjadła czerwone jabłko na śniadanie."}`;
     const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY_STREFA}`,{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
@@ -2017,9 +2041,14 @@ async function loadContextSentence(word, translation, lang, level){
   }catch(e){
     console.error('[Gemini error]',e.message);
     // Fallback - naturalne zdanie
-    const fallback=`She found the **${word}** at home and used it right away.`;
-    const fallbackTr=`Znalazła "${translation}" w domu i od razu jej użyła.`;
-    renderSentence(word,fallback,fallbackTr);
+    // Fallback gdy Gemini nie zadziałał — proste naturalne zdanie
+    var fb = `She said **${word}** and smiled.`;
+    var fbTr = `Powiedziała "${translation}" i uśmiechnęła się.`;
+    if(level==='A1'||level==='A2'){
+      fb = `She said **${word}**.`;
+      fbTr = `Powiedziała "${translation}".`;
+    }
+    renderSentence(word,fb,fbTr);
   }
 }
 
