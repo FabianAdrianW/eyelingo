@@ -1952,7 +1952,9 @@ async function startStrefaCards(lang,level,catCode,catLabel){
   // Pobierz słówka
   const langId=['en','es','jp','nl'].indexOf(lang)+1;
   const levelId=['A1','A2','B1','B2','C1','C2'].indexOf(level)+1;
-  const{data:cats}=await db.from('categories').select('id').eq('code',catCode).single();
+  const{data:catsArr}=await db.from('categories').select('id').eq('code',catCode).limit(1);
+  const cats = catsArr?.[0];
+  if(!cats){return;}
   const{data:words}=await db.from('flashcards')
     .select('word,translation')
     .eq('language_id',langId).eq('level_id',levelId).eq('category_id',cats.id)
@@ -2106,22 +2108,26 @@ function renderVideo(videoId, title){
     </div>`;
 }
 
-function renderYouglish(word, lang){
-  const langMap = {en:'english',es:'spanish',jp:'japanese',nl:'dutch'};
-  const l = langMap[lang] || 'english';
-  const encoded = encodeURIComponent(word);
-  document.getElementById('sc-video-wrap').innerHTML=`
-    <div style="width:100%;height:100%;display:flex;flex-direction:column">
-      <div style="font-size:11px;color:var(--dim2);margin-bottom:6px">
-        🎬 Słowo "<strong>${word}</strong>" w filmach:
-      </div>
-      <iframe width="100%" height="200"
-        src="https://youglish.com/pronounce/${encoded}/${l}/us?width=auto&height=200&autoplay=1"
-        frameborder="0" allowfullscreen style="border-radius:12px"></iframe>
-      <div style="font-size:11px;color:var(--dim2);margin-top:4px;text-align:center">
-        Powered by <a href="https://youglish.com" target="_blank" style="color:var(--orange)">YouGlish</a>
-      </div>
-    </div>`;
+async function renderYouglish(word, lang){
+  // Szukaj na YouTube przez Edge Function
+  try{
+    const sess = (await db.auth.getSession()).data.session;
+    const tok = sess?.access_token || '';
+    const res = await fetch(SEARCH_YOUTUBE_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+      body:JSON.stringify({word,lang})
+    });
+    const d = await res.json();
+    if(d.found && d.video_id){
+      try{await db.from('youtube_cache').upsert({word,language:lang,video_id:d.video_id,video_title:d.video_title});}catch(e){}
+      renderVideo(d.video_id, d.video_title);
+    } else {
+      document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Brak wideo dla tego słowa</div></div>';
+    }
+  }catch(e){
+    document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div style="font-size:13px;color:var(--dim2)">Błąd wideo</div></div>';
+  }
 }
 
 function strefaNext(){
