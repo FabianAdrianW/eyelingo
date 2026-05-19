@@ -327,6 +327,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
     <a href="#languages" onclick="return navSection('#languages')">Języki</a>
     <a href="#" onclick="return showPage('community')" id="nav-community">Materiały</a>
     <a href="#" onclick="return showPage('strefa')" id="nav-strefa">Strefa Nauki</a>
+    <a href="#" onclick="return showPage('odkryj')" id="nav-odkryj">Odkryj</a>
     <a href="#" onclick="return showPage('ranking')" id="nav-ranking">Ranking</a>
     <a href="#" onclick="return showPage('tofix')" id="nav-tofix">Zgłoszenia</a>
   </div>
@@ -928,6 +929,7 @@ function showPage(name){
   if(name==='ranking') loadRanking();
   if(name==='tofix') initToFixPage();
   if(name==='strefa') initStrefa();
+  if(name==='odkryj') initOdkryj();
   return false;
 }
 
@@ -1829,6 +1831,8 @@ async function initToFixPage(){
 <script>
 // Edge Function URLs - klucze są bezpiecznie w Supabase
 const GENERATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-sentence';
+const GENERATE_ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
+const TRANSLATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-sentence';
 const SEARCH_YOUTUBE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
 
 const LANG_LABELS = {en:'Angielski',es:'Hiszpański',jp:'Japoński',nl:'Niderlandzki'};
@@ -1981,7 +1985,7 @@ async function loadContextSentence(word, translation, lang, level){
   try{
     const{data:cached}=await db.from('context_sentences')
       .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).limit(1);
-    var c=Array.isArray(cached)?cached[0]:cached; if(c?.sentence){renderSentence(word,c.sentence,c.translation);return;}
+    var c=Array.isArray(cached)?cached[0]:cached; if(c?.sentence){renderSentence(word,c.sentence,c.translation,c.search_word||word);return;}
   }catch(e){}
   const langName={en:'English',es:'Spanish',jp:'Japanese',nl:'Dutch'}[lang]||'English';
   const levelDesc={A1:'very simple beginner A1',A2:'elementary A2',B1:'intermediate B1',B2:'upper-intermediate B2',C1:'advanced C1',C2:'proficient C2'}[level]||'simple';
@@ -2018,7 +2022,7 @@ Example for A1 "apple": {"sentence":"She ate a red **apple** for breakfast.","tr
     const parsed=await res.json();
     if(parsed.sentence&&parsed.translation){
       try{await db.from('context_sentences').upsert({word,language:lang,level,sentence:parsed.sentence,translation:parsed.translation});}catch(e){}
-      renderSentence(word,parsed.sentence,parsed.translation);
+      renderSentence(word,parsed.sentence,parsed.translation,parsed.search_word||word);
     } else throw new Error('Missing fields');
   }catch(e){
     console.error('[Gemini error]',e.message);
@@ -2040,24 +2044,25 @@ async function loadYouTubeVideo(word,lang){
       .select('video_id,video_title').eq('word',word).eq('language',lang).limit(1);
     var cv=Array.isArray(cached)?cached[0]:cached; if(cv?.video_id){renderVideo(cv.video_id,cv.video_title);return;}
   }catch(e){}
-  
-  // Youglish - pokazuje słowo w kontekście w filmach, bez API
-  renderYouglish(word, lang);
+  // Video zostanie załadowane po renderSentence z oczyszczonym słowem
 }
 
 
-function renderSentence(word, sentence, translation){
+function renderSentence(word, sentence, translation, searchWord){
   var html = sentence.replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--orange);font-weight:800">$1</strong>');
   document.getElementById('sc-sentence').innerHTML = html;
   document.getElementById('sc-sentence-tr').textContent = translation;
   document.getElementById('sc-audio').style.display = 'block';
   window._currentSentence = sentence.replace(/\*\*/g, '');
   window._currentLang = {en:'en-US', es:'es-ES', jp:'ja-JP', nl:'nl-NL'}[_strefaLang] || 'en-US';
+  window._searchWord = searchWord || word;
   var reportEl = document.getElementById('sc-report');
   if(reportEl){
     reportEl.style.display = 'block';
     reportEl.onclick = function(){ reportTranslation(word, sentence, translation); };
   }
+  // Aktualizuj link Playphrase z oczyszczonym słowem
+  renderYouglish(window._searchWord, _strefaLang);
 }
 
 async function reportTranslation(word, sentence, translation){
@@ -2127,6 +2132,385 @@ function strefaBack(){
   if(_strefaLevel) showStrefaCats(_strefaLang,_strefaLevel);
   else showStrefaLangs();
   speechSynthesis.cancel();
+}
+</script>
+
+<!-- ═══ ODKRYJ PAGE ═══ -->
+<div id="page-odkryj" class="page" style="min-height:100vh;padding:140px 20px 80px">
+  <div style="max-width:960px;margin:0 auto">
+    <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Odkryj</h2>
+    <p style="color:var(--dim2);margin-bottom:32px">Artykuły, podcasty i filmy dopasowane do Twojego poziomu</p>
+
+    <!-- Wyszukiwarka -->
+    <div class="odkryj-search-wrap">
+      <div class="odkryj-search-row">
+        <input id="odkryj-input" class="fi odkryj-input" placeholder="O czym chcesz się uczyć? np. sport, gotowanie, technologia..."
+          onkeydown="if(event.key==='Enter')startOdkryj()">
+        <select id="odkryj-lang" class="fi" style="width:160px;flex-shrink:0">
+          <option value="en">🇬🇧 Angielski</option>
+          <option value="es">🇪🇸 Hiszpański</option>
+          <option value="jp">🇯🇵 Japoński</option>
+          <option value="nl">🇳🇱 Niderlandzki</option>
+        </select>
+        <select id="odkryj-level" class="fi" style="width:130px;flex-shrink:0">
+          <option value="A1">A1</option>
+          <option value="A2">A2</option>
+          <option value="B1" selected>B1</option>
+          <option value="B2">B2</option>
+          <option value="C1">C1</option>
+          <option value="C2">C2</option>
+        </select>
+        <button class="btn btn-orange" onclick="startOdkryj()" style="flex-shrink:0">🔍 Szukaj</button>
+      </div>
+      <!-- Zakładki -->
+      <div class="odkryj-tabs">
+        <button class="odkryj-tab active" data-tab="article" onclick="switchOdkryjTab('article',this)">📖 Czytanka</button>
+        <button class="odkryj-tab" data-tab="video" onclick="switchOdkryjTab('video',this)">🎬 Filmy</button>
+        <button class="odkryj-tab" data-tab="podcast" onclick="switchOdkryjTab('podcast',this)">🎙️ Podcasty</button>
+      </div>
+    </div>
+
+    <!-- Wyniki -->
+    <div id="odkryj-results">
+      <div class="odkryj-empty">
+        <div style="font-size:48px;margin-bottom:16px">🔍</div>
+        <div style="font-size:16px;color:var(--dim2)">Wpisz temat i wybierz język aby zacząć</div>
+      </div>
+    </div>
+
+    <!-- Modal artykułu z hover translation -->
+    <div id="article-modal" class="modal-overlay" onclick="if(event.target===this)closeArticleModal()" style="display:none">
+      <div class="modal-box" style="max-width:720px;width:100%;max-height:85vh;overflow-y:auto">
+        <button class="modal-close" onclick="closeArticleModal()">✕</button>
+        <div id="article-modal-content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Odkryj */
+.odkryj-search-wrap{background:#fff;border:1px solid var(--border);border-radius:20px;padding:24px;margin-bottom:28px}
+.odkryj-search-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.odkryj-input{flex:1;min-width:200px}
+.odkryj-tabs{display:flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:12px;width:fit-content}
+.odkryj-tab{background:transparent;border:none;padding:8px 18px;border-radius:8px;font-weight:600;font-size:14px;color:var(--dim2);cursor:pointer;transition:.2s}
+.odkryj-tab.active{background:#fff;color:var(--navy);box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.odkryj-empty{text-align:center;padding:60px 20px}
+.odkryj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.odkryj-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;cursor:pointer;transition:.2s}
+.odkryj-card:hover{border-color:var(--orange);box-shadow:0 4px 20px rgba(201,106,42,.12);transform:translateY(-2px)}
+.odkryj-card-title{font-weight:700;font-size:15px;color:var(--navy);margin-bottom:6px}
+.odkryj-card-meta{font-size:12px;color:var(--dim2);margin-bottom:10px}
+.odkryj-card-preview{font-size:13px;color:var(--dim);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.odkryj-card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+/* Article reader */
+.article-reader{font-size:17px;line-height:1.85;color:var(--navy)}
+.article-reader .sent{cursor:pointer;transition:.1s;border-radius:3px;padding:1px 2px}
+.article-reader .sent:hover{background:rgba(201,106,42,.12)}
+.article-reader .sent.translated{background:rgba(201,106,42,.08);border-bottom:2px solid var(--orange)}
+.tooltip-tr{position:fixed;background:var(--navy);color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;max-width:320px;z-index:1000;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.3);line-height:1.5;display:none}
+.article-sources{margin-top:24px;padding-top:20px;border-top:1px solid var(--border)}
+.source-link{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:10px;text-decoration:none;color:var(--navy);transition:.2s;margin-bottom:8px}
+.source-link:hover{border-color:var(--orange);background:rgba(201,106,42,.04)}
+</style>
+
+<div class="tooltip-tr" id="hover-tooltip"></div>
+
+<script>
+const ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
+const TRANSLATE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-sentence';
+
+let _odkryjTab = 'article';
+let _odkryjTopic = '';
+let _odkryjLang = 'en';
+let _odkryjLevel = 'B1';
+let _translationCache = {};
+let _translateTimeout = null;
+
+function initOdkryj(){
+  // Jeśli użytkownik ma poziom z profilu — ustaw domyślnie
+  const sel = document.getElementById('odkryj-level');
+  if(sel && _strefaLevels?.length){
+    const first = _strefaLevels[0];
+    const lv = first?.split('_')[1];
+    if(lv) sel.value = lv;
+  }
+}
+
+function switchOdkryjTab(tab, btn){
+  _odkryjTab = tab;
+  document.querySelectorAll('.odkryj-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  if(_odkryjTopic) startOdkryj();
+}
+
+async function startOdkryj(){
+  const topic = document.getElementById('odkryj-input').value.trim();
+  if(!topic){document.getElementById('odkryj-input').focus();return;}
+  _odkryjTopic = topic;
+  _odkryjLang = document.getElementById('odkryj-lang').value;
+  _odkryjLevel = document.getElementById('odkryj-level').value;
+
+  const res = document.getElementById('odkryj-results');
+  res.innerHTML = '<div class="odkryj-empty"><div style="font-size:32px;margin-bottom:12px">⏳</div><div style="color:var(--dim2)">Generuję treści...</div></div>';
+
+  if(_odkryjTab === 'article') await loadOdkryjArticle(topic);
+  else if(_odkryjTab === 'video') await loadOdkryjVideos(topic);
+  else if(_odkryjTab === 'podcast') await loadOdkryjPodcasts(topic);
+}
+
+async function loadOdkryjArticle(topic){
+  const res = document.getElementById('odkryj-results');
+  try{
+    // Sprawdź cache
+    const{data:cached}=await db.from('article_cache')
+      .select('title,content').eq('topic',topic.toLowerCase()).eq('language',_odkryjLang).eq('level',_odkryjLevel).limit(1);
+    const c = cached?.[0];
+    if(c){renderArticleCard(c.title, c.content, topic);return;}
+
+    // Generuj przez Edge Function
+    const sess=(await db.auth.getSession()).data.session;
+    const r=await fetch(ARTICLE_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?.access_token||''),'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+      body:JSON.stringify({topic,lang:_odkryjLang,level:_odkryjLevel})
+    });
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    // Zapisz cache
+    try{await db.from('article_cache').upsert({topic:topic.toLowerCase(),language:_odkryjLang,level:_odkryjLevel,title:d.title,content:d.content});}catch(e){}
+    renderArticleCard(d.title, d.content, topic);
+  }catch(e){
+    res.innerHTML=`<div class="odkryj-empty"><div style="font-size:32px;margin-bottom:12px">❌</div><div style="color:#c33">Błąd: ${e.message}</div></div>`;
+  }
+}
+
+function renderArticleCard(title, content, topic){
+  const langLabels={en:'Angielski',es:'Hiszpański',jp:'Japoński',nl:'Niderlandzki'};
+  const sources = getSourceLinks(topic, _odkryjLang, _odkryjLevel);
+  document.getElementById('odkryj-results').innerHTML=`
+    <div class="odkryj-card" onclick="openArticleModal('${encodeURIComponent(title)}','${encodeURIComponent(content)}')">
+      <div class="odkryj-card-title">📖 ${title}</div>
+      <div class="odkryj-card-meta">${langLabels[_odkryjLang]||_odkryjLang} · Poziom ${_odkryjLevel} · Wygenerowane przez AI</div>
+      <div class="odkryj-card-preview">${content.substring(0,150)}...</div>
+      <div class="odkryj-card-foot">
+        <span style="font-size:12px;color:var(--dim2)">Kliknij aby czytać z tłumaczeniem</span>
+        <span class="btn btn-orange" style="font-size:13px;padding:6px 14px">Czytaj →</span>
+      </div>
+    </div>
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📚 Prawdziwe źródła o tym temacie</div>
+      ${sources}
+    </div>`;
+}
+
+function getSourceLinks(topic, lang, level){
+  const enc = encodeURIComponent(topic);
+  const sources = {
+    en:[
+      {name:'BBC Learning English',url:`https://www.bbc.co.uk/learningenglish/english/features/6-minute-english`,icon:'🇬🇧'},
+      {name:'Wikipedia Simple English',url:`https://simple.wikipedia.org/wiki/Special:Search?search=${enc}`,icon:'📚'},
+      {name:'VOA Learning English',url:`https://learningenglish.voanews.com/search?query=${enc}`,icon:'🎙️'},
+    ],
+    es:[
+      {name:'Deutsche Welle Español',url:`https://www.dw.com/es/search/?languageCode=es&item=${enc}`,icon:'📻'},
+      {name:'Wikipedia Español',url:`https://es.wikipedia.org/wiki/Special:Search?search=${enc}`,icon:'📚'},
+      {name:'BBC Mundo',url:`https://www.bbc.com/mundo/topics`,icon:'🌍'},
+    ],
+    jp:[
+      {name:'NHK Web Easy',url:`https://www3.nhk.or.jp/news/easy/`,icon:'🇯🇵'},
+      {name:'Wikipedia日本語',url:`https://ja.wikipedia.org/wiki/Special:Search?search=${enc}`,icon:'📚'},
+    ],
+    nl:[
+      {name:'Wikipedia Nederlands',url:`https://nl.wikipedia.org/wiki/Special:Search?search=${enc}`,icon:'📚'},
+      {name:'NOS Nieuws',url:`https://nos.nl/`,icon:'📺'},
+    ],
+  };
+  return (sources[lang]||sources.en).map(s=>`
+    <a href="${s.url}" target="_blank" rel="noopener" class="source-link">
+      <span style="font-size:20px">${s.icon}</span>
+      <div>
+        <div style="font-weight:600;font-size:14px">${s.name}</div>
+        <div style="font-size:12px;color:var(--dim2)">${s.url.substring(0,50)}...</div>
+      </div>
+      <span style="margin-left:auto;color:var(--orange);font-size:12px">Otwórz →</span>
+    </a>`).join('');
+}
+
+function openArticleModal(titleEnc, contentEnc){
+  const title = decodeURIComponent(titleEnc);
+  const content = decodeURIComponent(contentEnc);
+  const paragraphs = content.split('
+
+').filter(p=>p.trim());
+  
+  // Podziel na zdania i dodaj hover
+  const rendered = paragraphs.map(p=>{
+    // Podziel na zdania (uproszczone dla wszystkich języków)
+    const sentences = p.match(/[^.!?。！？]+[.!?。！？]+/g) || [p];
+    return '<p style="margin-bottom:16px">' + sentences.map((s,i)=>
+      `<span class="sent" data-sent="${encodeURIComponent(s.trim())}" onmouseenter="showTranslation(this,event)" onmouseleave="hideTranslation()">${s}</span>`
+    ).join('') + '</p>';
+  }).join('');
+
+  document.getElementById('article-modal-content').innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+      <h2 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--navy);margin:0">${title}</h2>
+      <button class="btn btn-orange" style="font-size:13px" onclick="translateAll()">🌐 Przetłumacz całość</button>
+    </div>
+    <div style="font-size:12px;color:var(--dim2);margin-bottom:20px">💡 Najedź kursorem na zdanie aby je przetłumaczyć</div>
+    <div class="article-reader" id="article-reader">${rendered}</div>
+    <div id="article-full-translation" style="display:none;margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:700;color:var(--dim2);margin-bottom:12px">🌐 Pełne tłumaczenie</div>
+      <div id="article-full-tr-content" style="font-size:15px;color:var(--dim);line-height:1.8"></div>
+    </div>`;
+  document.getElementById('article-modal').style.display='flex';
+}
+
+function closeArticleModal(){
+  document.getElementById('article-modal').style.display='none';
+  hideTranslation();
+}
+
+async function showTranslation(el, event){
+  const sent = decodeURIComponent(el.dataset.sent);
+  const tooltip = document.getElementById('hover-tooltip');
+  tooltip.textContent = '⏳ Tłumaczę...';
+  tooltip.style.display = 'block';
+  positionTooltip(event);
+
+  if(_translationCache[sent]){
+    tooltip.textContent = _translationCache[sent];
+    return;
+  }
+
+  clearTimeout(_translateTimeout);
+  _translateTimeout = setTimeout(async()=>{
+    try{
+      // Sprawdź cache Supabase
+      const{data:cached}=await db.from('translation_cache')
+        .select('translation').eq('sentence',sent).eq('language',_odkryjLang).limit(1);
+      if(cached?.[0]?.translation){
+        _translationCache[sent]=cached[0].translation;
+        tooltip.textContent=cached[0].translation;
+        return;
+      }
+      // Tłumacz przez Edge Function
+      const sess=(await db.auth.getSession()).data.session;
+      const r=await fetch(TRANSLATE_URL,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?.access_token||''),'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+        body:JSON.stringify({sentence:sent,lang:_odkryjLang})
+      });
+      const d=await r.json();
+      const tr=d.translation||sent;
+      _translationCache[sent]=tr;
+      tooltip.textContent=tr;
+      // Zapisz cache
+      try{await db.from('translation_cache').upsert({sentence:sent,language:_odkryjLang,translation:tr});}catch(e){}
+    }catch(e){tooltip.textContent='Błąd tłumaczenia';}
+  }, 400);
+}
+
+function hideTranslation(){
+  document.getElementById('hover-tooltip').style.display='none';
+  clearTimeout(_translateTimeout);
+}
+
+function positionTooltip(event){
+  const tooltip = document.getElementById('hover-tooltip');
+  const x = Math.min(event.clientX + 10, window.innerWidth - 340);
+  const y = event.clientY - 50 < 0 ? event.clientY + 20 : event.clientY - 50;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+
+async function translateAll(){
+  const el = document.getElementById('article-full-translation');
+  const content = document.getElementById('article-full-tr-content');
+  el.style.display = 'block';
+  content.textContent = '⏳ Tłumaczę cały artykuł...';
+  
+  const sentences = [...document.querySelectorAll('#article-reader .sent')];
+  const translations = [];
+  for(const s of sentences){
+    const sent = decodeURIComponent(s.dataset.sent);
+    if(_translationCache[sent]){
+      translations.push(_translationCache[sent]);
+      continue;
+    }
+    try{
+      const sess=(await db.auth.getSession()).data.session;
+      const r=await fetch(TRANSLATE_URL,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?.access_token||''),'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+        body:JSON.stringify({sentence:sent,lang:_odkryjLang})
+      });
+      const d=await r.json();
+      const tr=d.translation||sent;
+      _translationCache[sent]=tr;
+      translations.push(tr);
+    }catch(e){translations.push('...');}
+  }
+  content.textContent = translations.join(' ');
+}
+
+async function loadOdkryjVideos(topic){
+  const res = document.getElementById('odkryj-results');
+  try{
+    const langFilter={en:'en',es:'es',jp:'ja',nl:'nl'}[_odkryjLang]||'en';
+    const langName={en:'english',es:'spanish',jp:'japanese',nl:'dutch'}[_odkryjLang]||'english';
+    const sess=(await db.auth.getSession()).data.session;
+    const r=await fetch(SEARCH_YOUTUBE_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?.access_token||''),'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+      body:JSON.stringify({word:`${topic} ${_odkryjLevel} ${langName}`,lang:_odkryjLang})
+    });
+    const d=await r.json();
+    if(d.found&&d.video_id){
+      res.innerHTML=`
+        <div style="background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden">
+          <iframe width="100%" height="400" src="https://www.youtube.com/embed/${d.video_id}?rel=0" frameborder="0" allowfullscreen></iframe>
+          <div style="padding:16px">
+            <div style="font-weight:700;color:var(--navy)">${d.video_title}</div>
+            <div style="font-size:12px;color:var(--dim2);margin-top:4px">Poziom ${_odkryjLevel} · ${topic}</div>
+          </div>
+        </div>`;
+    } else {
+      res.innerHTML='<div class="odkryj-empty"><div style="font-size:32px;margin-bottom:12px">🎬</div><div style="color:var(--dim2)">Nie znaleziono filmów dla tego tematu</div></div>';
+    }
+  }catch(e){
+    res.innerHTML=`<div class="odkryj-empty"><div style="color:#c33">Błąd: ${e.message}</div></div>`;
+  }
+}
+
+async function loadOdkryjPodcasts(topic){
+  const res = document.getElementById('odkryj-results');
+  try{
+    const langName={en:'english',es:'spanish',jp:'japanese',nl:'dutch'}[_odkryjLang]||'english';
+    const sess=(await db.auth.getSession()).data.session;
+    const r=await fetch(SEARCH_YOUTUBE_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?.access_token||''),'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+      body:JSON.stringify({word:`${topic} podcast ${langName} language learning`,lang:_odkryjLang})
+    });
+    const d=await r.json();
+    if(d.found&&d.video_id){
+      res.innerHTML=`
+        <div style="background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden">
+          <iframe width="100%" height="400" src="https://www.youtube.com/embed/${d.video_id}?rel=0" frameborder="0" allowfullscreen></iframe>
+          <div style="padding:16px">
+            <div style="font-weight:700;color:var(--navy)">🎙️ ${d.video_title}</div>
+            <div style="font-size:12px;color:var(--dim2);margin-top:4px">Podcast · ${topic} · Poziom ${_odkryjLevel}</div>
+          </div>
+        </div>`;
+    } else {
+      res.innerHTML='<div class="odkryj-empty"><div style="font-size:32px;margin-bottom:12px">🎙️</div><div style="color:var(--dim2)">Nie znaleziono podcastów dla tego tematu</div></div>';
+    }
+  }catch(e){
+    res.innerHTML=`<div class="odkryj-empty"><div style="color:#c33">Błąd: ${e.message}</div></div>`;
+  }
 }
 </script>
 </html>
