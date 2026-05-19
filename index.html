@@ -2108,26 +2108,21 @@ function renderVideo(videoId, title){
     </div>`;
 }
 
-async function renderYouglish(word, lang){
-  // Szukaj na YouTube przez Edge Function
-  try{
-    const sess = (await db.auth.getSession()).data.session;
-    const tok = sess?.access_token || '';
-    const res = await fetch(SEARCH_YOUTUBE_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
-      body:JSON.stringify({word,lang})
-    });
-    const d = await res.json();
-    if(d.found && d.video_id){
-      try{await db.from('youtube_cache').upsert({word,language:lang,video_id:d.video_id,video_title:d.video_title});}catch(e){}
-      renderVideo(d.video_id, d.video_title);
-    } else {
-      document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Brak wideo dla tego słowa</div></div>';
-    }
-  }catch(e){
-    document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div style="font-size:13px;color:var(--dim2)">Błąd wideo</div></div>';
-  }
+function renderYouglish(word, lang){
+  const encoded = encodeURIComponent(word);
+  const url = `https://playphrase.me/#/search?q=${encoded}`;
+  document.getElementById('sc-video-wrap').innerHTML=`
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center;gap:16px">
+      <div style="font-size:48px">🎬</div>
+      <div style="font-weight:700;font-size:16px;color:var(--navy)">"${word}"<br>w filmach i serialach</div>
+      <div style="font-size:13px;color:var(--dim2);line-height:1.5">Kliknij aby zobaczyć jak to słowo<br>jest używane w prawdziwych scenach</div>
+      <a href="${url}" target="_blank" rel="noopener"
+        style="background:var(--navy);color:#fff;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:700;font-size:14px;transition:.2s;display:inline-block"
+        onmouseover="this.style.background='var(--orange)'" onmouseout="this.style.background='var(--navy)'">
+        🎬 Otwórz Playphrase
+      </a>
+      <div style="font-size:11px;color:var(--dim2)">Otworzy się w nowej karcie</div>
+    </div>`;
 }
 
 function strefaNext(){
