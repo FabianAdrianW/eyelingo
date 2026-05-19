@@ -784,15 +784,15 @@ async function submitAuth(){
   try{
     let res=authMode==='login'
       ?await db.auth.signInWithPassword({email,password:pass})
-      :await db.auth.signUp({email,password:pass});
+      :await db.auth.signUp({email,password:pass,options:{data:{username}}});
     if(res.error)throw res.error;
     if(authMode==='register'){
       if(!res.data.session){
         showMsg('auth-msg','✅ Sprawdź e-mail i potwierdź konto.','success');
       } else {
-        // Zapisz pseudonim
+        // Zapisz pseudonim - upsert żeby nie było błędu jeśli trigger już stworzył wiersz
         if(username&&res.data.user){
-          await db.from('profiles').update({username}).eq('user_id',res.data.user.id);
+          await db.from('profiles').upsert({user_id:res.data.user.id,username},{onConflict:'user_id'}).select();
         }
         await loadDashboard();showPage('dash');
       }
@@ -1779,6 +1779,24 @@ async function submitBugReport(){
 
 async function initToFixPage(){
   const{data:{session}}=await db.auth.getSession();
+  // Zawsze resetuj formularz przy wejściu na stronę
+  document.getElementById('fix-form-wrap').innerHTML=`
+    <label class="fix-label">Kategoria problemu</label>
+    <div class="fix-category">
+      <button class="fix-cat-btn" onclick="selectCat(this,'UI/UX')">🎨 UI/UX</button>
+      <button class="fix-cat-btn" onclick="selectCat(this,'Płatności')">💳 Płatności</button>
+      <button class="fix-cat-btn" onclick="selectCat(this,'Fiszki')">📚 Fiszki</button>
+      <button class="fix-cat-btn" onclick="selectCat(this,'Błąd techniczny')">⚙️ Błąd techniczny</button>
+      <button class="fix-cat-btn" onclick="selectCat(this,'Inne')">💬 Inne</button>
+    </div>
+    <label class="fix-label" style="margin-top:16px;display:block">Opis problemu</label>
+    <textarea id="fix-desc" class="fi" rows="5" placeholder="Opisz co się dzieje, kiedy się pojawia i jak można to odtworzyć..." style="width:100%;margin-top:8px;resize:vertical;min-height:120px"></textarea>
+    <label class="fix-label" style="margin-top:16px;display:block">Screenshot (opcjonalny)</label>
+    <input type="file" id="fix-screenshot" accept="image/*" style="margin-top:8px;font-size:13px;color:var(--dim2)">
+    <div id="fix-msg" style="margin-top:12px;font-size:13px;text-align:center;color:#c33"></div>
+    <button class="btn btn-navy" style="width:100%;margin-top:16px" onclick="submitBugReport()">📤 Wyślij zgłoszenie</button>
+  `;
+  _fixCategory = null;
   if(!session){
     document.getElementById('fix-form-wrap').innerHTML='<div style="text-align:center;padding:40px 0"><p style="color:var(--dim2);margin-bottom:16px">Zaloguj się aby wysłać zgłoszenie.</p><button class="btn btn-navy" onclick="showAuth(\'login\')">Zaloguj się</button></div>';
   }
@@ -1841,11 +1859,9 @@ async function initToFixPage(){
         </div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px">
+          <button class="btn btn-orange" onclick="strefaPrev()" id="btn-prev" style="visibility:hidden">← Poprzednia</button>
           <div style="font-size:13px;color:var(--dim2)" id="strefa-progress"></div>
-          <div style="display:flex;gap:10px">
-            <button class="btn btn-ghost" onclick="strefaPrev()" id="btn-prev">← Poprzednia</button>
-            <button class="btn btn-orange" onclick="strefaNext()" id="btn-next">Następna →</button>
-          </div>
+          <button class="btn btn-orange" onclick="strefaNext()" id="btn-next">Następna →</button>
         </div>
       </div>
     </div>
@@ -2026,9 +2042,7 @@ async function loadStrefaCard(){
   document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Szukam wideo...</div></div>';
   const prevBtn=document.getElementById('btn-prev');
   if(prevBtn){
-    prevBtn.disabled=false;
-    prevBtn.style.opacity=_strefaIdx===0?'0':'1';
-    prevBtn.style.pointerEvents=_strefaIdx===0?'none':'auto';
+    prevBtn.style.visibility=_strefaIdx===0?'hidden':'visible';
   }
   document.getElementById('btn-next').textContent=_strefaIdx===_strefaWords.length-1?'Zakończ':'Następna →';
 
@@ -2264,6 +2278,23 @@ function switchTab(tab, btn){
   btn.classList.add("active");
   if(_odkryjTopic) doSearch();
 }
+
+function openArticle(html){
+  var modal=document.getElementById("article-modal");
+  var content=document.getElementById("article-modal-content");
+  if(!modal||!content) return;
+  content.innerHTML=html;
+  modal.style.display="flex";
+  document.body.style.overflow="hidden";
+}
+
+function closeArticle(){
+  var modal=document.getElementById("article-modal");
+  if(modal) modal.style.display="none";
+  document.body.style.overflow="";
+}
+window.closeArticle=closeArticle;
+window.openArticle=openArticle;
 
 function bindOdkryjEvents(){
   var a=document.getElementById("otab-article");if(a)a.onclick=function(){switchTab("article",this);};
