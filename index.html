@@ -346,9 +346,8 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
   </div>
   <!-- Tabs: widoczne tylko dla zalogowanych -->
   <div class="nav-tabs" id="nav-tabs">
-    <button class="nav-tab active" id="ntab-dash" onclick="switchTab('dash',this)">Panel</button>
+    <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Materiały</button>
     <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
-    <button class="nav-tab" id="ntab-community" onclick="switchTab('community',this)">Materiały</button>
     <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
     <button class="nav-tab" id="ntab-ranking" onclick="switchTab('ranking',this)">Ranking</button>
     <button class="nav-tab" id="ntab-tofix" onclick="switchTab('tofix',this)">Zgłoszenia</button>
@@ -910,7 +909,7 @@ function updateNav(li,email){
   const tabs=document.getElementById('nav-tabs');
   if(li){
     const initials=(email||'?').substring(0,2).toUpperCase();
-    n.innerHTML=`<div class="nav-avatar" onclick="showPage('dash')" title="${email}">${initials}</div><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="logout()">Wyloguj</button>`;
+    n.innerHTML=`<button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="showPage('dash')">Panel</button><div class="nav-avatar" onclick="showPage('dash')" title="${email}">${initials}</div><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="logout()">Wyloguj</button>`;
     if(tabs) tabs.classList.add('visible');
   } else {
     n.innerHTML=`<button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button><button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>`;
@@ -2248,6 +2247,7 @@ var _trcache = {};
 var _trTimer = null;
 
 function initOdkryj(){
+  bindOdkryjEvents();
   var sel = document.getElementById("odkryj-level");
   if(sel && window._strefaLevels && _strefaLevels.length){
     var lv = (_strefaLevels[0]||"").split("_")[1];
@@ -2263,15 +2263,16 @@ function switchTab(tab, btn){
   if(_odkryjTopic) doSearch();
 }
 
-document.addEventListener("DOMContentLoaded", function(){
-  document.getElementById("otab-article").onclick = function(){ switchTab("article", this); };
-  document.getElementById("otab-video").onclick = function(){ switchTab("video", this); };
-  document.getElementById("otab-podcast").onclick = function(){ switchTab("podcast", this); };
-  document.getElementById("odkryj-btn").onclick = doSearch;
-  document.getElementById("odkryj-input").addEventListener("keydown", function(e){ if(e.key==="Enter") doSearch(); });
-  document.getElementById("article-modal-close").onclick = closeArticle;
-  document.getElementById("article-modal").onclick = function(e){ if(e.target===this) closeArticle(); };
-});
+function bindOdkryjEvents(){
+  var a=document.getElementById("otab-article");if(a)a.onclick=function(){switchTab("article",this);};
+  var v=document.getElementById("otab-video");if(v)v.onclick=function(){switchTab("video",this);};
+  var p=document.getElementById("otab-podcast");if(p)p.onclick=function(){switchTab("podcast",this);};
+  var b=document.getElementById("odkryj-btn");if(b)b.onclick=doSearch;
+  var i=document.getElementById("odkryj-input");
+  if(i)i.addEventListener("keydown",function(e){if(e.key==="Enter")doSearch();});
+  var mc=document.getElementById("article-modal-close");if(mc)mc.onclick=closeArticle;
+  var mo=document.getElementById("article-modal");if(mo)mo.onclick=function(e){if(e.target===this)closeArticle();};
+}
 
 async function doSearch(){
   var topic = document.getElementById("odkryj-input").value.trim();
