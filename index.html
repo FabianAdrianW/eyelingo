@@ -2241,6 +2241,7 @@ var TRANSLATE_URL = "https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/trans
 var APIKEY = "sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8";
 
 var _odkryjTab = "article";
+var _odkryjTranslated = "";
 var _odkryjTopic = "";
 var _odkryjLang = "en";
 var _odkryjLevel = "B1";
@@ -2275,14 +2276,44 @@ function bindOdkryjEvents(){
   var mo=document.getElementById("article-modal");if(mo)mo.onclick=function(e){if(e.target===this)closeArticle();};
 }
 
+async function translateTopic(topic, lang){
+  // Przetlumacz temat na jezyk docelowy
+  if(!topic) return "";
+  var langName = {en:"English",es:"Spanish",jp:"Japanese",nl:"Dutch"}[lang]||"English";
+  try{
+    var tok = await getToken();
+    var r = await fetch(TRANSLATE_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},
+      body:JSON.stringify({sentence:topic+" (translate this topic phrase to "+langName+", give only the translation, no explanation)",lang:lang})
+    });
+    if(!r.ok) return topic;
+    var d = await r.json();
+    return d.translation||topic;
+  }catch(e){ return topic; }
+}
+
 async function doSearch(){
   var topic = document.getElementById("odkryj-input").value.trim();
-  if(!topic){ document.getElementById("odkryj-input").focus(); return; }
-  _odkryjTopic = topic;
   _odkryjLang = document.getElementById("odkryj-lang").value;
   _odkryjLevel = document.getElementById("odkryj-level").value;
+  
   var res = document.getElementById("odkryj-results");
-  res.innerHTML = "<div class='odkryj-empty'><div style='font-size:32px;margin-bottom:12px'>⏳</div><div style='color:var(--dim2)'>Generuje tresci...</div></div>";
+  res.innerHTML = "<div class='odkryj-empty'><div style='font-size:32px;margin-bottom:12px'>⏳</div><div style='color:var(--dim2)'>Szukam...</div></div>";
+
+  // Jesli brak tematu - ustaw domyslny
+  if(!topic){
+    var defaults = {en:"language learning",es:"aprendizaje de idiomas",jp:"語学学習",nl:"taal leren"};
+    topic = defaults[_odkryjLang]||"language learning";
+    document.getElementById("odkryj-input").value = "";
+  }
+  
+  _odkryjTopic = topic;
+  
+  // Przetlumacz temat na jezyk docelowy
+  var translatedTopic = await translateTopic(topic, _odkryjLang);
+  _odkryjTranslated = translatedTopic || topic;
+  
   if(_odkryjTab==="article") await loadArticle(topic);
   else await loadVideo(topic, _odkryjTab==="podcast");
 }
@@ -2294,200 +2325,186 @@ async function getToken(){
 }
 
 async function loadArticle(topic){
-  // Pokazuj od razu prawdziwe źródła - bez generowania AI
-  showArticleCard("", "", topic);
+  showArticleCard(topic);
 }
 
-var _currentArticle = {title:"", content:"", topic:""};
-
-function showArticleCard(title, content, topic){
+function showArticleCard(topic){
   var langL = {en:"angielski",es:"hiszpanski",jp:"japonski",nl:"niderlandzki"};
-  var sources = buildSources(topic, _odkryjLang);
+  var sources = buildSources(_odkryjTranslated||topic, _odkryjLang);
   var res = document.getElementById("odkryj-results");
+  var lvl = _odkryjLevel||"B1";
+  var lang = _odkryjLang||"en";
   res.innerHTML = [
-    "<div style='margin-bottom:12px'>",
-    "<p style='font-size:15px;color:var(--dim2);line-height:1.6'>",
-    "Strony do nauki jezyka <strong style='color:var(--navy)'>" + (langL[_odkryjLang]||_odkryjLang) + "</strong>",
-    " — temat: <strong style='color:var(--navy)'>" + topic + "</strong>",
-    " — poziom: <strong style='color:var(--orange)'>" + _odkryjLevel + "</strong>",
-    "</p></div>",
+    "<div style='background:rgba(201,106,42,.06);border:1px solid rgba(201,106,42,.2);border-radius:12px;padding:14px 18px;margin-bottom:20px'>",
+    "<div style='font-size:14px;color:var(--navy)'>",
+    "Czytaj po <strong>" + (langL[lang]||lang) + "</strong>",
+    (topic ? " · temat: <strong>" + topic + "</strong>" : ""),
+    " · poziom: <strong style='color:var(--orange)'>" + lvl + "</strong>",
+    "</div></div>",
     sources
   ].join("");
 }
 
-function buildSources(topic, lang){
-  var enc = encodeURIComponent(topic);
+function buildSources(topicEn, lang){
+  var enc = encodeURIComponent(topicEn);
   var lvl = _odkryjLevel || "B1";
-
-  // Mapowanie CEFR → anchor lingua.com
   var linguaAnchor = {A1:"#level-a1",A2:"#level-a2",B1:"#level-b1",B2:"#level-b2",C1:"#level-c1",C2:"#level-c2"}[lvl]||"";
-  // Mapowanie CEFR → poziomy News in Levels (1=A1/A2, 2=B1/B2, 3=C1/C2)
   var nilLevel = (lvl==="A1"||lvl==="A2") ? "1" : (lvl==="C1"||lvl==="C2") ? "3" : "2";
-  // Lingua.com kod języka
-  var linguaLang = {en:"english",es:"spanish",nl:"dutch",jp:"japanese"}[lang]||"english";
-  // lingua.com nie ma japońskiego - fallback
-  var hasLingua = (lang !== "jp");
 
   var map = {
     en:[
-      {n:"Lingua.com — czytanki "+lvl, u:"https://lingua.com/english/reading/"+linguaAnchor, d:"Czytanki na poziomie "+lvl+" z cwiczeniami — bez rejestracji, za darmo"},
-      {n:"News in Levels — poziom "+nilLevel, u:"https://www.newsinlevels.com/?s="+enc+"&level="+nilLevel, d:"Wiadomosci o '"+topic+"' na poziomie "+lvl+" z audio"},
-      {n:"BBC Learning English", u:"https://www.bbc.co.uk/learningenglish/english/search/results?q="+enc, d:"Artykuly, audio i cwiczenia BBC"},
-      {n:"VOA Learning English", u:"https://learningenglish.voanews.com/search/?query="+enc, d:"Wiadomosci pisane prostym angielskim"}
+      {n:"Lingua.com — poziom "+lvl, u:"https://lingua.com/english/reading/"+linguaAnchor, d:"Czytanki na poziomie "+lvl+" z cwiczeniami — za darmo, bez rejestracji"},
+      {n:"News in Levels", u:"https://www.newsinlevels.com/?s="+enc+"&level="+nilLevel, d:"Wiadomosci na poziomie "+lvl+" z audio — temat: "+topicEn},
+      {n:"BBC Learning English", u:"https://www.bbc.co.uk/learningenglish/english/search/results?q="+enc, d:"Artykuly i cwiczenia BBC — temat: "+topicEn},
+      {n:"VOA Learning English", u:"https://learningenglish.voanews.com/search/?query="+enc, d:"Wiadomosci prostym angielskim — temat: "+topicEn}
     ],
     es:[
-      {n:"Lingua.com — lecturas "+lvl, u:"https://lingua.com/spanish/reading/"+linguaAnchor, d:"Czytanki po hiszpansku na poziomie "+lvl+" z cwiczeniami"},
-      {n:"News in Levels ES", u:"https://www.newsinlevels.com/es/?s="+enc+"&level="+nilLevel, d:"Wiadomosci po hiszpansku o '"+topic+"' na poziomie "+lvl},
-      {n:"DW Espanol", u:"https://www.dw.com/es/buscador/?languageCode=es&item="+enc, d:"Artykuly i wiadomosci po hiszpansku"},
-      {n:"Practica Espanol", u:"https://www.practicaespanol.com/?s="+enc, d:"Cwiczenia i artykuly dla uczacych sie hiszpanskiego"}
+      {n:"Lingua.com — nivel "+lvl, u:"https://lingua.com/spanish/reading/"+linguaAnchor, d:"Czytanki po hiszpansku na poziomie "+lvl},
+      {n:"News in Levels ES", u:"https://www.newsinlevels.com/es/?s="+enc+"&level="+nilLevel, d:"Wiadomosci po hiszpansku — temat: "+topicEn},
+      {n:"DW Espanol", u:"https://www.dw.com/es/buscador/?languageCode=es&item="+enc, d:"Artykuly DW po hiszpansku — temat: "+topicEn},
+      {n:"Practica Espanol", u:"https://www.practicaespanol.com/?s="+enc, d:"Cwiczenia i artykuly dla uczacych sie"}
     ],
     jp:[
-      {n:"NHK Web Easy", u:"https://www3.nhk.or.jp/news/easy/", d:"Wiadomosci pisane prostym japonskim — dla A2/B1"},
-      {n:"Watanoc", u:"https://watanoc.com/?s="+enc, d:"Artykuly na poziomie N5-N3 dla uczacych sie japonskiego"},
-      {n:"NHK World Japanese", u:"https://www3.nhk.or.jp/nhkworld/en/learnjapanese/", d:"Nauka japonskiego z materialami NHK World"},
-      {n:"Hiragana Times", u:"https://www.hiraganatimes.com/?s="+enc, d:"Artykuly po japonsku i angielsku obok siebie"}
+      {n:"NHK Web Easy", u:"https://www3.nhk.or.jp/news/easy/", d:"Wiadomosci NHK prostym japonskim"},
+      {n:"Watanoc", u:"https://watanoc.com/?s="+enc, d:"Artykuly dla uczacych sie japonskiego — temat: "+topicEn},
+      {n:"NHK World Japanese", u:"https://www3.nhk.or.jp/nhkworld/en/learnjapanese/", d:"Nauka japonskiego z NHK World"},
+      {n:"Hiragana Times", u:"https://www.hiraganatimes.com/?s="+enc, d:"Artykuly po japonsku i angielsku — temat: "+topicEn}
     ],
     nl:[
-      {n:"Lingua.com — lezen "+lvl, u:"https://lingua.com/dutch/reading/"+linguaAnchor, d:"Czytanki po niderlandzku na poziomie "+lvl+" z cwiczeniami"},
+      {n:"Lingua.com — niveau "+lvl, u:"https://lingua.com/dutch/reading/"+linguaAnchor, d:"Czytanki po niderlandzku na poziomie "+lvl},
       {n:"NT2 Nieuws", u:"https://www.nt2.nl/nl/030_nieuws?q="+enc, d:"Wiadomosci po niderlandzku dla uczacych sie"},
-      {n:"NOS Nieuws", u:"https://nos.nl/zoeken?q="+enc, d:"Autentyczne wiadomosci po niderlandzku o '"+topic+"'"},
-      {n:"DW Nederlands", u:"https://www.dw.com/nl/buscador/?languageCode=nl&item="+enc, d:"Artykuly i wiadomosci DW po niderlandzku"}
+      {n:"NOS Nieuws", u:"https://nos.nl/zoeken?q="+enc, d:"Autentyczne wiadomosci po niderlandzku — temat: "+topicEn},
+      {n:"DW Nederlands", u:"https://www.dw.com/nl/buscador/?languageCode=nl&item="+enc, d:"Artykuly DW po niderlandzku — temat: "+topicEn}
     ]
   };
 
-  var langLabel = {en:"angielski",es:"hiszpanski",jp:"japonski",nl:"niderlandzki"}[lang]||lang;
-  var html = "<div style='margin-bottom:12px;font-size:14px;color:var(--dim2)'>Czytaj po <strong style='color:var(--navy)'>"+langLabel+"</strong> na poziomie <strong style='color:var(--orange)'>"+lvl+"</strong> o temacie <strong style='color:var(--navy)'>"+topic+"</strong></div>";
-  html += (map[lang]||map.en).map(function(s){
+  return (map[lang]||map.en).map(function(s){
     return [
       "<a href='"+s.u+"' target='_blank' rel='noopener' class='source-link'>",
-      "<div style='flex:1'>",
-      "<div style='font-weight:600;font-size:14px;color:var(--navy)'>"+s.n+"</div>",
-      "<div style='font-size:12px;color:var(--dim2);margin-top:2px'>"+s.d+"</div>",
-      "</div>",
+      "<div style='flex:1'><div style='font-weight:600;font-size:14px;color:var(--navy)'>"+s.n+"</div>",
+      "<div style='font-size:12px;color:var(--dim2);margin-top:2px'>"+s.d+"</div></div>",
       "<span style='margin-left:12px;color:var(--orange);font-size:12px;flex-shrink:0;font-weight:600'>Otworz →</span>",
       "</a>"
     ].join("");
   }).join("");
-  return html;
-}
-
-function openArticle(title, content){
-  var paragraphs = content.split("\n\n").filter(function(p){ return p.trim(); });
-  var html = paragraphs.map(function(p){
-    var sents = p.match(/[^.!?]+[.!?]+/g) || [p];
-    return "<p style='margin-bottom:16px'>" + sents.map(function(s){
-      return "<span class='sent' data-s='"+encodeURIComponent(s.trim())+"'>"+s+"</span>";
-    }).join("") + "</p>";
-  }).join("");
-
-  document.getElementById("article-modal-content").innerHTML = [
-    "<div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px'>",
-    "<h2 style='font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:var(--navy);margin:0'>"+title+"</h2>",
-    "<button class='btn btn-orange' style='font-size:13px' id='translate-all-btn'>Przetlumacz calosc</button>",
-    "</div>",
-    "<div style='font-size:12px;color:var(--dim2);margin-bottom:20px'>Najedz kursorem na zdanie aby je przetlumaczyc</div>",
-    "<div class='article-reader' id='article-reader'>"+html+"</div>",
-    "<div id='full-tr' style='display:none;margin-top:24px;padding-top:20px;border-top:1px solid var(--border)'>",
-    "<div style='font-size:13px;font-weight:700;color:var(--dim2);margin-bottom:12px'>Pelne tlumaczenie</div>",
-    "<div id='full-tr-content' style='font-size:15px;color:var(--dim);line-height:1.8'></div>",
-    "</div>"
-  ].join("");
-
-  // Bind hover events
-  document.querySelectorAll("#article-reader .sent").forEach(function(el){
-    el.addEventListener("mouseenter", function(e){ hoverTr(this, e); });
-    el.addEventListener("mousemove", function(e){ moveTooltip(e); });
-    el.addEventListener("mouseleave", hideTooltip);
-  });
-  document.getElementById("translate-all-btn").onclick = translateAll;
-  document.getElementById("article-modal").style.display = "flex";
-}
-
-function closeArticle(){
-  document.getElementById("article-modal").style.display = "none";
-  hideTooltip();
-}
-
-async function hoverTr(el, e){
-  var sent = decodeURIComponent(el.dataset.s);
-  var tooltip = document.getElementById("hover-tooltip");
-  tooltip.textContent = "Tlumacze...";
-  tooltip.style.display = "block";
-  moveTooltip(e);
-  if(_trcache[sent]){ tooltip.textContent = _trcache[sent]; return; }
-  clearTimeout(_trTimer);
-  _trTimer = setTimeout(async function(){
-    try{
-      var cached = (await db.from("translation_cache").select("translation").eq("sentence",sent).eq("language",_odkryjLang).limit(1)).data;
-      if(cached && cached[0]){ _trcache[sent]=cached[0].translation; tooltip.textContent=cached[0].translation; return; }
-      var tok = await getToken();
-      var r = await fetch(TRANSLATE_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},body:JSON.stringify({sentence:sent,lang:_odkryjLang})});
-      var d = await r.json();
-      var tr = d.translation || sent;
-      _trcache[sent] = tr;
-      tooltip.textContent = tr;
-      try{ await db.from("translation_cache").upsert({sentence:sent,language:_odkryjLang,translation:tr},{onConflict:"sentence,language"}); }catch(e){}
-    }catch(e){ tooltip.textContent = "Blad tlumaczenia"; }
-  }, 500);
-}
-
-function moveTooltip(e){
-  var t = document.getElementById("hover-tooltip");
-  var x = Math.min(e.clientX+12, window.innerWidth-340);
-  var y = e.clientY > 80 ? e.clientY-60 : e.clientY+20;
-  t.style.left = x+"px"; t.style.top = y+"px";
-}
-
-function hideTooltip(){
-  document.getElementById("hover-tooltip").style.display = "none";
-  clearTimeout(_trTimer);
-}
-
-async function translateAll(){
-  var el = document.getElementById("full-tr");
-  var content = document.getElementById("full-tr-content");
-  el.style.display = "block";
-  content.textContent = "Tlumacze...";
-  var sents = document.querySelectorAll("#article-reader .sent");
-  var trs = [];
-  for(var i=0;i<sents.length;i++){
-    var s = decodeURIComponent(sents[i].dataset.s);
-    if(_trcache[s]){ trs.push(_trcache[s]); continue; }
-    try{
-      var tok = await getToken();
-      var r = await fetch(TRANSLATE_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},body:JSON.stringify({sentence:s,lang:_odkryjLang})});
-      var d = await r.json();
-      var tr = d.translation||s;
-      _trcache[s]=tr; trs.push(tr);
-    }catch(e){ trs.push("..."); }
-  }
-  content.textContent = trs.join(" ");
 }
 
 async function loadVideo(topic, isPodcast){
   var res = document.getElementById("odkryj-results");
-  try{
-    var langN = {en:"english",es:"spanish",jp:"japanese",nl:"dutch"}[_odkryjLang]||"english";
-    var q = isPodcast ? topic+" podcast "+langN+" language learning" : topic+" "+_odkryjLevel+" "+langN;
+  var langN = {en:"english",es:"spanish",jp:"japanese",nl:"dutch"}[_odkryjLang]||"english";
+  var lvl = _odkryjLevel||"B1";
+  var translated = _odkryjTranslated||topic||"language learning";
+  
+  res.innerHTML = "<div class='odkryj-empty'><div style='font-size:32px;margin-bottom:12px'>⏳</div><div style='color:var(--dim2)'>Szukam materialow...</div></div>";
+
+  if(isPodcast){
+    // Podcasty: 3 Spotify + 2 YouTube
+    var spotifyMap = {
+      en:"https://open.spotify.com/search/"+encodeURIComponent(translated+" english learning podcast"),
+      es:"https://open.spotify.com/search/"+encodeURIComponent(translated+" aprendizaje espanol podcast"),
+      jp:"https://open.spotify.com/search/"+encodeURIComponent(translated+" japanese learning podcast"),
+      nl:"https://open.spotify.com/search/"+encodeURIComponent(translated+" nederlands leren podcast")
+    };
+    var googleMap = {
+      en:"https://podcasts.google.com/search/"+encodeURIComponent(translated+" english learning"),
+      es:"https://podcasts.google.com/search/"+encodeURIComponent(translated+" espanol podcast"),
+      jp:"https://podcasts.google.com/search/"+encodeURIComponent(translated+" japanese podcast"),
+      nl:"https://podcasts.google.com/search/"+encodeURIComponent(translated+" nederlands podcast")
+    };
+    var langLabel = {en:"angielski",es:"hiszpanski",jp:"japonski",nl:"niderlandzki"}[_odkryjLang]||_odkryjLang;
+    
+    // YouTube podcast search
+    var ytHtml = "";
+    try{
+      var tok = await getToken();
+      var q1 = translated+" "+langN+" podcast language learning "+lvl;
+      var r1 = await fetch("https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},
+        body:JSON.stringify({word:q1,lang:_odkryjLang,count:2})
+      });
+      if(r1.ok){
+        var ct1 = r1.headers.get("content-type")||"";
+        if(ct1.includes("json")){
+          var d1 = await r1.json();
+          if(d1.found&&d1.video_id){
+            ytHtml = "<div style='margin-top:16px'><div style='font-size:13px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px'>YouTube</div><div style='background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:10px'><iframe width='100%' height='200' src='https://www.youtube.com/embed/"+d1.video_id+"?rel=0' frameborder='0' allowfullscreen></iframe><div style='padding:12px;font-size:13px;font-weight:600;color:var(--navy)'>"+d1.video_title+"</div></div></div>";
+          }
+        }
+      }
+    }catch(e){}
+
+    res.innerHTML = [
+      "<div style='background:rgba(201,106,42,.06);border:1px solid rgba(201,106,42,.2);border-radius:12px;padding:14px 18px;margin-bottom:20px'>",
+      "<div style='font-size:14px;color:var(--navy)'>Podcasty po <strong>"+langLabel+"</strong>",
+      (topic?" · temat: <strong>"+topic+"</strong>":" · poziom <strong style='color:var(--orange)'>"+lvl+"</strong>"),
+      "</div></div>",
+      "<div style='font-size:13px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px'>Serwisy podcastow</div>",
+      "<a href='"+spotifyMap[_odkryjLang]+"' target='_blank' rel='noopener' class='source-link'>",
+      "<div style='flex:1'><div style='font-weight:600;font-size:14px;color:var(--navy)'>Spotify — podcasty</div>",
+      "<div style='font-size:12px;color:var(--dim2);margin-top:2px'>Wyszukaj podcasty jezykowe o temacie: "+(topic||"nauka jezyka")+"</div></div>",
+      "<span style='margin-left:12px;color:var(--orange);font-size:12px;flex-shrink:0;font-weight:600'>Otworz →</span></a>",
+      "<a href='"+googleMap[_odkryjLang]+"' target='_blank' rel='noopener' class='source-link'>",
+      "<div style='flex:1'><div style='font-weight:600;font-size:14px;color:var(--navy)'>Google Podcasts</div>",
+      "<div style='font-size:12px;color:var(--dim2);margin-top:2px'>Podcasty jezykowe — temat: "+(topic||"nauka jezyka")+"</div></div>",
+      "<span style='margin-left:12px;color:var(--orange);font-size:12px;flex-shrink:0;font-weight:600'>Otworz →</span></a>",
+      "<a href='https://www.listennotes.com/search/?q="+encodeURIComponent(translated+" "+langN)+"&type=episode' target='_blank' rel='noopener' class='source-link'>",
+      "<div style='flex:1'><div style='font-weight:600;font-size:14px;color:var(--navy)'>Listen Notes</div>",
+      "<div style='font-size:12px;color:var(--dim2);margin-top:2px'>Wyszukiwarka wszystkich podcastow swiata</div></div>",
+      "<span style='margin-left:12px;color:var(--orange);font-size:12px;flex-shrink:0;font-weight:600'>Otworz →</span></a>",
+      ytHtml
+    ].join("");
+
+  } else {
+    // Filmy: 3 z YouTube - w tym jezyku, na ten temat
+    var videos = [];
+    var queries = [
+      translated+" "+langN+" lesson "+lvl,
+      translated+" learn "+langN+" native speaker",
+      langN+" lesson "+translated+" beginners"
+    ];
+    
     var tok = await getToken();
-    var r = await fetch("https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},body:JSON.stringify({word:q,lang:_odkryjLang})});
-    var ct = r.headers.get("content-type")||"";
-    if(!ct.includes("json")) throw new Error("Serwer zwrocil nieprawidlowa odpowiedz ("+r.status+")");
-    var d = await r.json();
-    if(d.found && d.video_id){
-      res.innerHTML = [
-        "<div style='background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden'>",
-        "<iframe width='100%' height='400' src='https://www.youtube.com/embed/"+d.video_id+"?rel=0' frameborder='0' allowfullscreen></iframe>",
-        "<div style='padding:16px'>",
-        "<div style='font-weight:700;color:var(--navy)'>"+d.video_title+"</div>",
-        "<div style='font-size:12px;color:var(--dim2);margin-top:4px'>Poziom "+_odkryjLevel+" - "+topic+"</div>",
-        "</div></div>"
-      ].join("");
-    } else {
-      res.innerHTML = "<div class='odkryj-empty'><div style='font-size:32px;margin-bottom:12px'>🎬</div><div style='color:var(--dim2)'>Nie znaleziono wynikow</div></div>";
+    for(var i=0;i<queries.length;i++){
+      try{
+        var r = await fetch("https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},
+          body:JSON.stringify({word:queries[i],lang:_odkryjLang})
+        });
+        if(!r.ok) continue;
+        var ct = r.headers.get("content-type")||"";
+        if(!ct.includes("json")) continue;
+        var d = await r.json();
+        if(d.found&&d.video_id&&!videos.find(function(v){return v.id===d.video_id;})){
+          videos.push({id:d.video_id,title:d.video_title});
+        }
+      }catch(e){}
     }
-  }catch(e){
-    res.innerHTML = "<div class='odkryj-empty'><div style='color:#c33'>Blad: "+e.message+"</div></div>";
+
+    if(!videos.length){
+      res.innerHTML = "<div class='odkryj-empty'><div style='font-size:32px;margin-bottom:12px'>🎬</div><div style='color:var(--dim2)'>Nie znaleziono filmow</div></div>";
+      return;
+    }
+
+    var langLabel = {en:"angielski",es:"hiszpanski",jp:"japonski",nl:"niderlandzki"}[_odkryjLang]||_odkryjLang;
+    var html = [
+      "<div style='background:rgba(201,106,42,.06);border:1px solid rgba(201,106,42,.2);border-radius:12px;padding:14px 18px;margin-bottom:20px'>",
+      "<div style='font-size:14px;color:var(--navy)'>Filmy po <strong>"+langLabel+"</strong>",
+      (topic?" · temat: <strong>"+topic+"</strong>":" · poziom <strong style='color:var(--orange)'>"+lvl+"</strong>"),
+      "</div></div>"
+    ].join("");
+    
+    html += videos.map(function(v){
+      return [
+        "<div style='background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px'>",
+        "<iframe width='100%' height='220' src='https://www.youtube.com/embed/"+v.id+"?rel=0' frameborder='0' allowfullscreen></iframe>",
+        "<div style='padding:12px;font-size:13px;font-weight:600;color:var(--navy)'>"+v.title+"</div>",
+        "</div>"
+      ].join("");
+    }).join("");
+
+    res.innerHTML = html;
   }
 }
 
