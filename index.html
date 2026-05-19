@@ -2026,9 +2026,9 @@ async function loadStrefaCard(){
   document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Szukam wideo...</div></div>';
   const prevBtn=document.getElementById('btn-prev');
   if(prevBtn){
-    prevBtn.disabled=(_strefaIdx===0);
-    prevBtn.style.opacity=_strefaIdx===0?'0.35':'1';
-    prevBtn.style.visibility='visible';
+    prevBtn.disabled=false;
+    prevBtn.style.opacity=_strefaIdx===0?'0':'1';
+    prevBtn.style.pointerEvents=_strefaIdx===0?'none':'auto';
   }
   document.getElementById('btn-next').textContent=_strefaIdx===_strefaWords.length-1?'Zakończ':'Następna →';
 
@@ -2346,39 +2346,78 @@ function showArticleCard(topic){
 }
 
 function buildSources(topicEn, lang){
-  var enc = encodeURIComponent(topicEn);
   var lvl = _odkryjLevel || "B1";
   var linguaAnchor = {A1:"#level-a1",A2:"#level-a2",B1:"#level-b1",B2:"#level-b2",C1:"#level-c1",C2:"#level-c2"}[lvl]||"";
   var nilLevel = (lvl==="A1"||lvl==="A2") ? "1" : (lvl==="C1"||lvl==="C2") ? "3" : "2";
 
-  var map = {
+  // Google site: search - zawsze trafne wyniki
+  function goog(site, query){ return "https://www.google.com/search?q="+encodeURIComponent(query+" site:"+site); }
+  function googFull(query){ return "https://www.google.com/search?q="+encodeURIComponent(query); }
+
+  var langName = {en:"english",es:"spanish",jp:"japanese",nl:"dutch"}[lang]||"english";
+  var lvlName = {A1:"beginner",A2:"elementary",B1:"intermediate",B2:"upper intermediate",C1:"advanced",C2:"proficient"}[lvl]||"intermediate";
+  var q = topicEn + " " + langName + " " + lvlName;
+
+  var sources = {
     en:[
-      {n:"Lingua.com — poziom "+lvl, u:"https://lingua.com/english/reading/"+linguaAnchor, d:"Czytanki na poziomie "+lvl+" z cwiczeniami — za darmo, bez rejestracji"},
-      {n:"News in Levels", u:"https://www.newsinlevels.com/?s="+enc+"&level="+nilLevel, d:"Wiadomosci na poziomie "+lvl+" z audio — temat: "+topicEn},
-      {n:"BBC Learning English", u:"https://www.bbc.co.uk/learningenglish/english/search/results?q="+enc, d:"Artykuly i cwiczenia BBC — temat: "+topicEn},
-      {n:"VOA Learning English", u:"https://learningenglish.voanews.com/search/?query="+enc, d:"Wiadomosci prostym angielskim — temat: "+topicEn}
+      {n:"Lingua.com — czytanki "+lvl,
+       u:"https://lingua.com/english/reading/"+linguaAnchor,
+       d:"Czytanki na poziomie "+lvl+" — kliknij i czytaj od razu"},
+      {n:"News in Levels — "+topicEn,
+       u:goog("newsinlevels.com", topicEn+" level "+nilLevel),
+       d:"Wiadomosci o '"+topicEn+"' na poziomie "+nilLevel+" — wyniki Google"},
+      {n:"BBC Learning English — "+topicEn,
+       u:goog("bbc.co.uk/learningenglish", topicEn+" "+lvlName),
+       d:"Artykuly BBC o '"+topicEn+"' na poziomie "+lvl},
+      {n:"British Council — "+topicEn,
+       u:goog("learnenglish.britishcouncil.org", topicEn+" "+lvlName),
+       d:"Cwiczenia i artykuly British Council o '"+topicEn+"'"}
     ],
     es:[
-      {n:"Lingua.com — nivel "+lvl, u:"https://lingua.com/spanish/reading/"+linguaAnchor, d:"Czytanki po hiszpansku na poziomie "+lvl},
-      {n:"News in Levels ES", u:"https://www.newsinlevels.com/es/?s="+enc+"&level="+nilLevel, d:"Wiadomosci po hiszpansku — temat: "+topicEn},
-      {n:"DW Espanol", u:"https://www.dw.com/es/buscador/?languageCode=es&item="+enc, d:"Artykuly DW po hiszpansku — temat: "+topicEn},
-      {n:"Practica Espanol", u:"https://www.practicaespanol.com/?s="+enc, d:"Cwiczenia i artykuly dla uczacych sie"}
+      {n:"Lingua.com — lecturas "+lvl,
+       u:"https://lingua.com/spanish/reading/"+linguaAnchor,
+       d:"Czytanki po hiszpansku na poziomie "+lvl},
+      {n:"News in Levels ES — "+topicEn,
+       u:goog("newsinlevels.com/es", topicEn+" nivel "+nilLevel),
+       d:"Wiadomosci po hiszpansku o '"+topicEn+"'"},
+      {n:"DW Espanol — "+topicEn,
+       u:goog("dw.com/es", topicEn),
+       d:"Artykuly DW po hiszpansku o '"+topicEn+"'"},
+      {n:"Practica Espanol — "+topicEn,
+       u:goog("practicaespanol.com", topicEn+" "+lvlName),
+       d:"Cwiczenia po hiszpansku o '"+topicEn+"'"}
     ],
     jp:[
-      {n:"NHK Web Easy", u:"https://www3.nhk.or.jp/news/easy/", d:"Wiadomosci NHK prostym japonskim"},
-      {n:"Watanoc", u:"https://watanoc.com/?s="+enc, d:"Artykuly dla uczacych sie japonskiego — temat: "+topicEn},
-      {n:"NHK World Japanese", u:"https://www3.nhk.or.jp/nhkworld/en/learnjapanese/", d:"Nauka japonskiego z NHK World"},
-      {n:"Hiragana Times", u:"https://www.hiraganatimes.com/?s="+enc, d:"Artykuly po japonsku i angielsku — temat: "+topicEn}
+      {n:"NHK Web Easy — "+topicEn,
+       u:goog("www3.nhk.or.jp/news/easy", topicEn),
+       d:"Wiadomosci NHK prostym japonskim o '"+topicEn+"'"},
+      {n:"Watanoc — "+topicEn,
+       u:goog("watanoc.com", topicEn),
+       d:"Artykuly dla uczacych sie japonskiego o '"+topicEn+"'"},
+      {n:"Hiragana Times — "+topicEn,
+       u:goog("hiraganatimes.com", topicEn+" japanese"),
+       d:"Artykuly po japonsku i angielsku o '"+topicEn+"'"},
+      {n:"NHK World — "+topicEn,
+       u:googFull(topicEn+" japanese lesson NHK site:nhk.or.jp"),
+       d:"Materialy NHK do nauki japonskiego"}
     ],
     nl:[
-      {n:"Lingua.com — niveau "+lvl, u:"https://lingua.com/dutch/reading/"+linguaAnchor, d:"Czytanki po niderlandzku na poziomie "+lvl},
-      {n:"NT2 Nieuws", u:"https://www.nt2.nl/nl/030_nieuws?q="+enc, d:"Wiadomosci po niderlandzku dla uczacych sie"},
-      {n:"NOS Nieuws", u:"https://nos.nl/zoeken?q="+enc, d:"Autentyczne wiadomosci po niderlandzku — temat: "+topicEn},
-      {n:"DW Nederlands", u:"https://www.dw.com/nl/buscador/?languageCode=nl&item="+enc, d:"Artykuly DW po niderlandzku — temat: "+topicEn}
+      {n:"Lingua.com — lezen "+lvl,
+       u:"https://lingua.com/dutch/reading/"+linguaAnchor,
+       d:"Czytanki po niderlandzku na poziomie "+lvl},
+      {n:"NT2 — "+topicEn,
+       u:goog("nt2.nl", topicEn),
+       d:"Materialy dla uczacych sie niderlandzkiego o '"+topicEn+"'"},
+      {n:"NOS Nieuws — "+topicEn,
+       u:goog("nos.nl", topicEn),
+       d:"Wiadomosci NOS po niderlandzku o '"+topicEn+"'"},
+      {n:"DW Nederlands — "+topicEn,
+       u:goog("dw.com/nl", topicEn),
+       d:"Artykuly DW po niderlandzku o '"+topicEn+"'"}
     ]
   };
 
-  return (map[lang]||map.en).map(function(s){
+  return (sources[lang]||sources.en).map(function(s){
     return [
       "<a href='"+s.u+"' target='_blank' rel='noopener' class='source-link'>",
       "<div style='flex:1'><div style='font-weight:600;font-size:14px;color:var(--navy)'>"+s.n+"</div>",
@@ -2406,8 +2445,8 @@ async function loadVideo(topic, isPodcast){
       nl:"https://open.spotify.com/search/"+encodeURIComponent(translated+" nederlands leren podcast")
     };
     var googleMap = {
-      en:"https://podcasts.google.com/search/"+encodeURIComponent(translated+" english learning"),
-      es:"https://podcasts.google.com/search/"+encodeURIComponent(translated+" espanol podcast"),
+      en:"https://www.podcastaddict.com/search?q="+encodeURIComponent(translated+" english learning"),
+      es:"https://www.podcastaddict.com/search?q="+encodeURIComponent(translated+" espanol"),
       jp:"https://podcasts.google.com/search/"+encodeURIComponent(translated+" japanese podcast"),
       nl:"https://podcasts.google.com/search/"+encodeURIComponent(translated+" nederlands podcast")
     };
