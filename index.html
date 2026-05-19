@@ -361,7 +361,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
 <section class="hero">
   <div>
     <div class="hero-eyebrow"><span class="eyebrow-dot"></span> Potwierdzone naukowo · Bez dodatkowego czasu</div>
-    <h1 class="hero-h1">Spędzasz godziny<br>przy komputerze.<br><span class="accent" style="display:block;font-size:1.05em;font-weight:800">Marnujesz je.</span></h1>
+    <h1 class="hero-h1">Spędzasz<br>godziny przy<br>komputerze.<br><span class="accent" style="display:block;font-size:1.05em;font-weight:800">Marnujesz je.</span></h1>
     <p class="hero-sub">Twój mózg przyswaja słowa które pojawiają się w jego polu widzenia — <strong>nawet gdy nie próbujesz się uczyć.</strong> Eyelingo robi to za Ciebie, codziennie, w tle.</p>
     <div class="hero-cta">
       <button class="btn btn-orange btn-lg" onclick="showAuth('register')">🚀 Zacznij za darmo</button>
@@ -1358,6 +1358,14 @@ function addCreateRow(){
   del.textContent='✕';del.style.cssText='background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#c33;font-size:11px';
   del.onclick=()=>row.remove();
   // TAB z ostatniego pola tłumaczenia → nowy wiersz
+  // TAB from word input -> translation input
+  wInp.addEventListener('keydown',e=>{
+    if(e.key==='Tab'&&!e.shiftKey){
+      e.preventDefault();
+      tInp.focus();
+    }
+  });
+  // TAB from translation input -> next word input or new row
   tInp.addEventListener('keydown',e=>{
     if(e.key==='Tab'&&!e.shiftKey){
       const rows=[...document.querySelectorAll('#create-rows .edit-row')];
@@ -1365,9 +1373,15 @@ function addCreateRow(){
         e.preventDefault();
         addCreateRow();
         setTimeout(()=>{const last=document.querySelectorAll('#create-rows .cr-word');if(last.length)last[last.length-1].focus()},20);
+      } else {
+        e.preventDefault();
+        const nextRow=rows[rows.indexOf(row)+1];
+        if(nextRow){const nextWord=nextRow.querySelector('.cr-word');if(nextWord)nextWord.focus();}
       }
     }
   });
+  // Prevent TAB on delete button
+  del.setAttribute('tabindex','-1');
   row.append(wInp,tInp,del);
   document.getElementById('create-rows').appendChild(row);
 }
@@ -2345,9 +2359,7 @@ function buildSources(topic, lang){
 }
 
 function openArticle(title, content){
-  var paragraphs = content.split("
-
-").filter(function(p){ return p.trim(); });
+  var paragraphs = content.split("\n\n").filter(function(p){ return p.trim(); });
   var html = paragraphs.map(function(p){
     var sents = p.match(/[^.!?]+[.!?]+/g) || [p];
     return "<p style='margin-bottom:16px'>" + sents.map(function(s){
