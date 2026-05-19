@@ -730,7 +730,7 @@ const{createClient}=supabase;
 const db=createClient(SUPABASE_URL,SUPABASE_KEY);
 let authMode='login';
 
-function showPage(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
+function _showPageBasic(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
 function navHome(){showPage('home');return false}
 function navSection(sel){showPage('home');setTimeout(()=>{const el=document.querySelector(sel);if(el)el.scrollIntoView({behavior:'smooth'})},60);return false}
 function showAuth(m){authMode=m;showPage('auth');updateAuthUI();clearMsg('auth-msg')}
@@ -929,15 +929,6 @@ function showPage(name){
   if(name==='tofix') initToFixPage();
   if(name==='strefa') initStrefa();
   return false;
-}
-
-async function initToFixPage(){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){
-    document.getElementById('fix-form-wrap').innerHTML='<p style="color:var(--dim2);text-align:center;padding:40px 0">Zaloguj się aby wysłać zgłoszenie.</p>';
-    return;
-  }
-  if(session.user.email===ADMIN_EMAIL) loadAdminPanel();
 }
 
 // ── Materiały - stan globalny ──
