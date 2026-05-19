@@ -10,6 +10,9 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
+/* Scroll snap na stronie głównej */
+#page-home{scroll-snap-type:y mandatory;overflow-y:scroll;height:100vh}
+#page-home section{scroll-snap-align:start;scroll-snap-stop:always}
 
 :root{
   --navy:   #1a2340;
@@ -2023,9 +2026,9 @@ async function loadStrefaCard(){
   document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Szukam wideo...</div></div>';
   const prevBtn=document.getElementById('btn-prev');
   if(prevBtn){
+    prevBtn.disabled=(_strefaIdx===0);
     prevBtn.style.opacity=_strefaIdx===0?'0.35':'1';
-    prevBtn.style.pointerEvents=_strefaIdx===0?'none':'auto';
-    prevBtn.style.display='block';
+    prevBtn.style.visibility='visible';
   }
   document.getElementById('btn-next').textContent=_strefaIdx===_strefaWords.length-1?'Zakończ':'Następna →';
 
@@ -2040,7 +2043,7 @@ async function loadContextSentence(word, translation, lang, level){
   // Sprawdź cache
   try{
     const{data:cached}=await db.from('context_sentences')
-      .select('sentence,translation,search_word').eq('word',word).eq('language',lang).eq('level',level).limit(1);
+      .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).limit(1);
     const c=Array.isArray(cached)?cached[0]:cached;
     if(c?.sentence){renderSentence(word,c.sentence,c.translation,c.search_word||word);return;}
   }catch(e){}
@@ -2059,7 +2062,7 @@ async function loadContextSentence(word, translation, lang, level){
     if(!ct.includes('json')) throw new Error('Not JSON response');
     const d=await res.json();
     if(d.sentence&&d.translation){
-      try{await db.from('context_sentences').upsert({word,language:lang,level,sentence:d.sentence,translation:d.translation,search_word:d.search_word||word},{onConflict:'word,language,level'});}catch(e){}
+      try{await db.from('context_sentences').upsert({word,language:lang,level,sentence:d.sentence,translation:d.translation},{onConflict:'word,language,level'});}catch(e){}
       renderSentence(word,d.sentence,d.translation,d.search_word||word);
       return;
     }
@@ -2291,73 +2294,81 @@ async function getToken(){
 }
 
 async function loadArticle(topic){
-  var res = document.getElementById("odkryj-results");
-  try{
-    var cached = (await db.from("article_cache").select("title,content").eq("topic",topic.toLowerCase()).eq("language",_odkryjLang).eq("level",_odkryjLevel).limit(1)).data;
-    if(cached && cached[0]){ showArticleCard(cached[0].title, cached[0].content, topic); return; }
-    var tok = await getToken();
-    var r = await fetch(ARTICLE_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},body:JSON.stringify({topic:topic,lang:_odkryjLang,level:_odkryjLevel})});
-    var d = await r.json();
-    if(d.error) throw new Error(d.error);
-    try{ await db.from("article_cache").upsert({topic:topic.toLowerCase(),language:_odkryjLang,level:_odkryjLevel,title:d.title,content:d.content},{onConflict:"topic,language,level"}); }catch(e){}
-    showArticleCard(d.title, d.content, topic);
-  }catch(e){
-    res.innerHTML = "<div class='odkryj-empty'><div style='color:#c33'>Blad: "+e.message+"</div></div>";
-  }
+  // Pokazuj od razu prawdziwe źródła - bez generowania AI
+  showArticleCard("", "", topic);
 }
 
 var _currentArticle = {title:"", content:"", topic:""};
 
 function showArticleCard(title, content, topic){
-  _currentArticle = {title:title, content:content, topic:topic};
-  var langL = {en:"Angielski",es:"Hiszpanski",jp:"Japonski",nl:"Niderlandzki"};
+  var langL = {en:"angielski",es:"hiszpanski",jp:"japonski",nl:"niderlandzki"};
   var sources = buildSources(topic, _odkryjLang);
   var res = document.getElementById("odkryj-results");
-  var preview = content.substring(0,180) + "...";
   res.innerHTML = [
-    "<div class='odkryj-card' id='main-article-card'>",
-    "<div class='odkryj-card-title'>" + title + "</div>",
-    "<div class='odkryj-card-meta'>" + (langL[_odkryjLang]||_odkryjLang) + " - Poziom " + _odkryjLevel + " - AI</div>",
-    "<div class='odkryj-card-preview'>" + preview + "</div>",
-    "<div style='margin-top:12px'><span class='btn btn-orange' style='font-size:13px;padding:6px 14px'>Czytaj z tlumaczeniem</span></div>",
-    "</div>",
-    "<div style='margin-top:20px'>",
-    "<div style='font-size:13px;font-weight:700;color:var(--dim2);text-transform:uppercase;margin-bottom:10px'>Prawdziwe źródła</div>",
-    sources,
-    "</div>"
+    "<div style='margin-bottom:12px'>",
+    "<p style='font-size:15px;color:var(--dim2);line-height:1.6'>",
+    "Strony do nauki jezyka <strong style='color:var(--navy)'>" + (langL[_odkryjLang]||_odkryjLang) + "</strong>",
+    " — temat: <strong style='color:var(--navy)'>" + topic + "</strong>",
+    " — poziom: <strong style='color:var(--orange)'>" + _odkryjLevel + "</strong>",
+    "</p></div>",
+    sources
   ].join("");
-  document.getElementById("main-article-card").onclick = function(){ openArticle(title, content); };
 }
 
 function buildSources(topic, lang){
   var enc = encodeURIComponent(topic);
+  var lvl = _odkryjLevel || "B1";
+
+  // Mapowanie CEFR → anchor lingua.com
+  var linguaAnchor = {A1:"#level-a1",A2:"#level-a2",B1:"#level-b1",B2:"#level-b2",C1:"#level-c1",C2:"#level-c2"}[lvl]||"";
+  // Mapowanie CEFR → poziomy News in Levels (1=A1/A2, 2=B1/B2, 3=C1/C2)
+  var nilLevel = (lvl==="A1"||lvl==="A2") ? "1" : (lvl==="C1"||lvl==="C2") ? "3" : "2";
+  // Lingua.com kod języka
+  var linguaLang = {en:"english",es:"spanish",nl:"dutch",jp:"japanese"}[lang]||"english";
+  // lingua.com nie ma japońskiego - fallback
+  var hasLingua = (lang !== "jp");
+
   var map = {
     en:[
-      ["BBC Learning English","https://www.bbc.co.uk/learningenglish/search/results?q="+enc,"Artykuly, audio i wideo na poziomach A1-C2"],
-      ["VOA Learning English","https://learningenglish.voanews.com/search/?query="+enc,"Wiadomosci pisane prostym angielskim"]
+      {n:"Lingua.com — czytanki "+lvl, u:"https://lingua.com/english/reading/"+linguaAnchor, d:"Czytanki na poziomie "+lvl+" z cwiczeniami — bez rejestracji, za darmo"},
+      {n:"News in Levels — poziom "+nilLevel, u:"https://www.newsinlevels.com/?s="+enc+"&level="+nilLevel, d:"Wiadomosci o '"+topic+"' na poziomie "+lvl+" z audio"},
+      {n:"BBC Learning English", u:"https://www.bbc.co.uk/learningenglish/english/search/results?q="+enc, d:"Artykuly, audio i cwiczenia BBC"},
+      {n:"VOA Learning English", u:"https://learningenglish.voanews.com/search/?query="+enc, d:"Wiadomosci pisane prostym angielskim"}
     ],
     es:[
-      ["DW Espanol","https://www.dw.com/es/buscador/?languageCode=es&item="+enc,"Wiadomosci i artykuly po hiszpansku"],
-      ["Lengalia","https://www.lengalia.com/es/","Kurs jezyka hiszpanskiego online"]
+      {n:"Lingua.com — lecturas "+lvl, u:"https://lingua.com/spanish/reading/"+linguaAnchor, d:"Czytanki po hiszpansku na poziomie "+lvl+" z cwiczeniami"},
+      {n:"News in Levels ES", u:"https://www.newsinlevels.com/es/?s="+enc+"&level="+nilLevel, d:"Wiadomosci po hiszpansku o '"+topic+"' na poziomie "+lvl},
+      {n:"DW Espanol", u:"https://www.dw.com/es/buscador/?languageCode=es&item="+enc, d:"Artykuly i wiadomosci po hiszpansku"},
+      {n:"Practica Espanol", u:"https://www.practicaespanol.com/?s="+enc, d:"Cwiczenia i artykuly dla uczacych sie hiszpanskiego"}
     ],
     jp:[
-      ["NHK Web Easy","https://www3.nhk.or.jp/news/easy/","Wiadomosci NHK pisane prostym japonskim"],
-      ["Watanoc","https://watanoc.com/?s="+enc,"Artykuly dla uczacych sie japonskiego"]
+      {n:"NHK Web Easy", u:"https://www3.nhk.or.jp/news/easy/", d:"Wiadomosci pisane prostym japonskim — dla A2/B1"},
+      {n:"Watanoc", u:"https://watanoc.com/?s="+enc, d:"Artykuly na poziomie N5-N3 dla uczacych sie japonskiego"},
+      {n:"NHK World Japanese", u:"https://www3.nhk.or.jp/nhkworld/en/learnjapanese/", d:"Nauka japonskiego z materialami NHK World"},
+      {n:"Hiragana Times", u:"https://www.hiraganatimes.com/?s="+enc, d:"Artykuly po japonsku i angielsku obok siebie"}
     ],
     nl:[
-      ["NOS Nieuws","https://nos.nl/zoeken?q="+enc,"Wiadomosci po niderlandzku"],
-      ["Oefenen.nl","https://oefenen.nl/","Cwiczenia jezykowe po niderlandzku"]
+      {n:"Lingua.com — lezen "+lvl, u:"https://lingua.com/dutch/reading/"+linguaAnchor, d:"Czytanki po niderlandzku na poziomie "+lvl+" z cwiczeniami"},
+      {n:"NT2 Nieuws", u:"https://www.nt2.nl/nl/030_nieuws?q="+enc, d:"Wiadomosci po niderlandzku dla uczacych sie"},
+      {n:"NOS Nieuws", u:"https://nos.nl/zoeken?q="+enc, d:"Autentyczne wiadomosci po niderlandzku o '"+topic+"'"},
+      {n:"DW Nederlands", u:"https://www.dw.com/nl/buscador/?languageCode=nl&item="+enc, d:"Artykuly i wiadomosci DW po niderlandzku"}
     ]
   };
-  return (map[lang]||map.en).map(function(s){
+
+  var langLabel = {en:"angielski",es:"hiszpanski",jp:"japonski",nl:"niderlandzki"}[lang]||lang;
+  var html = "<div style='margin-bottom:12px;font-size:14px;color:var(--dim2)'>Czytaj po <strong style='color:var(--navy)'>"+langLabel+"</strong> na poziomie <strong style='color:var(--orange)'>"+lvl+"</strong> o temacie <strong style='color:var(--navy)'>"+topic+"</strong></div>";
+  html += (map[lang]||map.en).map(function(s){
     return [
-      "<a href='"+s[1]+"' target='_blank' rel='noopener' class='source-link'>",
-      "<div><div style='font-weight:600;font-size:14px'>"+s[0]+"</div>",
-      "<div style='font-size:12px;color:var(--dim2);margin-top:2px'>"+s[2]+"</div></div>",
-      "<span style='margin-left:auto;color:var(--orange);font-size:12px;flex-shrink:0'>Otworz →</span>",
+      "<a href='"+s.u+"' target='_blank' rel='noopener' class='source-link'>",
+      "<div style='flex:1'>",
+      "<div style='font-weight:600;font-size:14px;color:var(--navy)'>"+s.n+"</div>",
+      "<div style='font-size:12px;color:var(--dim2);margin-top:2px'>"+s.d+"</div>",
+      "</div>",
+      "<span style='margin-left:12px;color:var(--orange);font-size:12px;flex-shrink:0;font-weight:600'>Otworz →</span>",
       "</a>"
     ].join("");
   }).join("");
+  return html;
 }
 
 function openArticle(title, content){
