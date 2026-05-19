@@ -1506,7 +1506,7 @@ async function loadRanking(){
   }catch(e){console.error(e);}
   // Załaduj panel admina jeśli admin
   const{data:{session}}=await db.auth.getSession();
-  if(session?.user?.email===ADMIN_EMAIL) loadAdminPanel();
+  // Admin panel moved to admin.html
 }
 
 (async()=>{
@@ -2021,8 +2021,12 @@ async function loadStrefaCard(){
   document.getElementById('sc-sentence-tr').textContent='';
   document.getElementById('sc-audio').style.display='none';
   document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Szukam wideo...</div></div>';
-  document.getElementById('btn-prev').style.opacity = _strefaIdx===0 ? '0.3' : '1';
-  document.getElementById('btn-prev').style.pointerEvents = _strefaIdx===0 ? 'none' : 'auto';
+  const prevBtn=document.getElementById('btn-prev');
+  if(prevBtn){
+    prevBtn.style.opacity=_strefaIdx===0?'0.35':'1';
+    prevBtn.style.pointerEvents=_strefaIdx===0?'none':'auto';
+    prevBtn.style.display='block';
+  }
   document.getElementById('btn-next').textContent=_strefaIdx===_strefaWords.length-1?'Zakończ':'Następna →';
 
   // Równolegle: zdanie AI + wideo
@@ -2033,59 +2037,39 @@ async function loadStrefaCard(){
 }
 
 async function loadContextSentence(word, translation, lang, level){
+  // Sprawdź cache
   try{
     const{data:cached}=await db.from('context_sentences')
-      .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).limit(1);
-    var c=Array.isArray(cached)?cached[0]:cached; if(c?.sentence){renderSentence(word,c.sentence,c.translation,c.search_word||word);return;}
+      .select('sentence,translation,search_word').eq('word',word).eq('language',lang).eq('level',level).limit(1);
+    const c=Array.isArray(cached)?cached[0]:cached;
+    if(c?.sentence){renderSentence(word,c.sentence,c.translation,c.search_word||word);return;}
   }catch(e){}
-  const langName={en:'English',es:'Spanish',jp:'Japanese',nl:'Dutch'}[lang]||'English';
-  const levelDesc={A1:'very simple beginner A1',A2:'elementary A2',B1:'intermediate B1',B2:'upper-intermediate B2',C1:'advanced C1',C2:'proficient C2'}[level]||'simple';
-  
+
+  // Wywołaj Edge Function
   try{
-    const prompt=`You are a ${langName} language teacher creating example sentences.
-
-WORD: "${word}"
-POLISH MEANING: "${translation}"
-CEFR LEVEL: ${level} (${levelDesc})
-
-Write ONE natural, realistic ${langName} sentence that:
-- Matches ${level} vocabulary and grammar complexity
-- Uses "${word}" in a real, everyday situation
-- Is NOT generic (avoid "I use/see/have this word")
-- For A1/A2: very simple, short, about daily life (greetings, food, family, school)
-- For B1/B2: more complex situations (travel, work, relationships)
-- For C1/C2: nuanced, idiomatic usage
-
-Mark "${word}" with double asterisks: **${word}**
-
-Return ONLY this JSON (no markdown):
-{"sentence":"natural ${langName} sentence","translation":"naturalne polskie tłumaczenie całego zdania"}
-
-Example for A1 "apple": {"sentence":"She ate a red **apple** for breakfast.","translation":"Ona zjadła czerwone jabłko na śniadanie."}`;
-    const _sess = (await db.auth.getSession()).data.session;
-    const _tok = _sess?.access_token || '';
+    const sess=(await db.auth.getSession()).data.session;
+    const tok=sess?.access_token||'';
     const res=await fetch(GENERATE_SENTENCE_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
       body:JSON.stringify({word,translation,lang,level})
     });
-    if(!res.ok){const err=await res.text();throw new Error('Edge Function error: '+res.status+' '+err);}
-    const parsed=await res.json();
-    if(parsed.sentence&&parsed.translation){
-      try{await db.from('context_sentences').upsert({word,language:lang,level,sentence:parsed.sentence,translation:parsed.translation});}catch(e){}
-      renderSentence(word,parsed.sentence,parsed.translation,parsed.search_word||word);
-    } else throw new Error('Missing fields');
-  }catch(e){
-    console.error('[Gemini error]',e.message);
-    // Fallback - naturalne zdanie
-    // Fallback gdy Gemini nie zadziałał — proste naturalne zdanie
-    var fb = `She said **${word}** and smiled.`;
-    var fbTr = `Powiedziała "${translation}" i uśmiechnęła się.`;
-    if(level==='A1'||level==='A2'){
-      fb = `She said **${word}**.`;
-      fbTr = `Powiedziała "${translation}".`;
+    if(!res.ok) throw new Error('HTTP '+res.status+': '+await res.text());
+    const ct=res.headers.get('content-type')||'';
+    if(!ct.includes('json')) throw new Error('Not JSON response');
+    const d=await res.json();
+    if(d.sentence&&d.translation){
+      try{await db.from('context_sentences').upsert({word,language:lang,level,sentence:d.sentence,translation:d.translation,search_word:d.search_word||word},{onConflict:'word,language,level'});}catch(e){}
+      renderSentence(word,d.sentence,d.translation,d.search_word||word);
+      return;
     }
-    renderSentence(word,fb,fbTr);
+    throw new Error('Missing sentence/translation in response');
+  }catch(e){
+    console.error('[Gemini]',e.message);
+    // Fallback
+    const fb=`She said **${word}** and smiled.`;
+    const fbTr=`Powiedziała "${translation}" i uśmiechnęła się.`;
+    renderSentence(word,fb,fbTr,word);
   }
 }
 
@@ -2315,7 +2299,7 @@ async function loadArticle(topic){
     var r = await fetch(ARTICLE_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},body:JSON.stringify({topic:topic,lang:_odkryjLang,level:_odkryjLevel})});
     var d = await r.json();
     if(d.error) throw new Error(d.error);
-    try{ await db.from("article_cache").upsert({topic:topic.toLowerCase(),language:_odkryjLang,level:_odkryjLevel,title:d.title,content:d.content}); }catch(e){}
+    try{ await db.from("article_cache").upsert({topic:topic.toLowerCase(),language:_odkryjLang,level:_odkryjLevel,title:d.title,content:d.content},{onConflict:"topic,language,level"}); }catch(e){}
     showArticleCard(d.title, d.content, topic);
   }catch(e){
     res.innerHTML = "<div class='odkryj-empty'><div style='color:#c33'>Blad: "+e.message+"</div></div>";
@@ -2338,7 +2322,7 @@ function showArticleCard(title, content, topic){
     "<div style='margin-top:12px'><span class='btn btn-orange' style='font-size:13px;padding:6px 14px'>Czytaj z tlumaczeniem</span></div>",
     "</div>",
     "<div style='margin-top:20px'>",
-    "<div style='font-size:13px;font-weight:700;color:var(--dim2);text-transform:uppercase;margin-bottom:10px'>Prawdziwe zrodla</div>",
+    "<div style='font-size:13px;font-weight:700;color:var(--dim2);text-transform:uppercase;margin-bottom:10px'>Prawdziwe źródła</div>",
     sources,
     "</div>"
   ].join("");
@@ -2348,13 +2332,31 @@ function showArticleCard(title, content, topic){
 function buildSources(topic, lang){
   var enc = encodeURIComponent(topic);
   var map = {
-    en:[["BBC Learning English","https://www.bbc.co.uk/learningenglish/"],["Wikipedia Simple","https://simple.wikipedia.org/wiki/Special:Search?search="+enc],["VOA Learning English","https://learningenglish.voanews.com/search/?query="+enc]],
-    es:[["DW Espanol","https://www.dw.com/es/"],["Wikipedia Espanol","https://es.wikipedia.org/wiki/Special:Search?search="+enc]],
-    jp:[["NHK Web Easy","https://www3.nhk.or.jp/news/easy/"],["Wikipedia JP","https://ja.wikipedia.org/wiki/Special:Search?search="+enc]],
-    nl:[["Wikipedia NL","https://nl.wikipedia.org/wiki/Special:Search?search="+enc],["NOS Nieuws","https://nos.nl/"]]
+    en:[
+      ["BBC Learning English","https://www.bbc.co.uk/learningenglish/search/results?q="+enc,"Artykuly, audio i wideo na poziomach A1-C2"],
+      ["VOA Learning English","https://learningenglish.voanews.com/search/?query="+enc,"Wiadomosci pisane prostym angielskim"]
+    ],
+    es:[
+      ["DW Espanol","https://www.dw.com/es/buscador/?languageCode=es&item="+enc,"Wiadomosci i artykuly po hiszpansku"],
+      ["Lengalia","https://www.lengalia.com/es/","Kurs jezyka hiszpanskiego online"]
+    ],
+    jp:[
+      ["NHK Web Easy","https://www3.nhk.or.jp/news/easy/","Wiadomosci NHK pisane prostym japonskim"],
+      ["Watanoc","https://watanoc.com/?s="+enc,"Artykuly dla uczacych sie japonskiego"]
+    ],
+    nl:[
+      ["NOS Nieuws","https://nos.nl/zoeken?q="+enc,"Wiadomosci po niderlandzku"],
+      ["Oefenen.nl","https://oefenen.nl/","Cwiczenia jezykowe po niderlandzku"]
+    ]
   };
   return (map[lang]||map.en).map(function(s){
-    return "<a href='"+s[1]+"' target='_blank' rel='noopener' class='source-link'><div style='font-weight:600;font-size:14px'>"+s[0]+"</div><span style='margin-left:auto;color:var(--orange);font-size:12px'>Otworz</span></a>";
+    return [
+      "<a href='"+s[1]+"' target='_blank' rel='noopener' class='source-link'>",
+      "<div><div style='font-weight:600;font-size:14px'>"+s[0]+"</div>",
+      "<div style='font-size:12px;color:var(--dim2);margin-top:2px'>"+s[2]+"</div></div>",
+      "<span style='margin-left:auto;color:var(--orange);font-size:12px;flex-shrink:0'>Otworz →</span>",
+      "</a>"
+    ].join("");
   }).join("");
 }
 
@@ -2413,7 +2415,7 @@ async function hoverTr(el, e){
       var tr = d.translation || sent;
       _trcache[sent] = tr;
       tooltip.textContent = tr;
-      try{ await db.from("translation_cache").upsert({sentence:sent,language:_odkryjLang,translation:tr}); }catch(e){}
+      try{ await db.from("translation_cache").upsert({sentence:sent,language:_odkryjLang,translation:tr},{onConflict:"sentence,language"}); }catch(e){}
     }catch(e){ tooltip.textContent = "Blad tlumaczenia"; }
   }, 500);
 }
@@ -2457,7 +2459,9 @@ async function loadVideo(topic, isPodcast){
     var langN = {en:"english",es:"spanish",jp:"japanese",nl:"dutch"}[_odkryjLang]||"english";
     var q = isPodcast ? topic+" podcast "+langN+" language learning" : topic+" "+_odkryjLevel+" "+langN;
     var tok = await getToken();
-    var r = await fetch(window.SEARCH_YOUTUBE_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},body:JSON.stringify({word:q,lang:_odkryjLang})});
+    var r = await fetch("https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":APIKEY},body:JSON.stringify({word:q,lang:_odkryjLang})});
+    var ct = r.headers.get("content-type")||"";
+    if(!ct.includes("json")) throw new Error("Serwer zwrocil nieprawidlowa odpowiedz ("+r.status+")");
     var d = await r.json();
     if(d.found && d.video_id){
       res.innerHTML = [
