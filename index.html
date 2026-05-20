@@ -2399,9 +2399,15 @@ function strefaBack(){
 <div id="page-odkryj" class="page" style="min-height:100vh;padding:140px 20px 80px">
 <div style="max-width:960px;margin:0 auto">
 
-  <div style="margin-bottom:28px">
-    <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Odkryj</h2>
-    <p style="color:var(--dim2);font-size:14px">Artykuły, filmy i słownictwo dopasowane do Twojego poziomu i zainteresowań</p>
+  <!-- Hero z globem 3D -->
+  <div style="display:flex;align-items:center;gap:32px;margin-bottom:32px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:8px">Odkryj świat</h2>
+      <p style="color:var(--dim2);font-size:15px;line-height:1.6">Artykuły, filmy i słownictwo dopasowane do Twojego poziomu i zainteresowań. Ucz się przez treści które kochasz.</p>
+    </div>
+    <div style="flex-shrink:0">
+      <canvas id="odkryj-globe" width="200" height="200" style="display:block;cursor:grab"></canvas>
+    </div>
   </div>
 
   <!-- Wyszukiwarka -->
@@ -2465,7 +2471,8 @@ function strefaBack(){
 .sent:hover{background:rgba(201,106,42,.15)}
 .hover-word{border-bottom:1px dotted var(--orange);cursor:help;transition:.1s}
 .hover-word:hover{background:rgba(201,106,42,.12);border-radius:3px}
-.tooltip-tr{position:fixed;background:var(--navy);color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;max-width:320px;z-index:9999;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.3);line-height:1.5;display:none}
+.tooltip-tr{position:absolute;background:rgba(26,35,64,.96);color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;max-width:220px;z-index:9999;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.3);line-height:1.5;display:none;white-space:nowrap}
+.tooltip-tr::after{content:'';position:absolute;top:100%;left:20px;border:5px solid transparent;border-top-color:rgba(26,35,64,.96)}
 .source-link{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:10px;text-decoration:none;color:var(--navy);transition:.2s;margin-bottom:8px}
 .source-link:hover{border-color:var(--orange)}
 </style>
@@ -3285,26 +3292,42 @@ async function loadDailyWord(){
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){showDailyWordFallback();return;}
 
+    var dailyLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
     var pool=[];
+
+    // Try word_progress - filter by language_id
+    var langIdMap={'en':1,'es':2,'jp':3,'nl':4,'de':5,'fr':6};
+    var langId=langIdMap[dailyLang]||1;
     try{
       var wp_res=await db.from('word_progress')
-        .select('ease_factor,flashcards(word,translation)')
+        .select('ease_factor,flashcards(word,translation,language_id)')
         .eq('user_id',sess.user.id)
         .order('ease_factor',{ascending:true})
-        .limit(50);
+        .limit(100);
       if(wp_res.data&&wp_res.data.length){
-        pool=wp_res.data.filter(function(r){return r.flashcards&&r.flashcards.word;})
-          .map(function(r){return{word:r.flashcards.word,translation:r.flashcards.translation};});
+        var langFiltered=wp_res.data.filter(function(r){
+          return r.flashcards&&r.flashcards.word&&r.flashcards.language_id===langId;
+        });
+        if(langFiltered.length>=2){
+          pool=langFiltered.map(function(r){return{word:r.flashcards.word,translation:r.flashcards.translation};});
+        }
+        // If not enough for selected lang — fallback to all langs
+        if(pool.length<2){
+          pool=wp_res.data.filter(function(r){return r.flashcards&&r.flashcards.word;})
+            .map(function(r){return{word:r.flashcards.word,translation:r.flashcards.translation};});
+        }
       }
     }catch(e){}
 
-    if(!pool.length){
+    // Fallback: user_sets
+    if(pool.length<2){
       try{
         var sets_res=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(10);
         if(sets_res.data) sets_res.data.forEach(function(s){if(s.user_set_cards)pool=pool.concat(s.user_set_cards);});
       }catch(e){}
     }
 
+    // If still no words — use language-specific fallback
     if(pool.length<2){showDailyWordFallback();return;}
 
     // Dwa deterministyczne słówka (seed = data, zmieniają się każdego dnia)
@@ -3460,102 +3483,60 @@ document.addEventListener('mouseover',function(e){
 });
 document.addEventListener('mouseout',function(e){
   if(e.target.classList&&e.target.classList.contains('hover-word')){
-    // Opóźnij ukrycie żeby nie migało
-    setTimeout(function(){
+    _ttHideTimer=setTimeout(function(){
       var tt=document.getElementById('hover-tooltip');
-      if(tt&&!tt.matches(':hover'))tt.style.display='none';
-    },200);
+      if(tt)tt.style.display='none';
+    },400);
   }
 });
 
 var _ttCache={};
+var _ttHideTimer=null;
+
 async function showWordTooltip(el, word, lang){
-  // If reading article, use sidebar instead of tooltip
-  var sidebar=document.getElementById('dc-read-sidebar');
-  var wordPanel=document.getElementById('dc-word-panel');
-  if(sidebar){
-    sidebar.innerHTML='<div style="font-size:11px;color:var(--dim2);margin-bottom:4px">Tłumaczę...</div>';
-    if(wordPanel) wordPanel.style.display='none';
-  }
+  clearTimeout(_ttHideTimer);
   var tt=document.getElementById('hover-tooltip');
   if(!tt)return;
   var rect=el.getBoundingClientRect();
   tt.style.display='block';
-  tt.style.left=(rect.left+window.scrollX)+'px';
-  tt.style.top=(rect.bottom+window.scrollY+6)+'px';
-  tt.innerHTML='<span style="opacity:.6">⏳</span> '+word;
+  tt.style.left=Math.max(8,rect.left+window.scrollX-20)+'px';
+  tt.style.top=(rect.top+window.scrollY-58)+'px';
+  tt.style.minWidth='120px';
+  tt.innerHTML='<span style="opacity:.5;font-size:11px">...</span>';
 
-  var cKey=lang+'_'+word.toLowerCase();
+  var sentence='';
+  try{var ps=el.closest('.sent');if(ps)sentence=ps.dataset.sentence||'';}catch(e){}
+  var cKey=lang+'_'+word.toLowerCase()+'_'+sentence.slice(0,20);
   if(_ttCache[cKey]){tt.innerHTML=_ttCache[cKey];return;}
 
   try{
     var sess=(await db.auth.getSession()).data.session;
     var tok=sess?sess.access_token:'';
-    var res=await fetch(GENERATE_SENTENCE_URL,{
+    var langName={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'}[lang]||'English';
+    var prompt='Translate the '+langName+' word "'+word+'" to Polish.'
+      +(sentence?' Context: "'+sentence.slice(0,80)+'". Give the translation that fits this context.':'')
+      +' Reply ONLY with the Polish translation, max 5 words, nothing else.';
+    var res=await fetch(AI_PROXY_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
-      body:JSON.stringify({word:word,translation:'',lang:lang,level:'B1',mode:'translate_only'})
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:20})
     });
     var d=await res.json();
-    var tr=d.translation||d.sentence||'';
-    if(tr){
-      var html='<strong>'+word+'</strong><br><span style="opacity:.8">'+tr+'</span>';
+    var raw=d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'';
+    var tr=raw.trim().replace(/["""]/g,'');
+    if(tr&&tt.style.display==='block'){
+      var html='<strong style="font-size:13px">'+word+'</strong><br><span style="font-size:14px;color:#f5c842">'+tr+'</span>';
       _ttCache[cKey]=html;
-      // Sprawdź czy tooltip nadal pokazuje to słowo
-      if(tt.style.display==='block') tt.innerHTML=html;
+      tt.innerHTML=html;
+      var sb=document.getElementById('dc-read-sidebar');
+      if(sb) sb.innerHTML='<div style="font-size:12px;color:var(--dim2);margin-bottom:6px">Hover:</div>'
+        +'<div style="font-size:18px;font-weight:700;color:var(--navy)">'+word+'</div>'
+        +'<div style="font-size:15px;color:var(--orange);font-weight:600;margin-top:4px">'+tr+'</div>'
+        +(sentence?'<div style="font-size:11px;color:var(--dim2);margin-top:8px;line-height:1.5">Kontekst: &quot;'+sentence.slice(0,60)+'...&quot;</div>':'');
     }
   }catch(e){
     tt.style.display='none';
   }
-}
-
-// Analiza zdania po kliknięciu
-var _sentAnalyzing=false;
-async function analyzeSentence(el, sentence){
-  // Update sidebar with sentence analysis
-  var sidebar=document.getElementById('dc-read-sidebar');
-  if(sidebar) sidebar.innerHTML='<div style="font-size:12px;color:var(--dim2)">Tłumaczę zdanie...</div>';
-  if(_sentAnalyzing)return;
-  _sentAnalyzing=true;
-  // Zaznacz zdanie
-  document.querySelectorAll('.sent.analyzing').forEach(function(s){s.classList.remove('analyzing');s.style.background='';});
-  el.style.background='rgba(201,106,42,.15)';
-  el.classList.add('analyzing');
-
-  // Pokaż panel analizy
-  var panel=document.getElementById('dc-sent-analysis');
-  if(!panel){
-    panel=document.createElement('div');
-    panel.id='dc-sent-analysis';
-    panel.style.cssText='margin-top:12px;padding:14px;background:var(--paper2);border-radius:10px;border:1px solid var(--border);font-size:13px';
-    document.getElementById('dc-read-body').parentElement.appendChild(panel);
-  }
-  panel.innerHTML='<div style="color:var(--dim2)">🤖 Analizuję zdanie...</div>';
-
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    var tok=sess?sess.access_token:'';
-    var dLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
-    var res=await fetch(AI_PROXY_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-      body:JSON.stringify({
-        messages:[{role:'user',content:'Analyze this '+dLang+' sentence for a Polish speaker learning the language. Give: 1) Polish translation 2) Grammar explanation (briefly) 3) Key vocabulary. Be concise. Sentence: "'+sentence+'"'}],
-        max_tokens:300
-      })
-    });
-    var data=await res.json();
-    var analysis=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Brak analizy';
-    panel.innerHTML='<div style="font-size:12px;font-weight:700;color:var(--dim2);margin-bottom:6px">📖 Analiza zdania</div>'
-      +'<div style="color:var(--dim);line-height:1.7">'+analysis.replace(/\n/g,'<br>')+'</div>'
-
-      +'<button onclick="this.parentElement.style.display=&quot;none&quot;" style="margin-top:8px;font-size:11px;color:var(--dim2);background:none;border:none;cursor:pointer">Zamknij ×</button>';
-  }catch(e){
-    panel.innerHTML='<div style="color:#c33;font-size:13px">Błąd analizy: '+e.message+'</div>';
-  }
-  el.style.background='';
-  el.classList.remove('analyzing');
-  _sentAnalyzing=false;
 }
 
 // Audio TTS - czytanie artykułu
@@ -5071,6 +5052,17 @@ async function submitRecording(word, sentence, lang){
     await sendNotification(sess.user.id,'gold','Nagrałeś głosówkę! 🎙️','Dodano 5 złota za podzielenie się wymową ze społecznością',5);
 
     showToast('Głosówka opublikowana! +5 złota 🪙','success');
+    // Show notification directing to Materiały
+    setTimeout(function(){
+      showToast('Sprawdź zakładkę Głosówki w Materiałach 🎙️','success');
+    }, 2500);
+    var recordWrap=document.getElementById('voice-record-wrap');
+    if(recordWrap){
+      var info=document.createElement('div');
+      info.style.cssText='margin-top:8px;padding:10px 14px;background:#e1f5ee;border-radius:8px;font-size:13px;color:#085041;display:flex;align-items:center;gap:8px';
+      info.innerHTML='✅ Twoja głosówka trafiła do <strong>Materiały → Głosówki</strong> — społeczność może ją teraz ocenić!';
+      recordWrap.appendChild(info);
+    }
     document.getElementById('record-submit').style.display='none';
     document.getElementById('record-preview').style.display='none';
     _audioChunks=[];
@@ -5373,6 +5365,126 @@ async function loadChallengeRanking(){
 </script>
 
 <!-- ═══ AGENT NAUCZYCIEL ═══ -->
+
+<!-- ═══ LEKTORZY ═══ -->
+<div id="page-tutors" class="page" style="min-height:100vh;padding:140px 20px 80px">
+<div style="max-width:1000px;margin:0 auto">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:16px">
+    <div>
+      <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Lektorzy</h2>
+      <p style="color:var(--dim2);font-size:14px">Znajdź lektora dopasowanego do Twojego poziomu i języka</p>
+    </div>
+    <button class="btn btn-orange" onclick="showTutorRegisterForm()" id="become-tutor-btn">+ Zostań lektorem</button>
+  </div>
+
+  <!-- Filtry -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;padding:16px;background:#fff;border-radius:16px;border:1.5px solid var(--border)">
+    <select id="tutor-filter-lang" onchange="filterTutors()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+      <option value="">Wszystkie języki</option>
+      <option value="en">🇬🇧 Angielski</option>
+      <option value="es">🇪🇸 Hiszpański</option>
+      <option value="nl">🇳🇱 Holenderski</option>
+      <option value="jp">🇯🇵 Japoński</option>
+      <option value="de">🇩🇪 Niemiecki</option>
+      <option value="fr">🇫🇷 Francuski</option>
+    </select>
+    <select id="tutor-filter-level" onchange="filterTutors()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+      <option value="">Wszystkie poziomy</option>
+      <option value="A1">A1</option><option value="A2">A2</option>
+      <option value="B1">B1</option><option value="B2">B2</option>
+      <option value="C1">C1</option><option value="C2">C2</option>
+    </select>
+    <select id="tutor-filter-sort" onchange="filterTutors()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+      <option value="rating">Najwyżej oceniani</option>
+      <option value="price_asc">Cena: rosnąco</option>
+      <option value="price_desc">Cena: malejąco</option>
+      <option value="newest">Najnowsi</option>
+    </select>
+  </div>
+
+  <!-- Lista lektorów -->
+  <div id="tutors-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px">
+    <div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Ładowanie lektorów...</div>
+  </div>
+</div>
+</div>
+
+<!-- Modal: rejestracja lektora -->
+<div id="tutor-register-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;overflow-y:auto;padding:20px">
+<div style="max-width:600px;margin:40px auto;background:#fff;border-radius:20px;padding:32px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h3 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--navy)">Profil lektora</h3>
+    <button onclick="document.getElementById('tutor-register-modal').style.display='none'" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--dim2)">×</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Imię / Nazwa *</label>
+      <input id="tutor-name" type="text" placeholder="np. Anna K." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">O mnie</label>
+      <textarea id="tutor-bio" rows="4" placeholder="Kilka słów o sobie..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px;resize:vertical"></textarea>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Link do videoprezentacji (YouTube itp.)</label>
+      <input id="tutor-video" type="url" placeholder="https://youtube.com/..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Zdjęcie (URL do JPG/PNG)</label>
+        <input id="tutor-photo" type="url" placeholder="https://..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+        <div style="font-size:11px;color:var(--dim2);margin-top:3px">Wgraj na imgur.com i wklej link</div>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Cena za godzinę (PLN)</label>
+        <input id="tutor-price" type="number" placeholder="80" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:8px">Języki nauczania</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <label class="tutor-check"><input type="checkbox" value="en"> 🇬🇧 Angielski</label>
+        <label class="tutor-check"><input type="checkbox" value="es"> 🇪🇸 Hiszpański</label>
+        <label class="tutor-check"><input type="checkbox" value="nl"> 🇳🇱 Holenderski</label>
+        <label class="tutor-check"><input type="checkbox" value="jp"> 🇯🇵 Japoński</label>
+        <label class="tutor-check"><input type="checkbox" value="de"> 🇩🇪 Niemiecki</label>
+        <label class="tutor-check"><input type="checkbox" value="fr"> 🇫🇷 Francuski</label>
+        <label class="tutor-check"><input type="checkbox" value="it"> 🇮🇹 Włoski</label>
+        <label class="tutor-check"><input type="checkbox" value="pt"> 🇵🇹 Portugalski</label>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:8px">Poziomy</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <label class="tutor-check"><input type="checkbox" value="A1"> A1</label>
+        <label class="tutor-check"><input type="checkbox" value="A2"> A2</label>
+        <label class="tutor-check"><input type="checkbox" value="B1"> B1</label>
+        <label class="tutor-check"><input type="checkbox" value="B2"> B2</label>
+        <label class="tutor-check"><input type="checkbox" value="C1"> C1</label>
+        <label class="tutor-check"><input type="checkbox" value="C2"> C2</label>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:8px">Dostępność</label>
+      <div id="tutor-availability" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Certyfikaty (linki, jeden per linia)</label>
+      <textarea id="tutor-certs" rows="3" placeholder="https://..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px;resize:vertical"></textarea>
+    </div>
+    <div id="tutor-form-msg" style="font-size:13px;text-align:center;color:#c33;min-height:20px"></div>
+    <button class="btn btn-orange" onclick="saveTutorProfile()" style="width:100%;justify-content:center;padding:14px">Zapisz profil lektora</button>
+  </div>
+</div>
+</div>
+
+<!-- Modal: widok profilu lektora -->
+<div id="tutor-view-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;overflow-y:auto;padding:20px">
+<div style="max-width:640px;margin:40px auto;background:#fff;border-radius:20px;overflow:hidden">
+  <div id="tutor-view-content"></div>
+</div>
+</div>
+
 <div id="page-teacher" class="page" style="min-height:100vh;padding:140px 20px 80px">
 <div style="max-width:860px;margin:0 auto">
 
@@ -6095,28 +6207,41 @@ function renderSingleExercise(section, exercises, idx){
   }
   var ex = exercises[idx];
   _teacherExerciseAnswered = false;
+  var hasOptions = ex.options && ex.options.length > 0;
+  var isTyping = ex.type === 'translate' || ex.type === 'fill_blank_type' || (!hasOptions && ex.type !== 'multiple_choice');
+  var isSpeaking = ex.type === 'speaking' || ex.type === 'pronunciation';
   section.innerHTML = '<div class="lesson-section-header">✏️ Ćwiczenie '+(idx+1)+' z '+exercises.length+'</div>'
     + '<div style="font-size:13px;color:var(--dim2);margin-bottom:10px">'+ex.instruction+'</div>'
     + '<div style="font-size:16px;font-weight:600;color:var(--navy);margin-bottom:16px">'+ex.question+'</div>'
-    + buildExerciseOpts(ex, idx, exercises)
+    + (isSpeaking
+        ? '<button class="btn btn-orange" onclick="startExerciseSpeaking('+idx+')" style="margin-bottom:8px">🎙️ Nagraj odpowiedź</button>'
+          + '<audio id="ex-audio-'+idx+'" style="display:none;width:100%;margin-top:8px" controls></audio>'
+          + '<button id="ex-speaking-next-'+idx+'" class="btn btn-ghost" style="display:none;margin-top:8px;width:100%;justify-content:center" onclick="advanceExercise('+idx+',true,'+JSON.stringify(exercises).length+')">Dalej →</button>'
+        : buildExerciseOpts(ex, idx, exercises, isTyping))
     + '<div id="ex-explain-'+idx+'" style="display:none;margin-top:10px;padding:12px;background:var(--paper2);border-radius:8px;font-size:13px;color:var(--dim);line-height:1.6"></div>';
 }
 
-function buildExerciseOpts(ex, idx, exercises){
-  if(ex.type === 'fill_blank' || ex.type === 'multiple_choice'){
-    var opts = ex.options||[];
-    return '<div style="display:flex;flex-direction:column;gap:8px">'
-      + opts.map(function(opt,i){
-          return '<div class="exercise-opt" id="ex-opt-'+idx+'-'+i+'" onclick="checkExercise(\''+opt.replace(/'/g,"&#39;")+'\',\''+ex.answer.replace(/'/g,"&#39;")+'\','+idx+','+i+','+JSON.stringify(exercises).replace(/'/g,"&#39;").length+')">'+opt+'</div>';
+function buildExerciseOpts(ex, idx, exercises, forceInput){
+  if(!forceInput && ex.options && ex.options.length > 0){
+    return '<div style="display:flex;flex-direction:column;gap:8px" id="ex-opts-'+idx+'">'
+      + ex.options.map(function(opt,i){
+          return '<div class="exercise-opt" id="ex-opt-'+idx+'-'+i+'" data-opt="'+opt.replace(/"/g,'&quot;')+'" data-idx="'+i+'" data-correct="'+ex.answer.replace(/"/g,'&quot;')+'" data-exidx="'+idx+'">'
+            +'<span style="width:26px;height:26px;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">'+String.fromCharCode(65+i)+'</span>'
+            +opt+'</div>';
         }).join('')
       + '</div>';
   }
-  // Translate — text input
-  return '<input id="ex-input-'+idx+'" type="text" placeholder="Wpisz odpowiedź..." style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--border2);font-size:14px;margin-bottom:8px">'
-    + '<button class="btn btn-orange" onclick="checkTranslateEx('+idx+',\''+ex.answer.replace(/'/g,"&#39;")+'\')">Sprawdź</button>';
+  var ph=ex.type==='translate'?'Przetłumacz na polski...':'Wpisz brakujące słowo...';
+  return '<div style="margin-bottom:10px">'
+    + '<input id="ex-input-'+idx+'" type="text" placeholder="'+ph+'" autocomplete="off" '
+    + 'style="width:100%;padding:12px 16px;border-radius:10px;border:1.5px solid var(--border2);font-size:15px;box-sizing:border-box">'
+    + '</div>'
+    + '<button class="btn btn-orange" style="width:100%;justify-content:center;margin-top:4px" '
+    + 'onclick="checkTranslateEx('+idx+',document.getElementById(\'ex-input-'+idx+'\').value)">Sprawdź ✓</button>';
 }
 
 function checkExercise(chosen, correct, exIdx, optIdx, exCount){
+  if(!correct)return;
   if(_teacherExerciseAnswered) return;
   _teacherExerciseAnswered = true;
   var isCorrect = chosen.trim().toLowerCase() === correct.trim().toLowerCase();
@@ -6138,10 +6263,13 @@ function checkExercise(chosen, correct, exIdx, optIdx, exCount){
   }, 1600);
 }
 
-function checkTranslateEx(exIdx, correct){
-  var input = document.getElementById('ex-input-'+exIdx);
-  if(!input) return;
-  checkExercise(input.value, correct, exIdx, -1, 0);
+function checkTranslateEx(exIdx, value){
+  var answer = typeof value === 'string' ? value : (document.getElementById('ex-input-'+exIdx)||{}).value||'';
+  // Get correct answer from exercise data
+  var step=_teacherSteps[_teacherStep];
+  var exercises=step?step.data:[];
+  var ex=exercises[exIdx]||{};
+  checkExercise(answer, ex.answer||'', exIdx, -1, exercises.length);
 }
 
 function renderDialogueStep(section, lesson){
@@ -6350,4 +6478,162 @@ function speakText(text, langCode){
   if(best) utt.voice = best;
   speechSynthesis.speak(utt);
 }
+</script>
+<script>
+// ═══════════════════════════════════════
+// EVENT DELEGATION: Exercise options
+// ═══════════════════════════════════════
+document.addEventListener('click', function(e){
+  var opt = e.target.closest('.exercise-opt[data-opt]');
+  if(!opt) return;
+  var chosen = opt.dataset.opt;
+  var correct = opt.dataset.correct;
+  var exIdx = parseInt(opt.dataset.exidx);
+  var optIdx = parseInt(opt.dataset.idx);
+  checkExercise(chosen, correct, exIdx, optIdx, 0);
+});
+
+// ═══════════════════════════════════════
+// 3D SPINNING GLOBE (Canvas)
+// ═══════════════════════════════════════
+function initGlobe(){
+  var canvas = document.getElementById('odkryj-globe');
+  if(!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  var cx = W/2, cy = H/2, r = 88;
+  var rotY = 0, rotX = 0.3;
+  var dragging = false, lastX = 0, lastY = 0;
+  var velX = 0.004;
+
+  // Continents as simplified lat/lon polygons [lon, lat] in radians
+  var dots = [];
+  for(var la = -80; la <= 80; la += 6){
+    for(var lo = -180; lo <= 180; lo += 6){
+      // Simple land mask approximation
+      var lat = la * Math.PI/180;
+      var lon = lo * Math.PI/180;
+      var x = lo, y = la;
+      var land = false;
+      // Europe/Asia
+      if(x>-10&&x<140&&y>35&&y<70) land=true;
+      if(x>60&&x<140&&y>10&&y<35) land=true;
+      // Africa
+      if(x>-20&&x<50&&y>-35&&y<37) land=true;
+      // Americas
+      if(x>-120&&x<-30&&y>-55&&y<70) land=true;
+      if(x>-170&&x<-50&&y>15&&y<75) land=true;
+      // Australia
+      if(x>115&&x<155&&y>-40&&y<-10) land=true;
+      if(land) dots.push([lon, lat]);
+    }
+  }
+
+  function project(lon, lat){
+    // Rotate around Y axis (rotY) then X axis (rotX)
+    var x = Math.cos(lat)*Math.sin(lon-rotY);
+    var y = Math.sin(lat)*Math.cos(rotX) - Math.cos(lat)*Math.cos(lon-rotY)*Math.sin(rotX);
+    var z = Math.sin(lat)*Math.sin(rotX) + Math.cos(lat)*Math.cos(lon-rotY)*Math.cos(rotX);
+    return {x:cx+x*r, y:cy-y*r, z:z};
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+
+    // Ocean gradient
+    var grad = ctx.createRadialGradient(cx-20,cy-20,10,cx,cy,r);
+    grad.addColorStop(0,'#1a3a6e');
+    grad.addColorStop(1,'#0d1f3c');
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.fillStyle=grad;
+    ctx.fill();
+
+    // Atmosphere glow
+    var atm = ctx.createRadialGradient(cx,cy,r-5,cx,cy,r+8);
+    atm.addColorStop(0,'rgba(100,160,255,0.15)');
+    atm.addColorStop(1,'rgba(100,160,255,0)');
+    ctx.beginPath();
+    ctx.arc(cx,cy,r+8,0,Math.PI*2);
+    ctx.fillStyle=atm;
+    ctx.fill();
+
+    // Land dots
+    dots.forEach(function(d){
+      var p = project(d[0], d[1]);
+      if(p.z < 0) return; // Behind globe
+      var brightness = 0.4 + p.z * 0.6;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.8, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba('+Math.round(80+brightness*100)+','+Math.round(180+brightness*50)+','+Math.round(100+brightness*60)+','+Math.min(1,brightness+0.3)+')';
+      ctx.fill();
+    });
+
+    // Grid lines (meridians/parallels, subtle)
+    ctx.strokeStyle='rgba(255,255,255,0.06)';
+    ctx.lineWidth=0.5;
+    for(var lo2=-180;lo2<180;lo2+=30){
+      ctx.beginPath();
+      var first=true;
+      for(var la2=-90;la2<=90;la2+=3){
+        var p=project(lo2*Math.PI/180,la2*Math.PI/180);
+        if(p.z<0){first=true;continue;}
+        if(first){ctx.moveTo(p.x,p.y);first=false;}
+        else ctx.lineTo(p.x,p.y);
+      }
+      ctx.stroke();
+    }
+
+    // Specular highlight
+    var spec=ctx.createRadialGradient(cx-r*0.35,cy-r*0.35,2,cx-r*0.35,cy-r*0.35,r*0.6);
+    spec.addColorStop(0,'rgba(255,255,255,0.12)');
+    spec.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.fillStyle=spec;
+    ctx.fill();
+  }
+
+  function animate(){
+    if(!dragging) rotY += velX;
+    draw();
+    requestAnimationFrame(animate);
+  }
+
+  // Mouse/touch drag
+  canvas.addEventListener('mousedown',function(e){
+    dragging=true;lastX=e.clientX;lastY=e.clientY;
+    canvas.style.cursor='grabbing';
+  });
+  document.addEventListener('mousemove',function(e){
+    if(!dragging)return;
+    rotY += (e.clientX-lastX)*0.01;
+    rotX += (e.clientY-lastY)*0.005;
+    rotX = Math.max(-1.4,Math.min(1.4,rotX));
+    lastX=e.clientX;lastY=e.clientY;
+  });
+  document.addEventListener('mouseup',function(){
+    dragging=false;canvas.style.cursor='grab';
+  });
+  canvas.addEventListener('touchstart',function(e){
+    dragging=true;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;
+  });
+  canvas.addEventListener('touchmove',function(e){
+    if(!dragging)return;
+    rotY+=(e.touches[0].clientX-lastX)*0.01;
+    lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;
+    e.preventDefault();
+  },{passive:false});
+  canvas.addEventListener('touchend',function(){dragging=false;});
+
+  animate();
+}
+
+// Initialize globe when Odkryj tab opens
+var _globeInited = false;
+var _origInitOdkryj = window.initOdkryj;
+window.initOdkryj = function(){
+  if(_origInitOdkryj) _origInitOdkryj();
+  if(!_globeInited){_globeInited=true;setTimeout(initGlobe,50);}
+};
 </script>
