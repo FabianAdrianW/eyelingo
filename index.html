@@ -1285,6 +1285,11 @@ function setCard(s){
 async function quickTogglePublic(id, btn){
   const s = _matSets.find(x=>x.id===id);
   if(!s) return;
+  // Blokuj zestawy zaimportowane z wyzwań i artykułów
+  if(s.name&&(s.name.includes('(mój)')||s.name.includes('🏆'))){
+    showToast('Zaimportowane zestawy nie mogą być publiczne.','error');
+    return;
+  }
   const newVal = !s.is_public;
   await db.from('user_sets').update({is_public:newVal}).eq('id',id);
   s.is_public = newVal;
@@ -2469,9 +2474,11 @@ function strefaBack(){
 .article-reader{font-size:17px;line-height:1.85;color:var(--navy)}
 .sent{cursor:pointer;border-radius:3px;padding:1px 2px;transition:.1s}
 .sent:hover{background:rgba(201,106,42,.15)}
+.sent.active-sent{background:rgba(201,106,42,.22);outline:2px solid rgba(201,106,42,.4);border-radius:3px}
+@keyframes spin{to{transform:rotate(360deg)}}
 .hover-word{border-bottom:1px dotted var(--orange);cursor:help;transition:.1s}
 .hover-word:hover{background:rgba(201,106,42,.12);border-radius:3px}
-.tooltip-tr{position:absolute;background:rgba(26,35,64,.96);color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;max-width:220px;z-index:9999;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.3);line-height:1.5;display:none;white-space:nowrap}
+.tooltip-tr{position:fixed;background:rgba(26,35,64,.96);color:#fff;padding:8px 14px;border-radius:10px;font-size:13px;max-width:220px;z-index:9999;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.3);line-height:1.5;display:none;white-space:nowrap}
 .tooltip-tr::after{content:'';position:absolute;top:100%;left:20px;border:5px solid transparent;border-top-color:rgba(26,35,64,.96)}
 .source-link{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:10px;text-decoration:none;color:var(--navy);transition:.2s;margin-bottom:8px}
 .source-link:hover{border-color:var(--orange)}
@@ -3346,21 +3353,44 @@ async function loadDailyWord(){
     document.getElementById('dc-word-text2').textContent=card2.word;
     document.getElementById('dc-word-translation2').textContent=card2.translation;
 
-    // Zdania z cache
-    function loadSentenceEl(w,elId){
+    // Zdania z cache lub generuj przez AI
+    function loadSentenceEl(w,translation,elId){
+      var el=document.getElementById(elId);
+      if(el) el.innerHTML='<span style="color:var(--dim2);font-style:normal;font-size:12px">⏳ Generuję zdanie...</span>';
       db.from('context_sentences').select('sentence').eq('word',w).eq('language',dailyLang).limit(1).then(function(r){
         var c=r.data&&(Array.isArray(r.data)?r.data[0]:r.data);
-        var el=document.getElementById(elId);
         if(c&&c.sentence){
           var s=c.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
           if(el) el.innerHTML='"'+s+'"';
         } else {
-          if(el) el.innerHTML='<span style="color:var(--dim2);font-style:normal;font-size:12px">Zdanie pojawi się po sesji nauki</span>';
+          // Generuj zdanie przez AI
+          db.auth.getSession().then(function(sr){
+            var tok=sr.data&&sr.data.session?sr.data.session.access_token:'';
+            fetch(GENERATE_SENTENCE_URL,{
+              method:'POST',
+              headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},
+              body:JSON.stringify({word:w,translation:translation,lang:dailyLang,level:'B1'})
+            }).then(function(res){return res.json();}).then(function(d){
+              if(d&&d.sentence){
+                var s=d.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+                if(el) el.innerHTML='"'+s+'"';
+                // Zapisz do cache
+                db.from('context_sentences').upsert(
+                  {word:w,language:dailyLang,level:'B1',sentence:d.sentence,translation:d.translation||''},
+                  {onConflict:'word,language,level'}
+                ).then(function(){}).catch(function(){});
+              } else {
+                if(el) el.innerHTML='<span style="color:var(--dim2);font-style:normal;font-size:12px">Brak zdania — wróć po sesji nauki</span>';
+              }
+            }).catch(function(){
+              if(el) el.innerHTML='<span style="color:var(--dim2);font-style:normal;font-size:12px">Brak zdania — wróć po sesji nauki</span>';
+            });
+          });
         }
       }).catch(function(){});
     }
-    loadSentenceEl(card.word,'dc-word-sentence');
-    loadSentenceEl(card2.word,'dc-word-sentence2');
+    loadSentenceEl(card.word,card.translation,'dc-word-sentence');
+    loadSentenceEl(card2.word,card2.translation,'dc-word-sentence2');
 
   }catch(e){showDailyWordFallback();}
 }
@@ -3463,13 +3493,62 @@ function buildArticleHTML(text, lang){
     var words=trimmed.split(/(\s+)/);
     var wordsHtml=words.map(function(w){
       if(/^\s+$/.test(w))return w;
-      var clean=w.replace(/[^a-zA-ZÀ-žа-яА-Я]/g,'');
+      var clean=w.replace(/[^a-zA-ZÀ-žа-яА-Яぁ-ん一-龯]/g,'');
       if(clean.length<2)return w;
       return'<span class="hover-word" data-word="'+clean+'" data-lang="'+lang+'">'+w+'</span>';
     }).join('');
     var safeS2=trimmed.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-    return'<span class="sent" data-idx="'+idx+'" data-sentence="'+safeS2+'" onclick="analyzeSentence(this,this.dataset.sentence)" title="Kliknij aby przeanalizować zdanie">'+wordsHtml+'</span> ';
+    return'<span class="sent" data-idx="'+idx+'" data-sentence="'+safeS2+'" onclick="analyzeSentence(this,this.dataset.sentence)" title="Kliknij aby przetłumaczyć zdanie">'+wordsHtml+'</span> ';
   }).join('');
+}
+
+// Kliknięcie w zdanie → tłumaczenie po prawej w sidebarze
+var _sentCache={};
+async function analyzeSentence(el, sentence){
+  // Podświetl aktywne zdanie
+  document.querySelectorAll('.sent.active-sent').forEach(function(s){s.classList.remove('active-sent');});
+  el.classList.add('active-sent');
+
+  var lang=window._articleLang||'en';
+  var sb=document.getElementById('dc-read-sidebar');
+  if(!sb)return;
+
+  // Cache
+  var cKey='sent_'+lang+'_'+sentence.slice(0,30);
+  if(_sentCache[cKey]){
+    renderSentenceSidebar(sb, sentence, _sentCache[cKey], lang);
+    return;
+  }
+
+  sb.innerHTML='<div style="font-size:13px;color:var(--dim2);display:flex;align-items:center;gap:8px">'
+    +'<div style="width:14px;height:14px;border:2px solid var(--orange);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite"></div>'
+    +'Tłumaczę zdanie...</div>';
+
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var langName={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'}[lang]||'English';
+    var prompt='Translate this '+langName+' sentence to Polish. Return ONLY the Polish translation, nothing else.\nSentence: "'+sentence+'"';
+    var res=await fetch(AI_PROXY_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:150})
+    });
+    var d=await res.json();
+    var tr=(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim().replace(/^["']|["']$/g,'');
+    _sentCache[cKey]=tr;
+    renderSentenceSidebar(sb, sentence, tr, lang);
+  }catch(e){
+    sb.innerHTML='<div style="font-size:12px;color:#c33">Błąd tłumaczenia — spróbuj ponownie</div>';
+  }
+}
+
+function renderSentenceSidebar(sb, sentence, translation, lang){
+  sb.innerHTML=
+    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:10px">📌 Wybrane zdanie</div>'
+    +'<div style="font-size:14px;color:var(--navy);line-height:1.6;margin-bottom:12px;font-style:italic">&ldquo;'+sentence+'&rdquo;</div>'
+    +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:6px">🇵🇱 Tłumaczenie</div>'
+    +'<div style="font-size:15px;color:var(--orange);font-weight:600;line-height:1.5">'+translation+'</div>';
 }
 
 // Tooltip hover na słowach
@@ -3498,9 +3577,11 @@ async function showWordTooltip(el, word, lang){
   var tt=document.getElementById('hover-tooltip');
   if(!tt)return;
   var rect=el.getBoundingClientRect();
+  // Użyj fixed position względem viewport (precyzyjne, niezależne od scrollu)
+  tt.style.position='fixed';
   tt.style.display='block';
-  tt.style.left=Math.max(8,rect.left+window.scrollX-20)+'px';
-  tt.style.top=(rect.top+window.scrollY-58)+'px';
+  tt.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-200))+'px';
+  tt.style.top=Math.max(8,rect.top-58)+'px';
   tt.style.minWidth='120px';
   tt.innerHTML='<span style="opacity:.5;font-size:11px">...</span>';
 
@@ -3550,6 +3631,7 @@ function addArticleAudioBtn(text, lang){
   var langCode={en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP'}[lang]||'en-GB';
   var isPlaying=false;
   var utt=null;
+  var _stopped=false;
 
   var btn=document.createElement('button');
   btn.className='btn btn-navy';
@@ -3561,6 +3643,7 @@ function addArticleAudioBtn(text, lang){
 
   btn.onclick=function(){
     if(isPlaying){
+      _stopped=true;
       speechSynthesis.cancel();
       isPlaying=false;
       btn.innerHTML='🔊 Przeczytaj artykuł';
@@ -3577,8 +3660,15 @@ function addArticleAudioBtn(text, lang){
     var cleanText=text.replace(/<[^>]+>/g,'').replace(/&\w+;/g,' ');
     var chunks=cleanText.match(/[^.!?]+[.!?]+\s*/g)||[cleanText];
     var chunkIdx=0;
+    _stopped=false;
 
     function speakNext(){
+      if(_stopped){
+        isPlaying=false;
+        btn.innerHTML='🔊 Przeczytaj artykuł';
+        progress.textContent='';
+        return;
+      }
       if(chunkIdx>=chunks.length){
         isPlaying=false;
         btn.innerHTML='🔊 Przeczytaj artykuł';
@@ -3590,8 +3680,17 @@ function addArticleAudioBtn(text, lang){
       utt.rate=0.88;
       utt.pitch=1.0;
       if(preferred)utt.voice=preferred;
-      utt.onend=function(){chunkIdx++;progress.textContent=(chunkIdx)+'/'+chunks.length+' zdań';speakNext();};
-      utt.onerror=function(){chunkIdx++;speakNext();};
+      utt.onend=function(){
+        if(_stopped)return;
+        chunkIdx++;
+        progress.textContent=(chunkIdx)+'/'+chunks.length+' zdań';
+        speakNext();
+      };
+      utt.onerror=function(){
+        if(_stopped)return;
+        chunkIdx++;
+        speakNext();
+      };
       speechSynthesis.speak(utt);
       chunkIdx++;
     }
@@ -3600,7 +3699,7 @@ function addArticleAudioBtn(text, lang){
     btn.innerHTML='⏹️ Zatrzymaj';
     progress.textContent='Czytam...';
     speechSynthesis.cancel();
-    speakNext();
+    setTimeout(speakNext,100);
   };
 
   wrap.appendChild(btn);
@@ -3758,9 +3857,9 @@ async function initChallenge(){
 
   // Wyzwanie — dynamicznie
   var challenges=[
-    {name:'Mistrz Podróży 🗺️',desc:'Naucz się 50 słów z kategorii Travel',goal:50,category:'Podróże',reward:'500 złota + odznaka Podróżnika'},
-    {name:'Biznes Pro 💼',desc:'Opanuj 40 słów z języka biznesu',goal:40,category:'Business',reward:'400 złota + odznaka Profesjonalisty'},
-    {name:'Naukowy Umysł 🔬',desc:'Przyswój 30 słów naukowych',goal:30,category:'Science',reward:'300 złota + odznaka Naukowca'},
+    {name:'Mistrz Podróży 🗺️',desc:'Naucz się 50 słów z kategorii Travel',goal:50,category:'Podróże',topic:'travel, tourism, airports, hotels, transportation, sightseeing, vacation',reward:'500 złota + odznaka Podróżnika'},
+    {name:'Biznes Pro 💼',desc:'Opanuj 40 słów z języka biznesu',goal:40,category:'Business',topic:'business, finance, corporate, meetings, negotiations, management, marketing, economics',reward:'400 złota + odznaka Profesjonalisty'},
+    {name:'Naukowy Umysł 🔬',desc:'Przyswój 30 słów naukowych',goal:30,category:'Science',topic:'science, biology, chemistry, physics, research, laboratory, discoveries, technology',reward:'300 złota + odznaka Naukowca'},
   ];
   var week=Math.floor(Date.now()/604800000)%challenges.length;
   var ch=challenges[week];
@@ -3823,7 +3922,7 @@ async function loadChallengeSet(ch){
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
       body:JSON.stringify({
-        messages:[{role:'user',content:'Generate exactly '+ch.goal+' English vocabulary flashcards about "'+ch.topic+'". Return ONLY JSON array: [{"word":"travel","translation":"podróżować"},...]  No other text. '+ch.goal+' items required.'}],
+        messages:[{role:'user',content:'Generate exactly '+ch.goal+' English vocabulary flashcards strictly about this topic: "'+ch.topic+'". All words must be ONLY from this topic domain. Return ONLY a JSON array with exactly '+ch.goal+' items, no other text: [{"word":"example","translation":"przykład"},...]'}],
         max_tokens:3000
       })
     });
@@ -3864,18 +3963,41 @@ function renderChallengeSet(set, ch){
   var importBtn=document.getElementById('ch-import-btn');
   var setStatus=document.getElementById('ch-set-status');
   var cards=set.user_set_cards||[];
-  if(setDesc) setDesc.textContent=cards.length+' słówek gotowych do nauki · '+ch.topic;
-  if(setPreview){
-    setPreview.innerHTML=cards.slice(0,12).map(function(c){
-      return'<div style="padding:5px 12px;background:var(--paper2);border-radius:20px;border:1px solid var(--border);font-size:12px;color:var(--navy)">'
-        +'<span style="font-weight:600">'+c.word+'</span>'
-        +'<span style="color:var(--dim2);margin-left:6px">'+c.translation+'</span>'
-        +'</div>';
-    }).join('')+(cards.length>12?'<div style="font-size:12px;color:var(--dim2);padding:5px">+'+( cards.length-12)+' więcej...</div>':'');
-  }
-  if(importBtn) importBtn.style.display='flex';
-  if(setStatus) setStatus.textContent='Bezpłatny zestaw dla wszystkich użytkowników';
+  if(setDesc) setDesc.textContent=cards.length+' słówek z tematu: '+ch.category;
+  if(setStatus) setStatus.textContent='Bezpłatny zestaw dla wszystkich · Tylko słownictwo tematyczne';
   window._challengeSetToImport=set;
+
+  // Pokaż podgląd (wszystkie karty) zamiast od razu przycisku importu
+  if(setPreview){
+    var isExpanded=false;
+    var previewCount=8;
+    function renderPreviewCards(showAll){
+      var visible=showAll?cards:cards.slice(0,previewCount);
+      return visible.map(function(c){
+        return'<div style="padding:6px 14px;background:var(--paper2);border-radius:20px;border:1px solid var(--border);font-size:12px;color:var(--navy);display:inline-flex;align-items:center;gap:8px;margin:2px">'
+          +'<span style="font-weight:600">'+c.word+'</span>'
+          +'<span style="color:var(--dim2)">→</span>'
+          +'<span style="color:var(--orange)">'+c.translation+'</span>'
+          +'</div>';
+      }).join('');
+    }
+    var showMoreBtn=cards.length>previewCount
+      ?'<button id="ch-preview-toggle" onclick="(function(){'
+        +'var el=document.getElementById(\'ch-preview-cards\');'
+        +'var btn=document.getElementById(\'ch-preview-toggle\');'
+        +'var exp=el.dataset.expanded===\'1\';'
+        +'el.dataset.expanded=exp?\'0\':\'1\';'
+        +'el.innerHTML=window._challengeAllCards&&!exp?window._challengeAllCards:window._challengePreviewCards;'
+        +'btn.textContent=exp?\'▼ Pokaż wszystkie ('+cards.length+')\':\'▲ Zwiń\';'
+        +'})()" style="margin-top:6px;background:transparent;border:1px dashed var(--border2);border-radius:8px;padding:5px 14px;cursor:pointer;font-size:12px;color:var(--dim2)">▼ Pokaż wszystkie ('+cards.length+')</button>'
+      :'';
+    window._challengePreviewCards=renderPreviewCards(false);
+    window._challengeAllCards=renderPreviewCards(true);
+    setPreview.innerHTML='<div id="ch-preview-cards" data-expanded="0" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">'+window._challengePreviewCards+'</div>'+showMoreBtn;
+  }
+
+  // Przycisk importu pojawia się zawsze po podglądzie
+  if(importBtn) importBtn.style.display='flex';
 }
 
 async function importChallengeSet(){
@@ -3891,6 +4013,8 @@ async function importChallengeSet(){
     }).select('id').single();
     var rows=set.user_set_cards.map(function(c,i){return{set_id:newSet.id,word:c.word,translation:c.translation,sort_order:i};});
     await db.from('user_set_cards').insert(rows);
+    // Oznacz zestaw jako zaimportowany (nie może być publiczny)
+    await db.from('user_sets').update({is_public:false,name:set.name+' (mój)'}).eq('id',newSet.id);
     showToast('Zestaw zaimportowany do Materiałów! ✅','success');
     if(btn){btn.textContent='✓ Zaimportowano';btn.disabled=true;}
   }catch(e){
@@ -5092,19 +5216,32 @@ async function loadVoiceRecordings(){
     var sess=(await db.auth.getSession()).data.session;
     var myId=sess?sess.user.id:null;
 
-    var{data:recordings}=await db.from('voice_recordings')
-      .select('id,user_id,word,sentence,language,audio_url,rating_pronunciation_avg,rating_correctness_avg,rating_count,created_at,profiles(username)')
+    var{data:recordings,error:recErr}=await db.from('voice_recordings')
+      .select('id,user_id,word,sentence,language,audio_url,rating_pronunciation_avg,rating_correctness_avg,rating_count,created_at')
       .order('created_at',{ascending:false})
       .limit(30);
+
+    if(recErr){
+      el.innerHTML='<div class="mat-empty" style="color:#c33">Błąd ładowania: '+recErr.message+'</div>';
+      return;
+    }
 
     if(!recordings||!recordings.length){
       el.innerHTML='<div class="mat-empty">Brak głosówek. Nagraj pierwszą w Strefie Nauki!</div>';
       return;
     }
 
+    // Pobierz usernames osobno (brak FK relacji między voice_recordings a profiles)
+    var uniqueIds=[...new Set(recordings.map(function(r){return r.user_id;}))];
+    var usernameMap={};
+    try{
+      var{data:profs}=await db.from('profiles').select('user_id,username').in('user_id',uniqueIds);
+      (profs||[]).forEach(function(p){usernameMap[p.user_id]=p.username;});
+    }catch(e){}
+
     el.innerHTML='';
     recordings.forEach(function(rec){
-      var username=(rec.profiles&&rec.profiles.username)||'Użytkownik';
+      var username=usernameMap[rec.user_id]||'Użytkownik';
       var isOwn=rec.user_id===myId;
       var langFlag={en:'🇬🇧',es:'🇪🇸',nl:'🇳🇱',jp:'🇯🇵'}[rec.language]||'🌍';
       var timeAgo=formatTimeAgo(rec.created_at);
