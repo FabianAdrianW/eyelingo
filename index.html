@@ -1919,7 +1919,7 @@ const LANG_LABELS = {en:'Angielski',es:'Hiszpański',jp:'Japoński',nl:'Niderlan
 const LANG_FLAGS = {en:'🇬🇧',es:'🇪🇸',jp:'🇯🇵',nl:'🇳🇱'};
 const LEVEL_DESC = {A1:'Początkujący',A2:'Podstawowy',B1:'Średniozaawansowany',B2:'Wyższy średni',C1:'Zaawansowany',C2:'Biegły'};
 
-let _strefaState = 'langs'; // langs | levels | cats | card
+let _strefaState = 'langs';
 let _strefaLang = null;
 let _strefaLevel = null;
 let _strefaCat = null;
@@ -1931,69 +1931,110 @@ let _strefaProfile = null;
 async function initStrefa(){
   const{data:{session}}=await db.auth.getSession();
   if(!session){
-    document.getElementById('strefa-access-msg').innerHTML='<div style="font-size:48px;margin-bottom:16px">🔒</div><h3 style="font-family:Syne,sans-serif;font-size:24px;font-weight:700;color:var(--navy);margin-bottom:8px">Zaloguj się</h3><p style="color:var(--dim2);margin-bottom:24px">Zaloguj się aby korzystać ze Strefy Nauki.</p><button class="btn btn-orange" onclick="showAuth(\'login\')">Zaloguj się</button>';
     document.getElementById('strefa-access-msg').style.display='block';
     document.getElementById('strefa-main').style.display='none';
     return;
   }
-  // Pobierz zestawy usera
-  const{data:sets}=await db.from('user_sets')
-    .select('id,name,user_set_cards(id,word,translation)')
-    .eq('user_id',session.user.id)
-    .order('created_at',{ascending:false});
-  const validSets=(sets||[]).filter(s=>s.user_set_cards&&s.user_set_cards.length>0);
-  if(!validSets.length){
-    document.getElementById('strefa-access-msg').innerHTML='<div style="font-size:48px;margin-bottom:16px">📚</div><h3 style="font-family:Syne,sans-serif;font-size:24px;font-weight:700;color:var(--navy);margin-bottom:8px">Brak zestawów</h3><p style="color:var(--dim2);margin-bottom:24px">Stwórz lub dodaj zestaw fiszek aby korzystać ze Strefy Nauki.</p><button class="btn btn-orange" onclick="switchTab(\'community\',document.getElementById(\'ntab-community\'))">Przejdź do Materiałów</button>';
+  const{data:p}=await db.from('profiles')
+    .select('is_premium,premium_until,levels_bought')
+    .eq('user_id',session.user.id).single();
+  _strefaProfile=p;
+  const levels=p?.levels_bought||[];
+  const isPremium=p?.is_premium&&p?.premium_until&&new Date(p.premium_until)>new Date();
+  if(!isPremium&&!levels.length){
     document.getElementById('strefa-access-msg').style.display='block';
     document.getElementById('strefa-main').style.display='none';
     return;
   }
   document.getElementById('strefa-access-msg').style.display='none';
   document.getElementById('strefa-main').style.display='block';
-  showStrefaSets(validSets);
+  _strefaLevels=levels;
+  showStrefaLangs(isPremium);
 }
 
-function showStrefaSets(sets){
-  _strefaState='sets';
+function showStrefaLangs(isPremium){
+  _strefaState='langs';
   document.getElementById('strefa-card-view').style.display='none';
   document.getElementById('strefa-selector').style.display='block';
-  document.getElementById('strefa-langs').innerHTML=
-    '<div style="grid-column:1/-1;margin-bottom:12px"><h3 style="font-size:16px;font-weight:700;color:var(--navy)">Wybierz zestaw do nauki</h3></div>'+
-    sets.map(function(s){
-      var count=s.user_set_cards?s.user_set_cards.length:0;
-      var sId=JSON.stringify(s.id), sName=JSON.stringify(s.name), sCards=JSON.stringify(s.user_set_cards||[]);
-      return '<div class="strefa-tile" style="display:flex;flex-direction:column;gap:8px">'
-        +'<div class="strefa-tile-icon">📖</div>'
-        +'<div class="strefa-tile-name">'+s.name+'</div>'
-        +'<div class="strefa-tile-meta">'+count+' fiszek</div>'
-        +'<div style="display:flex;gap:6px;margin-top:4px">'
-        +'<button class="btn btn-orange" style="flex:1;font-size:12px;padding:7px 8px" onclick="event.stopPropagation();startStrefaSet('+sId+','+sName+','+sCards+')">▶ Nauka</button>'
-        +'<button class="btn btn-navy" style="flex:1;font-size:12px;padding:7px 8px" onclick="event.stopPropagation();startSrsMode('+sId+','+sName+','+sCards+')">🔁 SRS</button>'
-        +'</div>'
-        +'</div>';
-    }).join('');
-  window._strefaSets=sets;
+  const langs=['en','es','jp','nl'];
+  document.getElementById('strefa-langs').innerHTML=langs.map(l=>{
+    const hasAny=isPremium||_strefaLevels.some(lv=>lv.startsWith(l+'_'));
+    return`<div class="strefa-tile${hasAny?'':' locked'}" onclick="${hasAny?`showStrefaLevels('${l}')`:''}">
+      <div class="strefa-tile-icon">${LANG_FLAGS[l]}</div>
+      <div class="strefa-tile-name">${LANG_LABELS[l]}</div>
+      <div class="strefa-tile-meta">${hasAny?'Dostępny':'Brak zakupów'}</div>
+      ${hasAny?'':'<div class="strefa-tile-lock">🔒 Odblokuj poziom</div>'}
+    </div>`;
+  }).join('');
 }
 
-function startStrefaSet(setId, setName, cards){
+function showStrefaLevels(lang){
+  _strefaLang=lang;
+  _strefaState='levels';
+  const levels=['A1','A2','B1','B2','C1','C2'];
+  const isPremium=_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date();
+  document.getElementById('strefa-langs').innerHTML=`
+    <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <button class="btn btn-ghost" onclick="showStrefaLangs(${isPremium})" style="font-size:13px">← Języki</button>
+      <span style="font-size:18px">${LANG_FLAGS[lang]} ${LANG_LABELS[lang]}</span>
+    </div>
+    ${levels.map(lv=>{
+      const key=`${lang}_${lv}`;
+      const unlocked=isPremium||_strefaLevels.includes(key);
+      return`<div class="strefa-tile${unlocked?'':' locked'}" onclick="${unlocked?`showStrefaCats('${lang}','${lv}')`:''}">
+        <div class="strefa-tile-icon">${unlocked?'📖':'🔒'}</div>
+        <div class="strefa-tile-name">Poziom ${lv}</div>
+        <div class="strefa-tile-meta">${LEVEL_DESC[lv]}</div>
+        ${unlocked?'':'<div class="strefa-tile-lock">Odblokuj w aplikacji</div>'}
+      </div>`;
+    }).join('')}`;
+}
+
+async function showStrefaCats(lang,level){
+  _strefaLang=lang;_strefaLevel=level;
+  _strefaState='cats';
+  const{data:cats}=await db.from('flashcards')
+    .select('category_id,categories(code,label,icon)')
+    .eq('language_id',['en','es','jp','nl'].indexOf(lang)+1)
+    .eq('level_id',['A1','A2','B1','B2','C1','C2'].indexOf(level)+1)
+    .limit(200);
+  const seen=new Set();
+  const uniq=(cats||[]).filter(c=>{
+    if(!c.categories||seen.has(c.category_id))return false;
+    seen.add(c.category_id);return true;
+  });
+  const isPremium=_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date();
+  document.getElementById('strefa-langs').innerHTML=`
+    <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <button class="btn btn-ghost" onclick="showStrefaLevels('${lang}')" style="font-size:13px">← Poziomy</button>
+      <span style="font-size:16px;font-weight:600;color:var(--navy)">${LANG_FLAGS[lang]} ${LANG_LABELS[lang]} · Poziom ${level}</span>
+    </div>
+    ${uniq.map(c=>`
+      <div class="strefa-tile" onclick="startStrefaCards('${lang}','${level}','${c.categories.code}','${c.categories.label}')">
+        <div class="strefa-tile-icon">${c.categories.icon||'📚'}</div>
+        <div class="strefa-tile-name">${c.categories.label}</div>
+        <div class="strefa-tile-meta">Kliknij aby ćwiczyć</div>
+      </div>`).join('')}`;
+}
+
+async function startStrefaCards(lang,level,catCode,catLabel){
+  _strefaLang=lang;_strefaLevel=level;_strefaCat=catCode;
   _strefaIdx=0;
-  _strefaWords=cards.map(function(c){return{word:c.word,translation:c.translation,id:c.id};});
-  // Przetasuj
-  for(var i=_strefaWords.length-1;i>0;i--){
-    var j=Math.floor(Math.random()*(i+1));
-    var tmp=_strefaWords[i];_strefaWords[i]=_strefaWords[j];_strefaWords[j]=tmp;
-  }
-  document.getElementById('strefa-breadcrumb').textContent=setName;
+  document.getElementById('strefa-breadcrumb').textContent=`${LANG_FLAGS[lang]} ${LANG_LABELS[lang]} · ${level} · ${catLabel}`;
+  const langId=['en','es','jp','nl'].indexOf(lang)+1;
+  const levelId=['A1','A2','B1','B2','C1','C2'].indexOf(level)+1;
+  const{data:catsArr}=await db.from('categories').select('id').eq('code',catCode).limit(1);
+  const cats=catsArr?.[0];
+  if(!cats){return;}
+  const{data:words}=await db.from('flashcards')
+    .select('word,translation')
+    .eq('language_id',langId).eq('level_id',levelId).eq('category_id',cats.id)
+    .limit(30);
+  _strefaWords=words||[];
   document.getElementById('strefa-selector').style.display='none';
   document.getElementById('strefa-card-view').style.display='block';
-  // Detect lang from first word — fallback en
-  _strefaLang='en';_strefaLevel='B1';
   loadStrefaCard();
 }
-
-// showStrefaLangs/Levels replaced by showStrefaSets
-
-// showStrefaCats/startStrefaCards replaced by startStrefaSet
 
 async function loadStrefaCard(){
   if(!_strefaWords.length)return;
@@ -2172,8 +2213,8 @@ function strefaPrev(){if(_strefaIdx>0){_strefaIdx--;loadStrefaCard();}}
 function strefaBack(){
   document.getElementById('strefa-card-view').style.display='none';
   document.getElementById('strefa-selector').style.display='block';
-  if(window._strefaSets) showStrefaSets(window._strefaSets);
-  else initStrefa();
+  if(_strefaLevel) showStrefaCats(_strefaLang,_strefaLevel);
+  else showStrefaLangs(_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date());
   speechSynthesis.cancel();
 }
 </script>
@@ -2623,17 +2664,17 @@ async function loadVideo(topic, isPodcast){
   </div>
 
   <!-- Mini czytanka -->
-  <div class="daily-card" id="dc-read" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
+  <div class="daily-card" id="dc-read" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
       <span style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Mini czytanka</span>
       <span style="font-size:11px;color:var(--dim2);margin-left:auto" id="dc-read-time">3 min</span>
       <span id="dc-read-done" style="display:none;font-size:11px;color:#16a34a;font-weight:600">✓ Ukończone</span>
     </div>
     <div id="dc-read-loading" style="color:var(--dim2);font-size:13px">Ładowanie...</div>
-    <div id="dc-read-content" style="display:none">
-      <div id="dc-read-title" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px"></div>
-      <div id="dc-read-body" style="font-size:13px;color:var(--dim);line-height:1.7;margin-bottom:14px;max-height:120px;overflow:hidden"></div>
-      <button class="btn btn-orange" onclick="dailyReadDone()" id="dc-read-btn" style="font-size:13px;padding:9px 20px">Przeczytałem ✓</button>
+    <div id="dc-read-content" style="display:none;display:flex;flex-direction:column;flex:1">
+      <div id="dc-read-title" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:10px"></div>
+      <div id="dc-read-body" style="font-size:13px;color:var(--dim);line-height:1.8;margin-bottom:16px;overflow-y:auto;max-height:200px;padding-right:4px"></div>
+      <button class="btn btn-orange" onclick="dailyReadDone()" id="dc-read-btn" style="font-size:13px;padding:9px 20px;margin-top:auto">Przeczytałem ✓</button>
     </div>
   </div>
 
@@ -2802,7 +2843,7 @@ async function loadVideo(topic, isPodcast){
       <!-- Input -->
       <div style="padding:4px 16px 0;text-align:right"><span id="chat-limit-info" style="font-size:11px;color:var(--dim2)"></span></div>
       <div style="padding:16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end">
-        <textarea id="chat-input" rows="2" placeholder="Napisz po angielsku..." style="flex:1;resize:none;padding:10px 14px;border-radius:12px;border:1px solid var(--border2);font-size:14px;font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--navy)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chatSend();}"></textarea>
+        <textarea id="chat-input" rows="2" placeholder="Napisz w wybranym języku..." style="flex:1;resize:none;padding:10px 14px;border-radius:12px;border:1px solid var(--border2);font-size:14px;font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--navy)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chatSend();}"></textarea>
         <button class="btn btn-orange" onclick="chatSend()" id="chat-send-btn" style="padding:10px 18px;border-radius:12px">Wyślij →</button>
       </div>
     </div>
@@ -2898,18 +2939,25 @@ async function loadVideo(topic, isPodcast){
 // DZISIEJSZA PORCJA
 // ═══════════════════════════════════════
 var _dailyLoaded = false;
+var _dailyLoadedDate = '';
 var _dailyDone = {word:false, read:false, quiz:false};
 var _dailyXP = 0;
 var _quizAnswered = false;
 
 function initDaily(){
   var d = new Date();
+  var today = d.toISOString().slice(0,10);
   document.getElementById('daily-date').textContent = d.toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   updateDailyCountdown();
   setInterval(updateDailyCountdown, 60000);
   // Przywróć wybrany język z localStorage
   try{var savedLang=localStorage.getItem('daily_lang');if(savedLang){var sel=document.getElementById('daily-lang-select');if(sel)sel.value=savedLang;}}catch(e){}
-  if(!_dailyLoaded){ _dailyLoaded=true; loadDailyContent(); }
+  // Ładuj content tylko raz dziennie (nie przy każdym wejściu na zakładkę)
+  if(!_dailyLoaded || _dailyLoadedDate !== today){
+    _dailyLoaded=true;
+    _dailyLoadedDate=today;
+    loadDailyContent();
+  }
 }
 
 function reloadDailyContent(){
@@ -3274,6 +3322,11 @@ function chatUpdatePersona(){
   var langTag={en:'EN · B1→B2',es:'ES · A2→B1',nl:'NL · A1→A2',jp:'JP · N5→N4'}[_chatLang]||'EN';
   document.getElementById('chat-persona-tags').innerHTML=
     '<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:#e6f1fb;color:#0c447c;font-weight:600">'+langTag+'</span>';
+  var langPlaceholder={en:'Napisz po angielsku...',es:'Escribe en español...',nl:'Schrijf in het Nederlands...',jp:'日本語で書いてください...'};
+  var inp=document.getElementById('chat-input');
+  if(inp) inp.placeholder=langPlaceholder[_chatLang]||'Napisz...';
+  // Reset rozmowy przy zmianie języka
+  chatReset();
 }
 
 async function initChat(){
@@ -3506,12 +3559,17 @@ async function analyzeLyrics(){
     var langNames={en:'English',es:'Spanish',fr:'French',de:'German'};
     var genreNames={hiphop:'hip-hop/rap',pop:'pop',rnb:'R&B',rock:'rock',other:'music'};
 
-    var prompt='Analyze these '+langNames[lang]+' '+genreNames[genre]+' lyrics line by line.\n'
-      +(title?'Song: '+title+'\n\n':'')
-      +'Lyrics:\n'+text+'\n\n'
-      +'Return ONLY valid JSON, no explanation outside JSON:\n'
-      +'{"lines": [{"text": "original line", "annotation": "explanation of slang, cultural references, wordplay, idiomatic expressions in Polish. Be specific and interesting, like a linguist + cultural expert. 2-4 sentences.", "words": [{"word": "key word or phrase", "translation": "Polish translation or explanation"}]}]}\n'
-      +'Focus on: slang, double meanings, cultural references, wordplay, idioms. Skip obvious lines.';
+    var prompt='You are a linguistics expert analyzing song lyrics for Polish speakers learning '+langNames[lang]+'.\n'
+      +(title?'Song: '+title+'\n':'')
+      +'Genre: '+genreNames[genre]+'\n\n'
+      +'Lyrics to analyze:\n'+text+'\n\n'
+      +'Instructions:\n'
+      +'1. Analyze EVERY line\n'
+      +'2. Explain slang, cultural references, double meanings, wordplay IN POLISH\n'
+      +'3. Extract key vocabulary words\n'
+      +'4. Return ONLY this JSON structure, nothing else before or after:\n'
+      +'{"lines":[{"text":"original lyric line","annotation":"explanation in Polish - slang meaning, cultural context, wordplay. 2-3 sentences.","words":[{"word":"key word","translation":"polskie tłumaczenie i wyjaśnienie"}]}]}\n'
+      +'Important: annotation must be in Polish. Include ALL lines even if simple.';
 
     var tokL=(await db.auth.getSession()).data.session?.access_token||'';
     var res=await fetch(AI_PROXY_URL,{
@@ -3522,7 +3580,19 @@ async function analyzeLyrics(){
     var data=await res.json();
     var raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
     var clean=raw.replace(/```json|```/g,'').trim();
-    var parsed=JSON.parse(clean);
+    // Próba 1: bezpośredni parse
+    var parsed=null;
+    try{parsed=JSON.parse(clean);}catch(e){}
+    // Próba 2: znajdź JSON w tekście
+    if(!parsed){
+      var m=clean.match(/\{[\s\S]*\}/);
+      if(m){try{parsed=JSON.parse(m[0]);}catch(e){}}
+    }
+    // Próba 3: zbuduj z linii tekstu jeśli parse nie wyszedł
+    if(!parsed||!parsed.lines){
+      var lines=text.split('\n').filter(function(l){return l.trim();});
+      parsed={lines:lines.map(function(l){return{text:l,annotation:'',words:[]};})};
+    }
     renderLyricsResult(parsed, title, text);
   }catch(e){
     console.error('[Lyrics]',e);
