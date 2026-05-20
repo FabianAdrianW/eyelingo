@@ -350,6 +350,10 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
   <!-- Tabs: widoczne tylko dla zalogowanych -->
   <div class="nav-tabs" id="nav-tabs">
     <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Materiały</button>
+    <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)">Porcja dnia ✨</button>
+    <button class="nav-tab" id="ntab-challenge" onclick="switchTab('challenge',this)">Wyzwanie</button>
+    <button class="nav-tab" id="ntab-chat" onclick="switchTab('chat',this)">AI Partner</button>
+    <button class="nav-tab" id="ntab-lyrics" onclick="switchTab('lyrics',this)">Lyrics</button>
     <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
     <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
     <button class="nav-tab" id="ntab-ranking" onclick="switchTab('ranking',this)">Ranking</button>
@@ -969,6 +973,10 @@ function showPage(name){
   if(name==='tofix') initToFixPage();
   if(name==='strefa') initStrefa();
   if(name==='odkryj') initOdkryj();
+  if(name==='daily') initDaily();
+  if(name==='challenge') initChallenge();
+  if(name==='chat') initChat();
+  if(name==='lyrics') initLyrics();
   setActiveTab(name);
   return false;
 }
@@ -2580,4 +2588,849 @@ async function loadVideo(topic, isPodcast){
 
 })();
 </script>
-</html>
+
+<!-- ═══ DZISIEJSZA PORCJA ═══ -->
+<div id="page-daily" class="page" style="min-height:100vh;padding:140px 20px 80px">
+<div style="max-width:860px;margin:0 auto">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px">
+  <div>
+    <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:4px">Porcja dnia</h2>
+    <p id="daily-date" style="color:var(--dim2);font-size:14px"></p>
+  </div>
+  <div style="background:var(--navy);color:#fff;border-radius:12px;padding:10px 20px;font-size:13px;font-weight:600" id="daily-countdown">Odnawia się o północy</div>
+</div>
+
+<!-- progress bar -->
+<div style="background:var(--paper2);border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:16px">
+  <div style="flex:1">
+    <div style="font-size:12px;color:var(--dim2);margin-bottom:6px" id="daily-progress-label">0 z 4 aktywności ukończone</div>
+    <div style="background:rgba(26,35,64,.1);border-radius:20px;height:8px;overflow:hidden">
+      <div id="daily-progress-bar" style="width:0%;height:100%;border-radius:20px;background:linear-gradient(90deg,#f5c842,#c96a2a);transition:width .5s ease"></div>
+    </div>
+  </div>
+  <div id="daily-xp" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--orange)">0 XP</div>
+</div>
+
+<!-- cards grid -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="daily-grid">
+
+  <!-- Słowo dnia -->
+  <div class="daily-card" id="dc-word" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <span style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Słowo dnia</span>
+      <span id="dc-word-done" style="display:none;font-size:11px;color:#16a34a;font-weight:600">✓ Ukończone</span>
+    </div>
+    <div id="dc-word-loading" style="color:var(--dim2);font-size:13px">Ładowanie...</div>
+    <div id="dc-word-content" style="display:none">
+      <div id="dc-word-text" style="font-size:28px;font-weight:700;color:var(--navy);margin-bottom:4px"></div>
+      <div id="dc-word-phonetic" style="font-size:13px;color:var(--dim2);margin-bottom:6px"></div>
+      <div id="dc-word-translation" style="font-size:14px;color:var(--orange);font-weight:600;margin-bottom:12px"></div>
+      <div id="dc-word-sentence" style="font-size:13px;color:var(--dim);line-height:1.6;border-left:3px solid var(--border2);padding-left:10px;margin-bottom:14px;font-style:italic"></div>
+      <button class="btn btn-orange" onclick="dailyWordDone()" id="dc-word-btn" style="font-size:13px;padding:9px 20px">+ Dodaj do fiszek</button>
+    </div>
+  </div>
+
+  <!-- Mini czytanka -->
+  <div class="daily-card" id="dc-read" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <span style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Mini czytanka</span>
+      <span style="font-size:11px;color:var(--dim2);margin-left:auto" id="dc-read-time">3 min</span>
+      <span id="dc-read-done" style="display:none;font-size:11px;color:#16a34a;font-weight:600">✓ Ukończone</span>
+    </div>
+    <div id="dc-read-loading" style="color:var(--dim2);font-size:13px">Ładowanie...</div>
+    <div id="dc-read-content" style="display:none">
+      <div id="dc-read-title" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px"></div>
+      <div id="dc-read-body" style="font-size:13px;color:var(--dim);line-height:1.7;margin-bottom:14px;max-height:120px;overflow:hidden"></div>
+      <button class="btn btn-orange" onclick="dailyReadDone()" id="dc-read-btn" style="font-size:13px;padding:9px 20px">Przeczytałem ✓</button>
+    </div>
+  </div>
+
+  <!-- Quiz dnia -->
+  <div class="daily-card" id="dc-quiz" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;grid-column:1/-1">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <span style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Quiz dnia</span>
+      <span id="dc-quiz-social" style="font-size:11px;color:var(--dim2)"></span>
+      <span id="dc-quiz-done" style="display:none;font-size:11px;color:#16a34a;font-weight:600;margin-left:auto">✓ Ukończone</span>
+    </div>
+    <div id="dc-quiz-loading" style="color:var(--dim2);font-size:13px">Ładowanie...</div>
+    <div id="dc-quiz-content" style="display:none">
+      <div id="dc-quiz-q" style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:14px"></div>
+      <div id="dc-quiz-opts" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+      <div id="dc-quiz-explain" style="display:none;margin-top:12px;padding:12px;background:var(--paper2);border-radius:8px;font-size:13px;color:var(--dim);line-height:1.6"></div>
+    </div>
+  </div>
+
+  <!-- Social proof -->
+  <div style="grid-column:1/-1;text-align:center;padding:8px 0;font-size:13px;color:var(--dim2)" id="daily-social"></div>
+
+</div>
+</div>
+</div>
+
+<!-- ═══ WYZWANIE TYGODNIA ═══ -->
+<div id="page-challenge" class="page" style="min-height:100vh;padding:140px 20px 80px">
+<div style="max-width:860px;margin:0 auto">
+  <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Wyzwanie tygodnia</h2>
+  <p style="color:var(--dim2);margin-bottom:28px">Rywalizuj ze społecznością. Nagrody dla najlepszych.</p>
+
+  <!-- Banner aktualnego wyzwania -->
+  <div id="challenge-banner" style="background:var(--navy);border-radius:20px;padding:28px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden">
+    <div style="position:absolute;right:-30px;top:-30px;width:160px;height:160px;border-radius:50%;background:rgba(201,106,42,.12)"></div>
+    <div style="position:absolute;right:60px;bottom:-40px;width:100px;height:100px;border-radius:50%;background:rgba(245,200,66,.06)"></div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:11px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Aktywne wyzwanie</div>
+        <div id="ch-name" style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:4px">Ładowanie...</div>
+        <div id="ch-desc" style="font-size:14px;color:rgba(255,255,255,.65)"></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:4px">Kończy się za</div>
+        <div id="ch-countdown" style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#f5c842">--</div>
+      </div>
+    </div>
+    <div style="margin-top:20px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:rgba(255,255,255,.55);margin-bottom:6px">
+        <span>Twój postęp</span>
+        <span id="ch-progress-text">0 / 0</span>
+      </div>
+      <div style="height:10px;background:rgba(255,255,255,.1);border-radius:20px;overflow:hidden">
+        <div id="ch-progress-bar" style="width:0%;height:100%;border-radius:20px;background:linear-gradient(90deg,#f5c842,#c96a2a);transition:width .6s ease"></div>
+      </div>
+    </div>
+    <div style="margin-top:12px;font-size:12px;color:rgba(255,255,255,.4)" id="ch-reward"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <!-- Live ranking -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
+      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px;display:flex;align-items:center;gap:6px">
+        🏆 Live ranking
+        <span style="font-size:11px;color:var(--dim2);font-weight:400;margin-left:auto" id="ch-rank-update">odświeżam...</span>
+      </div>
+      <div id="ch-ranking" style="display:flex;flex-direction:column;gap:0"></div>
+    </div>
+
+    <!-- Nagrody -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
+      <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px">🎁 Nagrody</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--paper2);border-radius:10px">
+          <div style="font-size:26px">🥇</div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--navy)">1. miejsce</div><div style="font-size:12px;color:var(--dim2)">1000 złota + tytuł tygodnia</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--paper2);border-radius:10px">
+          <div style="font-size:26px">🥈</div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--navy)">Top 3</div><div style="font-size:12px;color:var(--dim2)">600 złota + odznaka</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--paper2);border-radius:10px">
+          <div style="font-size:26px">⚡</div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--navy)">Ukończenie</div><div style="font-size:12px;color:var(--dim2)">200 złota · zawsze dostępne</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--paper2);border-radius:10px">
+          <div style="font-size:26px">🔥</div>
+          <div><div style="font-size:13px;font-weight:600;color:var(--navy)">7-dniowy streak</div><div style="font-size:12px;color:var(--dim2)">+50% złota przez tydzień</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ═══ AI CONVERSATION PARTNER ═══ -->
+<div id="page-chat" class="page" style="min-height:100vh;padding:140px 20px 80px">
+<div style="max-width:900px;margin:0 auto">
+  <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">AI Partner</h2>
+  <p style="color:var(--dim2);margin-bottom:24px">Rozmawiaj z native speakerem który zna Twoje słabe punkty.</p>
+
+  <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start">
+
+    <!-- Sidebar -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
+      <!-- Persona -->
+      <div style="text-align:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+        <div style="width:60px;height:60px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 8px">🧑‍🏫</div>
+        <div style="font-size:15px;font-weight:700;color:var(--navy)" id="chat-persona-name">Alex</div>
+        <div style="font-size:12px;color:var(--dim2)" id="chat-persona-desc">Native speaker · New York</div>
+        <div style="display:flex;justify-content:center;gap:6px;margin-top:8px" id="chat-persona-tags"></div>
+      </div>
+
+      <!-- Język i poziom -->
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Język</label>
+        <select id="chat-lang" onchange="chatUpdatePersona()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+          <option value="en">🇬🇧 Angielski</option>
+          <option value="es">🇪🇸 Hiszpański</option>
+          <option value="nl">🇳🇱 Holenderski</option>
+          <option value="jp">🇯🇵 Japoński</option>
+        </select>
+      </div>
+
+      <!-- Temat rozmowy -->
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Temat</label>
+        <select id="chat-topic" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+          <option value="daily">Codzienne życie</option>
+          <option value="travel">Podróże</option>
+          <option value="work">Praca i kariera</option>
+          <option value="culture">Kultura i muzyka</option>
+          <option value="free">Dowolny</option>
+        </select>
+      </div>
+
+      <!-- Tryb -->
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Tryb</label>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;line-height:1.4">
+            <input type="radio" name="chat-mode" value="hints" checked style="margin-top:2px;accent-color:var(--orange)"> <div><div style="font-weight:500">Z podpowiedziami</div><div style="font-size:11px;color:var(--dim2)">gotowe odpowiedzi + pole własne</div></div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;line-height:1.4">
+            <input type="radio" name="chat-mode" value="brave" style="margin-top:2px;accent-color:var(--orange)"> <div><div style="font-weight:500">Tryb odwagi 🔥</div><div style="font-size:11px;color:var(--dim2)">tylko język docelowy, zero polskiego</div></div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Słabe punkty -->
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Alex użyje tych słów</label>
+        <div id="chat-weak-words" style="display:flex;flex-wrap:wrap;gap:4px;font-size:12px;color:var(--dim2)">brak danych</div>
+        <div style="font-size:11px;color:var(--dim2);margin-top:6px">pobrane z Twoich fiszek</div>
+      </div>
+
+      <button class="btn btn-navy" onclick="chatReset()" style="width:100%;margin-top:16px;font-size:13px;padding:10px">Nowa rozmowa</button>
+    </div>
+
+    <!-- Chat -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;display:flex;flex-direction:column;min-height:520px">
+      <div id="chat-messages" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;min-height:400px"></div>
+
+      <!-- Podpowiedzi -->
+      <div id="chat-hints-wrap" style="padding:0 16px 10px;display:flex;flex-wrap:wrap;gap:6px"></div>
+
+      <!-- Input -->
+      <div style="padding:16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end">
+        <textarea id="chat-input" rows="2" placeholder="Napisz po angielsku..." style="flex:1;resize:none;padding:10px 14px;border-radius:12px;border:1px solid var(--border2);font-size:14px;font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--navy)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chatSend();}"></textarea>
+        <button class="btn btn-orange" onclick="chatSend()" id="chat-send-btn" style="padding:10px 18px;border-radius:12px">Wyślij →</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- ═══ ANALIZA LYRICS ═══ -->
+<div id="page-lyrics" class="page" style="min-height:100vh;padding:140px 20px 80px">
+<div style="max-width:900px;margin:0 auto">
+  <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Analiza Lyrics</h2>
+  <p style="color:var(--dim2);margin-bottom:24px">Wklej tekst piosenki — AI wyjaśni każdą linijkę: slang, kontekst kulturowy, gry słowne.</p>
+
+  <div id="lyrics-input-panel" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:24px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;margin-bottom:14px;align-items:end">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Artysta i tytuł (opcjonalnie)</label>
+        <input type="text" id="lyrics-title" placeholder="np. Drake – Started From The Bottom" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Język</label>
+        <select id="lyrics-lang" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+          <option value="en">Angielski</option>
+          <option value="es">Hiszpański</option>
+          <option value="fr">Francuski</option>
+          <option value="de">Niemiecki</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Gatunek</label>
+        <select id="lyrics-genre" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+          <option value="hiphop">Hip-hop / Rap</option>
+          <option value="pop">Pop</option>
+          <option value="rnb">R&amp;B</option>
+          <option value="rock">Rock</option>
+          <option value="other">Inny</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Tekst piosenki</label>
+      <textarea id="lyrics-text" rows="6" placeholder="Wklej tutaj tekst piosenki który chcesz przeanalizować..." style="width:100%;resize:vertical;padding:12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--navy);line-height:1.6;min-height:140px"></textarea>
+    </div>
+    <button class="btn btn-orange btn-lg" onclick="analyzeLyrics()" id="lyrics-analyze-btn" style="margin-top:14px;width:100%;justify-content:center">🎵 Analizuj z AI</button>
+  </div>
+
+  <!-- Wynik -->
+  <div id="lyrics-result" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div id="lyrics-result-title" style="font-size:18px;font-weight:700;color:var(--navy)"></div>
+      <button class="btn btn-ghost" onclick="lyricsReset()" style="font-size:13px;padding:8px 16px">← Nowa analiza</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
+      <!-- Linie -->
+      <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
+        <div id="lyrics-lines" style="display:flex;flex-direction:column;gap:2px"></div>
+      </div>
+
+      <!-- Panel słówek -->
+      <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;position:sticky;top:100px">
+        <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:12px">Słowa do fiszek</div>
+        <div id="lyrics-words-panel" style="display:flex;flex-direction:column;gap:6px"></div>
+        <button id="lyrics-add-all-btn" class="btn btn-orange" onclick="lyricsAddAll()" style="width:100%;justify-content:center;margin-top:14px;font-size:13px;display:none">+ Dodaj wszystkie do fiszek</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<style>
+.chat-msg-user{background:var(--navy);color:#fff;border-radius:14px 14px 4px 14px;padding:10px 14px;font-size:14px;max-width:75%;align-self:flex-end;line-height:1.55}
+.chat-msg-ai{background:var(--paper2);border-radius:14px 14px 14px 4px;padding:10px 14px;font-size:14px;max-width:80%;align-self:flex-start;line-height:1.55;border:1px solid var(--border)}
+.chat-hint{display:inline-flex;align-items:center;padding:6px 12px;border-radius:20px;font-size:12px;cursor:pointer;background:var(--paper);color:var(--dim);border:1px solid var(--border2);transition:.2s}
+.chat-hint:hover{border-color:var(--orange);color:var(--orange)}
+.chat-info{font-size:11px;color:var(--dim2);text-align:center;padding:2px 0}
+.lyric-line-wrap{padding:8px 10px;border-radius:8px;cursor:pointer;border-left:3px solid transparent;transition:.15s}
+.lyric-line-wrap:hover{background:var(--paper2);border-left-color:var(--border2)}
+.lyric-line-wrap.open{background:var(--paper2);border-left-color:var(--orange)}
+.lyric-line-text{font-size:13px;color:var(--navy);line-height:1.55}
+.lyric-annotation{display:none;margin-top:8px;padding:10px 12px;background:#fff;border-radius:8px;font-size:12px;color:var(--dim);line-height:1.65;border:1px solid var(--border)}
+.lyric-line-wrap.open .lyric-annotation{display:block}
+.word-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;background:var(--paper2);border:1px solid var(--border);cursor:pointer;transition:.15s;color:var(--navy)}
+.word-badge:hover{border-color:var(--orange);color:var(--orange)}
+.word-badge.added{background:#e1f5ee;border-color:#9fe1cb;color:#085041}
+</style>
+
+
+</html><script>
+// ═══════════════════════════════════════
+// DZISIEJSZA PORCJA
+// ═══════════════════════════════════════
+var _dailyLoaded = false;
+var _dailyDone = {word:false, read:false, quiz:false};
+var _dailyXP = 0;
+var _quizAnswered = false;
+
+function initDaily(){
+  var d = new Date();
+  document.getElementById('daily-date').textContent = d.toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  updateDailyCountdown();
+  setInterval(updateDailyCountdown, 60000);
+  if(!_dailyLoaded){ _dailyLoaded=true; loadDailyContent(); }
+}
+
+function updateDailyCountdown(){
+  var now=new Date(), midnight=new Date(); midnight.setHours(24,0,0,0);
+  var diff=midnight-now, h=Math.floor(diff/3600000), m=Math.floor((diff%3600000)/60000);
+  document.getElementById('daily-countdown').textContent='Odnawia się za '+h+'h '+m+'min';
+}
+
+async function loadDailyContent(){
+  // Słowo dnia — bierz z fiszek usera lub generuj
+  loadDailyWord();
+  loadDailyRead();
+  loadDailyQuiz();
+  updateDailyProgress();
+}
+
+async function loadDailyWord(){
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){showDailyWordFallback();return;}
+    // Pobierz losowe słowo z fiszek usera
+    var {data:cards}=await db.from('flashcards').select('word,translation,language,level').eq('user_id',sess.user.id).limit(100);
+    if(!cards||!cards.length){showDailyWordFallback();return;}
+    var card=cards[Math.floor(Math.random()*cards.length)];
+    document.getElementById('dc-word-loading').style.display='none';
+    document.getElementById('dc-word-content').style.display='block';
+    document.getElementById('dc-word-text').textContent=card.word;
+    document.getElementById('dc-word-phonetic').textContent=card.language==='en'?'angielski':card.language==='es'?'hiszpański':'';
+    document.getElementById('dc-word-translation').textContent=card.translation;
+    // Załaduj zdanie z cache
+    var {data:cached}=await db.from('context_sentences').select('sentence').eq('word',card.word).eq('language',card.language||'en').limit(1);
+    var c=Array.isArray(cached)?cached[0]:cached;
+    if(c&&c.sentence){
+      var s=c.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+      document.getElementById('dc-word-sentence').innerHTML='"'+s+'"';
+    }
+  }catch(e){showDailyWordFallback();}
+}
+
+function showDailyWordFallback(){
+  document.getElementById('dc-word-loading').style.display='none';
+  document.getElementById('dc-word-content').style.display='block';
+  document.getElementById('dc-word-text').textContent='serendipity';
+  document.getElementById('dc-word-phonetic').textContent='angielski · B2';
+  document.getElementById('dc-word-translation').textContent='szczęśliwy traf';
+  document.getElementById('dc-word-sentence').innerHTML='"It was pure <strong style=\'color:var(--orange)\'>serendipity</strong> that we met."';
+}
+
+async function loadDailyRead(){
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var ARTICLE_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
+    var res=await fetch(ARTICLE_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+      body:JSON.stringify({topic:'interesting science fact',lang:'en',level:'B1'})
+    });
+    if(!res.ok)throw new Error();
+    var d=await res.json();
+    document.getElementById('dc-read-loading').style.display='none';
+    document.getElementById('dc-read-content').style.display='block';
+    document.getElementById('dc-read-title').textContent=d.title||'Daily Read';
+    document.getElementById('dc-read-body').innerHTML=d.content||d.text||'';
+    var words=Math.ceil((d.content||d.text||'').split(' ').length/200);
+    document.getElementById('dc-read-time').textContent=Math.max(1,words)+' min';
+  }catch(e){
+    document.getElementById('dc-read-loading').style.display='none';
+    document.getElementById('dc-read-content').style.display='block';
+    document.getElementById('dc-read-title').textContent='Why do cats purr?';
+    document.getElementById('dc-read-body').textContent='Cats purr for a variety of reasons — not just contentment. Scientists have found that the vibration frequency of a cat\'s purr (between 25-150 Hz) can actually promote healing in bones and tissues. So when your cat curls up next to you and purrs, it might literally be helping you feel better.';
+  }
+}
+
+async function loadDailyQuiz(){
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var res=await fetch('https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-sentence',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+      body:JSON.stringify({word:'quiz',translation:'quiz',lang:'en',level:'B1',mode:'quiz'})
+    });
+    // fallback to hardcoded quiz
+    throw new Error('use fallback');
+  }catch(e){
+    var quizzes=[
+      {q:'Jak powiedzieć po angielsku: <em>"mieć ciarki"</em>?',opts:['to have goosebumps','to get chills','to feel shivers','to be frozen'],correct:1,explain:'"Get chills" to idiom oznaczający uczucie dreszczu z ekscytacji lub strachu. "Have goosebumps" (gęsia skórka) też jest poprawne i podobne znaczenie.'},
+      {q:'Co oznacza angielski idiom: <em>"break the ice"</em>?',opts:['złamać lód','przełamać pierwsze lody','zepsuć coś','ochłodzić sytuację'],correct:1,explain:'"Break the ice" oznacza przełamanie barier w nowym towarzystwie — pochodzi ze starych czasów, gdy lodołamacze otwierały szlaki dla statków handlowych.'},
+      {q:'Które słowo NIE jest synonimem słowa <em>"happy"</em>?',opts:['joyful','content','elated','gloomy'],correct:3,explain:'"Gloomy" oznacza przygnębiony, smutny — to antonym słowa happy. Pozostałe: joyful (radosny), content (zadowolony), elated (rozradowany) są synonimami.'},
+      {q:'Jak powiedzieć po angielsku: <em>"na dłuższą metę"</em>?',opts:['in the long run','for a long time','at long last','in the end'],correct:0,explain:'"In the long run" to idiom oznaczający w perspektywie długoterminowej. Pochodzi ze sportu — koniec długiego wyścigu.'}
+    ];
+    var qz=quizzes[Math.floor(Math.random()*quizzes.length)];
+    document.getElementById('dc-quiz-loading').style.display='none';
+    document.getElementById('dc-quiz-content').style.display='block';
+    document.getElementById('dc-quiz-q').innerHTML=qz.q;
+    document.getElementById('dc-quiz-social').textContent='';
+    var optsHtml=qz.opts.map(function(o,i){
+      return '<div class="quiz-opt" onclick="quizAnswer('+i+','+qz.correct+','+JSON.stringify(qz.explain).replace(/'/g,"\\'")+',this)" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:.15s" onmouseover="if(!_quizAnswered)this.style.borderColor=\'var(--orange)\'" onmouseout="if(!_quizAnswered)this.style.borderColor=\'var(--border)\'">'
+        +'<span style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">'+String.fromCharCode(65+i)+'</span>'+o+'</div>';
+    }).join('');
+    document.getElementById('dc-quiz-opts').style.display='grid';
+    document.getElementById('dc-quiz-opts').style.gridTemplateColumns='1fr 1fr';
+    document.getElementById('dc-quiz-opts').style.gap='8px';
+    document.getElementById('dc-quiz-opts').innerHTML=optsHtml;
+    _quizAnswered=false;
+  }
+}
+
+function quizAnswer(idx, correct, explain, el){
+  if(_quizAnswered)return;
+  _quizAnswered=true;
+  var opts=document.querySelectorAll('.quiz-opt');
+  opts[correct].style.background='#e1f5ee';
+  opts[correct].style.borderColor='#0f6e56';
+  opts[correct].style.color='#085041';
+  if(idx!==correct){
+    el.style.background='#fcebeb';
+    el.style.borderColor='#a32d2d';
+    el.style.color='#501313';
+  }
+  var expl=document.getElementById('dc-quiz-explain');
+  expl.style.display='block';
+  expl.innerHTML='<strong style="color:var(--navy)">'+(idx===correct?'✅ Świetnie!':'❌ Nie tym razem')+'</strong> '+explain;
+  if(!_dailyDone.quiz){
+    _dailyDone.quiz=true;
+    addDailyXP(30);
+    document.getElementById('dc-quiz-done').style.display='inline';
+    updateDailyProgress();
+  }
+}
+
+function dailyWordDone(){
+  if(_dailyDone.word)return;
+  _dailyDone.word=true;
+  addDailyXP(20);
+  document.getElementById('dc-word-btn').textContent='✓ Dodano!';
+  document.getElementById('dc-word-btn').disabled=true;
+  document.getElementById('dc-word-done').style.display='inline';
+  updateDailyProgress();
+}
+
+function dailyReadDone(){
+  if(_dailyDone.read)return;
+  _dailyDone.read=true;
+  addDailyXP(25);
+  document.getElementById('dc-read-btn').textContent='✓ Ukończone!';
+  document.getElementById('dc-read-btn').disabled=true;
+  document.getElementById('dc-read-done').style.display='inline';
+  updateDailyProgress();
+}
+
+function addDailyXP(xp){
+  _dailyXP+=xp;
+  document.getElementById('daily-xp').textContent=_dailyXP+' XP';
+}
+
+function updateDailyProgress(){
+  var done=Object.values(_dailyDone).filter(Boolean).length;
+  var total=Object.keys(_dailyDone).length;
+  document.getElementById('daily-progress-label').textContent=done+' z '+total+' aktywności ukończone';
+  document.getElementById('daily-progress-bar').style.width=Math.round(done/total*100)+'%';
+}
+
+// ═══════════════════════════════════════
+// WYZWANIE TYGODNIA
+// ═══════════════════════════════════════
+var _challengeTimer=null;
+
+async function initChallenge(){
+  clearInterval(_challengeTimer);
+  // Oblicz koniec tygodnia (niedziela 23:59)
+  var now=new Date(), day=now.getDay(), diff=(7-day)%7||7;
+  var end=new Date(now); end.setDate(now.getDate()+diff); end.setHours(23,59,59,999);
+
+  function tick(){
+    var rem=end-new Date(), d=Math.floor(rem/86400000), h=Math.floor((rem%86400000)/3600000), m=Math.floor((rem%3600000)/60000);
+    var el=document.getElementById('ch-countdown');
+    if(el) el.textContent=d+'d '+h+'h '+m+'min';
+  }
+  tick(); _challengeTimer=setInterval(tick,60000);
+
+  // Wyzwanie — dynamicznie
+  var challenges=[
+    {name:'Mistrz Podróży 🗺️',desc:'Naucz się 50 słów z kategorii Travel',goal:50,category:'Podróże',reward:'500 złota + odznaka Podróżnika'},
+    {name:'Biznes Pro 💼',desc:'Opanuj 40 słów z języka biznesu',goal:40,category:'Business',reward:'400 złota + odznaka Profesjonalisty'},
+    {name:'Naukowy Umysł 🔬',desc:'Przyswój 30 słów naukowych',goal:30,category:'Science',reward:'300 złota + odznaka Naukowca'},
+  ];
+  var week=Math.floor(Date.now()/604800000)%challenges.length;
+  var ch=challenges[week];
+  document.getElementById('ch-name').textContent=ch.name;
+  document.getElementById('ch-desc').textContent=ch.desc;
+  document.getElementById('ch-reward').textContent='Nagroda za ukończenie: '+ch.reward;
+
+  // Pobierz postęp usera
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(sess){
+      var {data:stats}=await db.from('learning_stats').select('cards_seen').eq('user_id',sess.user.id).single();
+      var myProgress=Math.min(ch.goal, Math.floor((stats?.cards_seen||0)%ch.goal));
+      document.getElementById('ch-progress-text').textContent=myProgress+' / '+ch.goal;
+      document.getElementById('ch-progress-bar').style.width=Math.round(myProgress/ch.goal*100)+'%';
+    }
+  }catch(e){}
+
+  loadChallengeRanking();
+  document.getElementById('ch-rank-update').textContent='aktualizuje się co 5 min';
+  setTimeout(loadChallengeRanking, 300000);
+}
+
+async function loadChallengeRanking(){
+  var el=document.getElementById('ch-ranking');
+  if(!el)return;
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var myId=sess?sess.user.id:null;
+    var {data:rows}=await db.from('learning_stats')
+      .select('user_id,cards_seen,profiles(username)')
+      .order('cards_seen',{ascending:false})
+      .limit(10);
+    if(!rows||!rows.length){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:8px 0">Brak danych rankingu</div>';return;}
+    el.innerHTML=rows.map(function(r,i){
+      var isMe=r.user_id===myId;
+      var name=(r.profiles&&r.profiles.username)||r.user_id.slice(0,8);
+      var score=r.cards_seen||0;
+      var medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--border);'+(isMe?'background:var(--paper2);border-radius:8px;margin:0 -6px;padding:8px 12px;':'')+'last-child:border-none">'
+        +'<div style="font-size:14px;width:24px;text-align:center">'+(medal||'<span style="font-size:12px;color:var(--dim2)">'+(i+1)+'</span>')+'</div>'
+        +'<div style="width:28px;height:28px;border-radius:50%;background:'+(isMe?'var(--orange)':'var(--navy)')+';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0">'+name.slice(0,2).toUpperCase()+'</div>'
+        +'<div style="flex:1;font-size:13px;font-weight:'+(isMe?'700':'400')+';color:var(--navy)">'+name+(isMe?' (Ty)':'')+'</div>'
+        +'<div style="font-size:12px;color:'+(isMe?'var(--orange)':'var(--dim2)')+'">'+score+' kart</div>'
+        +'</div>';
+    }).join('');
+  }catch(e){
+    document.getElementById('ch-ranking').innerHTML='<div style="color:var(--dim2);font-size:13px">Błąd ładowania rankingu</div>';
+  }
+}
+
+// ═══════════════════════════════════════
+// AI CONVERSATION PARTNER
+// ═══════════════════════════════════════
+var _chatHistory=[];
+var _chatLang='en';
+var _chatPersonas={
+  en:{name:'Alex',desc:'Native speaker · New York',greeting:"Hey! I'm Alex. Let's have a conversation in English. What would you like to talk about today?"},
+  es:{name:'Sofía',desc:'Hablante nativa · Madrid',greeting:'¡Hola! Soy Sofía. Vamos a practicar el español juntos. ¿De qué quieres hablar?'},
+  nl:{name:'Daan',desc:'Moedertaalspreker · Amsterdam',greeting:'Hallo! Ik ben Daan. Laten we Nederlands oefenen. Waar wil je het over hebben?'},
+  jp:{name:'Yuki',desc:'ネイティブスピーカー · 東京',greeting:'こんにちは！ゆきです。一緒に日本語を練習しましょう。何について話したいですか？'}
+};
+
+function chatUpdatePersona(){
+  _chatLang=document.getElementById('chat-lang').value;
+  var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
+  document.getElementById('chat-persona-name').textContent=p.name;
+  document.getElementById('chat-persona-desc').textContent=p.desc;
+  var langTag={en:'EN · B1→B2',es:'ES · A2→B1',nl:'NL · A1→A2',jp:'JP · N5→N4'}[_chatLang]||'EN';
+  document.getElementById('chat-persona-tags').innerHTML=
+    '<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:#e6f1fb;color:#0c447c;font-weight:600">'+langTag+'</span>';
+}
+
+async function initChat(){
+  chatUpdatePersona();
+  // Załaduj słabe słowa usera
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(sess){
+      var {data:cards}=await db.from('flashcards').select('word').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(8);
+      if(cards&&cards.length){
+        document.getElementById('chat-weak-words').innerHTML=cards.map(function(c){
+          return '<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:var(--paper2);border:1px solid var(--border);font-size:12px;color:var(--navy)">'+c.word+'</span>';
+        }).join('');
+      }
+    }
+  }catch(e){}
+  if(!_chatHistory.length) chatReset();
+}
+
+function chatReset(){
+  _chatHistory=[];
+  var msgs=document.getElementById('chat-messages');
+  msgs.innerHTML='';
+  var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
+  _chatHistory.push({role:'assistant',content:p.greeting});
+  appendChatMsg('ai',p.greeting);
+  showChatHints();
+}
+
+function appendChatMsg(who, text, info){
+  var msgs=document.getElementById('chat-messages');
+  if(info){
+    var d=document.createElement('div');
+    d.className='chat-info';
+    d.textContent=info;
+    msgs.appendChild(d);
+  }
+  var d=document.createElement('div');
+  d.className=who==='user'?'chat-msg-user':'chat-msg-ai';
+  d.style.cssText='max-width:75%;align-self:'+(who==='user'?'flex-end':'flex-start');
+  d.innerHTML=text.replace(/\*\*(.*?)\*\*/g,'<strong style="color:'+(who==='user'?'#f5c842':'var(--orange)')+'">$1</strong>');
+  msgs.appendChild(d);
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+function showChatHints(){
+  var hintsWrap=document.getElementById('chat-hints-wrap');
+  var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
+  if(mode==='brave'){hintsWrap.innerHTML='';return;}
+  var hints={
+    en:['Tell me more about that','I totally agree with you','That\'s an interesting point','Actually, I think...'],
+    es:['Cuéntame más sobre eso','Totalmente de acuerdo','Es un punto interesante','En realidad, creo que...'],
+    nl:['Vertel me daar meer over','Ik ben het ermee eens','Dat is een interessant punt','Eigenlijk denk ik dat...'],
+    jp:['もっと教えてください','そうですね','面白い考えですね','実は、私は...']
+  };
+  var arr=hints[_chatLang]||hints['en'];
+  hintsWrap.innerHTML=arr.map(function(h){
+    return '<span class="chat-hint" onclick="chatUseHint(\''+h.replace(/'/g,"\\'")+'\')">'+(h.length>30?h.slice(0,28)+'…':h)+'</span>';
+  }).join('');
+}
+
+function chatUseHint(text){
+  document.getElementById('chat-input').value=text;
+  document.getElementById('chat-input').focus();
+}
+
+async function chatSend(){
+  var input=document.getElementById('chat-input');
+  var text=input.value.trim();
+  if(!text)return;
+  var btn=document.getElementById('chat-send-btn');
+  btn.disabled=true; input.value='';
+
+  appendChatMsg('user',text);
+  _chatHistory.push({role:'user',content:text});
+
+  // Typing indicator
+  var typing=document.createElement('div');
+  typing.className='chat-msg-ai';
+  typing.style.cssText='max-width:75%;align-self:flex-start;color:var(--dim2);font-size:13px';
+  typing.textContent='pisze...';
+  document.getElementById('chat-messages').appendChild(typing);
+  document.getElementById('chat-messages').scrollTop=99999;
+
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+
+    // Pobierz słabe słowa usera
+    var weakWords=[];
+    if(sess){
+      try{
+        var {data:cards}=await db.from('flashcards').select('word').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(5);
+        if(cards) weakWords=cards.map(function(c){return c.word;});
+      }catch(e){}
+    }
+
+    var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
+    var topic=document.getElementById('chat-topic').value;
+    var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
+    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
+    var topicNames={daily:'everyday life',travel:'travel and trips',work:'work and career',culture:'music and culture',free:'anything'};
+
+    var systemPrompt='You are '+p.name+', a friendly native '+langNames[_chatLang]+' speaker from '+p.desc.split('·')[1].trim()+'. '
+      +'You are having a conversation about '+topicNames[topic]+'. '
+      +(weakWords.length?'Naturally weave these words into your responses when possible (the user is learning them): '+weakWords.join(', ')+'. When you use one, bold it like **word**. ':'' )
+      +(mode==='brave'?'Respond ONLY in '+langNames[_chatLang]+'. Do not use Polish at all. If the user writes in Polish, gently ask them to try in '+langNames[_chatLang]+'.':'Respond in '+langNames[_chatLang]+'. You can occasionally add a brief Polish note in parentheses for very difficult words.')
+      +' Keep responses conversational, 2-4 sentences. Be warm and encouraging. Correct major errors gently.';
+
+    var res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:400,
+        system:systemPrompt,
+        messages:_chatHistory.slice(-10)
+      })
+    });
+    var data=await res.json();
+    var reply=(data.content&&data.content[0]&&data.content[0].text)||'Sorry, something went wrong. Try again!';
+    _chatHistory.push({role:'assistant',content:reply});
+    typing.remove();
+    appendChatMsg('ai',reply);
+    showChatHints();
+  }catch(e){
+    typing.remove();
+    appendChatMsg('ai','Ups, coś poszło nie tak. Spróbuj ponownie.');
+  }
+  btn.disabled=false;
+}
+
+// ═══════════════════════════════════════
+// ANALIZA LYRICS
+// ═══════════════════════════════════════
+var _lyricsWords=[];
+
+function initLyrics(){}
+
+function lyricsReset(){
+  document.getElementById('lyrics-input-panel').style.display='block';
+  document.getElementById('lyrics-result').style.display='none';
+  document.getElementById('lyrics-text').value='';
+  document.getElementById('lyrics-title').value='';
+  _lyricsWords=[];
+}
+
+async function analyzeLyrics(){
+  var text=document.getElementById('lyrics-text').value.trim();
+  if(text.length<20){alert('Wklej tekst piosenki (minimum kilka linijek).');return;}
+  var title=document.getElementById('lyrics-title').value.trim();
+  var lang=document.getElementById('lyrics-lang').value;
+  var genre=document.getElementById('lyrics-genre').value;
+  var btn=document.getElementById('lyrics-analyze-btn');
+  btn.disabled=true; btn.textContent='🤖 AI analizuje...';
+
+  try{
+    var langNames={en:'English',es:'Spanish',fr:'French',de:'German'};
+    var genreNames={hiphop:'hip-hop/rap',pop:'pop',rnb:'R&B',rock:'rock',other:'music'};
+
+    var prompt='Analyze these '+langNames[lang]+' '+genreNames[genre]+' lyrics line by line.\n'
+      +(title?'Song: '+title+'\n\n':'')
+      +'Lyrics:\n'+text+'\n\n'
+      +'Return ONLY valid JSON, no explanation outside JSON:\n'
+      +'{"lines": [{"text": "original line", "annotation": "explanation of slang, cultural references, wordplay, idiomatic expressions in Polish. Be specific and interesting, like a linguist + cultural expert. 2-4 sentences.", "words": [{"word": "key word or phrase", "translation": "Polish translation or explanation"}]}]}\n'
+      +'Focus on: slang, double meanings, cultural references, wordplay, idioms. Skip obvious lines.';
+
+    var res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
+    var data=await res.json();
+    var raw=(data.content&&data.content[0]&&data.content[0].text)||'{}';
+    var clean=raw.replace(/```json|```/g,'').trim();
+    var parsed=JSON.parse(clean);
+    renderLyricsResult(parsed, title, text);
+  }catch(e){
+    alert('Błąd analizy: '+e.message+'. Spróbuj ponownie.');
+  }
+  btn.disabled=false; btn.textContent='🎵 Analizuj z AI';
+}
+
+function renderLyricsResult(data, title, originalText){
+  document.getElementById('lyrics-input-panel').style.display='none';
+  document.getElementById('lyrics-result').style.display='block';
+  document.getElementById('lyrics-result-title').textContent=title||'Analiza tekstu';
+  _lyricsWords=[];
+
+  // Jeśli brak danych z AI — pokaż oryginał linię po linii
+  var lines=data.lines||originalText.split('\n').map(function(l){return{text:l,annotation:'',words:[]};});
+
+  document.getElementById('lyrics-lines').innerHTML=lines.filter(function(l){return l.text&&l.text.trim();}).map(function(l,i){
+    var hasAnnotation=l.annotation&&l.annotation.length>10;
+    return '<div class="lyric-line-wrap'+(hasAnnotation?' ':' ')+(hasAnnotation?'':'') +'" id="lyric-'+i+'" onclick="toggleLyric('+i+')">'
+      +'<div class="lyric-line-text">'+(hasAnnotation?'<span style="color:var(--dim2);font-size:11px;margin-right:6px">▸</span>':'')+l.text+'</div>'
+      +(hasAnnotation?'<div class="lyric-annotation">'+l.annotation+'</div>':'')
+      +'</div>';
+  }).join('');
+
+  // Zbierz słówka
+  lines.forEach(function(l){
+    if(l.words) l.words.forEach(function(w){
+      if(!_lyricsWords.find(function(x){return x.word===w.word;})){
+        _lyricsWords.push(w);
+      }
+    });
+  });
+  renderLyricsWords();
+}
+
+function toggleLyric(i){
+  var el=document.getElementById('lyric-'+i);
+  if(el) el.classList.toggle('open');
+}
+
+function renderLyricsWords(){
+  var panel=document.getElementById('lyrics-words-panel');
+  var addBtn=document.getElementById('lyrics-add-all-btn');
+  if(!_lyricsWords.length){panel.innerHTML='<div style="color:var(--dim2);font-size:13px">Brak słów do dodania</div>';return;}
+  addBtn.style.display='flex';
+  panel.innerHTML=_lyricsWords.map(function(w,i){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="flex:1">'
+        +'<div style="font-size:13px;font-weight:600;color:var(--navy)">'+w.word+'</div>'
+        +'<div style="font-size:12px;color:var(--dim2)">'+w.translation+'</div>'
+      +'</div>'
+      +'<span class="word-badge" id="wb-'+i+'" onclick="lyricsAddWord('+i+')">+ Fiszka</span>'
+      +'</div>';
+  }).join('');
+}
+
+async function lyricsAddWord(i){
+  var w=_lyricsWords[i];
+  if(!w)return;
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){showToast('Zaloguj się aby dodać fiszkę','error');return;}
+    var lang=document.getElementById('lyrics-lang').value;
+    await db.from('flashcards').insert({user_id:sess.user.id,word:w.word,translation:w.translation,language:lang,level:'B1',source:'lyrics'});
+    var badge=document.getElementById('wb-'+i);
+    if(badge){badge.textContent='✓ Dodano';badge.className='word-badge added';badge.onclick=null;}
+    showToast('Dodano: '+w.word,'success');
+  }catch(e){showToast('Błąd: '+e.message,'error');}
+}
+
+async function lyricsAddAll(){
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess){showToast('Zaloguj się aby dodać fiszki','error');return;}
+  var lang=document.getElementById('lyrics-lang').value;
+  var rows=_lyricsWords.map(function(w){return{user_id:sess.user.id,word:w.word,translation:w.translation,language:lang,level:'B1',source:'lyrics'};});
+  try{
+    await db.from('flashcards').insert(rows);
+    _lyricsWords.forEach(function(w,i){
+      var badge=document.getElementById('wb-'+i);
+      if(badge){badge.textContent='✓ Dodano';badge.className='word-badge added';badge.onclick=null;}
+    });
+    showToast('Dodano '+rows.length+' fiszek!','success');
+  }catch(e){showToast('Błąd: '+e.message,'error');}
+}
+</script>
