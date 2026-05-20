@@ -2819,6 +2819,7 @@ async function loadVideo(topic, isPodcast){
       <div id="chat-hints-wrap" style="padding:0 16px 10px;display:flex;flex-wrap:wrap;gap:6px"></div>
 
       <!-- Input -->
+      <div style="padding:4px 16px 0;text-align:right"><span id="chat-limit-info" style="font-size:11px;color:var(--dim2)"></span></div>
       <div style="padding:16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end">
         <textarea id="chat-input" rows="2" placeholder="Napisz po angielsku..." style="flex:1;resize:none;padding:10px 14px;border-radius:12px;border:1px solid var(--border2);font-size:14px;font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--navy)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chatSend();}"></textarea>
         <button class="btn btn-orange" onclick="chatSend()" id="chat-send-btn" style="padding:10px 18px;border-radius:12px">Wyślij →</button>
@@ -2969,14 +2970,43 @@ async function loadDailyWord(){
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){showDailyWordFallback();return;}
     // Pobierz losowe słowo z fiszek usera
-    // Pobierz karty z zestawów usera
-    var {data:sets}=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(10);
-    var cards=[];
-    if(sets) sets.forEach(function(s){if(s.user_set_cards)cards=cards.concat(s.user_set_cards);});
-    if(!cards.length){showDailyWordFallback();return;}
-    // Wybierz język z selecta (jeśli istnieje) lub losowo
+    // Pobierz język wybrany przez usera
     var dailyLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
-    var card=cards[Math.floor(Math.random()*cards.length)];
+    var langLabels={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
+
+    // Najpierw spróbuj z word_progress (program desktopowy - słowa które user faktycznie przerabia)
+    var card=null;
+    try{
+      var {data:wp}=await db.from('word_progress')
+        .select('flashcard_id,ease_factor,flashcards(word,translation,languages(code))')
+        .eq('user_id',sess.user.id)
+        .order('ease_factor',{ascending:true})
+        .limit(50);
+      if(wp&&wp.length){
+        // Filtruj po języku jeśli możliwe
+        var filtered=wp.filter(function(r){
+          return r.flashcards&&r.flashcards.word&&
+            (!r.flashcards.languages||r.flashcards.languages.code===dailyLang);
+        });
+        var pool=filtered.length?filtered:wp.filter(function(r){return r.flashcards&&r.flashcards.word;});
+        if(pool.length){
+          var r=pool[Math.floor(Math.random()*Math.min(pool.length,10))];
+          card={word:r.flashcards.word,translation:r.flashcards.translation};
+        }
+      }
+    }catch(e){}
+
+    // Fallback - zestawy webowe
+    if(!card){
+      try{
+        var {data:sets}=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(10);
+        var cards=[];
+        if(sets)sets.forEach(function(s){if(s.user_set_cards)cards=cards.concat(s.user_set_cards);});
+        if(cards.length) card=cards[Math.floor(Math.random()*cards.length)];
+      }catch(e){}
+    }
+
+    if(!card){showDailyWordFallback();return;}
     document.getElementById('dc-word-loading').style.display='none';
     document.getElementById('dc-word-content').style.display='block';
     document.getElementById('dc-word-text').textContent=card.word;
@@ -3250,9 +3280,24 @@ async function initChat(){
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(sess){
-      var {data:sets2}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(5);
-      var allW=[];if(sets2)sets2.forEach(function(s){if(s.user_set_cards)allW=allW.concat(s.user_set_cards);});
-      var cards=allW.slice(0,8);
+      // Pobierz słowa z word_progress (program desktopowy) - słowa które user przerabia
+      var weakCards=[];
+      try{
+        var {data:wp}=await db.from('word_progress')
+          .select('flashcard_id,ease_factor,repetitions,flashcards(word)')
+          .eq('user_id',sess.user.id)
+          .order('ease_factor',{ascending:true})
+          .limit(8);
+        if(wp&&wp.length) weakCards=wp.filter(function(r){return r.flashcards&&r.flashcards.word;}).map(function(r){return{word:r.flashcards.word};});
+      }catch(e){}
+      // Fallback - zestawy webowe
+      if(!weakCards.length){
+        try{
+          var {data:sets2}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).limit(5);
+          if(sets2)sets2.forEach(function(s){if(s.user_set_cards)weakCards=weakCards.concat(s.user_set_cards);});
+        }catch(e){}
+      }
+      var cards=weakCards.slice(0,8);
       if(cards&&cards.length){
         document.getElementById('chat-weak-words').innerHTML=cards.map(function(c){
           return '<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:var(--paper2);border:1px solid var(--border);font-size:12px;color:var(--navy)">'+c.word+'</span>';
@@ -3261,6 +3306,7 @@ async function initChat(){
     }
   }catch(e){}
   if(!_chatHistory.length) chatReset();
+  updateChatLimitUI();
 }
 
 function chatReset(){
@@ -3310,10 +3356,42 @@ function chatUseHint(text){
   document.getElementById('chat-input').focus();
 }
 
+const CHAT_DAILY_LIMIT = 15;
+
+function getChatUsageToday(){
+  try{
+    var key='chat_usage_'+new Date().toISOString().slice(0,10);
+    return parseInt(localStorage.getItem(key)||'0');
+  }catch(e){return 0;}
+}
+
+function incrementChatUsage(){
+  try{
+    var key='chat_usage_'+new Date().toISOString().slice(0,10);
+    var n=getChatUsageToday()+1;
+    localStorage.setItem(key,String(n));
+    return n;
+  }catch(e){return 1;}
+}
+
+function updateChatLimitUI(){
+  var used=getChatUsageToday();
+  var left=Math.max(0,CHAT_DAILY_LIMIT-used);
+  var el=document.getElementById('chat-limit-info');
+  if(el){
+    el.textContent=left>0?(left+' wiadomości pozostało dziś'):'Limit dzienny wyczerpany';
+    el.style.color=left<=3?'#c96a2a':left===0?'#dc2626':'var(--dim2)';
+  }
+}
+
 async function chatSend(){
   var input=document.getElementById('chat-input');
   var text=input.value.trim();
   if(!text)return;
+  if(getChatUsageToday()>=CHAT_DAILY_LIMIT){
+    appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości. Wróć jutro lub odblokuj premium! 🌟');
+    return;
+  }
   var btn=document.getElementById('chat-send-btn');
   btn.disabled=true; input.value='';
 
@@ -3336,9 +3414,21 @@ async function chatSend(){
     var weakWords=[];
     if(sess){
       try{
-        var {data:sets3}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).limit(5);
-        var allW3=[];if(sets3)sets3.forEach(function(s){if(s.user_set_cards)allW3=allW3.concat(s.user_set_cards);});
-        weakWords=allW3.slice(0,5).map(function(c){return c.word;});
+        try{
+          var {data:wp2}=await db.from('word_progress')
+            .select('flashcard_id,ease_factor,flashcards(word)')
+            .eq('user_id',sess.user.id)
+            .order('ease_factor',{ascending:true})
+            .limit(5);
+          if(wp2&&wp2.length) weakWords=wp2.filter(function(r){return r.flashcards&&r.flashcards.word;}).map(function(r){return r.flashcards.word;});
+        }catch(e){}
+        if(!weakWords.length){
+          try{
+            var {data:sets3}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).limit(3);
+            var allW3=[];if(sets3)sets3.forEach(function(s){if(s.user_set_cards)allW3=allW3.concat(s.user_set_cards);});
+            weakWords=allW3.slice(0,5).map(function(c){return c.word;});
+          }catch(e){}
+        }
       }catch(e){}
     }
 
@@ -3370,6 +3460,8 @@ async function chatSend(){
     _chatHistory.push({role:'assistant',content:reply});
     typing.remove();
     appendChatMsg('ai',reply);
+    incrementChatUsage();
+    updateChatLimitUI();
     showChatHints();
   }catch(e){
     typing.remove();
