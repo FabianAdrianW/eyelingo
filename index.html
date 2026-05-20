@@ -674,15 +674,15 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
       </div>
     </div>
 
-    <!-- Statystyki główne -->
+    <!-- Hero stats -->
     <div class="dstats">
       <div class="dstat"><div class="dstat-l">🏺 Złoto</div><div class="dstat-v gold" id="dash-gold">0</div><div class="dstat-s">zebrane punkty</div></div>
-      <div class="dstat"><div class="dstat-l">📖 Fiszki</div><div class="dstat-v" id="dash-cards">0</div><div class="dstat-s">obejrzanych</div></div>
-      <div class="dstat"><div class="dstat-l">⏱️ Czas nauki</div><div class="dstat-v" id="dash-minutes">0</div><div class="dstat-s">minut aktywnych</div></div>
+      <div class="dstat"><div class="dstat-l">🔥 Streak</div><div class="dstat-v" id="dash-streak">0</div><div class="dstat-s">dni z rzędu</div></div>
+      <div class="dstat"><div class="dstat-l">📖 Fiszki</div><div class="dstat-v" id="dash-cards">0</div><div class="dstat-s">przerobionych</div></div>
       <div class="dstat"><div class="dstat-l">🏆 Status</div><div class="dstat-v sm" id="dash-status">Ładowanie...</div></div>
     </div>
 
-    <!-- Wykresy statystyk -->
+    <!-- Statystyki rozszerzone -->
     <div class="stats-section">
       <h3 class="stats-title">📊 Twoje postępy</h3>
       <div class="stats-grid">
@@ -699,19 +699,68 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
           </div>
           <div class="streak-bar-wrap">
             <div class="streak-bar-label">Tygodniowy cel (7 dni)</div>
-            <div class="streak-bar-track">
-              <div class="streak-bar-fill" id="streak-bar"></div>
+            <div class="streak-bar-track"><div class="streak-bar-fill" id="streak-bar"></div></div>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--dim2)" id="streak-msg"></div>
+        </div>
+
+        <!-- AI Partner -->
+        <div class="stat-card-big">
+          <div class="scb-label">🤖 AI Partner</div>
+          <div class="scb-value" id="stat-chat">0</div>
+          <div class="scb-sub">wiadomości dziś</div>
+          <div style="margin-top:12px">
+            <div style="font-size:12px;color:var(--dim2);margin-bottom:4px">Dzienny limit</div>
+            <div class="streak-bar-track"><div id="chat-usage-bar" style="height:100%;border-radius:20px;background:linear-gradient(90deg,#16a34a,#f5c842);transition:width .5s"></div></div>
+          </div>
+        </div>
+
+        <!-- Fiszki i czas -->
+        <div class="stat-card-big">
+          <div class="scb-label">📖 Nauka</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+            <div style="text-align:center;padding:12px;background:var(--paper2);border-radius:10px">
+              <div style="font-size:24px;font-weight:700;color:var(--navy)" id="stat-cards2">0</div>
+              <div style="font-size:11px;color:var(--dim2)">Fiszek przerobionych</div>
+            </div>
+            <div style="text-align:center;padding:12px;background:var(--paper2);border-radius:10px">
+              <div style="font-size:24px;font-weight:700;color:var(--navy)" id="stat-minutes">0</div>
+              <div style="font-size:11px;color:var(--dim2)">Minut nauki</div>
             </div>
           </div>
         </div>
 
-        <!-- Postęp językowy -->
+        <!-- Głosówki -->
         <div class="stat-card-big">
+          <div class="scb-label">🎙️ Głosówki</div>
+          <div class="scb-value" id="stat-voices">0</div>
+          <div class="scb-sub">opublikowanych</div>
+          <div style="margin-top:8px;font-size:12px;color:var(--dim2)" id="stat-voices-rating"></div>
+        </div>
+
+        <!-- Wyzwanie -->
+        <div class="stat-card-big">
+          <div class="scb-label">🏆 Wyzwanie tygodnia</div>
+          <div id="stat-challenge-name" style="font-size:14px;font-weight:600;color:var(--navy);margin:8px 0"></div>
+          <div style="font-size:12px;color:var(--dim2);margin-bottom:6px" id="stat-challenge-progress">Brak danych</div>
+          <div class="streak-bar-track"><div id="stat-challenge-bar" style="height:100%;border-radius:20px;background:linear-gradient(90deg,#f5c842,#c96a2a);transition:width .5s;width:0%"></div></div>
+        </div>
+
+        <!-- Odznaki -->
+        <div class="stat-card-big">
+          <div class="scb-label">🎖️ Odznaki</div>
+          <div id="stat-badges" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+            <div style="font-size:12px;color:var(--dim2)">Zdobywaj odznaki przez naukę!</div>
+          </div>
+        </div>
+
+        <!-- Postęp językowy -->
+        <div class="stat-card-big" style="grid-column:span 2">
           <div class="scb-label">🌍 Postęp językowy</div>
           <div id="lang-progress" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"></div>
         </div>
 
-        <!-- Mini wykres aktywności (ostatnie 7 dni) -->
+        <!-- Aktywność -->
         <div class="stat-card-big" style="grid-column:span 2">
           <div class="scb-label">📅 Aktywność — ostatnie 7 dni</div>
           <div class="activity-chart" id="activity-chart" style="margin-top:16px"></div>
@@ -826,20 +875,95 @@ async function loadDashboard(){
   // Złoto i statystyki z learning_stats
   const{data:s}=await db.from('learning_stats').select('gold,cards_seen,minutes_active,streak_days').eq('user_id',user.id).single();
   if(s){
-    document.getElementById('dash-gold').textContent=(s.gold??0).toLocaleString('pl-PL');
-    document.getElementById('dash-cards').textContent=s.cards_seen??0;
-    document.getElementById('dash-minutes').textContent=s.minutes_active??0;
-    // Streak
     const streak=s.streak_days||0;
+    const cards=s.cards_seen||0;
+    const minutes=s.minutes_active||0;
+    const gold=s.gold||0;
+
+    // Hero stats
+    document.getElementById('dash-gold').textContent=gold.toLocaleString('pl-PL');
+    document.getElementById('dash-streak').textContent=streak;
+    document.getElementById('dash-cards').textContent=cards;
+
+    // Streak card
     const streakEl=document.getElementById('stat-streak');
-    if(streakEl){
-      streakEl.textContent=streak;
-      const bar=document.getElementById('streak-bar');
-      if(bar) bar.style.width=Math.min(100,Math.round(streak/7*100))+'%';
-      const flame=document.getElementById('streak-flame');
-      if(flame) flame.textContent=streak>=7?'🔥🔥':streak>=3?'🔥':'💤';
+    if(streakEl) streakEl.textContent=streak;
+    const bar=document.getElementById('streak-bar');
+    if(bar) bar.style.width=Math.min(100,Math.round(streak/7*100))+'%';
+    const flame=document.getElementById('streak-flame');
+    if(flame) flame.textContent=streak>=7?'🔥🔥':streak>=3?'🔥':'💤';
+    const streakMsg=document.getElementById('streak-msg');
+    if(streakMsg){
+      if(streak===0) streakMsg.textContent='Zacznij dziś — pierwszy dzień streaka!';
+      else if(streak<3) streakMsg.textContent='Dobry start! Utrzymaj go jutro 💪';
+      else if(streak<7) streakMsg.textContent='Świetnie! Jeszcze '+(7-streak)+' dni do tygodniowego celu 🎯';
+      else streakMsg.textContent='Niesamowite! Tydzień z rzędu — tak trzymaj! 🏆';
+    }
+
+    // Nauka stats
+    const sc2=document.getElementById('stat-cards2');
+    if(sc2) sc2.textContent=cards;
+    const sm=document.getElementById('stat-minutes');
+    if(sm) sm.textContent=minutes;
+
+    // AI Partner usage
+    const chatUsed=getChatUsageToday?getChatUsageToday():0;
+    const chatEl=document.getElementById('stat-chat');
+    if(chatEl) chatEl.textContent=chatUsed;
+    const chatBar=document.getElementById('chat-usage-bar');
+    if(chatBar) chatBar.style.width=Math.min(100,Math.round(chatUsed/15*100))+'%';
+
+    // Wyzwanie
+    const challenges=[
+      {name:'Mistrz Podróży 🗺️',goal:50},
+      {name:'Biznes Pro 💼',goal:40},
+      {name:'Naukowy Umysł 🔬',goal:30}
+    ];
+    const week=Math.floor(Date.now()/604800000)%challenges.length;
+    const ch=challenges[week];
+    const myProgress=Math.min(ch.goal,Math.floor(cards%ch.goal));
+    const chName=document.getElementById('stat-challenge-name');
+    const chProg=document.getElementById('stat-challenge-progress');
+    const chBar=document.getElementById('stat-challenge-bar');
+    if(chName) chName.textContent=ch.name;
+    if(chProg) chProg.textContent=myProgress+' / '+ch.goal+' słów';
+    if(chBar) chBar.style.width=Math.round(myProgress/ch.goal*100)+'%';
+
+    // Odznaki
+    const badges=[];
+    if(streak>=3) badges.push({icon:'🔥',name:'Ogień x3',desc:'3-dniowy streak'});
+    if(streak>=7) badges.push({icon:'💎',name:'Diament',desc:'7-dniowy streak'});
+    if(cards>=100) badges.push({icon:'📚',name:'Czytelnik',desc:'100 fiszek'});
+    if(cards>=500) badges.push({icon:'🧠',name:'Erudyta',desc:'500 fiszek'});
+    if(gold>=1000) badges.push({icon:'🪙',name:'Kolekcjoner',desc:'1000 złota'});
+    if(minutes>=60) badges.push({icon:'⏰',name:'Godzina nauki',desc:'60 minut'});
+    const badgesEl=document.getElementById('stat-badges');
+    if(badgesEl){
+      if(badges.length){
+        badgesEl.innerHTML=badges.map(function(b){
+          return'<div style="text-align:center;padding:8px 12px;background:var(--paper2);border-radius:10px;border:1px solid var(--border)">'
+            +'<div style="font-size:24px">'+b.icon+'</div>'
+            +'<div style="font-size:11px;font-weight:600;color:var(--navy);margin-top:2px">'+b.name+'</div>'
+            +'<div style="font-size:10px;color:var(--dim2)">'+b.desc+'</div>'
+            +'</div>';
+        }).join('');
+      } else {
+        badgesEl.innerHTML='<div style="font-size:12px;color:var(--dim2)">Brak odznak — zacznij się uczyć! 🚀</div>';
+      }
     }
   }
+
+  // Głosówki
+  try{
+    const{data:vr}=await db.from('voice_recordings').select('id,rating_pronunciation_avg,rating_count').eq('user_id',user.id);
+    const svEl=document.getElementById('stat-voices');
+    if(svEl) svEl.textContent=(vr||[]).length;
+    const svRating=document.getElementById('stat-voices-rating');
+    if(svRating&&vr&&vr.length){
+      const avgRating=vr.reduce(function(sum,r){return sum+(r.rating_pronunciation_avg||0);},0)/vr.length;
+      svRating.textContent='Śr. ocena wymowy: '+avgRating.toFixed(1)+' ⭐';
+    }
+  }catch(e){}
 
   // Status premium z profiles
   const{data:p}=await db.from('profiles').select('is_premium,premium_until,levels_bought,username').eq('user_id',user.id).single();
@@ -1839,7 +1963,10 @@ async function initToFixPage(){
       <div id="strefa-card-view" style="display:none">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
           <button class="btn btn-ghost" onclick="strefaBack()" style="font-size:13px">← Wróć</button>
-          <div style="font-size:14px;color:var(--dim2)" id="strefa-breadcrumb"></div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:0">
+            <button id="strefa-back-btn" onclick="strefaBack()" style="display:none;font-size:13px;padding:6px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--paper);cursor:pointer;color:var(--dim)">← Cofnij</button>
+            <div style="font-size:14px;color:var(--dim2)" id="strefa-breadcrumb"></div>
+          </div>
         </div>
 
         <div class="strefa-card" id="strefa-card">
@@ -1977,6 +2104,8 @@ function showStrefaLangs(isPremium){
 function showStrefaLevels(lang){
   _strefaLang=lang;
   _strefaState='levels';
+  var bb=document.getElementById('strefa-back-btn');
+  if(bb){bb.style.display='inline-flex';bb.onclick=function(){showStrefaLangs(_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date());};}
   const levels=['A1','A2','B1','B2','C1','C2'];
   const isPremium=_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date();
   document.getElementById('strefa-langs').innerHTML=`
@@ -1999,6 +2128,8 @@ function showStrefaLevels(lang){
 async function showStrefaCats(lang,level){
   _strefaLang=lang;_strefaLevel=level;
   _strefaState='cats';
+  var bb=document.getElementById('strefa-back-btn');
+  if(bb){bb.style.display='inline-flex';bb.onclick=function(){showStrefaLevels(lang);};}
   const{data:cats}=await db.from('flashcards')
     .select('category_id,categories(code,label,icon)')
     .eq('language_id',['en','es','jp','nl'].indexOf(lang)+1)
@@ -2027,6 +2158,7 @@ async function startStrefaCards(lang,level,catCode,catLabel){
   _strefaLang=lang;_strefaLevel=level;_strefaCat=catCode;
   _strefaIdx=0;
   document.getElementById('strefa-breadcrumb').textContent=`${LANG_FLAGS[lang]} ${LANG_LABELS[lang]} · ${level} · ${catLabel}`;
+  document.getElementById('strefa-back-btn').style.display='inline-flex';
   const langId=['en','es','jp','nl'].indexOf(lang)+1;
   const levelId=['A1','A2','B1','B2','C1','C2'].indexOf(level)+1;
   const{data:catsArr}=await db.from('categories').select('id').eq('code',catCode).limit(1);
@@ -2976,6 +3108,13 @@ var _dailyDone = {word:false, read:false, quiz:false};
 var _dailyXP = 0;
 var _quizAnswered = false;
 
+function getQuizDoneToday(){
+  try{return localStorage.getItem('quiz_done_'+new Date().toISOString().slice(0,10))||'';}catch(e){return '';}
+}
+function setQuizDoneToday(lang){
+  try{localStorage.setItem('quiz_done_'+new Date().toISOString().slice(0,10),lang);}catch(e){}
+}
+
 function initDaily(){
   var d = new Date();
   var today = d.toISOString().slice(0,10);
@@ -2995,19 +3134,21 @@ function initDaily(){
 function reloadDailyContent(){
   try{var sel=document.getElementById('daily-lang-select');if(sel)localStorage.setItem('daily_lang',sel.value);}catch(e){}
   _dailyLoaded=true;
-  // Reset done state dla nowego języka
+  _dailyLoadedDate=''; // force reload
+  // Reset
   _dailyDone={word:false,read:false,quiz:false};
   _dailyXP=0;
   document.getElementById('daily-xp').textContent='0 XP';
-  document.getElementById('dc-word-done').style.display='none';
-  document.getElementById('dc-read-done').style.display='none';
-  document.getElementById('dc-quiz-done').style.display='none';
-  document.getElementById('dc-word-content').style.display='none';
-  document.getElementById('dc-word-loading').style.display='block';
-  document.getElementById('dc-read-content').style.display='none';
-  document.getElementById('dc-read-loading').style.display='block';
-  document.getElementById('dc-quiz-content').style.display='none';
-  document.getElementById('dc-quiz-loading').style.display='block';
+  // Reset wszystkich kart
+  ['dc-word-done','dc-read-done','dc-quiz-done'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.style.display='none';
+  });
+  ['dc-word-content','dc-read-content','dc-quiz-content'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.style.display='none';
+  });
+  ['dc-word-loading','dc-read-loading','dc-quiz-loading'].forEach(function(id){
+    var el=document.getElementById(id);if(el){el.style.display='block';el.textContent='Ładowanie...';}
+  });
   updateDailyProgress();
   loadDailyContent();
 }
@@ -3156,6 +3297,17 @@ async function loadDailyQuiz(){
     throw new Error('use fallback');
   }catch(e){
     var qLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+    // Sprawdź czy quiz już zrobiony dziś
+    if(getQuizDoneToday()===qLang){
+      document.getElementById('dc-quiz-loading').style.display='none';
+      document.getElementById('dc-quiz-content').style.display='block';
+      document.getElementById('dc-quiz-q').innerHTML='✅ Quiz na dziś ukończony! Wróć jutro po nowe pytanie.';
+      document.getElementById('dc-quiz-opts').innerHTML='';
+      _dailyDone.quiz=true;
+      document.getElementById('dc-quiz-done').style.display='inline';
+      updateDailyProgress();
+      return;
+    }
     var allQuizzes={
       en:[
         {q:'Jak powiedzieć po angielsku: <em>"mieć ciarki"</em>?',opts:['to have goosebumps','to get chills','to feel shivers','to be frozen'],correct:1,explain:'"Get chills" to idiom oznaczający uczucie dreszczu z ekscytacji lub strachu.'},
@@ -3219,6 +3371,8 @@ function quizAnswer(idx, correct, explain, el){
   expl.innerHTML='<strong style="color:var(--navy)">'+(idx===correct?'✅ Świetnie!':'❌ Nie tym razem')+'</strong> '+explain;
   if(!_dailyDone.quiz){
     _dailyDone.quiz=true;
+    var qLangNow=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+    setQuizDoneToday(qLangNow);
     addDailyXP(30);
     document.getElementById('dc-quiz-done').style.display='inline';
     updateDailyProgress();
@@ -3354,45 +3508,65 @@ function chatUpdatePersona(){
   var langPlaceholder={en:'Napisz po angielsku...',es:'Escribe en español...',nl:'Schrijf in het Nederlands...',jp:'日本語で書いてください...'};
   var inp=document.getElementById('chat-input');
   if(inp) inp.placeholder=langPlaceholder[_chatLang]||'Napisz...';
+  // Przeładuj słabe słowa dla nowego języka
+  loadChatWeakWords();
   // Reset rozmowy przy zmianie języka
   chatReset();
 }
 
 async function initChat(){
   chatUpdatePersona();
-  // Załaduj słabe słowa usera
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(sess){
-      // Pobierz słowa z word_progress (program desktopowy) - słowa które user przerabia
-      var weakCards=[];
-      try{
-        var {data:wp}=await db.from('word_progress')
-          .select('flashcard_id,ease_factor,repetitions,flashcards(word)')
-          .eq('user_id',sess.user.id)
-          .order('ease_factor',{ascending:true})
-          .limit(8);
-        if(wp&&wp.length) weakCards=wp.filter(function(r){return r.flashcards&&r.flashcards.word;}).map(function(r){return{word:r.flashcards.word};});
-      }catch(e){}
-      // Fallback - zestawy webowe
-      if(!weakCards.length){
-        try{
-          var {data:sets2}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).limit(5);
-          if(sets2)sets2.forEach(function(s){if(s.user_set_cards)weakCards=weakCards.concat(s.user_set_cards);});
-        }catch(e){}
-      }
-      var cards=weakCards.slice(0,8);
-      if(cards&&cards.length){
-        document.getElementById('chat-weak-words').innerHTML=cards.map(function(c){
-          return '<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:var(--paper2);border:1px solid var(--border);font-size:12px;color:var(--navy)">'+c.word+'</span>';
-        }).join('');
-      }
-    }
-  }catch(e){}
+  await loadChatWeakWords();
   if(!_chatHistory.length) chatReset();
   updateChatLimitUI();
 }
 
+async function loadChatWeakWords(){
+  var lang=document.getElementById('chat-lang')?document.getElementById('chat-lang').value:'en';
+  var words=[];
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){renderWeakWords([]);return;}
+    // Najpierw word_progress filtrowany po języku
+    try{
+      var{data:wp}=await db.from('word_progress')
+        .select('ease_factor,flashcards(word,languages(code))')
+        .eq('user_id',sess.user.id)
+        .order('ease_factor',{ascending:true})
+        .limit(30);
+      if(wp&&wp.length){
+        var filtered=wp.filter(function(r){
+          return r.flashcards&&r.flashcards.word&&r.flashcards.languages&&r.flashcards.languages.code===lang;
+        });
+        var pool=filtered.length?filtered:wp.filter(function(r){return r.flashcards&&r.flashcards.word;});
+        words=pool.slice(0,8).map(function(r){return r.flashcards.word;});
+      }
+    }catch(e){}
+    // Fallback - zestawy webowe
+    if(!words.length){
+      var{data:sets2}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).limit(5);
+      var allW=[];
+      if(sets2)sets2.forEach(function(s){if(s.user_set_cards)allW=allW.concat(s.user_set_cards);});
+      words=allW.slice(0,8).map(function(c){return c.word;});
+    }
+  }catch(e){}
+  renderWeakWords(words, lang);
+}
+
+function renderWeakWords(words, lang){
+  var el=document.getElementById('chat-weak-words');
+  var label=document.getElementById('chat-weak-label');
+  if(!el)return;
+  var langNames={en:'angielski',es:'hiszpański',nl:'holenderski',jp:'japoński'};
+  if(label) label.textContent='Partner użyje tych słów ('+(langNames[lang]||lang)+')';
+  if(words.length){
+    el.innerHTML=words.map(function(w){
+      return'<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:var(--paper2);border:1px solid var(--border);font-size:12px;color:var(--navy)">'+w+'</span>';
+    }).join('');
+  } else {
+    el.innerHTML='<span style="font-size:12px;color:var(--dim2)">Ucz się więcej aby personalizować rozmowę</span>';
+  }
+}
 var _chatLevel='beginner';
 
 function setChatLevel(level, el){
@@ -4136,10 +4310,15 @@ async function runChallengeGenerator(topic, setName){
       <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">O mnie (autoprezentacja)</label>
       <textarea id="tutor-bio" rows="4" placeholder="Kilka słów o sobie, doświadczeniu, metodzie nauczania..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px;resize:vertical"></textarea>
     </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Link do videoprezentacji (opcjonalnie)</label>
+      <input id="tutor-video" type="url" placeholder="https://youtube.com/... lub inny link wideo" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div>
-        <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Zdjęcie (link URL)</label>
-        <input id="tutor-photo" type="url" placeholder="https://..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+        <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Zdjęcie (URL do JPG/PNG)</label>
+        <input id="tutor-photo" type="url" placeholder="https://... (link do zdjęcia .jpg lub .png)" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+        <div style="font-size:11px;color:var(--dim2);margin-top:4px">Wgraj zdjęcie na imgur.com lub inny hosting i wklej link</div>
       </div>
       <div>
         <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Cena za godzinę (PLN)</label>
@@ -4320,10 +4499,17 @@ async function viewTutor(tutorId){
 
   // Pobierz opinie
   var{data:reviews}=await db.from('tutor_reviews')
-    .select('rating,comment,created_at,profiles(username)')
+    .select('rating,comment,created_at,user_id')
     .eq('tutor_id',tutorId)
     .order('created_at',{ascending:false})
     .limit(10);
+  // Pobierz username osobno
+  if(reviews&&reviews.length){
+    var uids=[...new Set(reviews.map(function(r){return r.user_id;}))];
+    var{data:profs}=await db.from('profiles').select('user_id,username').in('user_id',uids);
+    var profMap={};(profs||[]).forEach(function(p){profMap[p.user_id]=p.username;});
+    reviews.forEach(function(r){r._username=profMap[r.user_id]||'Użytkownik';});
+  }
 
   var langFlags={'en':'🇬🇧 Angielski','es':'🇪🇸 Hiszpański','nl':'🇳🇱 Holenderski','jp':'🇯🇵 Japoński','de':'🇩🇪 Niemiecki','fr':'🇫🇷 Francuski','it':'🇮🇹 Włoski','pt':'🇵🇹 Portugalski'};
   var certs=t.certificates||[];
@@ -4369,7 +4555,7 @@ async function viewTutor(tutorId){
     +'<div style="border-top:1px solid var(--border);padding-top:20px;margin-top:4px">'
     +'<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px">Opinie ('+(reviews?reviews.length:0)+')</div>'
     +(reviews&&reviews.length?reviews.map(function(r){
-      var username=(r.profiles&&r.profiles.username)||'Użytkownik';
+      var username=r._username||'Użytkownik';
       return'<div style="padding:12px;background:var(--paper2);border-radius:10px;margin-bottom:8px">'
         +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
         +'<span style="font-size:13px;font-weight:600;color:var(--navy)">'+username+'</span>'
@@ -4472,7 +4658,8 @@ async function saveTutorProfile(){
   var price=parseFloat(document.getElementById('tutor-price').value)||null;
 
   try{
-    var data={user_id:sess.user.id,display_name:name,bio:bio,photo_url:photo,languages:langs,levels:levels,price_per_hour:price,availability:availability,certificates:certs,is_active:true};
+    var videoUrl=document.getElementById('tutor-video')?document.getElementById('tutor-video').value.trim():'';
+    var data={user_id:sess.user.id,display_name:name,bio:bio,photo_url:photo,video_url:videoUrl,languages:langs,levels:levels,price_per_hour:price,availability:availability,certificates:certs,is_active:true};
     await db.from('tutors').upsert(data,{onConflict:'user_id'});
     document.getElementById('tutor-register-modal').style.display='none';
     showToast('Profil lektora zapisany! 🎉','success');
