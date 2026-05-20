@@ -343,6 +343,9 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
       <a href="#" onclick="return showPage('tofix')">Zgłoszenia</a>
     </div>
     <div class="nav-r" id="nav-r">
+      <button class="btn btn-ghost" id="notif-bell" onclick="toggleNotifications()" style="position:relative;display:none">
+        🔔 <span id="notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:#c96a2a;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">0</span>
+      </button>
       <button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button>
       <button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>
     </div>
@@ -353,9 +356,10 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
     <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)">Porcja dnia ✨</button>
     <button class="nav-tab" id="ntab-challenge" onclick="switchTab('challenge',this)">Wyzwanie</button>
     <button class="nav-tab" id="ntab-chat" onclick="switchTab('chat',this)">AI Partner</button>
-    <button class="nav-tab" id="ntab-lyrics" onclick="switchTab('lyrics',this)">Lyrics</button>
+    <button class="nav-tab" id="ntab-lyrics" onclick="switchTab('lyrics',this)">Analiza tekstu</button>
     <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
     <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
+    <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
     <button class="nav-tab" id="ntab-ranking" onclick="switchTab('ranking',this)">Ranking</button>
     <button class="nav-tab" id="ntab-tofix" onclick="switchTab('tofix',this)">Zgłoszenia</button>
   </div>
@@ -977,6 +981,8 @@ function showPage(name){
   if(name==='challenge') initChallenge();
   if(name==='chat') initChat();
   if(name==='lyrics') initLyrics();
+  if(name==='tutors') initTutors();
+  loadNotifications();
   setActiveTab(name);
   return false;
 }
@@ -2065,19 +2071,12 @@ async function loadContextSentence(word, translation, lang, level){
   // Sprawdź cache - tylko jeśli nie starsze niż 30 dni
   try{
     const{data:cached}=await db.from('context_sentences')
-      .select('sentence,translation,search_word,created_at')
+      .select('sentence,translation')
       .eq('word',word).eq('language',lang).eq('level',level).limit(1);
     const c=Array.isArray(cached)?cached[0]:cached;
     if(c?.sentence){
-      // Sprawdź czy cache nie jest zbyt stary
-      const age=c.created_at?Date.now()-new Date(c.created_at).getTime():0;
-      const thirtyDays=30*24*3600*1000;
-      if(age<thirtyDays){
-        renderSentence(word,c.sentence,c.translation,c.search_word||word);
-        return;
-      }
-      // Stary cache - usuń i regeneruj
-      try{await db.from('context_sentences').delete().eq('word',word).eq('language',lang).eq('level',level);}catch(e){}
+      renderSentence(word,c.sentence,c.translation,word);
+      return;
     }
   }catch(e){console.warn('[cache]',e.message);}
 
@@ -2104,7 +2103,7 @@ async function loadContextSentence(word, translation, lang, level){
     if(d.sentence&&d.translation){
       try{
         await db.from('context_sentences').upsert(
-          {word,language:lang,level,sentence:d.sentence,translation:d.translation,search_word:d.search_word||word,created_at:new Date().toISOString()},
+          {word,language:lang,level,sentence:d.sentence,translation:d.translation},
           {onConflict:'word,language,level'}
         );
       }catch(e){console.warn('[cache write]',e.message);}
@@ -2145,8 +2144,10 @@ function renderSentence(word, sentence, translation, searchWord){
     reportEl.style.display = 'block';
     reportEl.onclick = function(){ reportTranslation(word, sentence, translation); };
   }
-  // Aktualizuj link Playphrase z oczyszczonym słowem
+  // Link Playphrase
   renderYouglish(window._searchWord, _strefaLang);
+  // Przycisk nagrywania głosówki
+  addVoiceRecordingBtn(word, window._currentSentence, _strefaLang||'en');
 }
 
 async function reportTranslation(word, sentence, translation){
@@ -2647,19 +2648,25 @@ async function loadVideo(topic, isPodcast){
 <!-- cards grid -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="daily-grid">
 
-  <!-- Słowo dnia -->
+  <!-- Słowa dnia (2 słówka) -->
   <div class="daily-card" id="dc-word" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-      <span style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Słowo dnia</span>
+      <span style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Słówka dnia</span>
       <span id="dc-word-done" style="display:none;font-size:11px;color:#16a34a;font-weight:600">✓ Ukończone</span>
     </div>
     <div id="dc-word-loading" style="color:var(--dim2);font-size:13px">Ładowanie...</div>
     <div id="dc-word-content" style="display:none">
-      <div id="dc-word-text" style="font-size:28px;font-weight:700;color:var(--navy);margin-bottom:4px"></div>
-      <div id="dc-word-phonetic" style="font-size:13px;color:var(--dim2);margin-bottom:6px"></div>
-      <div id="dc-word-translation" style="font-size:14px;color:var(--orange);font-weight:600;margin-bottom:12px"></div>
-      <div id="dc-word-sentence" style="font-size:13px;color:var(--dim);line-height:1.6;border-left:3px solid var(--border2);padding-left:10px;margin-bottom:14px;font-style:italic"></div>
-      <button class="btn btn-orange" onclick="dailyWordDone()" id="dc-word-btn" style="font-size:13px;padding:9px 20px">+ Dodaj do fiszek</button>
+      <div id="dc-word-1" style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+        <div id="dc-word-text" style="font-size:24px;font-weight:700;color:var(--navy);margin-bottom:2px"></div>
+        <div id="dc-word-translation" style="font-size:14px;color:var(--orange);font-weight:600;margin-bottom:8px"></div>
+        <div id="dc-word-sentence" style="font-size:13px;color:var(--dim);line-height:1.6;border-left:3px solid var(--border2);padding-left:10px;font-style:italic"></div>
+      </div>
+      <div id="dc-word-2">
+        <div id="dc-word-text2" style="font-size:24px;font-weight:700;color:var(--navy);margin-bottom:2px"></div>
+        <div id="dc-word-translation2" style="font-size:14px;color:var(--orange);font-weight:600;margin-bottom:8px"></div>
+        <div id="dc-word-sentence2" style="font-size:13px;color:var(--dim);line-height:1.6;border-left:3px solid var(--border2);padding-left:10px;font-style:italic"></div>
+      </div>
+      <button class="btn btn-orange" onclick="dailyWordDone()" id="dc-word-btn" style="font-size:13px;padding:9px 20px;margin-top:14px;width:100%">✓ Zapamiętałem!</button>
     </div>
   </div>
 
@@ -2802,12 +2809,37 @@ async function loadVideo(topic, isPodcast){
       <div style="margin-bottom:14px">
         <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Temat</label>
         <select id="chat-topic" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
-          <option value="daily">Codzienne życie</option>
-          <option value="travel">Podróże</option>
-          <option value="work">Praca i kariera</option>
-          <option value="culture">Kultura i muzyka</option>
-          <option value="free">Dowolny</option>
+          <option value="daily">🏠 Codzienne życie</option>
+          <option value="travel">✈️ Podróże</option>
+          <option value="work">💼 Praca i kariera</option>
+          <option value="tech">💻 Technologia</option>
+          <option value="movies">🎬 Filmy i seriale</option>
+          <option value="music">🎵 Muzyka</option>
+          <option value="games">🎮 Gry video</option>
+          <option value="anime">⛩️ Anime i manga</option>
+          <option value="sport">⚽ Sport</option>
+          <option value="food">🍕 Gotowanie i jedzenie</option>
+          <option value="fashion">👗 Moda i styl</option>
+          <option value="science">🔬 Nauka i odkrycia</option>
+          <option value="nature">🌿 Środowisko i natura</option>
+          <option value="relationships">❤️ Relacje i uczucia</option>
+          <option value="health">💪 Zdrowie i fitness</option>
+          <option value="history">🏛️ Historia</option>
+          <option value="culture">🌍 Kultura i tradycje</option>
+          <option value="money">💰 Pieniądze i finanse</option>
+          <option value="art">🎨 Sztuka i kreatywność</option>
+          <option value="free">🎲 Dowolny temat</option>
         </select>
+      </div>
+
+      <!-- Poziom trudności -->
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Poziom</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px" id="chat-level-btns">
+          <div onclick="setChatLevel('beginner',this)" id="lvl-beginner" style="text-align:center;padding:8px 4px;border-radius:8px;border:1.5px solid var(--orange);background:#faeeda;font-size:11px;font-weight:600;color:var(--orange);cursor:pointer">🌱<br>Początkujący</div>
+          <div onclick="setChatLevel('intermediate',this)" id="lvl-intermediate" style="text-align:center;padding:8px 4px;border-radius:8px;border:1.5px solid var(--border2);font-size:11px;font-weight:600;color:var(--dim2);cursor:pointer">📚<br>Średni</div>
+          <div onclick="setChatLevel('advanced',this)" id="lvl-advanced" style="text-align:center;padding:8px 4px;border-radius:8px;border:1.5px solid var(--border2);font-size:11px;font-weight:600;color:var(--dim2);cursor:pointer">🚀<br>Zaawansowany</div>
+        </div>
       </div>
 
       <!-- Tryb -->
@@ -2825,7 +2857,7 @@ async function loadVideo(topic, isPodcast){
 
       <!-- Słabe punkty -->
       <div>
-        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Alex użyje tych słów</label>
+        <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px" id="chat-weak-label">Partner użyje tych słów</label>
         <div id="chat-weak-words" style="display:flex;flex-wrap:wrap;gap:4px;font-size:12px;color:var(--dim2)">brak danych</div>
         <div style="font-size:11px;color:var(--dim2);margin-top:6px">pobrane z Twoich fiszek</div>
       </div>
@@ -2855,7 +2887,7 @@ async function loadVideo(topic, isPodcast){
 <!-- ═══ ANALIZA LYRICS ═══ -->
 <div id="page-lyrics" class="page" style="min-height:100vh;padding:140px 20px 80px">
 <div style="max-width:900px;margin:0 auto">
-  <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Analiza Lyrics</h2>
+  <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Analiza tekstu</h2>
   <p style="color:var(--dim2);margin-bottom:24px">Wklej tekst piosenki — AI wyjaśni każdą linijkę: slang, kontekst kulturowy, gry słowne.</p>
 
   <div id="lyrics-input-panel" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:24px;margin-bottom:20px">
@@ -2888,7 +2920,7 @@ async function loadVideo(topic, isPodcast){
       <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Tekst piosenki</label>
       <textarea id="lyrics-text" rows="6" placeholder="Wklej tutaj tekst piosenki który chcesz przeanalizować..." style="width:100%;resize:vertical;padding:12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--navy);line-height:1.6;min-height:140px"></textarea>
     </div>
-    <button class="btn btn-orange btn-lg" onclick="analyzeLyrics()" id="lyrics-analyze-btn" style="margin-top:14px;width:100%;justify-content:center">🎵 Analizuj z AI</button>
+    <button class="btn btn-orange btn-lg" onclick="analyzeLyrics()" id="lyrics-analyze-btn" style="margin-top:14px;width:100%;justify-content:center">🔍 Analizuj</button>
   </div>
 
   <!-- Wynik -->
@@ -2998,67 +3030,64 @@ async function loadDailyWord(){
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){showDailyWordFallback();return;}
-    // Pobierz losowe słowo z fiszek usera
-    // Pobierz język wybrany przez usera
-    var dailyLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
-    var langLabels={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
 
-    // Najpierw spróbuj z word_progress (program desktopowy - słowa które user faktycznie przerabia)
-    var card=null;
+    var pool=[];
     try{
-      var {data:wp}=await db.from('word_progress')
-        .select('flashcard_id,ease_factor,flashcards(word,translation,languages(code))')
+      var wp_res=await db.from('word_progress')
+        .select('ease_factor,flashcards(word,translation)')
         .eq('user_id',sess.user.id)
         .order('ease_factor',{ascending:true})
         .limit(50);
-      if(wp&&wp.length){
-        // Filtruj po języku jeśli możliwe
-        var filtered=wp.filter(function(r){
-          return r.flashcards&&r.flashcards.word&&
-            (!r.flashcards.languages||r.flashcards.languages.code===dailyLang);
-        });
-        var pool=filtered.length?filtered:wp.filter(function(r){return r.flashcards&&r.flashcards.word;});
-        if(pool.length){
-          var r=pool[Math.floor(Math.random()*Math.min(pool.length,10))];
-          card={word:r.flashcards.word,translation:r.flashcards.translation};
-        }
+      if(wp_res.data&&wp_res.data.length){
+        pool=wp_res.data.filter(function(r){return r.flashcards&&r.flashcards.word;})
+          .map(function(r){return{word:r.flashcards.word,translation:r.flashcards.translation};});
       }
     }catch(e){}
 
-    // Fallback - zestawy webowe
-    if(!card){
+    if(!pool.length){
       try{
-        var {data:sets}=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(10);
-        var cards=[];
-        if(sets)sets.forEach(function(s){if(s.user_set_cards)cards=cards.concat(s.user_set_cards);});
-        if(cards.length) card=cards[Math.floor(Math.random()*cards.length)];
+        var sets_res=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(10);
+        if(sets_res.data) sets_res.data.forEach(function(s){if(s.user_set_cards)pool=pool.concat(s.user_set_cards);});
       }catch(e){}
     }
 
-    if(!card){showDailyWordFallback();return;}
+    if(pool.length<2){showDailyWordFallback();return;}
+
+    // Dwa deterministyczne słówka (seed = data, zmieniają się każdego dnia)
+    var seed=parseInt(new Date().toISOString().slice(0,10).replace(/-/g,''));
+    var i1=seed%pool.length;
+    var i2=(seed*7+3)%pool.length;
+    if(i1===i2) i2=(i2+1)%pool.length;
+    var card=pool[i1];
+    var card2=pool[i2];
+    var dailyLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+
     document.getElementById('dc-word-loading').style.display='none';
     document.getElementById('dc-word-content').style.display='block';
     document.getElementById('dc-word-text').textContent=card.word;
-    document.getElementById('dc-word-phonetic').textContent=card.language==='en'?'angielski':card.language==='es'?'hiszpański':'';
     document.getElementById('dc-word-translation').textContent=card.translation;
-    // Załaduj zdanie z cache
-    var {data:cached}=await db.from('context_sentences').select('sentence').eq('word',card.word).eq('language',card.language||'en').limit(1);
-    var c=Array.isArray(cached)?cached[0]:cached;
-    if(c&&c.sentence){
-      var s=c.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
-      document.getElementById('dc-word-sentence').innerHTML='"'+s+'"';
+    document.getElementById('dc-word-text2').textContent=card2.word;
+    document.getElementById('dc-word-translation2').textContent=card2.translation;
+
+    // Zdania z cache
+    function loadSentenceEl(w,elId){
+      db.from('context_sentences').select('sentence').eq('word',w).eq('language',dailyLang).limit(1).then(function(r){
+        var c=r.data&&(Array.isArray(r.data)?r.data[0]:r.data);
+        var el=document.getElementById(elId);
+        if(c&&c.sentence){
+          var s=c.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+          if(el) el.innerHTML='"'+s+'"';
+        } else {
+          if(el) el.innerHTML='<span style="color:var(--dim2);font-style:normal;font-size:12px">Zdanie pojawi się po sesji nauki</span>';
+        }
+      }).catch(function(){});
     }
+    loadSentenceEl(card.word,'dc-word-sentence');
+    loadSentenceEl(card2.word,'dc-word-sentence2');
+
   }catch(e){showDailyWordFallback();}
 }
 
-function showDailyWordFallback(){
-  document.getElementById('dc-word-loading').style.display='none';
-  document.getElementById('dc-word-content').style.display='block';
-  document.getElementById('dc-word-text').textContent='serendipity';
-  document.getElementById('dc-word-phonetic').textContent='angielski · B2';
-  document.getElementById('dc-word-translation').textContent='szczęśliwy traf';
-  document.getElementById('dc-word-sentence').innerHTML='"It was pure <strong style=\'color:var(--orange)\'>serendipity</strong> that we met."';
-}
 
 async function loadDailyRead(){
   var dLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
@@ -3364,6 +3393,34 @@ async function initChat(){
   updateChatLimitUI();
 }
 
+var _chatLevel='beginner';
+
+function setChatLevel(level, el){
+  _chatLevel=level;
+  // Update UI
+  ['beginner','intermediate','advanced'].forEach(function(l){
+    var btn=document.getElementById('lvl-'+l);
+    if(!btn)return;
+    if(l===level){
+      btn.style.borderColor='var(--orange)';
+      btn.style.background='#faeeda';
+      btn.style.color='var(--orange)';
+    } else {
+      btn.style.borderColor='var(--border2)';
+      btn.style.background='transparent';
+      btn.style.color='var(--dim2)';
+    }
+  });
+  // Dla zaawansowanych - auto-włącz tryb odwagi
+  if(level==='advanced'){
+    var brave=document.querySelector('input[name="chat-mode"][value="brave"]');
+    if(brave) brave.checked=true;
+  } else if(level==='beginner'){
+    var hints=document.querySelector('input[name="chat-mode"][value="hints"]');
+    if(hints) hints.checked=true;
+  }
+}
+
 function chatReset(){
   _chatHistory=[];
   var msgs=document.getElementById('chat-messages');
@@ -3491,13 +3548,20 @@ async function chatSend(){
     var topic=document.getElementById('chat-topic').value;
     var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
     var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
-    var topicNames={daily:'everyday life',travel:'travel and trips',work:'work and career',culture:'music and culture',free:'anything'};
+    var topicNames={daily:'everyday life',travel:'travel and trips',work:'work and career',tech:'technology and gadgets',movies:'movies and TV series',music:'music and artists',games:'video games',anime:'anime and manga',sport:'sports',food:'cooking and food',fashion:'fashion and style',science:'science and discoveries',nature:'environment and nature',relationships:'relationships and feelings',health:'health and fitness',history:'history',culture:'culture and traditions',money:'money and finance',art:'art and creativity',free:'any topic'};
+    var levelInstructions={
+      beginner:'Use very simple vocabulary (A1-A2 level). Short sentences max 10 words. Speak slowly and clearly. If user makes a mistake, gently correct them in a friendly way. Add Polish translations in parentheses for difficult words.',
+      intermediate:'Use natural B1-B2 vocabulary. Normal sentence length. Occasionally use idioms and explain them. Correct major errors only.',
+      advanced:'Use sophisticated C1 vocabulary, idioms, complex structures. Challenge the user. Correct errors naturally within your response. No Polish unless absolutely necessary.'
+    };
 
+    var levelInst=levelInstructions[_chatLevel]||levelInstructions['intermediate'];
     var systemPrompt='You are '+p.name+', a friendly native '+langNames[_chatLang]+' speaker from '+p.desc.split('·')[1].trim()+'. '
       +'You are having a conversation about '+topicNames[topic]+'. '
+      +'LEVEL: '+levelInst+' '
       +(weakWords.length?'Naturally weave these words into your responses when possible (the user is learning them): '+weakWords.join(', ')+'. When you use one, bold it like **word**. ':'' )
-      +(mode==='brave'?'Respond ONLY in '+langNames[_chatLang]+'. Do not use Polish at all. If the user writes in Polish, gently ask them to try in '+langNames[_chatLang]+'.':'Respond in '+langNames[_chatLang]+'. You can occasionally add a brief Polish note in parentheses for very difficult words.')
-      +' Keep responses conversational, 2-4 sentences. Be warm and encouraging. Correct major errors gently.';
+      +(mode==='brave'?'Respond ONLY in '+langNames[_chatLang]+'. Do not use Polish at all. If the user writes in Polish, gently ask them to try in '+langNames[_chatLang]+'.':'Respond in '+langNames[_chatLang]+'. ')
+      +' Keep responses conversational, 2-4 sentences. Be warm and encouraging.';
 
     var tok2=(await db.auth.getSession()).data.session?.access_token||'';
     var res=await fetch(AI_PROXY_URL,{
@@ -3611,7 +3675,7 @@ async function analyzeLyrics(){
     }
     errEl.textContent=msg;
   }
-  btn.disabled=false; btn.textContent='🎵 Analizuj z AI';
+  btn.disabled=false; btn.textContent='🔍 Analizuj';
 }
 
 function renderLyricsResult(data, title, originalText){
@@ -3665,7 +3729,7 @@ function renderLyricsWords(){
 
 async function lyricsEnsureSet(userId){
   if(window._lyricsSetId)return;
-  var title=document.getElementById('lyrics-title').value.trim()||'Lyrics';
+  var title=document.getElementById('lyrics-title').value.trim()||'Analiza tekstu';
   var {data:existing}=await db.from('user_sets').select('id').eq('user_id',userId).eq('name','📝 '+title).limit(1);
   var ex=Array.isArray(existing)?existing[0]:existing;
   if(ex&&ex.id){window._lyricsSetId=ex.id;return;}
@@ -4008,5 +4072,595 @@ async function runChallengeGenerator(topic, setName){
     if(statusEl) statusEl.innerHTML='<span style="color:#c33">Błąd: '+e.message+'</span>';
     if(btn){btn.disabled=false;btn.textContent='🤖 Spróbuj ponownie';}
   }
+}
+</script>
+
+<!-- ═══ LEKTORZY ═══ -->
+<div id="page-tutors" class="page" style="min-height:100vh;padding:140px 20px 80px">
+<div style="max-width:1000px;margin:0 auto">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:16px">
+    <div>
+      <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Lektorzy</h2>
+      <p style="color:var(--dim2);font-size:14px">Znajdź lektora dopasowanego do Twojego poziomu i języka</p>
+    </div>
+    <button class="btn btn-orange" onclick="showTutorRegisterForm()" id="become-tutor-btn">+ Zostań lektorem</button>
+  </div>
+
+  <!-- Filtry -->
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;padding:16px;background:#fff;border-radius:16px;border:1.5px solid var(--border)">
+    <select id="tutor-filter-lang" onchange="filterTutors()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+      <option value="">Wszystkie języki</option>
+      <option value="en">🇬🇧 Angielski</option>
+      <option value="es">🇪🇸 Hiszpański</option>
+      <option value="nl">🇳🇱 Holenderski</option>
+      <option value="jp">🇯🇵 Japoński</option>
+      <option value="de">🇩🇪 Niemiecki</option>
+      <option value="fr">🇫🇷 Francuski</option>
+    </select>
+    <select id="tutor-filter-level" onchange="filterTutors()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+      <option value="">Wszystkie poziomy</option>
+      <option value="A1">A1</option><option value="A2">A2</option>
+      <option value="B1">B1</option><option value="B2">B2</option>
+      <option value="C1">C1</option><option value="C2">C2</option>
+    </select>
+    <select id="tutor-filter-sort" onchange="filterTutors()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+      <option value="rating">Najwyżej oceniani</option>
+      <option value="price_asc">Cena: rosnąco</option>
+      <option value="price_desc">Cena: malejąco</option>
+      <option value="newest">Najnowsi</option>
+    </select>
+  </div>
+
+  <!-- Lista lektorów -->
+  <div id="tutors-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px">
+    <div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Ładowanie lektorów...</div>
+  </div>
+</div>
+</div>
+
+<!-- Modal: rejestracja lektora -->
+<div id="tutor-register-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;overflow-y:auto;padding:20px">
+<div style="max-width:600px;margin:40px auto;background:#fff;border-radius:20px;padding:32px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <h3 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--navy)">Profil lektora</h3>
+    <button onclick="document.getElementById('tutor-register-modal').style.display='none'" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--dim2)">×</button>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Imię / Nazwa wyświetlana *</label>
+      <input id="tutor-name" type="text" placeholder="np. Anna K." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">O mnie (autoprezentacja)</label>
+      <textarea id="tutor-bio" rows="4" placeholder="Kilka słów o sobie, doświadczeniu, metodzie nauczania..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px;resize:vertical"></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Zdjęcie (link URL)</label>
+        <input id="tutor-photo" type="url" placeholder="https://..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Cena za godzinę (PLN)</label>
+        <input id="tutor-price" type="number" placeholder="80" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:8px">Języki nauczania</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px" id="tutor-langs-check">
+        <label class="tutor-check"><input type="checkbox" value="en"> 🇬🇧 Angielski</label>
+        <label class="tutor-check"><input type="checkbox" value="es"> 🇪🇸 Hiszpański</label>
+        <label class="tutor-check"><input type="checkbox" value="nl"> 🇳🇱 Holenderski</label>
+        <label class="tutor-check"><input type="checkbox" value="jp"> 🇯🇵 Japoński</label>
+        <label class="tutor-check"><input type="checkbox" value="de"> 🇩🇪 Niemiecki</label>
+        <label class="tutor-check"><input type="checkbox" value="fr"> 🇫🇷 Francuski</label>
+        <label class="tutor-check"><input type="checkbox" value="it"> 🇮🇹 Włoski</label>
+        <label class="tutor-check"><input type="checkbox" value="pt"> 🇵🇹 Portugalski</label>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:8px">Poziomy</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px" id="tutor-levels-check">
+        <label class="tutor-check"><input type="checkbox" value="A1"> A1</label>
+        <label class="tutor-check"><input type="checkbox" value="A2"> A2</label>
+        <label class="tutor-check"><input type="checkbox" value="B1"> B1</label>
+        <label class="tutor-check"><input type="checkbox" value="B2"> B2</label>
+        <label class="tutor-check"><input type="checkbox" value="C1"> C1</label>
+        <label class="tutor-check"><input type="checkbox" value="C2"> C2</label>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:8px">Dostępność</label>
+      <div id="tutor-availability" style="display:flex;flex-direction:column;gap:8px">
+        <!-- Generowane przez JS -->
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Certyfikaty (linki URL, jeden per linia)</label>
+      <textarea id="tutor-certs" rows="3" placeholder="https://... (np. link do dyplomu, CELTA, etc.)" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px;resize:vertical"></textarea>
+    </div>
+    <div id="tutor-form-msg" style="font-size:13px;text-align:center;color:#c33;min-height:20px"></div>
+    <button class="btn btn-orange" onclick="saveTutorProfile()" style="width:100%;justify-content:center;padding:14px">Zapisz profil lektora</button>
+  </div>
+</div>
+</div>
+
+<!-- Modal: profil lektora (widok) -->
+<div id="tutor-view-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;overflow-y:auto;padding:20px">
+<div style="max-width:640px;margin:40px auto;background:#fff;border-radius:20px;overflow:hidden">
+  <div id="tutor-view-content"></div>
+</div>
+</div>
+
+<!-- Powiadomienia panel -->
+<div id="notif-panel" style="display:none;position:fixed;top:70px;right:20px;width:340px;max-height:480px;background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.15);z-index:9998;overflow:hidden;border:1px solid var(--border)">
+  <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+    <span style="font-size:14px;font-weight:700;color:var(--navy)">Powiadomienia</span>
+    <button onclick="markAllNotifRead()" style="font-size:12px;color:var(--orange);background:none;border:none;cursor:pointer">Oznacz jako przeczytane</button>
+  </div>
+  <div id="notif-list" style="overflow-y:auto;max-height:380px"></div>
+</div>
+
+<style>
+.tutor-card{background:#fff;border:1.5px solid var(--border);border-radius:16px;overflow:hidden;transition:.2s;cursor:pointer}
+.tutor-card:hover{border-color:var(--orange);box-shadow:0 4px 20px rgba(201,106,42,.12);transform:translateY(-2px)}
+.tutor-check{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:1px solid var(--border2);font-size:13px;cursor:pointer;transition:.15s;background:var(--paper)}
+.tutor-check:has(input:checked){border-color:var(--orange);background:#faeeda;color:var(--orange)}
+.tutor-check input{display:none}
+.star-btn{background:none;border:none;font-size:22px;cursor:pointer;opacity:.4;transition:.15s;padding:2px}
+.star-btn:hover,.star-btn.active{opacity:1}
+.notif-item{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:flex-start;transition:.15s;cursor:pointer}
+.notif-item:hover{background:var(--paper2)}
+.notif-item.unread{background:#fef9f5;border-left:3px solid var(--orange)}
+.avail-row{display:grid;grid-template-columns:80px 1fr 1fr;gap:8px;align-items:center;font-size:13px;margin-bottom:4px}
+</style>
+<script>
+// ═══════════════════════════════════════
+// LEKTORZY
+// ═══════════════════════════════════════
+var _allTutors = [];
+var _myTutorId = null;
+
+const DAYS_PL = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+const DAYS_EN = ['mon','tue','wed','thu','fri','sat','sun'];
+
+async function initTutors(){
+  await loadTutors();
+  buildAvailabilityForm();
+  // Sprawdź czy user jest już lektorem
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(sess){
+      var{data:t}=await db.from('tutors').select('id').eq('user_id',sess.user.id).single();
+      if(t){_myTutorId=t.id;document.getElementById('become-tutor-btn').textContent='Edytuj profil';}
+    }
+  }catch(e){}
+}
+
+async function loadTutors(){
+  try{
+    var{data:tutors}=await db.from('tutors')
+      .select('*').eq('is_active',true)
+      .order('rating_avg',{ascending:false});
+    _allTutors=tutors||[];
+    renderTutors(_allTutors);
+  }catch(e){
+    document.getElementById('tutors-list').innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Błąd ładowania lektorów</div>';
+  }
+}
+
+function filterTutors(){
+  var lang=document.getElementById('tutor-filter-lang').value;
+  var level=document.getElementById('tutor-filter-level').value;
+  var sort=document.getElementById('tutor-filter-sort').value;
+  var filtered=_allTutors.filter(function(t){
+    if(lang&&!(t.languages||[]).includes(lang))return false;
+    if(level&&!(t.levels||[]).includes(level))return false;
+    return true;
+  });
+  filtered.sort(function(a,b){
+    if(sort==='rating') return (b.rating_avg||0)-(a.rating_avg||0);
+    if(sort==='price_asc') return (a.price_per_hour||0)-(b.price_per_hour||0);
+    if(sort==='price_desc') return (b.price_per_hour||0)-(a.price_per_hour||0);
+    return new Date(b.created_at)-new Date(a.created_at);
+  });
+  renderTutors(filtered);
+}
+
+function renderTutors(tutors){
+  var el=document.getElementById('tutors-list');
+  if(!tutors.length){el.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Brak lektorów spełniających kryteria</div>';return;}
+  el.innerHTML=tutors.map(function(t){
+    var stars=renderStarsDisplay(t.rating_avg||0);
+    var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
+    var langs=(t.languages||[]).map(function(l){return langFlags[l]||l;}).join(' ');
+    var isTop=t.rating_avg>=4.5&&t.rating_count>=3;
+    return '<div class="tutor-card" onclick="viewTutor(\''+t.id+'\')">'
+      +(isTop?'<div style="background:linear-gradient(90deg,#f5c842,#c96a2a);color:#fff;font-size:11px;font-weight:700;padding:6px 16px;text-align:center">⭐ WYRÓŻNIONY LEKTOR</div>':'')
+      +'<div style="padding:20px">'
+      +'<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:12px">'
+      +'<div style="width:56px;height:56px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center">'
+      +(t.photo_url?'<img src="'+t.photo_url+'" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">':'<span style="font-size:22px;color:#fff">👤</span>')
+      +'</div>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:2px">'+t.display_name+'</div>'
+      +'<div style="font-size:13px;color:var(--dim2);margin-bottom:4px">'+langs+'</div>'
+      +'<div style="display:flex;align-items:center;gap:6px">'+stars+'<span style="font-size:12px;color:var(--dim2)">('+t.rating_count+')</span></div>'
+      +'</div>'
+      +'</div>'
+      +'<div style="font-size:13px;color:var(--dim);line-height:1.5;margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+(t.bio||'')+'</div>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between">'
+      +'<div style="font-size:13px;color:var(--dim2)">Poziomy: <strong style="color:var(--navy)">'+(t.levels||[]).join(', ')+'</strong></div>'
+      +(t.price_per_hour?'<div style="font-size:15px;font-weight:700;color:var(--orange)">'+t.price_per_hour+' PLN/h</div>':'<div style="font-size:13px;color:var(--dim2)">Cena do ustalenia</div>')
+      +'</div>'
+      +'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function renderStarsDisplay(avg){
+  var full=Math.floor(avg);
+  var half=avg-full>=0.5;
+  var html='';
+  for(var i=1;i<=5;i++){
+    if(i<=full) html+='<span style="color:#f5c842;font-size:14px">★</span>';
+    else if(i===full+1&&half) html+='<span style="color:#f5c842;font-size:14px">½</span>';
+    else html+='<span style="color:var(--border2);font-size:14px">★</span>';
+  }
+  return html;
+}
+
+async function viewTutor(tutorId){
+  var t=_allTutors.find(function(x){return x.id===tutorId;});
+  if(!t)return;
+  var modal=document.getElementById('tutor-view-modal');
+  var content=document.getElementById('tutor-view-content');
+  modal.style.display='block';
+
+  // Pobierz opinie
+  var{data:reviews}=await db.from('tutor_reviews')
+    .select('rating,comment,created_at,profiles(username)')
+    .eq('tutor_id',tutorId)
+    .order('created_at',{ascending:false})
+    .limit(10);
+
+  var langFlags={'en':'🇬🇧 Angielski','es':'🇪🇸 Hiszpański','nl':'🇳🇱 Holenderski','jp':'🇯🇵 Japoński','de':'🇩🇪 Niemiecki','fr':'🇫🇷 Francuski','it':'🇮🇹 Włoski','pt':'🇵🇹 Portugalski'};
+  var certs=t.certificates||[];
+  var avail=t.availability||{};
+
+  content.innerHTML=
+    '<div style="padding:24px">'
+    +'<div style="display:flex;align-items:flex-start;gap:20px;margin-bottom:20px">'
+    +'<div style="width:80px;height:80px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center">'
+    +(t.photo_url?'<img src="'+t.photo_url+'" style="width:100%;height:100%;object-fit:cover">':'<span style="font-size:32px;color:#fff">👤</span>')
+    +'</div>'
+    +'<div style="flex:1">'
+    +'<div style="font-size:22px;font-weight:700;color:var(--navy);margin-bottom:4px">'+t.display_name+'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+renderStarsDisplay(t.rating_avg||0)+'<span style="font-size:13px;color:var(--dim2)">'+t.rating_avg.toFixed(1)+' ('+t.rating_count+' opinii)</span></div>'
+    +(t.price_per_hour?'<div style="font-size:18px;font-weight:700;color:var(--orange)">'+t.price_per_hour+' PLN/h</div>':'')
+    +'</div>'
+    +'<button onclick="document.getElementById(\'tutor-view-modal\').style.display=\'none\'" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--dim2);flex-shrink:0">×</button>'
+    +'</div>'
+
+    +(t.bio?'<div style="font-size:14px;color:var(--dim);line-height:1.7;margin-bottom:20px;padding:16px;background:var(--paper2);border-radius:12px">'+t.bio+'</div>':'')
+
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">'
+    +'<div><div style="font-size:12px;font-weight:700;color:var(--dim2);margin-bottom:6px">JĘZYKI</div><div style="font-size:14px">'+(t.languages||[]).map(function(l){return langFlags[l]||l;}).join('<br>')+'</div></div>'
+    +'<div><div style="font-size:12px;font-weight:700;color:var(--dim2);margin-bottom:6px">POZIOMY</div><div style="font-size:14px;font-weight:600;color:var(--navy)">'+(t.levels||[]).join(' · ')+'</div></div>'
+    +'</div>'
+
+    // Dostępność
+    +'<div style="margin-bottom:20px">'
+    +'<div style="font-size:12px;font-weight:700;color:var(--dim2);margin-bottom:10px">DOSTĘPNOŚĆ</div>'
+    +'<div style="display:grid;gap:4px">'
+    +DAYS_EN.map(function(d,i){
+      var day=avail[d];
+      if(!day||!day.active) return '<div style="display:grid;grid-template-columns:80px 1fr;gap:8px;font-size:13px;padding:4px 0"><span style="color:var(--dim2)">'+DAYS_PL[i]+'</span><span style="color:var(--border2)">niedostępny</span></div>';
+      return '<div style="display:grid;grid-template-columns:80px 1fr;gap:8px;font-size:13px;padding:4px 0"><span style="font-weight:600;color:var(--navy)">'+DAYS_PL[i]+'</span><span style="color:var(--orange)">'+day.from+' – '+day.to+'</span></div>';
+    }).join('')
+    +'</div></div>'
+
+    // Certyfikaty
+    +(certs.length?'<div style="margin-bottom:20px"><div style="font-size:12px;font-weight:700;color:var(--dim2);margin-bottom:8px">CERTYFIKATY</div>'
+    +certs.map(function(c){return'<a href="'+c+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--orange);margin-bottom:4px">📜 '+c.split('/').pop()+'</a><br>';}).join('')+'</div>':'')
+
+    // Oceny
+    +'<div style="border-top:1px solid var(--border);padding-top:20px;margin-top:4px">'
+    +'<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px">Opinie ('+(reviews?reviews.length:0)+')</div>'
+    +(reviews&&reviews.length?reviews.map(function(r){
+      var username=(r.profiles&&r.profiles.username)||'Użytkownik';
+      return'<div style="padding:12px;background:var(--paper2);border-radius:10px;margin-bottom:8px">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        +'<span style="font-size:13px;font-weight:600;color:var(--navy)">'+username+'</span>'
+        +'<span>'+renderStarsDisplay(r.rating)+'</span>'
+        +'</div>'
+        +(r.comment?'<div style="font-size:13px;color:var(--dim)">'+r.comment+'</div>':'')
+        +'</div>';
+    }).join(''):'<div style="color:var(--dim2);font-size:13px">Brak opinii</div>')
+
+    // Formularz oceny
+    +'<div style="margin-top:16px;padding:16px;background:var(--paper);border-radius:12px;border:1px solid var(--border)">'
+    +'<div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:10px">Oceń lektora</div>'
+    +'<div style="display:flex;gap:4px;margin-bottom:10px" id="tutor-rate-stars">'
+    +[1,2,3,4,5].map(function(n){return'<button class="star-btn" data-val="'+n+'" onclick="setTutorRating('+n+',\''+tutorId+'\')">★</button>';}).join('')
+    +'</div>'
+    +'<textarea id="tutor-review-text" placeholder="Napisz opinię (opcjonalnie)..." rows="2" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border2);font-size:13px;margin-bottom:8px"></textarea>'
+    +'<button class="btn btn-orange" onclick="submitTutorReview(\''+tutorId+'\')" style="font-size:13px;padding:9px 20px">Wyślij opinię</button>'
+    +'<div id="review-msg" style="font-size:12px;margin-top:6px"></div>'
+    +'</div>'
+    +'</div>'
+    +'</div>';
+}
+
+var _tutorRating=0;
+function setTutorRating(val, tutorId){
+  _tutorRating=val;
+  document.querySelectorAll('#tutor-rate-stars .star-btn').forEach(function(b,i){
+    b.classList.toggle('active',i<val);
+    b.style.color=i<val?'#f5c842':'var(--dim2)';
+  });
+}
+
+async function submitTutorReview(tutorId){
+  if(!_tutorRating){showToast('Wybierz ocenę gwiazdkową','error');return;}
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess){showToast('Zaloguj się aby ocenić','error');return;}
+  var comment=document.getElementById('tutor-review-text').value.trim();
+  // Sprawdź wulgaryzmy
+  if(await containsProfanity(comment)){showToast('Komentarz zawiera niedozwolone słowa','error');return;}
+  try{
+    await db.from('tutor_reviews').upsert({tutor_id:tutorId,user_id:sess.user.id,rating:_tutorRating,comment:comment},{onConflict:'tutor_id,user_id'});
+    // Przelicz średnią
+    var{data:reviews}=await db.from('tutor_reviews').select('rating').eq('tutor_id',tutorId);
+    var avg=reviews.reduce(function(s,r){return s+r.rating;},0)/reviews.length;
+    await db.from('tutors').update({rating_avg:Math.round(avg*10)/10,rating_count:reviews.length}).eq('id',tutorId);
+    document.getElementById('review-msg').innerHTML='<span style="color:#16a34a">✅ Dziękujemy za opinię!</span>';
+    _tutorRating=0;
+    await loadTutors();
+  }catch(e){document.getElementById('review-msg').innerHTML='<span style="color:#c33">Błąd: '+e.message+'</span>';}
+}
+
+function buildAvailabilityForm(){
+  var el=document.getElementById('tutor-availability');
+  if(!el)return;
+  el.innerHTML=DAYS_PL.map(function(day,i){
+    var d=DAYS_EN[i];
+    return'<div class="avail-row">'
+      +'<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="avail-'+d+'" onchange="toggleAvailDay(\''+d+'\')"> '+day+'</label>'
+      +'<input type="time" id="avail-'+d+'-from" value="09:00" disabled style="padding:5px;border-radius:6px;border:1px solid var(--border2);font-size:12px;opacity:.4">'
+      +'<input type="time" id="avail-'+d+'-to" value="17:00" disabled style="padding:5px;border-radius:6px;border:1px solid var(--border2);font-size:12px;opacity:.4">'
+      +'</div>';
+  }).join('');
+}
+
+function toggleAvailDay(d){
+  var active=document.getElementById('avail-'+d).checked;
+  document.getElementById('avail-'+d+'-from').disabled=!active;
+  document.getElementById('avail-'+d+'-to').disabled=!active;
+  document.getElementById('avail-'+d+'-from').style.opacity=active?'1':'.4';
+  document.getElementById('avail-'+d+'-to').style.opacity=active?'1':'.4';
+}
+
+function showTutorRegisterForm(){
+  buildAvailabilityForm();
+  document.getElementById('tutor-register-modal').style.display='block';
+}
+
+async function saveTutorProfile(){
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess){showToast('Zaloguj się aby zostać lektorem','error');return;}
+
+  var name=document.getElementById('tutor-name').value.trim();
+  if(!name){document.getElementById('tutor-form-msg').textContent='Podaj imię/nazwę';return;}
+
+  var langs=Array.from(document.querySelectorAll('#tutor-langs-check input:checked')).map(function(i){return i.value;});
+  var levels=Array.from(document.querySelectorAll('#tutor-levels-check input:checked')).map(function(i){return i.value;});
+
+  var availability={};
+  DAYS_EN.forEach(function(d){
+    var active=document.getElementById('avail-'+d)?.checked;
+    if(active){
+      availability[d]={active:true,from:document.getElementById('avail-'+d+'-from').value,to:document.getElementById('avail-'+d+'-to').value};
+    }
+  });
+
+  var certsRaw=document.getElementById('tutor-certs').value.trim();
+  var certs=certsRaw?certsRaw.split('\n').map(function(s){return s.trim();}).filter(Boolean):[];
+  var bio=document.getElementById('tutor-bio').value.trim();
+  var photo=document.getElementById('tutor-photo').value.trim();
+  var price=parseFloat(document.getElementById('tutor-price').value)||null;
+
+  try{
+    var data={user_id:sess.user.id,display_name:name,bio:bio,photo_url:photo,languages:langs,levels:levels,price_per_hour:price,availability:availability,certificates:certs,is_active:true};
+    await db.from('tutors').upsert(data,{onConflict:'user_id'});
+    document.getElementById('tutor-register-modal').style.display='none';
+    showToast('Profil lektora zapisany! 🎉','success');
+    await loadTutors();
+    document.getElementById('become-tutor-btn').textContent='Edytuj profil';
+  }catch(e){document.getElementById('tutor-form-msg').textContent='Błąd: '+e.message;}
+}
+
+// ═══════════════════════════════════════
+// POWIADOMIENIA
+// ═══════════════════════════════════════
+var _notifLoaded=false;
+
+async function loadNotifications(){
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var bell=document.getElementById('notif-bell');
+    if(!sess){if(bell)bell.style.display='none';return;}
+    if(bell)bell.style.display='flex';
+
+    var{data:notifs}=await db.from('notifications')
+      .select('*').eq('user_id',sess.user.id)
+      .order('created_at',{ascending:false}).limit(20);
+
+    var unread=(notifs||[]).filter(function(n){return!n.is_read;}).length;
+    var badge=document.getElementById('notif-badge');
+    if(badge){
+      badge.textContent=unread>9?'9+':unread;
+      badge.style.display=unread>0?'flex':'none';
+    }
+
+    renderNotifications(notifs||[]);
+  }catch(e){}
+}
+
+function renderNotifications(notifs){
+  var el=document.getElementById('notif-list');
+  if(!el)return;
+  if(!notifs.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--dim2);font-size:13px">Brak powiadomień</div>';return;}
+  el.innerHTML=notifs.map(function(n){
+    var icon={voice_rated:'🎙️',voice_commented:'💬',material_liked:'❤️',streak:'🔥',gold:'🪙',review:'⭐'}[n.type]||'🔔';
+    var time=new Date(n.created_at).toLocaleDateString('pl-PL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    return'<div class="notif-item'+(n.is_read?'':' unread')+'" onclick="handleNotifClick(\''+n.id+'\',\''+n.link+'\')">'
+      +'<div style="font-size:22px;flex-shrink:0">'+icon+'</div>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:2px">'+n.title+'</div>'
+      +'<div style="font-size:12px;color:var(--dim2);line-height:1.4">'+n.message+'</div>'
+      +(n.gold_reward?'<div style="font-size:12px;color:#f5c842;font-weight:600;margin-top:3px">+'+n.gold_reward+' złota 🪙</div>':'')
+      +'<div style="font-size:11px;color:var(--border2);margin-top:4px">'+time+'</div>'
+      +'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function toggleNotifications(){
+  var panel=document.getElementById('notif-panel');
+  panel.style.display=panel.style.display==='none'?'block':'none';
+}
+
+async function handleNotifClick(id, link){
+  await db.from('notifications').update({is_read:true}).eq('id',id);
+  document.getElementById('notif-panel').style.display='none';
+  loadNotifications();
+}
+
+async function markAllNotifRead(){
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess)return;
+  await db.from('notifications').update({is_read:true}).eq('user_id',sess.user.id).eq('is_read',false);
+  loadNotifications();
+}
+
+async function sendNotification(userId, type, title, message, goldReward){
+  try{
+    await db.from('notifications').insert({user_id:userId,type:type,title:title,message:message,gold_reward:goldReward||0});
+  }catch(e){}
+}
+
+// ═══════════════════════════════════════
+// MODERACJA — filtr wulgaryzmów
+// ═══════════════════════════════════════
+var _profanityList=['kurwa','chuj','pizda','jebać','pierdolić','skurwiel','huj','cipa','👉👌','shit','fuck','bitch','ass'];
+
+async function containsProfanity(text){
+  if(!text)return false;
+  var lower=text.toLowerCase();
+  return _profanityList.some(function(w){return lower.includes(w);});
+}
+
+// ═══════════════════════════════════════
+// GŁOSÓWKI — Nagrywanie w Strefie Nauki
+// ═══════════════════════════════════════
+var _mediaRecorder=null;
+var _audioChunks=[];
+var _isRecording=false;
+
+function addVoiceRecordingBtn(word, sentence, lang){
+  // Dodaj przycisk nagrywania do karty w Strefie Nauki
+  var existing=document.getElementById('voice-record-wrap');
+  if(existing)existing.remove();
+
+  var wrap=document.createElement('div');
+  wrap.id='voice-record-wrap';
+  wrap.style.cssText='margin-top:12px;padding:12px;background:var(--paper2);border-radius:10px;border:1px solid var(--border)';
+  wrap.innerHTML='<div style="font-size:12px;color:var(--dim2);margin-bottom:8px">🎙️ Nagraj swoją wymowę i podziel się ze społecznością</div>'
+    +'<div style="display:flex;gap:8px;align-items:center">'
+    +'<button id="record-btn" class="btn btn-orange" onclick="toggleRecording(\''+word.replace(/'/g,"\\'")+'\',\''+sentence.replace(/'/g,"\\'")+'\',\''+lang+'\')" style="font-size:13px;padding:8px 16px">🎙️ Nagraj</button>'
+    +'<div id="record-status" style="font-size:13px;color:var(--dim2)"></div>'
+    +'</div>'
+    +'<audio id="record-preview" style="display:none;margin-top:8px;width:100%" controls></audio>'
+    +'<button id="record-submit" style="display:none;margin-top:8px" class="btn btn-navy" onclick="submitRecording(\''+word.replace(/'/g,"\\'")+'\',\''+sentence.replace(/'/g,"\\'")+'\',\''+lang+'\')">📤 Opublikuj głosówkę</button>';
+
+  var sentEl=document.getElementById('sc-sentence');
+  if(sentEl&&sentEl.parentElement) sentEl.parentElement.appendChild(wrap);
+}
+
+async function toggleRecording(word, sentence, lang){
+  if(_isRecording){
+    _mediaRecorder.stop();
+    _isRecording=false;
+    document.getElementById('record-btn').textContent='🎙️ Nagraj ponownie';
+    document.getElementById('record-status').textContent='';
+    return;
+  }
+  try{
+    var stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    _audioChunks=[];
+    _mediaRecorder=new MediaRecorder(stream);
+    _mediaRecorder.ondataavailable=function(e){if(e.data.size>0)_audioChunks.push(e.data);};
+    _mediaRecorder.onstop=function(){
+      var blob=new Blob(_audioChunks,{type:'audio/webm'});
+      var url=URL.createObjectURL(blob);
+      var preview=document.getElementById('record-preview');
+      var submit=document.getElementById('record-submit');
+      if(preview){preview.src=url;preview.style.display='block';}
+      if(submit)submit.style.display='block';
+      // Zatrzymaj stream
+      stream.getTracks().forEach(function(t){t.stop();});
+    };
+    _mediaRecorder.start();
+    _isRecording=true;
+    document.getElementById('record-btn').textContent='⏹️ Zatrzymaj';
+    document.getElementById('record-status').textContent='Nagrywam...';
+  }catch(e){
+    showToast('Brak dostępu do mikrofonu','error');
+  }
+}
+
+async function submitRecording(word, sentence, lang){
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess){showToast('Zaloguj się aby publikować głosówki','error');return;}
+
+  // Sprawdź wulgaryzmy w zdaniu
+  if(await containsProfanity(sentence)){showToast('Zdanie zawiera niedozwolone słowa','error');return;}
+
+  try{
+    var blob=new Blob(_audioChunks,{type:'audio/webm'});
+    // Upload do Supabase Storage
+    var fileName='voice/'+sess.user.id+'_'+Date.now()+'.webm';
+    var{error:upErr}=await db.storage.from('recordings').upload(fileName,blob,{contentType:'audio/webm'});
+    if(upErr)throw upErr;
+    var{data:urlData}=db.storage.from('recordings').getPublicUrl(fileName);
+    var audioUrl=urlData.publicUrl;
+
+    // Zapisz do bazy
+    await db.from('voice_recordings').insert({
+      user_id:sess.user.id, word:word, sentence:sentence,
+      language:lang, audio_url:audioUrl
+    });
+
+    // Złoto za nagranie + powiadomienie
+    await addGold(sess.user.id, 5);
+    await sendNotification(sess.user.id,'gold','Nagrałeś głosówkę! 🎙️','Dodano 5 złota za podzielenie się wymową ze społecznością',5);
+
+    showToast('Głosówka opublikowana! +5 złota 🪙','success');
+    document.getElementById('record-submit').style.display='none';
+    document.getElementById('record-preview').style.display='none';
+    _audioChunks=[];
+  }catch(e){
+    showToast('Błąd: '+e.message,'error');
+  }
+}
+
+async function addGold(userId, amount){
+  try{
+    var{data:stats}=await db.from('learning_stats').select('gold').eq('user_id',userId).single();
+    var current=stats?.gold||0;
+    await db.from('learning_stats').update({gold:current+amount}).eq('user_id',userId);
+  }catch(e){}
 }
 </script>
