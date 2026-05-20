@@ -1819,7 +1819,7 @@ async function initToFixPage(){
     <div id="strefa-access-msg" style="display:none;text-align:center;padding:60px 20px">
       <div style="font-size:48px;margin-bottom:16px">🔒</div>
       <h3 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:var(--navy);margin-bottom:8px">Dostęp dla kupujących</h3>
-      <p style="color:var(--dim2);margin-bottom:24px">Strefa Nauki jest dostępna dla użytkowników którzy odblokali co najmniej jeden poziom.</p>
+      <p style="color:var(--dim2);margin-bottom:24px">Strefa Nauki jest dostępna dla użytkowników, którzy mają co najmniej jeden zestaw fiszek.</p>
       <button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>
     </div>
 
@@ -1909,6 +1909,8 @@ async function initToFixPage(){
 <script>
 // Edge Function URLs - klucze są bezpiecznie w Supabase
 const GENERATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-sentence';
+const AI_PROXY_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/ai-proxy';
+const APIKEY_CONST = 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const GENERATE_ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
 const TRANSLATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-sentence';
 const SEARCH_YOUTUBE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
@@ -2597,6 +2599,15 @@ async function loadVideo(topic, isPodcast){
     <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:4px">Porcja dnia</h2>
     <p id="daily-date" style="color:var(--dim2);font-size:14px"></p>
   </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <label style="font-size:12px;color:var(--dim2);font-weight:600">Język:</label>
+    <select id="daily-lang-select" onchange="reloadDailyContent()" style="padding:7px 12px;border-radius:20px;border:1.5px solid var(--border2);font-size:13px;background:var(--paper);color:var(--navy);font-weight:500;cursor:pointer">
+      <option value="en">🇬🇧 Angielski</option>
+      <option value="es">🇪🇸 Hiszpański</option>
+      <option value="nl">🇳🇱 Holenderski</option>
+      <option value="jp">🇯🇵 Japoński</option>
+    </select>
+  </div>
   <div style="background:var(--navy);color:#fff;border-radius:12px;padding:10px 20px;font-size:13px;font-weight:600" id="daily-countdown">Odnawia się o północy</div>
 </div>
 
@@ -2914,7 +2925,29 @@ function initDaily(){
   document.getElementById('daily-date').textContent = d.toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   updateDailyCountdown();
   setInterval(updateDailyCountdown, 60000);
+  // Przywróć wybrany język z localStorage
+  try{var savedLang=localStorage.getItem('daily_lang');if(savedLang){var sel=document.getElementById('daily-lang-select');if(sel)sel.value=savedLang;}}catch(e){}
   if(!_dailyLoaded){ _dailyLoaded=true; loadDailyContent(); }
+}
+
+function reloadDailyContent(){
+  try{var sel=document.getElementById('daily-lang-select');if(sel)localStorage.setItem('daily_lang',sel.value);}catch(e){}
+  _dailyLoaded=true;
+  // Reset done state dla nowego języka
+  _dailyDone={word:false,read:false,quiz:false};
+  _dailyXP=0;
+  document.getElementById('daily-xp').textContent='0 XP';
+  document.getElementById('dc-word-done').style.display='none';
+  document.getElementById('dc-read-done').style.display='none';
+  document.getElementById('dc-quiz-done').style.display='none';
+  document.getElementById('dc-word-content').style.display='none';
+  document.getElementById('dc-word-loading').style.display='block';
+  document.getElementById('dc-read-content').style.display='none';
+  document.getElementById('dc-read-loading').style.display='block';
+  document.getElementById('dc-quiz-content').style.display='none';
+  document.getElementById('dc-quiz-loading').style.display='block';
+  updateDailyProgress();
+  loadDailyContent();
 }
 
 function updateDailyCountdown(){
@@ -2936,8 +2969,13 @@ async function loadDailyWord(){
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){showDailyWordFallback();return;}
     // Pobierz losowe słowo z fiszek usera
-    var {data:cards}=await db.from('flashcards').select('word,translation,language,level').eq('user_id',sess.user.id).limit(100);
-    if(!cards||!cards.length){showDailyWordFallback();return;}
+    // Pobierz karty z zestawów usera
+    var {data:sets}=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(10);
+    var cards=[];
+    if(sets) sets.forEach(function(s){if(s.user_set_cards)cards=cards.concat(s.user_set_cards);});
+    if(!cards.length){showDailyWordFallback();return;}
+    // Wybierz język z selecta (jeśli istnieje) lub losowo
+    var dailyLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
     var card=cards[Math.floor(Math.random()*cards.length)];
     document.getElementById('dc-word-loading').style.display='none';
     document.getElementById('dc-word-content').style.display='block';
@@ -2968,11 +3006,16 @@ async function loadDailyRead(){
     var sess=(await db.auth.getSession()).data.session;
     var tok=sess?sess.access_token:'';
     var ARTICLE_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
+    var dLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+    var topics={en:['interesting science fact','unusual animal behavior','fascinating history','space exploration','human psychology'],es:['hecho científico curioso','historia fascinante','naturaleza increíble'],nl:['interessant wetenschappelijk feit','bijzondere geschiedenis'],jp:['面白い科学的事実','不思議な動物の行動']};
+    var topicArr=topics[dLang]||topics['en'];
+    var topic=topicArr[new Date().getDay()%topicArr.length];
     var res=await fetch(ARTICLE_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
-      body:JSON.stringify({topic:'interesting science fact',lang:'en',level:'B1'})
+      body:JSON.stringify({topic:topic,lang:dLang,level:'B1'})
     });
+    if(res.status===429)throw new Error('rate_limit');
     if(!res.ok)throw new Error();
     var d=await res.json();
     document.getElementById('dc-read-loading').style.display='none';
@@ -2985,7 +3028,9 @@ async function loadDailyRead(){
     document.getElementById('dc-read-loading').style.display='none';
     document.getElementById('dc-read-content').style.display='block';
     document.getElementById('dc-read-title').textContent='Why do cats purr?';
-    document.getElementById('dc-read-body').textContent='Cats purr for a variety of reasons — not just contentment. Scientists have found that the vibration frequency of a cat\'s purr (between 25-150 Hz) can actually promote healing in bones and tissues. So when your cat curls up next to you and purrs, it might literally be helping you feel better.';
+    var isRateLimit=e.message==='rate_limit';
+    document.getElementById('dc-read-title').textContent=isRateLimit?'Limit API osiągnięty':'Ciekawostka dnia';
+    document.getElementById('dc-read-body').textContent=isRateLimit?'Generator artykułów chwilowo niedostępny (limit Gemini API). Wróć za kilka minut lub przejdź do Strefy Nauki.':'Koty mruczą z różnych powodów — nie tylko gdy są zadowolone. Naukowcy odkryli, że częstotliwość wibracji kociego mruczenia (25–150 Hz) może wspomagać gojenie kości i tkanek. Kiedy kot układa się obok Ciebie i mruczy, może dosłownie pomagać Ci się lepiej czuć.';
   }
 }
 
@@ -2996,31 +3041,55 @@ async function loadDailyQuiz(){
     var res=await fetch('https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-sentence',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
-      body:JSON.stringify({word:'quiz',translation:'quiz',lang:'en',level:'B1',mode:'quiz'})
+      body:JSON.stringify({word:'quiz',translation:'quiz',lang:document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en',level:'B1',mode:'quiz'})
     });
     // fallback to hardcoded quiz
     throw new Error('use fallback');
   }catch(e){
-    var quizzes=[
-      {q:'Jak powiedzieć po angielsku: <em>"mieć ciarki"</em>?',opts:['to have goosebumps','to get chills','to feel shivers','to be frozen'],correct:1,explain:'"Get chills" to idiom oznaczający uczucie dreszczu z ekscytacji lub strachu. "Have goosebumps" (gęsia skórka) też jest poprawne i podobne znaczenie.'},
-      {q:'Co oznacza angielski idiom: <em>"break the ice"</em>?',opts:['złamać lód','przełamać pierwsze lody','zepsuć coś','ochłodzić sytuację'],correct:1,explain:'"Break the ice" oznacza przełamanie barier w nowym towarzystwie — pochodzi ze starych czasów, gdy lodołamacze otwierały szlaki dla statków handlowych.'},
-      {q:'Które słowo NIE jest synonimem słowa <em>"happy"</em>?',opts:['joyful','content','elated','gloomy'],correct:3,explain:'"Gloomy" oznacza przygnębiony, smutny — to antonym słowa happy. Pozostałe: joyful (radosny), content (zadowolony), elated (rozradowany) są synonimami.'},
-      {q:'Jak powiedzieć po angielsku: <em>"na dłuższą metę"</em>?',opts:['in the long run','for a long time','at long last','in the end'],correct:0,explain:'"In the long run" to idiom oznaczający w perspektywie długoterminowej. Pochodzi ze sportu — koniec długiego wyścigu.'}
-    ];
+    var qLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+    var allQuizzes={
+      en:[
+        {q:'Jak powiedzieć po angielsku: <em>"mieć ciarki"</em>?',opts:['to have goosebumps','to get chills','to feel shivers','to be frozen'],correct:1,explain:'"Get chills" to idiom oznaczający uczucie dreszczu z ekscytacji lub strachu.'},
+        {q:'Co oznacza angielski idiom: <em>"break the ice"</em>?',opts:['złamać lód','przełamać pierwsze lody','zepsuć coś','ochłodzić sytuację'],correct:1,explain:'"Break the ice" oznacza przełamanie barier w nowym towarzystwie.'},
+        {q:'Które słowo NIE jest synonimem słowa <em>"happy"</em>?',opts:['joyful','content','elated','gloomy'],correct:3,explain:'"Gloomy" oznacza przygnębiony — to antonym. Pozostałe są synonimami.'},
+        {q:'Jak powiedzieć po angielsku: <em>"na dłuższą metę"</em>?',opts:['in the long run','for a long time','at long last','in the end'],correct:0,explain:'"In the long run" = w perspektywie długoterminowej.'}
+      ],
+      es:[
+        {q:'Co oznacza hiszpański idiom: <em>"no hay mal que por bien no venga"</em>?',opts:['nie ma złego bez dobrego','nigdy nie wiadomo','każdy ma swój czas','lepiej późno niż wcale'],correct:0,explain:'Dosłownie "nie ma zła, z którego nie wynika dobro" — odpowiednik polskiego "nie ma złego co by na dobre nie wyszło".'},
+        {q:'Jak powiedzieć po hiszpańsku <em>"tęsknię za tobą"</em>?',opts:['Te quiero','Te echo de menos','Me gustas','Te necesito'],correct:1,explain:'"Te echo de menos" to dosłownie "brakuje mi cię" — najczęstszy sposób wyrażenia tęsknoty w hiszpańskim.'},
+        {q:'Które słowo oznacza <em>"szybko"</em> po hiszpańsku?',opts:['despacio','rápido','tarde','pronto'],correct:1,explain:'"Rápido" = szybko. "Despacio" = wolno, "tarde" = późno, "pronto" = wkrótce.'}
+      ],
+      nl:[
+        {q:'Co oznacza holenderski idiom: <em>"nu komt de aap uit de mouw"</em>?',opts:['małpa uciekła','prawdziwe intencje wychodzą na jaw','coś nieoczekiwanego','zabawna sytuacja'],correct:1,explain:'Dosłownie "teraz małpa wychodzi z rękawa" — oznacza moment gdy ktoś zdradza swoje prawdziwe zamiary.'},
+        {q:'Jak powiedzieć po holendersku <em>"dziękuję"</em>?',opts:['Alsjeblieft','Dank je wel','Goedemorgen','Tot ziens'],correct:1,explain:'"Dank je wel" = dziękuję (nieformalnie). "Dank u wel" to forma grzecznościowa.'}
+      ],
+      jp:[
+        {q:'Co oznacza japońskie słowo <em>"木漏れ日" (komorebi)</em>?',opts:['wschód słońca','światło słońca przebijające przez liście','odbicie w wodzie','wieczorny zmierzch'],correct:1,explain:'"Komorebi" to unikalne japońskie słowo na grę światła słonecznego między liśćmi drzew. Nie ma odpowiednika w innych językach.'},
+        {q:'Jak po japońsku wyrazić <em>"itadakimasu"</em>?',opts:['smacznego','dziękuję','przepraszam','do widzenia'],correct:0,explain:'"Itadakimasu" mówi się przed jedzeniem. Dosłownie "z pokorą otrzymuję" — wyraz wdzięczności za posiłek.'}
+      ]
+    };
+    var quizzes=allQuizzes[qLang]||allQuizzes['en'];
     var qz=quizzes[Math.floor(Math.random()*quizzes.length)];
+    window._currentQuiz={correct:qz.correct,explain:qz.explain};
     document.getElementById('dc-quiz-loading').style.display='none';
     document.getElementById('dc-quiz-content').style.display='block';
     document.getElementById('dc-quiz-q').innerHTML=qz.q;
     document.getElementById('dc-quiz-social').textContent='';
-    var optsHtml=qz.opts.map(function(o,i){
-      return '<div class="quiz-opt" onclick="quizAnswer('+i+','+qz.correct+','+JSON.stringify(qz.explain).replace(/'/g,"\\'")+',this)" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:.15s" onmouseover="if(!_quizAnswered)this.style.borderColor=\'var(--orange)\'" onmouseout="if(!_quizAnswered)this.style.borderColor=\'var(--border)\'">'
-        +'<span style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">'+String.fromCharCode(65+i)+'</span>'+o+'</div>';
-    }).join('');
-    document.getElementById('dc-quiz-opts').style.display='grid';
-    document.getElementById('dc-quiz-opts').style.gridTemplateColumns='1fr 1fr';
-    document.getElementById('dc-quiz-opts').style.gap='8px';
-    document.getElementById('dc-quiz-opts').innerHTML=optsHtml;
+    var container=document.getElementById('dc-quiz-opts');
+    container.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
+    container.innerHTML='';
     _quizAnswered=false;
+    qz.opts.forEach(function(o,i){
+      var div=document.createElement('div');
+      div.className='quiz-opt';
+      div.dataset.idx=String(i);
+      div.style.cssText='padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:.15s';
+      div.innerHTML='<span style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">'+String.fromCharCode(65+i)+'</span>'+o;
+      div.addEventListener('mouseenter',function(){if(!_quizAnswered)this.style.borderColor='var(--orange)';});
+      div.addEventListener('mouseleave',function(){if(!_quizAnswered)this.style.borderColor='var(--border)';});
+      div.addEventListener('click',function(){quizAnswer(parseInt(this.dataset.idx),window._currentQuiz.correct,window._currentQuiz.explain,this);});
+      container.appendChild(div);
+    });
   }
 }
 
@@ -3132,13 +3201,13 @@ async function loadChallengeRanking(){
     var sess=(await db.auth.getSession()).data.session;
     var myId=sess?sess.user.id:null;
     var {data:rows}=await db.from('learning_stats')
-      .select('user_id,cards_seen,profiles(username)')
+      .select('user_id,cards_seen')
       .order('cards_seen',{ascending:false})
       .limit(10);
     if(!rows||!rows.length){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:8px 0">Brak danych rankingu</div>';return;}
     el.innerHTML=rows.map(function(r,i){
       var isMe=r.user_id===myId;
-      var name=(r.profiles&&r.profiles.username)||r.user_id.slice(0,8);
+      var name=r.user_id?r.user_id.slice(0,8):'Gracz';
       var score=r.cards_seen||0;
       var medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--border);'+(isMe?'background:var(--paper2);border-radius:8px;margin:0 -6px;padding:8px 12px;':'')+'last-child:border-none">'
@@ -3181,7 +3250,9 @@ async function initChat(){
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(sess){
-      var {data:cards}=await db.from('flashcards').select('word').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(8);
+      var {data:sets2}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(5);
+      var allW=[];if(sets2)sets2.forEach(function(s){if(s.user_set_cards)allW=allW.concat(s.user_set_cards);});
+      var cards=allW.slice(0,8);
       if(cards&&cards.length){
         document.getElementById('chat-weak-words').innerHTML=cards.map(function(c){
           return '<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:var(--paper2);border:1px solid var(--border);font-size:12px;color:var(--navy)">'+c.word+'</span>';
@@ -3265,8 +3336,9 @@ async function chatSend(){
     var weakWords=[];
     if(sess){
       try{
-        var {data:cards}=await db.from('flashcards').select('word').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(5);
-        if(cards) weakWords=cards.map(function(c){return c.word;});
+        var {data:sets3}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).limit(5);
+        var allW3=[];if(sets3)sets3.forEach(function(s){if(s.user_set_cards)allW3=allW3.concat(s.user_set_cards);});
+        weakWords=allW3.slice(0,5).map(function(c){return c.word;});
       }catch(e){}
     }
 
@@ -3282,18 +3354,19 @@ async function chatSend(){
       +(mode==='brave'?'Respond ONLY in '+langNames[_chatLang]+'. Do not use Polish at all. If the user writes in Polish, gently ask them to try in '+langNames[_chatLang]+'.':'Respond in '+langNames[_chatLang]+'. You can occasionally add a brief Polish note in parentheses for very difficult words.')
       +' Keep responses conversational, 2-4 sentences. Be warm and encouraging. Correct major errors gently.';
 
-    var res=await fetch('https://api.anthropic.com/v1/messages',{
+    var tok2=(await db.auth.getSession()).data.session?.access_token||'';
+    var res=await fetch(AI_PROXY_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok2,'apikey':APIKEY_CONST},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:400,
-        system:systemPrompt,
-        messages:_chatHistory.slice(-10)
+        systemPrompt:systemPrompt,
+        messages:_chatHistory.slice(-10),
+        max_tokens:400
       })
     });
     var data=await res.json();
-    var reply=(data.content&&data.content[0]&&data.content[0].text)||'Sorry, something went wrong. Try again!';
+    // Gemini response format
+    var reply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Sorry, something went wrong. Try again!';
     _chatHistory.push({role:'assistant',content:reply});
     typing.remove();
     appendChatMsg('ai',reply);
@@ -3318,6 +3391,7 @@ function lyricsReset(){
   document.getElementById('lyrics-text').value='';
   document.getElementById('lyrics-title').value='';
   _lyricsWords=[];
+  window._lyricsSetId=null;
 }
 
 async function analyzeLyrics(){
@@ -3340,13 +3414,14 @@ async function analyzeLyrics(){
       +'{"lines": [{"text": "original line", "annotation": "explanation of slang, cultural references, wordplay, idiomatic expressions in Polish. Be specific and interesting, like a linguist + cultural expert. 2-4 sentences.", "words": [{"word": "key word or phrase", "translation": "Polish translation or explanation"}]}]}\n'
       +'Focus on: slang, double meanings, cultural references, wordplay, idioms. Skip obvious lines.';
 
-    var res=await fetch('https://api.anthropic.com/v1/messages',{
+    var tokL=(await db.auth.getSession()).data.session?.access_token||'';
+    var res=await fetch(AI_PROXY_URL,{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tokL,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:2000})
     });
     var data=await res.json();
-    var raw=(data.content&&data.content[0]&&data.content[0].text)||'{}';
+    var raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
     var clean=raw.replace(/```json|```/g,'').trim();
     var parsed=JSON.parse(clean);
     renderLyricsResult(parsed, title, text);
@@ -3405,6 +3480,16 @@ function renderLyricsWords(){
   }).join('');
 }
 
+async function lyricsEnsureSet(userId){
+  if(window._lyricsSetId)return;
+  var title=document.getElementById('lyrics-title').value.trim()||'Lyrics';
+  var {data:existing}=await db.from('user_sets').select('id').eq('user_id',userId).eq('name','📝 '+title).limit(1);
+  var ex=Array.isArray(existing)?existing[0]:existing;
+  if(ex&&ex.id){window._lyricsSetId=ex.id;return;}
+  var {data:newSet}=await db.from('user_sets').insert({user_id:userId,name:'📝 '+title,is_public:false}).select('id').single();
+  if(newSet)window._lyricsSetId=newSet.id;
+}
+
 async function lyricsAddWord(i){
   var w=_lyricsWords[i];
   if(!w)return;
@@ -3412,7 +3497,8 @@ async function lyricsAddWord(i){
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){showToast('Zaloguj się aby dodać fiszkę','error');return;}
     var lang=document.getElementById('lyrics-lang').value;
-    await db.from('flashcards').insert({user_id:sess.user.id,word:w.word,translation:w.translation,language:lang,level:'B1',source:'lyrics'});
+    await lyricsEnsureSet(sess.user.id);
+    await db.from('user_set_cards').insert({set_id:window._lyricsSetId,word:w.word,translation:w.translation,sort_order:Date.now()});
     var badge=document.getElementById('wb-'+i);
     if(badge){badge.textContent='✓ Dodano';badge.className='word-badge added';badge.onclick=null;}
     showToast('Dodano: '+w.word,'success');
@@ -3425,7 +3511,9 @@ async function lyricsAddAll(){
   var lang=document.getElementById('lyrics-lang').value;
   var rows=_lyricsWords.map(function(w){return{user_id:sess.user.id,word:w.word,translation:w.translation,language:lang,level:'B1',source:'lyrics'};});
   try{
-    await db.from('flashcards').insert(rows);
+    await lyricsEnsureSet(sess.user.id);
+    var rowsMapped=_lyricsWords.map(function(w,i){return{set_id:window._lyricsSetId,word:w.word,translation:w.translation,sort_order:i};});
+    await db.from('user_set_cards').insert(rowsMapped);
     _lyricsWords.forEach(function(w,i){
       var badge=document.getElementById('wb-'+i);
       if(badge){badge.textContent='✓ Dodano';badge.className='word-badge added';badge.onclick=null;}
