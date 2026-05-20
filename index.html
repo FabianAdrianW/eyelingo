@@ -358,6 +358,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
     <button class="nav-tab" id="ntab-chat" onclick="switchTab('chat',this)">AI Partner</button>
     <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">👨‍🏫 Nauczyciel <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
     <button class="nav-tab" id="ntab-lyrics" onclick="switchTab('lyrics',this)">Analiza tekstu</button>
+    <button class="nav-tab" id="ntab-tryb" onclick="switchTab('tryb',this)">📚 Tryb Nauki</button>
     <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
     <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
     <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
@@ -1109,6 +1110,7 @@ function showPage(name){
   if(name==='odkryj') initOdkryj();
   if(name==='daily') initDaily();
   if(name==='challenge') initChallenge();
+  if(name==='tryb') initTrybNauki();
   if(name==='chat') initChat();
   if(name==='teacher') initTeacher();
   if(name==='lyrics') initLyrics();
@@ -1334,6 +1336,7 @@ function renderViewCards(cards, s, isOwn){
         </div>`).join('')}
     </div>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-orange" style="flex:1;min-width:140px;font-weight:700;font-size:15px" onclick="closeMatModal();startTrybNauki(${JSON.stringify(cards).replace(/"/g,'&quot;')},${JSON.stringify(s.name).replace(/"/g,'&quot;')})">📚 Ucz się</button>
       ${isMineTab?`
         <button class="btn btn-navy" onclick="switchToEdit()">✏️ Edytuj</button>
         <button class="mat-btn-del" style="padding:10px 18px" onclick="deleteSet(${s.id})">🗑️ Usuń</button>
@@ -1341,7 +1344,7 @@ function renderViewCards(cards, s, isOwn){
           ${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}
         </button>
       `:`
-        ${!isOwn?`<button class="btn btn-orange" style="width:100%" id="modal-add-btn"
+        ${!isOwn?`<button class="btn btn-navy" style="flex:1" id="modal-add-btn"
           onclick="addSetToMine(${s.id})" ${added?'disabled':''}>
           ${added?'✓ Dodano do zestawów':'+ Dodaj do moich zestawów'}
         </button>`:''}
@@ -6773,4 +6776,950 @@ window.initOdkryj = function(){
   if(_origInitOdkryj) _origInitOdkryj();
   if(!_globeInited){_globeInited=true;setTimeout(initGlobe,50);}
 };
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     TRYB NAUKI — Moduł nauki z SM-2, active recall, gamifikacja
+═══════════════════════════════════════════════════════════════════ -->
+<div id="page-tryb" class="page" style="min-height:100vh;background:var(--paper);padding:100px 20px 60px">
+<div style="max-width:860px;margin:0 auto">
+
+  <!-- LOBBY — wybór trybu / widok startowy -->
+  <div id="tryb-lobby">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h2 style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--navy);margin-bottom:4px">📚 Tryb Nauki</h2>
+        <p style="color:var(--dim2);font-size:14px">Spaced repetition · Active recall · SM-2</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div id="tryb-xp-bar-wrap" style="background:var(--paper2);border:1px solid var(--border);border-radius:100px;padding:6px 16px;display:flex;align-items:center;gap:10px;min-width:200px">
+          <span style="font-size:12px;font-weight:700;color:var(--orange)" id="tryb-level-badge">Lv.1</span>
+          <div style="flex:1;height:6px;background:rgba(26,35,64,.1);border-radius:3px;overflow:hidden">
+            <div id="tryb-xp-fill" style="height:100%;background:linear-gradient(90deg,var(--orange),var(--gold));border-radius:3px;transition:width .5s;width:0%"></div>
+          </div>
+          <span style="font-size:11px;color:var(--dim2)" id="tryb-xp-label">0 XP</span>
+        </div>
+        <div id="tryb-streak-badge" style="background:var(--navy);color:#fff;border-radius:100px;padding:6px 14px;font-size:13px;font-weight:700">🔥 0</div>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px" id="tryb-stats-row">
+      <div class="dstat"><div class="dstat-l">📅 Do powtórki</div><div class="dstat-v gold" id="tryb-due-count">—</div><div class="dstat-s">słów dziś</div></div>
+      <div class="dstat"><div class="dstat-l">📚 Nowe</div><div class="dstat-v" id="tryb-new-count">—</div><div class="dstat-s">do nauki</div></div>
+      <div class="dstat"><div class="dstat-l">✅ Sesja</div><div class="dstat-v green" id="tryb-session-done">0</div><div class="dstat-s">ukończonych</div></div>
+      <div class="dstat"><div class="dstat-l">🏆 XP dziś</div><div class="dstat-v" id="tryb-xp-today">0</div><div class="dstat-s">punktów</div></div>
+    </div>
+
+    <!-- Tryb wyboru -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px">
+      <div id="tryb-mode-due" onclick="startSession('due')" style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="font-size:32px;margin-bottom:10px">🔁</div>
+        <div style="font-weight:700;font-size:16px;color:var(--navy);margin-bottom:6px">Powtórki na dziś</div>
+        <div style="font-size:13px;color:var(--dim2);line-height:1.5">Słowa których czas minął — algorytm SM-2 wybrał je specjalnie dla Ciebie.</div>
+      </div>
+      <div id="tryb-mode-set" onclick="showTrybSetPicker()" style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="font-size:32px;margin-bottom:10px">📋</div>
+        <div style="font-weight:700;font-size:16px;color:var(--navy);margin-bottom:6px">Wybierz zestaw</div>
+        <div style="font-size:13px;color:var(--dim2);line-height:1.5">Ucz się konkretnego zestawu z Twoich materiałów.</div>
+      </div>
+    </div>
+
+    <!-- Challenge mode toggle -->
+    <div style="background:var(--navy);border-radius:16px;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">🔀 Tryb Wyzwania</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.5)">Trudniejsze słowa 2× częściej · +25% XP · Miesza zestawy</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer">
+        <input type="checkbox" id="tryb-challenge-toggle" style="opacity:0;width:0;height:0" onchange="updateChallengeMode(this.checked)">
+        <span id="tryb-toggle-slider" style="position:absolute;inset:0;background:rgba(255,255,255,.2);border-radius:26px;transition:.3s;cursor:pointer">
+          <span id="tryb-toggle-knob" style="position:absolute;left:3px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.3s"></span>
+        </span>
+      </label>
+    </div>
+
+    <!-- Set picker (hidden) -->
+    <div id="tryb-set-picker" style="display:none;background:#fff;border:1.5px solid var(--border);border-radius:20px;padding:20px;margin-bottom:24px">
+      <div style="font-weight:700;font-size:15px;color:var(--navy);margin-bottom:14px">Wybierz zestaw do nauki:</div>
+      <div id="tryb-set-list" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto"></div>
+    </div>
+
+    <!-- Badges row -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:20px;padding:20px;margin-bottom:24px">
+      <div style="font-size:13px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px">🎖️ Odznaki</div>
+      <div id="tryb-badges-row" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+    </div>
+
+    <!-- Najtrudniejsze słowa -->
+    <div id="tryb-hard-words-panel" style="display:none;background:#fff;border:2px solid #fecaca;border-radius:20px;padding:20px">
+      <div style="font-size:13px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px">⚠️ Twoje najtrudniejsze słowa</div>
+      <div id="tryb-hard-words-list" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+  </div>
+
+  <!-- SESSION VIEW — właściwa nauka -->
+  <div id="tryb-session" style="display:none">
+    <!-- Header sesji -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:10px">
+      <button onclick="endSession()" style="background:transparent;border:1.5px solid var(--border);border-radius:100px;padding:8px 18px;cursor:pointer;font-size:13px;color:var(--dim2);transition:.2s" onmouseover="this.style.borderColor='var(--navy)'" onmouseout="this.style.borderColor='var(--border)'">← Zakończ sesję</button>
+      <div id="tryb-session-header" style="font-size:13px;font-weight:600;color:var(--dim2)">Sesja nauki</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:13px;color:var(--dim2)"><span id="tryb-card-num">1</span> / <span id="tryb-card-total">?</span></div>
+        <div style="width:120px;height:6px;background:var(--paper2);border-radius:3px;overflow:hidden">
+          <div id="tryb-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--orange),var(--gold));border-radius:3px;transition:width .4s;width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fiszka -->
+    <div id="tryb-card" style="background:#fff;border:2px solid var(--border);border-radius:24px;padding:40px;text-align:center;margin-bottom:20px;min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;transition:transform .2s">
+
+      <!-- Stan: pytanie -->
+      <div id="tryb-q-side">
+        <div id="tryb-card-emoji" style="font-size:48px;margin-bottom:12px"></div>
+        <div id="tryb-card-word" style="font-family:'Syne',sans-serif;font-size:42px;font-weight:800;color:var(--navy);letter-spacing:-1px;margin-bottom:10px"></div>
+        <div id="tryb-card-example" style="font-size:13px;color:var(--dim2);font-style:italic;max-width:400px;line-height:1.6;margin-bottom:20px"></div>
+
+        <!-- Pole odpowiedzi -->
+        <div style="display:flex;gap:8px;width:100%;max-width:380px">
+          <input id="tryb-answer-input" type="text" class="fi" placeholder="Wpisz tłumaczenie..." style="flex:1;font-size:15px;text-align:center" onkeydown="if(event.key==='Enter')checkAnswer()">
+          <button onclick="checkAnswer()" class="btn btn-orange" style="padding:10px 18px">✓</button>
+        </div>
+
+        <!-- Podpowiedzi -->
+        <div style="display:flex;gap:8px;margin-top:12px;justify-content:center;flex-wrap:wrap">
+          <button id="tryb-hint-btn" onclick="showHint()" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:5px 14px;font-size:12px;color:var(--dim2);cursor:pointer">💡 Podpowiedź (<span id="tryb-hint-level">3</span>)</button>
+          <button onclick="dontKnow()" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:5px 14px;font-size:12px;color:var(--dim2);cursor:pointer">🚫 Nie pamiętam</button>
+        </div>
+        <div id="tryb-hint-text" style="margin-top:10px;font-size:14px;color:var(--orange);font-weight:600;min-height:20px"></div>
+      </div>
+
+      <!-- Stan: odpowiedź odkryta -->
+      <div id="tryb-a-side" style="display:none;width:100%">
+        <div id="tryb-result-icon" style="font-size:48px;margin-bottom:8px"></div>
+        <div id="tryb-card-word-ans" style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--navy);margin-bottom:6px"></div>
+        <div id="tryb-card-answer" style="font-size:22px;color:var(--orange);font-weight:700;margin-bottom:10px"></div>
+        <div id="tryb-user-wrote" style="font-size:13px;color:var(--dim2);margin-bottom:16px"></div>
+
+        <!-- Etymologia (zwijana) -->
+        <div id="tryb-etymology-wrap" style="background:var(--paper2);border-radius:12px;padding:12px 16px;margin-bottom:16px;text-align:left;width:100%;max-width:440px;display:none">
+          <button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" style="background:none;border:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--dim2);width:100%;text-align:left">🔍 Dlaczego tak? (etymologia)</button>
+          <div id="tryb-etymology-text" style="display:none;font-size:13px;color:var(--dim);line-height:1.6;margin-top:8px"></div>
+        </div>
+
+        <!-- Mnemotechnika -->
+        <div style="width:100%;max-width:440px;margin-bottom:16px">
+          <input id="tryb-mnemonic-input" type="text" class="fi" placeholder="💭 Twoja mnemotechnika (zapisuje się automatycznie)..." style="font-size:13px;width:100%" oninput="saveMnemonic()">
+        </div>
+
+        <!-- Ocena -->
+        <div style="font-size:13px;color:var(--dim2);margin-bottom:10px;font-weight:600">Jak poszło?</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:440px">
+          <button onclick="rateCard(1)" class="tryb-rate-btn" data-q="1" style="background:#fee2e2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700;transition:.2s">
+            <div style="font-size:18px">😔</div>Nie wiedziałem
+          </button>
+          <button onclick="rateCard(2)" class="tryb-rate-btn" data-q="2" style="background:#ffedd5;border:1.5px solid #fed7aa;color:#9a3412;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700;transition:.2s">
+            <div style="font-size:18px">😅</div>Prawie
+          </button>
+          <button onclick="rateCard(3)" class="tryb-rate-btn" data-q="3" style="background:#dcfce7;border:1.5px solid #86efac;color:#166534;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700;transition:.2s">
+            <div style="font-size:18px">😊</div>Wiedziałem
+          </button>
+          <button onclick="rateCard(4)" class="tryb-rate-btn" data-q="4" style="background:#dbeafe;border:1.5px solid #93c5fd;color:#1e40af;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700;transition:.2s">
+            <div style="font-size:18px">🚀</div>Bardzo łatwe
+          </button>
+        </div>
+      </div>
+
+      <!-- Feedback overlay -->
+      <div id="tryb-feedback" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:80px;pointer-events:none;opacity:0;transition:opacity .3s"></div>
+    </div>
+
+    <!-- Minihistoryjka przycisk -->
+    <div style="text-align:center;margin-bottom:16px">
+      <button id="tryb-story-btn" onclick="showMiniStory()" style="display:none;background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:8px 20px;font-size:13px;color:var(--dim);cursor:pointer">📖 Minihistoryjka</button>
+    </div>
+    <div id="tryb-story-box" style="display:none;background:var(--navy);color:#fff;border-radius:16px;padding:20px;margin-bottom:16px;font-size:14px;line-height:1.7"></div>
+  </div>
+
+  <!-- SESSION SUMMARY -->
+  <div id="tryb-summary" style="display:none;text-align:center">
+    <div style="font-size:64px;margin-bottom:16px" id="tryb-summary-icon">🎉</div>
+    <h2 style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--navy);margin-bottom:8px">Sesja ukończona!</h2>
+    <p style="color:var(--dim2);margin-bottom:28px" id="tryb-summary-sub">Świetna robota!</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px">
+      <div class="dstat"><div class="dstat-l">📚 Kart</div><div class="dstat-v" id="sum-cards">0</div></div>
+      <div class="dstat"><div class="dstat-l">✅ % poprawnych</div><div class="dstat-v green" id="sum-pct">0%</div></div>
+      <div class="dstat"><div class="dstat-l">⭐ XP zdobyte</div><div class="dstat-v gold" id="sum-xp">0</div></div>
+    </div>
+    <div id="tryb-new-badge-announce" style="display:none;background:linear-gradient(135deg,var(--orange),var(--gold));color:#fff;border-radius:16px;padding:20px;margin-bottom:20px">
+      <div style="font-size:36px;margin-bottom:8px" id="tryb-new-badge-icon"></div>
+      <div style="font-weight:800;font-size:18px" id="tryb-new-badge-name"></div>
+      <div style="font-size:13px;opacity:.85" id="tryb-new-badge-desc"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button onclick="initTrybNauki()" class="btn btn-orange btn-lg">🔁 Nowa sesja</button>
+      <button onclick="showPage('community')" class="btn btn-navy">← Materiały</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- Confetti canvas -->
+<canvas id="tryb-confetti" style="position:fixed;inset:0;pointer-events:none;z-index:9999;display:none"></canvas>
+
+<style>
+/* Tryb Nauki styles */
+.dstat-v.green{color:#16a34a}
+#tryb-card{box-shadow:0 8px 40px rgba(26,35,64,.08)}
+.tryb-rate-btn:hover{transform:translateY(-2px);filter:brightness(1.05)}
+#tryb-answer-input:focus{border-color:var(--orange)}
+@keyframes cardFlip{0%{transform:scale(1)}50%{transform:scale(0.97)}100%{transform:scale(1)}}
+@keyframes feedbackPop{0%{opacity:1;transform:translate(-50%,-50%) scale(0.5)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.2)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.5)}}
+.tryb-badge{display:flex;flex-direction:column;align-items:center;padding:10px 14px;border-radius:14px;border:1.5px solid var(--border);background:var(--paper2);min-width:72px;transition:.2s}
+.tryb-badge.earned{background:linear-gradient(135deg,rgba(201,106,42,.12),rgba(245,200,66,.12));border-color:var(--orange)}
+.tryb-badge-icon{font-size:24px;margin-bottom:4px}
+.tryb-badge-name{font-size:10px;font-weight:700;color:var(--navy);text-align:center;line-height:1.3}
+.tryb-badge-lock{font-size:10px;color:var(--dim2);margin-top:2px}
+</style>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// TRYB NAUKI — SM-2 + Supabase word_progress
+// ═══════════════════════════════════════════════════════
+
+// ── Reward System (izolowany obiekt) ──
+var RewardSystem = {
+  _state: null,
+  _key: 'tryb_nauki_v1',
+
+  load: function(){
+    try{ this._state = JSON.parse(localStorage.getItem(this._key)) || null; }catch(e){}
+    if(!this._state) this._state = {
+      xp:0, level:1, streak:0, lastStudyDate:'', streakFreezes:2,
+      totalCards:0, totalSessions:0, badges:{}, perfectStreak:0,
+      etymologyUses:0, challengeXP:0, weeklyXP:0, weekDate:''
+    };
+    // Reset weekly XP if new week
+    var thisWeek = new Date().toISOString().slice(0,10).slice(0,7);
+    if(this._state.weekDate !== thisWeek){ this._state.weekXP=0; this._state.weekDate=thisWeek; }
+    return this._state;
+  },
+  save: function(){ localStorage.setItem(this._key, JSON.stringify(this._state)); },
+
+  addXP: function(amount){
+    this._state.xp += amount;
+    this._state.weeklyXP = (this._state.weeklyXP||0) + amount;
+    var newLevel = Math.floor(this._state.xp / 100) + 1;
+    this._state.level = Math.min(20, newLevel);
+    this.save();
+    updateXPBar();
+  },
+
+  getStreak: function(){ return this._state.streak || 0; },
+
+  updateStreak: function(){
+    var today = new Date().toISOString().slice(0,10);
+    var last = this._state.lastStudyDate;
+    if(last === today) return;
+    var yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+    if(last === yesterday){ this._state.streak++; }
+    else if(last && last !== yesterday){
+      // Missed day — use freeze?
+      if(this._state.streakFreezes > 0){ this._state.streakFreezes--; }
+      else{ this._state.streak = 1; }
+    } else { this._state.streak = Math.max(1, this._state.streak||0) + (last?0:1)||1; }
+    this._state.lastStudyDate = today;
+    this.save();
+  },
+
+  checkMilestones: function(sessionData){
+    var earned = [];
+    var s = this._state;
+    var defs = [
+      {id:'first',icon:'🌱',name:'Pierwszy krok',desc:'Ukończ pierwszą sesję',check:function(){return s.totalSessions>=1;}},
+      {id:'streak7',icon:'🔥',name:'Tydzień ognia',desc:'7-dniowy streak',check:function(){return s.streak>=7;}},
+      {id:'perfect10',icon:'💯',name:'Perfekcjonista',desc:'10 kart z rzędu z oceną 4',check:function(){return s.perfectStreak>=10;}},
+      {id:'etymology',icon:'🧠',name:'Głęboki myśliciel',desc:'Etymologia użyta 20 razy',check:function(){return s.etymologyUses>=20;}},
+      {id:'speed',icon:'⚡',name:'Błyskawica',desc:'10 kart w < 2 minuty',check:function(){return sessionData&&sessionData.cards>=10&&sessionData.time<120;}},
+      {id:'master',icon:'🏆',name:'Mistrz',desc:'100 słów z łatwością > 2.5',check:function(){return false;}} // checked server-side
+    ];
+    defs.forEach(function(d){
+      if(!s.badges[d.id] && d.check()){
+        s.badges[d.id] = {earned:true, date: new Date().toISOString()};
+        earned.push(d);
+      }
+    });
+    this.save();
+    return earned;
+  },
+
+  getBadgeDefs: function(){
+    return [
+      {id:'first',icon:'🌱',name:'Pierwszy krok',desc:'Ukończ pierwszą sesję'},
+      {id:'streak7',icon:'🔥',name:'Tydzień ognia',desc:'7-dniowy streak'},
+      {id:'perfect10',icon:'💯',name:'Perfekcjonista',desc:'10 kart z rzędu z oceną 4'},
+      {id:'etymology',icon:'🧠',name:'Głęboki myśliciel',desc:'Etymologia użyta 20 razy'},
+      {id:'speed',icon:'⚡',name:'Błyskawica',desc:'10 kart w < 2 minuty'},
+      {id:'master',icon:'🏆',name:'Mistrz',desc:'100 słów z łatwością > 2.5'}
+    ];
+  },
+
+  syncLeaderboard: function(externalData){
+    // Placeholder — podpięcie zewnętrznego API
+    console.log('[RewardSystem] syncLeaderboard:', externalData);
+  }
+};
+
+// ── SM-2 lokalny ──
+function sm2(card, quality){
+  // quality: 0-5 (mapujemy z 1-4 na 0-5)
+  var ef = card.ease_factor || 2.5;
+  var reps = card.repetitions || 0;
+  var interval = card.interval_days || 1;
+  if(quality >= 3){
+    if(reps === 0) interval = 1;
+    else if(reps === 1) interval = 3;
+    else interval = Math.round(interval * ef);
+    reps++;
+  } else {
+    reps = 0; interval = 1;
+  }
+  ef = ef + (0.1 - (5-quality)*(0.08 + (5-quality)*0.02));
+  if(ef < 1.3) ef = 1.3;
+  var nextReview = new Date(Date.now() + interval*86400000).toISOString().slice(0,10);
+  return { ease_factor: parseFloat(ef.toFixed(3)), repetitions: reps, interval_days: interval, next_review: nextReview };
+}
+
+// Mapowanie ocen przycisków (1-4) → quality SM-2 (0-5)
+function qualityMap(btn, hintPenalty){
+  var map = {1:0, 2:2, 3:4, 4:5};
+  return Math.max(0, (map[btn]||0) - hintPenalty);
+}
+
+// ── Stan sesji ──
+var _trybCards = [];         // karty do nauki
+var _trybIdx = 0;            // bieżąca karta
+var _trybHintLevel = 0;      // 0=brak, 1=litery, 2=pierwsza, 3=sylaba
+var _trybHintPenalty = 0;
+var _trybSessionStats = { correct:0, total:0, xpGained:0, startTime:0 };
+var _trybChallengeMode = false;
+var _trybSessionXPToday = 0;
+var _trybPerfectStreak = 0;
+var _trybExternalCards = null; // karty przekazane z Materiałów
+var _trybExternalName = '';
+var _trybSetCards = [];       // wszystkie karty zestawu (dla minihistoryjki)
+
+// ── Inicjalizacja ──
+async function initTrybNauki(){
+  RewardSystem.load();
+  _trybExternalCards = null;
+  showTrybView('lobby');
+  updateXPBar();
+  updateStreakBadge();
+  renderBadges();
+  await loadTrybStats();
+  await loadHardWords();
+}
+
+// Wywołanie z Materiałów — przekazuje karty zestawu
+function startTrybNauki(cardsRaw, setName){
+  try{
+    var cards = typeof cardsRaw === 'string' ? JSON.parse(cardsRaw.replace(/&quot;/g,'"')) : cardsRaw;
+    _trybExternalCards = cards;
+    _trybExternalName = typeof setName === 'string' ? setName.replace(/&quot;/g,'"') : setName;
+  }catch(e){ _trybExternalCards = null; }
+  RewardSystem.load();
+  showPage('tryb');
+  setTimeout(function(){ startSession('set_external'); }, 150);
+}
+window.startTrybNauki = startTrybNauki;
+
+function showTrybView(view){
+  document.getElementById('tryb-lobby').style.display = view==='lobby'?'block':'none';
+  document.getElementById('tryb-session').style.display = view==='session'?'block':'none';
+  document.getElementById('tryb-summary').style.display = view==='summary'?'block':'none';
+}
+
+// ── Ładowanie statystyk (karty do powtórki) ──
+async function loadTrybStats(){
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    if(!sess){ setTrybStat('tryb-due-count','—'); setTrybStat('tryb-new-count','—'); return; }
+    // Pobierz przez RPC
+    var {data:due} = await db.rpc('get_due_cards_all', {p_lang:'en', p_limit:200});
+    var dueCount = due ? due.length : 0;
+    setTrybStat('tryb-due-count', dueCount);
+    setTrybStat('tryb-new-count', '—');
+  }catch(e){
+    setTrybStat('tryb-due-count','—');
+  }
+}
+
+function setTrybStat(id, val){
+  var el = document.getElementById(id);
+  if(el) el.textContent = val;
+}
+
+// ── Trudne słowa ──
+async function loadHardWords(){
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    if(!sess) return;
+    var {data} = await db.from('word_progress')
+      .select('ease_factor,flashcards(word,translation)')
+      .eq('user_id', sess.user.id)
+      .lt('ease_factor', 1.8)
+      .order('ease_factor', {ascending:true})
+      .limit(5);
+    if(!data||!data.length) return;
+    var panel = document.getElementById('tryb-hard-words-panel');
+    var list = document.getElementById('tryb-hard-words-list');
+    panel.style.display = 'block';
+    list.innerHTML = data.map(function(r){
+      var w = r.flashcards||{};
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fef2f2;border-radius:10px;border:1px solid #fecaca">'
+        +'<div><strong style="color:var(--navy)">'+escH(w.word||'')+'</strong> <span style="color:var(--dim2);font-size:12px">→ '+escH(w.translation||'')+'</span></div>'
+        +'<span style="font-size:11px;color:#dc2626;font-weight:700">ef: '+(r.ease_factor||0).toFixed(2)+'</span>'
+        +'</div>';
+    }).join('');
+  }catch(e){}
+}
+
+function escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Picker zestawów ──
+async function showTrybSetPicker(){
+  var picker = document.getElementById('tryb-set-picker');
+  var list = document.getElementById('tryb-set-list');
+  picker.style.display = picker.style.display==='none' ? 'block' : 'none';
+  if(picker.style.display==='none') return;
+  list.innerHTML = '<div style="color:var(--dim2);font-size:13px">Ładowanie...</div>';
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    if(!sess){ list.innerHTML='<div style="color:var(--dim2);font-size:13px">Zaloguj się aby zobaczyć zestawy.</div>'; return; }
+    var {data} = await db.from('user_sets')
+      .select('id,name,user_set_cards(word,translation)')
+      .eq('user_id', sess.user.id)
+      .order('created_at', {ascending:false})
+      .limit(30);
+    if(!data||!data.length){ list.innerHTML='<div style="color:var(--dim2);font-size:13px">Brak zestawów. Utwórz je w Materiałach.</div>'; return; }
+    list.innerHTML = '';
+    data.forEach(function(s){
+      var btn = document.createElement('button');
+      btn.style.cssText='background:var(--paper2);border:1.5px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;text-align:left;font-size:14px;font-weight:600;color:var(--navy);transition:.2s;width:100%';
+      btn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+      btn.onmouseout=function(){this.style.borderColor='var(--border)';};
+      var cards = s.user_set_cards||[];
+      btn.innerHTML = escH(s.name) + ' <span style="font-size:12px;color:var(--dim2);font-weight:400">· '+cards.length+' fiszek</span>';
+      btn.onclick = function(){
+        _trybExternalCards = cards;
+        _trybExternalName = s.name;
+        document.getElementById('tryb-set-picker').style.display='none';
+        startSession('set_external');
+      };
+      list.appendChild(btn);
+    });
+  }catch(e){ list.innerHTML='<div style="color:#c33;font-size:13px">Błąd: '+e.message+'</div>'; }
+}
+
+// ── Uruchom sesję ──
+async function startSession(mode){
+  showTrybView('session');
+  _trybSessionStats = { correct:0, total:0, xpGained:0, startTime:Date.now() };
+  _trybIdx = 0;
+  _trybPerfectStreak = 0;
+  _trybSessionXPToday = 0;
+  var challengeMode = document.getElementById('tryb-challenge-toggle').checked;
+  _trybChallengeMode = challengeMode;
+
+  var header = document.getElementById('tryb-session-header');
+  if(challengeMode) header.textContent = '🔀 Tryb Wyzwania aktywny';
+  else header.textContent = 'Sesja nauki';
+
+  if(mode === 'set_external' && _trybExternalCards){
+    // Karty z zestawu
+    _trybSetCards = _trybExternalCards.slice();
+    _trybCards = shuffle(_trybExternalCards.slice()).map(function(c){
+      return { word: c.word||c.front||'', translation: c.translation||c.back||'', emoji:'', example:'', etymology:'', ease_factor:2.5, repetitions:0, interval_days:1, id:null };
+    });
+    if(header) header.textContent = (_trybExternalName||'Zestaw') + (challengeMode?' · 🔀':'');
+  } else {
+    // Karty z Supabase (due)
+    _trybCards = await loadDueCards();
+    _trybSetCards = _trybCards.slice();
+  }
+
+  if(_trybChallengeMode){
+    // Trudniejsze słowa 2× częściej
+    var hard = _trybCards.filter(function(c){ return (c.ease_factor||2.5) < 1.8; });
+    _trybCards = _trybCards.concat(hard);
+    _trybCards = shuffle(_trybCards);
+  }
+
+  if(!_trybCards.length){
+    showTrybView('lobby');
+    showToast('Brak słów do nauki — wróć jutro lub wybierz zestaw! 🎉', 'success');
+    return;
+  }
+
+  document.getElementById('tryb-card-total').textContent = _trybCards.length;
+  loadTrybCard();
+}
+
+async function loadDueCards(){
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    if(!sess) return [];
+    var {data} = await db.rpc('get_due_cards_all', {p_lang:'en', p_limit:50});
+    if(!data||!data.length) return [];
+    return data.map(function(d){
+      return {
+        id: d.flashcard_id || d.id,
+        word: d.word || d.front || '',
+        translation: d.translation || d.back || '',
+        emoji: d.emoji||'',
+        example: d.example_sentence||d.example||'',
+        etymology: d.etymology||'',
+        ease_factor: d.ease_factor||2.5,
+        repetitions: d.repetitions||0,
+        interval_days: d.interval_days||1
+      };
+    });
+  }catch(e){
+    console.error('[Tryb Nauki] loadDueCards:', e.message);
+    return [];
+  }
+}
+
+function shuffle(arr){
+  for(var i=arr.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=arr[i];arr[i]=arr[j];arr[j]=t;}
+  return arr;
+}
+
+// ── Załaduj kartę ──
+function loadTrybCard(){
+  var card = _trybCards[_trybIdx];
+  if(!card){ showSessionSummary(); return; }
+
+  // Reset stanu
+  _trybHintLevel = 0; _trybHintPenalty = 0;
+  document.getElementById('tryb-q-side').style.display = 'flex';
+  document.getElementById('tryb-q-side').style.flexDirection = 'column';
+  document.getElementById('tryb-q-side').style.alignItems = 'center';
+  document.getElementById('tryb-a-side').style.display = 'none';
+  document.getElementById('tryb-answer-input').value = '';
+  document.getElementById('tryb-hint-text').textContent = '';
+  document.getElementById('tryb-hint-level').textContent = '3';
+  document.getElementById('tryb-feedback').style.opacity = '0';
+  document.getElementById('tryb-story-btn').style.display = 'none';
+  document.getElementById('tryb-story-box').style.display = 'none';
+  document.getElementById('tryb-etymology-wrap').style.display = card.etymology ? 'block' : 'none';
+
+  // Treść karty
+  document.getElementById('tryb-card-emoji').textContent = card.emoji||'📝';
+  document.getElementById('tryb-card-word').textContent = card.word||'';
+  document.getElementById('tryb-card-example').textContent = card.example ? '"'+card.example+'"' : '';
+
+  // Mnemotechnika z localStorage
+  var mnKey = 'mnem_'+encodeURIComponent(card.word||'');
+  document.getElementById('tryb-mnemonic-input').value = localStorage.getItem(mnKey)||'';
+
+  // Postęp
+  document.getElementById('tryb-card-num').textContent = _trybIdx+1;
+  var pct = Math.round(_trybIdx / _trybCards.length * 100);
+  document.getElementById('tryb-progress-bar').style.width = pct+'%';
+  document.getElementById('tryb-session-done').textContent = _trybIdx;
+
+  // Focus
+  setTimeout(function(){ var inp=document.getElementById('tryb-answer-input'); if(inp)inp.focus(); }, 100);
+
+  // Animacja karty
+  var cardEl = document.getElementById('tryb-card');
+  cardEl.style.animation='none';
+  setTimeout(function(){ cardEl.style.animation='cardFlip .3s ease'; }, 10);
+
+  // Minihistoryjka (pokaż jeśli mamy 5+ kart)
+  if(_trybSetCards.length >= 5) document.getElementById('tryb-story-btn').style.display='inline-block';
+}
+
+// ── Sprawdź odpowiedź ──
+function checkAnswer(){
+  var card = _trybCards[_trybIdx];
+  if(!card) return;
+  var userAns = (document.getElementById('tryb-answer-input').value||'').trim().toLowerCase();
+  var correct = (card.translation||'').trim().toLowerCase();
+
+  // Normalizacja — usuń nawiasy, interpunkcję
+  function normalize(s){ return s.replace(/[(),.!?]/g,' ').replace(/\s+/g,' ').trim(); }
+  var userN = normalize(userAns);
+  var correctN = normalize(correct);
+
+  // Sprawdź czy jest w alternatywach (oddzielone '/', ',', 'lub')
+  var alts = correctN.split(/[\/,]|\ lub\ /).map(function(a){ return a.trim(); });
+  var isCorrect = alts.some(function(a){ return userN === a || userN.includes(a) || a.includes(userN); });
+
+  // Literówka — levenshtein
+  var isTypo = false;
+  if(!isCorrect && userAns.length > 0){
+    var bestDist = alts.reduce(function(min,a){ return Math.min(min, levenshtein(userN,a)); }, Infinity);
+    isTypo = bestDist <= 2 && bestDist < correctN.length * 0.3;
+    if(isTypo) isCorrect = true; // zalicz, ale zredukuj ocenę
+  }
+
+  revealAnswer(userAns, isCorrect, isTypo);
+}
+
+function levenshtein(a,b){
+  var m=a.length,n=b.length,dp=[];
+  for(var i=0;i<=m;i++){dp[i]=[i];for(var j=1;j<=n;j++)dp[i][j]=i===0?j:0;}
+  for(var i=1;i<=m;i++)for(var j=1;j<=n;j++)
+    dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+
+function dontKnow(){
+  revealAnswer('', false, false);
+}
+
+function revealAnswer(userAns, isCorrect, isTypo){
+  var card = _trybCards[_trybIdx];
+  _trybSessionStats.total++;
+  if(isCorrect) _trybSessionStats.correct++;
+
+  // Feedback animacja
+  var fb = document.getElementById('tryb-feedback');
+  fb.textContent = isCorrect ? (isTypo?'⚠️':'✅') : '❌';
+  fb.style.animation = 'none';
+  fb.offsetHeight; // reflow
+  fb.style.animation = 'feedbackPop .6s ease forwards';
+
+  // Pokaż stronę odpowiedzi
+  document.getElementById('tryb-q-side').style.display = 'none';
+  document.getElementById('tryb-a-side').style.display = 'flex';
+  document.getElementById('tryb-a-side').style.flexDirection = 'column';
+  document.getElementById('tryb-a-side').style.alignItems = 'center';
+
+  document.getElementById('tryb-card-word-ans').textContent = card.word||'';
+  document.getElementById('tryb-card-answer').textContent = card.translation||'';
+  document.getElementById('tryb-result-icon').textContent = isCorrect ? (isTypo?'⚠️ Literówka':'✅') : '❌';
+
+  var userMsg = '';
+  if(!userAns){ userMsg = 'Nie wpisałeś odpowiedzi'; }
+  else if(isTypo){ userMsg = 'Twoja odpowiedź: "'+userAns+'" — literówka, ale zaliczam!'; }
+  else if(!isCorrect){ userMsg = 'Twoja odpowiedź: "'+userAns+'"'; }
+  document.getElementById('tryb-user-wrote').textContent = userMsg;
+
+  // Etymologia
+  if(card.etymology){
+    document.getElementById('tryb-etymology-text').textContent = card.etymology;
+  }
+
+  // Auto-sugeruj ocenę (literówka = max 3)
+  if(isTypo){
+    // Lekko zaznacz przyciski żeby wskazać max
+    document.querySelectorAll('.tryb-rate-btn').forEach(function(b){
+      if(parseInt(b.dataset.q)>3) b.style.opacity='0.5';
+    });
+  }
+
+  // Jeśli błąd — automatycznie zaznacz 1
+  if(!isCorrect && !isTypo){
+    // Niech użytkownik sam wybierze — ale card dostanie niską ocenę
+  }
+}
+
+// ── Ocena karty ──
+async function rateCard(btnRating){
+  var card = _trybCards[_trybIdx];
+  if(!card) return;
+
+  // Literówka obniża max do 3
+  var isTypo = document.getElementById('tryb-result-icon').textContent.includes('⚠️');
+  var effectiveBtnRating = isTypo ? Math.min(btnRating, 3) : btnRating;
+
+  var quality = qualityMap(effectiveBtnRating, _trybHintPenalty);
+  var newSRS = sm2(card, quality);
+
+  // Zapisz do Supabase
+  await saveSRSProgress(card, newSRS);
+
+  // XP
+  var xpTable = {1:0, 2:3, 3:7, 4:10};
+  var xp = xpTable[effectiveBtnRating]||0;
+  if(_trybChallengeMode) xp = Math.round(xp * 1.25);
+  if((card.ease_factor||2.5) < 1.8) xp *= 2; // mnożnik za trudne
+  _trybSessionStats.xpGained += xp;
+  _trybSessionXPToday += xp;
+
+  // Perfect streak
+  if(effectiveBtnRating === 4){ _trybPerfectStreak++; }
+  else { _trybPerfectStreak = 0; }
+  RewardSystem._state.perfectStreak = Math.max(RewardSystem._state.perfectStreak, _trybPerfectStreak);
+
+  // Aktualizuj XP today w UI
+  document.getElementById('tryb-xp-today').textContent = _trybSessionXPToday;
+
+  // Następna karta
+  _trybIdx++;
+  loadTrybCard();
+}
+
+async function saveSRSProgress(card, newSRS){
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    if(!sess || !card.id) return; // brak id = karta z zestawu lokalnego, nie zapisujemy do word_progress
+    await db.from('word_progress').upsert({
+      user_id: sess.user.id,
+      flashcard_id: card.id,
+      ease_factor: newSRS.ease_factor,
+      repetitions: newSRS.repetitions,
+      interval_days: newSRS.interval_days,
+      next_review: newSRS.next_review
+    }, { onConflict: 'user_id,flashcard_id' });
+  }catch(e){ console.warn('[Tryb Nauki] saveSRS:', e.message); }
+}
+
+// ── Podpowiedzi ──
+function showHint(){
+  var card = _trybCards[_trybIdx];
+  if(!card) return;
+  var ans = card.translation||'';
+  _trybHintLevel++;
+  _trybHintPenalty = Math.min(3, _trybHintLevel);
+
+  var hintText = '';
+  if(_trybHintLevel === 1){ hintText = '📏 Liczba liter: ' + ans.replace(/ /g,'_').length; }
+  else if(_trybHintLevel === 2){ hintText = '🔤 Pierwsza litera: ' + ans[0].toUpperCase() + '...'; }
+  else if(_trybHintLevel >= 3){ hintText = '💡 Pierwsza sylaba: ' + ans.slice(0, Math.ceil(ans.length/3)) + '...'; }
+
+  document.getElementById('tryb-hint-text').textContent = hintText;
+  document.getElementById('tryb-hint-level').textContent = Math.max(0, 3 - _trybHintLevel);
+  if(_trybHintLevel >= 3) document.getElementById('tryb-hint-btn').disabled = true;
+
+  // Zaznacz max ocenę
+  document.querySelectorAll('.tryb-rate-btn').forEach(function(b){
+    var maxAllowed = Math.max(1, 4 - _trybHintPenalty);
+    if(parseInt(b.dataset.q) > maxAllowed) b.style.opacity='0.45';
+    else b.style.opacity='1';
+  });
+}
+
+// ── Mnemotechnika ──
+function saveMnemonic(){
+  var card = _trybCards[_trybIdx];
+  if(!card) return;
+  var val = document.getElementById('tryb-mnemonic-input').value||'';
+  localStorage.setItem('mnem_'+encodeURIComponent(card.word||''), val);
+}
+
+// ── Minihistoryjka ──
+function showMiniStory(){
+  var box = document.getElementById('tryb-story-box');
+  if(box.style.display==='block'){ box.style.display='none'; return; }
+  // Weź pierwsze 5 słów z zestawu i zrób prostą historię
+  var words = _trybSetCards.slice(0,5).map(function(c){ return '<strong style="color:var(--gold)">'+escH(c.word||'')+'</strong>'; });
+  var story = 'W małym miasteczku żył pewien podróżnik. Znał słowo '+words[0]+' i wiedział że oznacza '+escH((_trybSetCards[0]||{}).translation||'')+'. '
+    +'Pewnego dnia spotkał kogoś kto mówił o '+words[1]+'. '
+    +'Razem odkryli '+words[2]+', a potem '+words[3]+' i wreszcie '+words[4]+'. '
+    +'Ta historia połączyła ich na zawsze.';
+  box.innerHTML = '📖 <em>' + story + '</em>';
+  box.style.display = 'block';
+}
+
+// ── Podsumowanie sesji ──
+async function showSessionSummary(){
+  showTrybView('summary');
+  var stats = _trybSessionStats;
+  var timeS = Math.round((Date.now() - stats.startTime) / 1000);
+  var pct = stats.total > 0 ? Math.round(stats.correct/stats.total*100) : 0;
+
+  document.getElementById('sum-cards').textContent = stats.total;
+  document.getElementById('sum-pct').textContent = pct+'%';
+  document.getElementById('sum-xp').textContent = stats.xpGained;
+
+  // Aktualizuj RewardSystem
+  RewardSystem.load();
+  RewardSystem._state.totalCards += stats.total;
+  RewardSystem._state.totalSessions++;
+  RewardSystem.updateStreak();
+  RewardSystem.addXP(stats.xpGained);
+
+  var newBadges = RewardSystem.checkMilestones({cards:stats.total, time:timeS});
+  RewardSystem.save();
+
+  // Pokaż nową odznakę jeśli zdobyto
+  if(newBadges.length){
+    var badge = newBadges[0];
+    document.getElementById('tryb-new-badge-announce').style.display='block';
+    document.getElementById('tryb-new-badge-icon').textContent = badge.icon;
+    document.getElementById('tryb-new-badge-name').textContent = badge.name;
+    document.getElementById('tryb-new-badge-desc').textContent = badge.desc;
+    fireConfetti();
+  } else {
+    document.getElementById('tryb-new-badge-announce').style.display='none';
+  }
+
+  var icon = pct>=80?'🎉':pct>=50?'👍':'💪';
+  document.getElementById('tryb-summary-icon').textContent = icon;
+  document.getElementById('tryb-summary-sub').textContent = pct>=80?'Niesamowita sesja!':pct>=50?'Niezłe, ćwicz dalej!':'Trudne słowa — wróć do nich jutro!';
+
+  updateXPBar();
+  updateStreakBadge();
+}
+
+// ── UI helpers ──
+function updateXPBar(){
+  RewardSystem.load();
+  var s = RewardSystem._state;
+  var xpInLevel = s.xp % 100;
+  document.getElementById('tryb-xp-fill').style.width = xpInLevel+'%';
+  document.getElementById('tryb-xp-label').textContent = s.xp+' XP';
+  document.getElementById('tryb-level-badge').textContent = 'Lv.'+s.level;
+}
+
+function updateStreakBadge(){
+  RewardSystem.load();
+  var el = document.getElementById('tryb-streak-badge');
+  if(el) el.textContent = '🔥 '+(RewardSystem._state.streak||0);
+}
+
+function updateChallengeMode(on){
+  var sl = document.getElementById('tryb-toggle-slider');
+  var kn = document.getElementById('tryb-toggle-knob');
+  if(sl) sl.style.background = on ? 'var(--orange)' : 'rgba(255,255,255,.2)';
+  if(kn) kn.style.left = on ? '25px' : '3px';
+}
+
+function renderBadges(){
+  RewardSystem.load();
+  var defs = RewardSystem.getBadgeDefs();
+  var s = RewardSystem._state;
+  var el = document.getElementById('tryb-badges-row');
+  if(!el) return;
+  el.innerHTML = defs.map(function(d){
+    var earned = s.badges && s.badges[d.id];
+    return '<div class="tryb-badge'+(earned?' earned':'') +'" title="'+d.desc+'">'
+      +'<div class="tryb-badge-icon">'+(earned?d.icon:'🔒')+'</div>'
+      +'<div class="tryb-badge-name">'+d.name+'</div>'
+      +(earned?'':'<div class="tryb-badge-lock">'+d.desc+'</div>')
+      +'</div>';
+  }).join('');
+}
+
+// ── Confetti ──
+function fireConfetti(){
+  var canvas = document.getElementById('tryb-confetti');
+  if(!canvas) return;
+  canvas.style.display='block';
+  canvas.width=window.innerWidth; canvas.height=window.innerHeight;
+  var ctx=canvas.getContext('2d');
+  var pieces=[];
+  for(var i=0;i<120;i++) pieces.push({
+    x:Math.random()*canvas.width, y:-20,
+    w:Math.random()*8+4, h:Math.random()*12+6,
+    color:['#c96a2a','#f5c842','#1a2340','#fff','#e07830'][Math.floor(Math.random()*5)],
+    vx:(Math.random()-0.5)*4, vy:Math.random()*4+2,
+    rot:Math.random()*360, rotV:(Math.random()-0.5)*8
+  });
+  var frames=0;
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    pieces.forEach(function(p){
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot*Math.PI/180);
+      ctx.fillStyle=p.color; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore();
+      p.x+=p.vx; p.y+=p.vy; p.rot+=p.rotV; p.vy+=0.05;
+    });
+    frames++;
+    if(frames<120) requestAnimationFrame(draw);
+    else{ canvas.style.display='none'; ctx.clearRect(0,0,canvas.width,canvas.height); }
+  }
+  draw();
+}
+
+// ── Napraw słówko dnia: język ──
+// Override loadDailyWord żeby NIE robiło fallback do innego języka
+var _origLoadDailyWord = window.loadDailyWord;
+window.loadDailyWord = async function(){
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){showDailyWordFallback();return;}
+    var dailyLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+    var langIdMap={'en':1,'es':2,'jp':3,'nl':4,'de':5,'fr':6};
+    var langId=langIdMap[dailyLang]||1;
+    var pool=[];
+
+    // Tylko słowa z wybranego języka
+    try{
+      var wp_res=await db.from('word_progress')
+        .select('ease_factor,flashcards(word,translation,language_id)')
+        .eq('user_id',sess.user.id)
+        .order('ease_factor',{ascending:true})
+        .limit(200);
+      if(wp_res.data&&wp_res.data.length){
+        pool=wp_res.data.filter(function(r){
+          return r.flashcards&&r.flashcards.word&&r.flashcards.language_id===langId;
+        }).map(function(r){return{word:r.flashcards.word,translation:r.flashcards.translation};});
+      }
+    }catch(e){}
+
+    // Fallback do user_sets — ale filtruj po langId jest niemożliwe, więc bierzemy tylko jeśli pool pusty
+    if(pool.length<2){
+      // Nie masz słów w tym języku — pokaż fallback z właściwym językiem
+      showDailyWordFallback();
+      return;
+    }
+
+    var seed=parseInt(new Date().toISOString().slice(0,10).replace(/-/g,''));
+    var i1=seed%pool.length;
+    var i2=(seed*7+3)%pool.length;
+    if(i1===i2) i2=(i2+1)%pool.length;
+    var card=pool[i1];
+    var card2=pool[i2];
+
+    document.getElementById('dc-word-loading').style.display='none';
+    document.getElementById('dc-word-content').style.display='block';
+    document.getElementById('dc-word-text').textContent=card.word;
+    document.getElementById('dc-word-translation').textContent=card.translation;
+    document.getElementById('dc-word-text2').textContent=card2.word;
+    document.getElementById('dc-word-translation2').textContent=card2.translation;
+
+    var GENERATE_SENTENCE_URL2='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-sentence';
+    function loadSentenceEl2(w,translation,elId){
+      var el=document.getElementById(elId);
+      if(el) el.innerHTML='<span style="color:var(--dim2);font-style:normal;font-size:12px">⏳ Generuję zdanie...</span>';
+      db.from('context_sentences').select('sentence').eq('word',w).eq('language',dailyLang).limit(1).then(function(r){
+        var c=r.data&&(Array.isArray(r.data)?r.data[0]:r.data);
+        if(c&&c.sentence){
+          var s=c.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+          if(el) el.innerHTML='"'+s+'"';
+        } else {
+          db.auth.getSession().then(function(sr){
+            var tok=sr.data&&sr.data.session?sr.data.session.access_token:'';
+            fetch(GENERATE_SENTENCE_URL2,{
+              method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},
+              body:JSON.stringify({word:w,translation:translation,lang:dailyLang,level:'B1'})
+            }).then(function(res){return res.json();}).then(function(d){
+              if(d&&d.sentence){
+                var s=d.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+                if(el) el.innerHTML='"'+s+'"';
+              } else { if(el) el.textContent=''; }
+            }).catch(function(){ if(el) el.textContent=''; });
+          });
+        }
+      }).catch(function(){});
+    }
+    loadSentenceEl2(card.word,card.translation,'dc-word-sentence');
+    loadSentenceEl2(card2.word,card2.translation,'dc-word-sentence2');
+  }catch(e){ showDailyWordFallback(); }
+};
+
+function endSession(){
+  if(_trybSessionStats.total > 0){
+    showSessionSummary();
+  } else {
+    showTrybView('lobby');
+  }
+}
 </script>
