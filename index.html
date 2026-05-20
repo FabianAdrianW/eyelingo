@@ -361,8 +361,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
     <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
     <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
     <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
-    <button class="nav-tab" id="ntab-ranking" onclick="switchTab('ranking',this)">Ranking</button>
-    <button class="nav-tab" id="ntab-tofix" onclick="switchTab('tofix',this)">Zgłoszenia</button>
+
   </div>
 </nav>
 
@@ -1094,6 +1093,12 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
 
 // ── Strony Community i Ranking ──
 function showPage(name){
+  // Stop any ongoing TTS
+  if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  // Stop any audio elements
+  document.querySelectorAll('audio').forEach(function(a){try{a.pause();a.currentTime=0;}catch(e){}});
+  // Update URL hash
+  try{history.replaceState(null,'','#'+name);}catch(e){}
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const pg=document.getElementById('page-'+name);
   if(pg){pg.classList.add('active');window.scrollTo(0,0);}
@@ -1664,11 +1669,28 @@ async function loadRanking(){
 (async()=>{
   const{data:{session}}=await db.auth.getSession();
   if(session){await loadDashboard();showPage('dash')}
-  // Obsługa parametru ?page=
+  // Obsługa parametru ?page= i hash routing
   const urlParams=new URLSearchParams(window.location.search);
   const pg=urlParams.get('page');
-  if(pg==='community'){showPage('community')}
-  else if(pg==='ranking'){showPage('ranking')}
+  const hash=window.location.hash.slice(1);
+  const validHashes=['home','dash','community','daily','challenge','chat','teacher','strefa','odkryj','tutors','ranking','tofix','lyrics'];
+
+  // Check session and redirect
+  db.auth.getSession().then(function(res){
+    var session=res.data&&res.data.session;
+    if(session){
+      loadDashboard().then(function(){
+        // Restore from hash or query param
+        var target = hash&&validHashes.includes(hash)?hash : pg==='community'?'community':pg==='ranking'?'ranking':'dash';
+        showPage(target);
+      });
+    } else {
+      // Not logged in — go to hash if valid and public, else home
+      var publicPages=['home','tutors'];
+      if(hash&&publicPages.includes(hash)) showPage(hash);
+      else if(pg==='community') showPage('community');
+    }
+  });
 })();
 </script>
 
@@ -2829,17 +2851,44 @@ async function addVocabToFlashcards(words, topic, lang){
   </div>
 
   <!-- Mini czytanka -->
-  <div class="daily-card" id="dc-read" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+  <div class="daily-card" id="dc-read" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;grid-column:1/-1">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
       <span style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Mini czytanka</span>
-      <span style="font-size:11px;color:var(--dim2);margin-left:auto" id="dc-read-time">3 min</span>
-      <span id="dc-read-done" style="display:none;font-size:11px;color:#16a34a;font-weight:600">✓ Ukończone</span>
+      <span style="font-size:11px;color:var(--dim2)" id="dc-read-time">3 min czytania</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <button id="dc-read-audio-btn" onclick="toggleArticleAudio()" style="display:none;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--paper);font-size:12px;cursor:pointer;color:var(--dim2)">🔊 Czytaj</button>
+        <span id="dc-read-done" style="display:none;font-size:11px;color:#16a34a;font-weight:600">✓ Ukończone</span>
+      </div>
     </div>
-    <div id="dc-read-loading" style="color:var(--dim2);font-size:13px">Ładowanie...</div>
-    <div id="dc-read-content" style="display:none;display:flex;flex-direction:column;flex:1">
-      <div id="dc-read-title" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:10px"></div>
-      <div id="dc-read-body" style="font-size:13px;color:var(--dim);line-height:1.8;margin-bottom:16px;overflow-y:auto;max-height:200px;padding-right:4px"></div>
-      <button class="btn btn-orange" onclick="dailyReadDone()" id="dc-read-btn" style="font-size:13px;padding:9px 20px;margin-top:auto">Przeczytałem ✓</button>
+    <div id="dc-read-loading" style="color:var(--dim2);font-size:13px;padding:20px 0">Ładowanie...</div>
+    <div id="dc-read-content" style="display:none">
+      <!-- Panel boczny layout -->
+      <div style="display:grid;grid-template-columns:1fr 280px;gap:20px;align-items:start">
+        <!-- Tekst główny -->
+        <div>
+          <div id="dc-read-title" style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:14px;line-height:1.3"></div>
+          <div id="dc-read-body" style="font-size:15px;color:var(--dim);line-height:1.9;letter-spacing:.01em"></div>
+          <button class="btn btn-orange" onclick="dailyReadDone()" id="dc-read-btn" style="font-size:13px;padding:9px 20px;margin-top:20px">Przeczytałem ✓</button>
+        </div>
+        <!-- Panel boczny: tłumaczenia -->
+        <div style="position:sticky;top:100px">
+          <div style="background:var(--paper2);border-radius:12px;border:1px solid var(--border);overflow:hidden">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Tłumaczenie</div>
+            <div id="dc-read-sidebar" style="padding:14px;min-height:80px">
+              <div style="font-size:13px;color:var(--dim2);line-height:1.6">
+                👆 Najedź na słowo aby zobaczyć tłumaczenie<br>
+                🖱️ Kliknij zdanie aby przetłumaczyć całe
+              </div>
+            </div>
+          </div>
+          <!-- Panel dolny — aktywne słowo -->
+          <div id="dc-word-panel" style="display:none;margin-top:10px;background:#fff;border-radius:12px;border:1.5px solid var(--orange);padding:14px">
+            <div id="dc-word-panel-word" style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:3px"></div>
+            <div id="dc-word-panel-tr" style="font-size:14px;color:var(--orange);font-weight:600;margin-bottom:8px"></div>
+            <div id="dc-word-panel-ctx" style="font-size:12px;color:var(--dim2);line-height:1.5"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2896,6 +2945,19 @@ async function addVocabToFlashcards(words, topic, lang){
       </div>
     </div>
     <div style="margin-top:12px;font-size:12px;color:rgba(255,255,255,.4)" id="ch-reward"></div>
+  </div>
+
+  <!-- Zestaw fiszek do wyzwania -->
+  <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;margin-bottom:20px" id="ch-set-section">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:2px">📦 Gotowy zestaw do wyzwania</div>
+        <div style="font-size:13px;color:var(--dim2)" id="ch-set-desc">Ładowanie zestawu...</div>
+      </div>
+      <button id="ch-import-btn" class="btn btn-orange" onclick="importChallengeSet()" style="display:none;font-size:13px;padding:9px 20px">+ Importuj do Moich zestawów</button>
+    </div>
+    <div id="ch-set-preview" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+    <div id="ch-set-status" style="font-size:12px;color:var(--dim2)"></div>
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -3193,6 +3255,31 @@ async function loadDailyContent(){
   updateDailyProgress();
 }
 
+function showDailyWordFallback(){
+  var lang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+  var fallbacks={
+    en:[{w:'serendipity',t:'szczęśliwy traf',s:'It was pure **serendipity** that we met.'},{w:'endeavor',t:'dążenie, staranie',s:'His **endeavor** paid off in the end.'}],
+    es:[{w:'madrugada',t:'świt, wczesny ranek',s:'Llegué en la **madrugada**.'},{w:'añoranza',t:'tęsknota',s:'Siento **añoranza** por mi hogar.'}],
+    nl:[{w:'gezellig',t:'przytulny, miły',s:'Het is zo **gezellig** hier.'},{w:'uitwaaien',t:'wyjść na świeże powietrze',s:'Ik ga even **uitwaaien**.'}],
+    jp:[{w:'木漏れ日',t:'światło przebijające przez liście',s:'**木漏れ日**が美しいですね。'},{w:'侘び寂び',t:'piękno niedoskonałości',s:'**侘び寂び**の美学が好きです。'}],
+    de:[{w:'Fernweh',t:'tęsknota za podróżami',s:'Ich habe starkes **Fernweh**.'},{w:'Weltschmerz',t:'ból egzystencjalny',s:'Er leidet an **Weltschmerz**.'}],
+    fr:[{w:'depaysement',t:'uczucie bycia za granica',s:'Je aime le depaysement des voyages.'},{w:'flaner',t:'beztrosko spacerowac',s:'Je aime flaner dans les rues de Paris.'}]
+  };
+  var words=fallbacks[lang]||fallbacks['en'];
+  document.getElementById('dc-word-loading').style.display='none';
+  document.getElementById('dc-word-content').style.display='block';
+  document.getElementById('dc-word-text').textContent=words[0].w;
+  document.getElementById('dc-word-translation').textContent=words[0].t;
+  var s1=words[0].s.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+  document.getElementById('dc-word-sentence').innerHTML='"'+s1+'"';
+  if(words[1]){
+    document.getElementById('dc-word-text2').textContent=words[1].w;
+    document.getElementById('dc-word-translation2').textContent=words[1].t;
+    var s2=words[1].s.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+    document.getElementById('dc-word-sentence2').innerHTML='"'+s2+'"';
+  }
+}
+
 async function loadDailyWord(){
   try{
     var sess=(await db.auth.getSession()).data.session;
@@ -3342,6 +3429,8 @@ async function loadDailyRead(){
 
 // Buduje HTML artykułu z klikalnymi zdaniami i hoverowanymi słowami
 function buildArticleHTML(text, lang){
+  // Override hover to use sidebar instead of tooltip
+  window._articleLang = lang;
   // Podziel na zdania
   var sentences=text.match(/[^.!?]+[.!?]+/g)||[text];
   return sentences.map(function(sent,idx){
@@ -3381,6 +3470,13 @@ document.addEventListener('mouseout',function(e){
 
 var _ttCache={};
 async function showWordTooltip(el, word, lang){
+  // If reading article, use sidebar instead of tooltip
+  var sidebar=document.getElementById('dc-read-sidebar');
+  var wordPanel=document.getElementById('dc-word-panel');
+  if(sidebar){
+    sidebar.innerHTML='<div style="font-size:11px;color:var(--dim2);margin-bottom:4px">Tłumaczę...</div>';
+    if(wordPanel) wordPanel.style.display='none';
+  }
   var tt=document.getElementById('hover-tooltip');
   if(!tt)return;
   var rect=el.getBoundingClientRect();
@@ -3416,6 +3512,9 @@ async function showWordTooltip(el, word, lang){
 // Analiza zdania po kliknięciu
 var _sentAnalyzing=false;
 async function analyzeSentence(el, sentence){
+  // Update sidebar with sentence analysis
+  var sidebar=document.getElementById('dc-read-sidebar');
+  if(sidebar) sidebar.innerHTML='<div style="font-size:12px;color:var(--dim2)">Tłumaczę zdanie...</div>';
   if(_sentAnalyzing)return;
   _sentAnalyzing=true;
   // Zaznacz zdanie
@@ -3661,6 +3760,8 @@ function updateDailyProgress(){
 // ═══════════════════════════════════════
 var _challengeTimer=null;
 
+var _challengeSetCache = null;
+
 async function initChallenge(){
   clearInterval(_challengeTimer);
   // Oblicz koniec tygodnia (niedziela 23:59)
@@ -3700,6 +3801,121 @@ async function initChallenge(){
   loadChallengeRanking();
   document.getElementById('ch-rank-update').textContent='aktualizuje się co 5 min';
   setTimeout(loadChallengeRanking, 300000);
+  loadChallengeSet(ch);
+}
+
+async function loadChallengeSet(ch){
+  var setDesc=document.getElementById('ch-set-desc');
+  var setPreview=document.getElementById('ch-set-preview');
+  var importBtn=document.getElementById('ch-import-btn');
+  var setStatus=document.getElementById('ch-set-status');
+  if(!setDesc)return;
+
+  // Check if set already exists in Supabase (public set for this challenge)
+  try{
+    var {data:existing}=await db.from('user_sets')
+      .select('id,name,user_set_cards(word,translation)')
+      .eq('name','🏆 '+ch.name)
+      .eq('is_public',true)
+      .limit(1);
+    var ex=existing&&existing[0];
+    if(ex&&ex.user_set_cards&&ex.user_set_cards.length>=10){
+      renderChallengeSet(ex, ch);
+      return;
+    }
+  }catch(e){}
+
+  // Check cache
+  if(_challengeSetCache&&_challengeSetCache.name===ch.name){
+    renderChallengeSet(_challengeSetCache, ch);
+    return;
+  }
+
+  // Generate set via AI
+  if(setDesc) setDesc.textContent='Generuję zestaw '+ch.goal+' słówek...';
+  if(setStatus) setStatus.textContent='Pierwsze wejście — AI generuje zestaw raz dla wszystkich użytkowników';
+
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var res=await fetch(AI_PROXY_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({
+        messages:[{role:'user',content:'Generate exactly '+ch.goal+' English vocabulary flashcards about "'+ch.topic+'". Return ONLY JSON array: [{"word":"travel","translation":"podróżować"},...]  No other text. '+ch.goal+' items required.'}],
+        max_tokens:3000
+      })
+    });
+    var data=await res.json();
+    var raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||'[]';
+    var clean=raw.replace(/```json|```/g,'').trim();
+    var cards=null;
+    try{cards=JSON.parse(clean);}catch(e){var m=clean.match(/\[[\s\S]+\]/);if(m)try{cards=JSON.parse(m[0]);}catch(e2){}}
+    if(!cards||!cards.length)throw new Error('Brak fiszek');
+
+    // Save as public set (shared for all)
+    if(sess){
+      var {data:newSet}=await db.from('user_sets').insert({
+        user_id:sess.user.id,name:'🏆 '+ch.name,is_public:true
+      }).select('id').single();
+      if(newSet){
+        var rows=cards.map(function(c,i){return{set_id:newSet.id,word:c.word||c.front,translation:c.translation||c.back,sort_order:i};});
+        await db.from('user_set_cards').insert(rows);
+        var setObj={id:newSet.id,name:'🏆 '+ch.name,user_set_cards:rows};
+        _challengeSetCache=setObj;
+        renderChallengeSet(setObj,ch);
+        return;
+      }
+    }
+    // No session - show preview only
+    var setObj={id:null,name:'🏆 '+ch.name,user_set_cards:cards.map(function(c){return{word:c.word,translation:c.translation};})};
+    _challengeSetCache=setObj;
+    renderChallengeSet(setObj,ch);
+  }catch(e){
+    if(setDesc) setDesc.textContent='Błąd ładowania zestawu: '+e.message;
+    if(setStatus) setStatus.textContent='Zaloguj się i odśwież aby wygenerować zestaw';
+  }
+}
+
+function renderChallengeSet(set, ch){
+  var setDesc=document.getElementById('ch-set-desc');
+  var setPreview=document.getElementById('ch-set-preview');
+  var importBtn=document.getElementById('ch-import-btn');
+  var setStatus=document.getElementById('ch-set-status');
+  var cards=set.user_set_cards||[];
+  if(setDesc) setDesc.textContent=cards.length+' słówek gotowych do nauki · '+ch.topic;
+  if(setPreview){
+    setPreview.innerHTML=cards.slice(0,12).map(function(c){
+      return'<div style="padding:5px 12px;background:var(--paper2);border-radius:20px;border:1px solid var(--border);font-size:12px;color:var(--navy)">'
+        +'<span style="font-weight:600">'+c.word+'</span>'
+        +'<span style="color:var(--dim2);margin-left:6px">'+c.translation+'</span>'
+        +'</div>';
+    }).join('')+(cards.length>12?'<div style="font-size:12px;color:var(--dim2);padding:5px">+'+( cards.length-12)+' więcej...</div>':'');
+  }
+  if(importBtn) importBtn.style.display='flex';
+  if(setStatus) setStatus.textContent='Bezpłatny zestaw dla wszystkich użytkowników';
+  window._challengeSetToImport=set;
+}
+
+async function importChallengeSet(){
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess){showToast('Zaloguj się aby importować','error');return;}
+  var set=window._challengeSetToImport;
+  if(!set||!set.user_set_cards||!set.user_set_cards.length){showToast('Brak zestawu do importu','error');return;}
+  var btn=document.getElementById('ch-import-btn');
+  if(btn){btn.disabled=true;btn.textContent='Importuję...';}
+  try{
+    var {data:newSet}=await db.from('user_sets').insert({
+      user_id:sess.user.id,name:set.name+' (mój)',is_public:false
+    }).select('id').single();
+    var rows=set.user_set_cards.map(function(c,i){return{set_id:newSet.id,word:c.word,translation:c.translation,sort_order:i};});
+    await db.from('user_set_cards').insert(rows);
+    showToast('Zestaw zaimportowany do Materiałów! ✅','success');
+    if(btn){btn.textContent='✓ Zaimportowano';btn.disabled=true;}
+  }catch(e){
+    showToast('Błąd importu: '+e.message,'error');
+    if(btn){btn.disabled=false;btn.textContent='+ Importuj do Moich zestawów';}
+  }
 }
 
 // ═══════════════════════════════════════
@@ -4431,6 +4647,9 @@ async function initTutors(){
 }
 
 async function loadTutors(){
+  var listEl=document.getElementById('tutors-list');
+  if(!listEl)return;
+  listEl.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Ładowanie lektorów...</div>';
   try{
     var{data:tutors}=await db.from('tutors')
       .select('*').eq('is_active',true)
@@ -4438,7 +4657,8 @@ async function loadTutors(){
     _allTutors=tutors||[];
     renderTutors(_allTutors);
   }catch(e){
-    document.getElementById('tutors-list').innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Błąd ładowania lektorów</div>';
+    var el2=document.getElementById('tutors-list');
+    if(el2) el2.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Błąd: '+e.message+'</div>';
   }
 }
 
@@ -4559,6 +4779,9 @@ async function viewTutor(tutorId){
       return '<div style="display:grid;grid-template-columns:80px 1fr;gap:8px;font-size:13px;padding:4px 0"><span style="font-weight:600;color:var(--navy)">'+DAYS_PL[i]+'</span><span style="color:var(--orange)">'+day.from+' – '+day.to+'</span></div>';
     }).join('')
     +'</div></div>'
+
+    // Wideo prezentacja
+    +(t.video_url?'<div style="margin-bottom:20px"><div style="font-size:12px;font-weight:700;color:var(--dim2);margin-bottom:8px">VIDEOPREZENTACJA</div><a href="'+t.video_url+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:var(--paper2);border-radius:10px;font-size:13px;color:var(--orange);font-weight:600;border:1px solid var(--border)">▶️ Obejrzyj prezentację</a></div>':'')
 
     // Certyfikaty
     +(certs.length?'<div style="margin-bottom:20px"><div style="font-size:12px;font-weight:700;color:var(--dim2);margin-bottom:8px">CERTYFIKATY</div>'
@@ -5237,20 +5460,20 @@ async function loadChallengeRanking(){
       <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px">Jak długa lekcja?</div>
       <div style="font-size:13px;color:var(--dim2);margin-bottom:16px">Możesz zmienić przed każdą lekcją</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div class="teacher-opt-card length-card" onclick="selectTeacherLength('micro',this)">
+        <div class="teacher-opt-card length-card" data-length="micro" onclick="selectTeacherLength('micro',this)">
           <div style="font-size:28px">⚡</div>
           <div style="font-weight:700;color:var(--navy);margin:8px 0 4px">Mikro</div>
           <div style="font-size:12px;color:#16a34a;font-weight:600;margin-bottom:4px">5-10 minut</div>
           <div style="font-size:11px;color:var(--dim2);line-height:1.5">3 słówka, jedno ćwiczenie, jedna głosówka. Idealne na co dzień.</div>
         </div>
-        <div class="teacher-opt-card length-card" onclick="selectTeacherLength('standard',this)" style="border-color:var(--orange);background:#faeeda">
+        <div class="teacher-opt-card length-card" data-length="standard" onclick="selectTeacherLength('standard',this)" style="border-color:var(--orange);background:#faeeda">
           <div style="font-size:28px">📚</div>
           <div style="font-weight:700;color:var(--navy);margin:8px 0 4px">Standardowa</div>
           <div style="font-size:12px;color:var(--orange);font-weight:600;margin-bottom:4px">15-20 minut</div>
           <div style="font-size:11px;color:var(--dim2);line-height:1.5">6 słówek, gramatyka, ćwiczenia, dialog. Prawdziwa lekcja.</div>
           <div style="font-size:10px;background:var(--orange);color:#fff;padding:2px 8px;border-radius:10px;margin-top:6px;display:inline-block">Zalecana</div>
         </div>
-        <div class="teacher-opt-card length-card" onclick="selectTeacherLength('intensive',this)">
+        <div class="teacher-opt-card length-card" data-length="intensive" onclick="selectTeacherLength('intensive',this)">
           <div style="font-size:28px">🚀</div>
           <div style="font-weight:700;color:var(--navy);margin:8px 0 4px">Intensywna</div>
           <div style="font-size:12px;color:#7c3aed;font-weight:600;margin-bottom:4px">30+ minut</div>
@@ -5412,8 +5635,20 @@ function selectTeacherLength(length, el){
     c.classList.remove('selected');
     c.style.borderColor='var(--border)';
     c.style.background='var(--paper)';
+    c.style.color='var(--navy)';
   });
-  if(el){ el.classList.add('selected'); }
+  // Find by data or by passed element
+  var target = el || document.querySelector('.length-card[data-length="'+length+'"]');
+  if(!target){
+    document.querySelectorAll('.length-card').forEach(function(c){
+      if(c.textContent.includes(length==='micro'?'Mikro':length==='standard'?'Standardowa':'Intensywna')) target=c;
+    });
+  }
+  if(target){
+    target.classList.add('selected');
+    target.style.borderColor='var(--orange)';
+    target.style.background='#faeeda';
+  }
   checkTeacherReady();
 }
 
@@ -5428,8 +5663,9 @@ async function startTeacherFlow(){
 
   // Sprawdź czy user ma już ewaluację dla tego języka
   try{
-    var {data:evalData} = await db.from('agent_evaluations')
-      .select('*').eq('user_id',sess.user.id).eq('language',_teacherLang).single();
+    var evalRes = await db.from('agent_evaluations')
+      .select('*').eq('user_id',sess.user.id).eq('language',_teacherLang).limit(1);
+    var evalData = evalRes.data&&evalRes.data.length?evalRes.data[0]:null;
     if(evalData){
       _teacherLevel = evalData.level_detected;
       // Załaduj poprzednią lekcję
@@ -5532,13 +5768,23 @@ function showEvalQuestion(idx){
     + '<div style="font-size:16px;font-weight:600;color:var(--navy);margin-bottom:16px">'+q.question+'</div>'
     + '<div style="display:flex;flex-direction:column;gap:8px" id="eval-opts">'
     + q.options.map(function(opt,i){
-        return '<div class="exercise-opt" id="eval-opt-'+i+'" onclick="answerEval('+i+','+q.correct+','+JSON.stringify(q.explanation||'').replace(/'/g,"&#39;")+','+idx+')">'
+        return '<div class="exercise-opt" id="eval-opt-'+i+'" data-optidx="'+i+'">'
           + '<span style="width:26px;height:26px;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">'+String.fromCharCode(65+i)+'</span>'
           + opt+'</div>';
       }).join('')
     + '</div>'
     + '<div id="eval-explain" style="display:none;margin-top:12px;padding:12px;background:var(--paper2);border-radius:8px;font-size:13px;color:var(--dim);line-height:1.6"></div>'
     + '</div>';
+  // Attach handlers after DOM update
+  setTimeout(function(){
+    var opts=document.querySelectorAll('#eval-opts .exercise-opt');
+    opts.forEach(function(opt){
+      opt.onclick=function(){
+        var chosen=parseInt(this.dataset.optidx);
+        answerEval(chosen, q.correct, q.explanation||'', idx);
+      };
+    });
+  },50);
 }
 
 var _evalAnsweredCurrent = false;
