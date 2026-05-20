@@ -2064,16 +2064,30 @@ async function loadStrefaCard(){
 }
 
 async function loadContextSentence(word, translation, lang, level){
-  // Sprawdź cache
+  const scEl=document.getElementById('sc-sentence');
+
+  // Sprawdź cache - tylko jeśli nie starsze niż 30 dni
   try{
     const{data:cached}=await db.from('context_sentences')
-      .select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).limit(1);
+      .select('sentence,translation,search_word,created_at')
+      .eq('word',word).eq('language',lang).eq('level',level).limit(1);
     const c=Array.isArray(cached)?cached[0]:cached;
-    if(c?.sentence){renderSentence(word,c.sentence,c.translation,c.search_word||word);return;}
-  }catch(e){}
+    if(c?.sentence){
+      // Sprawdź czy cache nie jest zbyt stary
+      const age=c.created_at?Date.now()-new Date(c.created_at).getTime():0;
+      const thirtyDays=30*24*3600*1000;
+      if(age<thirtyDays){
+        renderSentence(word,c.sentence,c.translation,c.search_word||word);
+        return;
+      }
+      // Stary cache - usuń i regeneruj
+      try{await db.from('context_sentences').delete().eq('word',word).eq('language',lang).eq('level',level);}catch(e){}
+    }
+  }catch(e){console.warn('[cache]',e.message);}
 
   // Wywołaj Edge Function
   try{
+    if(scEl) scEl.innerHTML='<div class="strefa-loading">🤖 Gemini generuje zdanie...</div>';
     const sess=(await db.auth.getSession()).data.session;
     const tok=sess?.access_token||'';
     const res=await fetch(GENERATE_SENTENCE_URL,{
@@ -2081,21 +2095,33 @@ async function loadContextSentence(word, translation, lang, level){
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
       body:JSON.stringify({word,translation,lang,level})
     });
-    if(!res.ok) throw new Error('HTTP '+res.status+': '+await res.text());
-    const ct=res.headers.get('content-type')||'';
-    if(!ct.includes('json')) throw new Error('Not JSON response');
-    const d=await res.json();
+    const rawText=await res.text();
+    if(!res.ok){
+      console.error('[generate-sentence] HTTP',res.status,rawText);
+      throw new Error('HTTP '+res.status);
+    }
+    let d;
+    try{d=JSON.parse(rawText);}catch(pe){
+      console.error('[generate-sentence] JSON parse error:',rawText.slice(0,200));
+      throw new Error('Invalid JSON');
+    }
     if(d.sentence&&d.translation){
-      try{await db.from('context_sentences').upsert({word,language:lang,level,sentence:d.sentence,translation:d.translation},{onConflict:'word,language,level'});}catch(e){}
+      try{
+        await db.from('context_sentences').upsert(
+          {word,language:lang,level,sentence:d.sentence,translation:d.translation,search_word:d.search_word||word,created_at:new Date().toISOString()},
+          {onConflict:'word,language,level'}
+        );
+      }catch(e){console.warn('[cache write]',e.message);}
       renderSentence(word,d.sentence,d.translation,d.search_word||word);
       return;
     }
-    throw new Error('Missing sentence/translation in response');
+    throw new Error('Brak sentence/translation w odpowiedzi: '+JSON.stringify(d).slice(0,100));
   }catch(e){
-    console.error('[Gemini]',e.message);
-    // Fallback
-    const fb=`She said **${word}** and smiled.`;
-    const fbTr=`Powiedziała "${translation}" i uśmiechnęła się.`;
+    console.error('[generate-sentence FAIL]',e.message);
+    // Fallback - pokaż słowo bez zdania AI
+    const langMap={en:'angielski',es:'hiszpański',nl:'holenderski',jp:'japoński'};
+    const fb='**'+word+'** — '+translation;
+    const fbTr='(zdanie AI niedostępne — '+langMap[lang]+', '+level+')';
     renderSentence(word,fb,fbTr,word);
   }
 }
@@ -3032,37 +3058,58 @@ function showDailyWordFallback(){
 }
 
 async function loadDailyRead(){
+  var dLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+  var topics={en:['interesting science fact','unusual animal behavior','fascinating history','space exploration','human psychology'],es:['hecho cientifico curioso','historia fascinante','naturaleza increible'],nl:['interessant wetenschappelijk feit','bijzondere geschiedenis'],jp:['omoshiroi kagaku no jijitsu','fushigina dobutsu no kodo']};
+  var topicArr=topics[dLang]||topics['en'];
+  var todayIdx=new Date().getDay()%topicArr.length;
+  var topic=topicArr[todayIdx];
+  var cacheKey='daily_article_'+dLang+'_'+new Date().toISOString().slice(0,10);
+
+  // Cache w localStorage - generuj tylko raz dziennie
+  try{
+    var cached=localStorage.getItem(cacheKey);
+    if(cached){
+      var art=JSON.parse(cached);
+      document.getElementById('dc-read-loading').style.display='none';
+      document.getElementById('dc-read-content').style.display='block';
+      document.getElementById('dc-read-title').textContent=art.title||'Daily Read';
+      document.getElementById('dc-read-body').innerHTML=art.body||'';
+      var wc=Math.ceil((art.body||'').split(' ').length/200);
+      document.getElementById('dc-read-time').textContent=Math.max(1,wc)+' min';
+      return;
+    }
+  }catch(e){}
+
   try{
     var sess=(await db.auth.getSession()).data.session;
     var tok=sess?sess.access_token:'';
-    var ARTICLE_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
-    var dLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
-    var topics={en:['interesting science fact','unusual animal behavior','fascinating history','space exploration','human psychology'],es:['hecho científico curioso','historia fascinante','naturaleza increíble'],nl:['interessant wetenschappelijk feit','bijzondere geschiedenis'],jp:['面白い科学的事実','不思議な動物の行動']};
-    var topicArr=topics[dLang]||topics['en'];
-    var topic=topicArr[new Date().getDay()%topicArr.length];
-    var res=await fetch(ARTICLE_URL,{
+    var res=await fetch(GENERATE_ARTICLE_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
       body:JSON.stringify({topic:topic,lang:dLang,level:'B1'})
     });
     if(res.status===429)throw new Error('rate_limit');
-    if(!res.ok)throw new Error();
+    if(!res.ok)throw new Error('HTTP '+res.status);
     var d=await res.json();
+    var title=d.title||'Daily Read';
+    var body=d.content||d.text||'';
+    try{localStorage.setItem(cacheKey,JSON.stringify({title:title,body:body}));}catch(e){}
     document.getElementById('dc-read-loading').style.display='none';
     document.getElementById('dc-read-content').style.display='block';
-    document.getElementById('dc-read-title').textContent=d.title||'Daily Read';
-    document.getElementById('dc-read-body').innerHTML=d.content||d.text||'';
-    var words=Math.ceil((d.content||d.text||'').split(' ').length/200);
-    document.getElementById('dc-read-time').textContent=Math.max(1,words)+' min';
+    document.getElementById('dc-read-title').textContent=title;
+    document.getElementById('dc-read-body').innerHTML=body;
+    var wc2=Math.ceil(body.split(' ').length/200);
+    document.getElementById('dc-read-time').textContent=Math.max(1,wc2)+' min';
   }catch(e){
     document.getElementById('dc-read-loading').style.display='none';
     document.getElementById('dc-read-content').style.display='block';
-    document.getElementById('dc-read-title').textContent='Why do cats purr?';
-    var isRateLimit=e.message==='rate_limit';
-    document.getElementById('dc-read-title').textContent=isRateLimit?'Limit API osiągnięty':'Ciekawostka dnia';
-    document.getElementById('dc-read-body').textContent=isRateLimit?'Generator artykułów chwilowo niedostępny (limit Gemini API). Wróć za kilka minut lub przejdź do Strefy Nauki.':'Koty mruczą z różnych powodów — nie tylko gdy są zadowolone. Naukowcy odkryli, że częstotliwość wibracji kociego mruczenia (25–150 Hz) może wspomagać gojenie kości i tkanek. Kiedy kot układa się obok Ciebie i mruczy, może dosłownie pomagać Ci się lepiej czuć.';
+    var isLimit=e.message==='rate_limit';
+    document.getElementById('dc-read-title').textContent=isLimit?'Sprobuj za chwile':'Ciekawostka dnia';
+    var fallbacks={en:'Cats purr not just when content. Scientists found that purring vibrations (25-150 Hz) can promote healing in bones and tissues — your cat might literally be helping you feel better.',es:'Los gatos ronronean no solo cuando estan contentos. Los cientificos descubrieron que las vibraciones del ronroneo pueden promover la curacion de huesos.',nl:'Katten spinnen niet alleen als ze tevreden zijn. Wetenschappers ontdekten dat de trillingen botten en weefsels kunnen helpen genezen.',jp:'Neko ga nodo wo narasu no wa manzoku shite iru toki dake dewa arimasen.'};
+    document.getElementById('dc-read-body').textContent=isLimit?'Generator przeciazony (limit Gemini API). Wróc za kilka minut.':fallbacks[dLang]||fallbacks['en'];
   }
 }
+
 
 async function loadDailyQuiz(){
   try{
@@ -3465,7 +3512,12 @@ async function chatSend(){
     showChatHints();
   }catch(e){
     typing.remove();
-    appendChatMsg('ai','Ups, coś poszło nie tak. Spróbuj ponownie.');
+    console.error('[AI Partner]',e);
+    var errMsg='Błąd połączenia z AI. ';
+    if(e.message&&e.message.includes('CORS')) errMsg+='Problem z CORS - sprawdz czy funkcja ai-proxy jest wdrozona i ma wylaczony JWT.';
+    else if(e.message&&e.message.includes('fetch')) errMsg+='Nie można połączyć z serwerem.';
+    else errMsg+=e.message||'Spróbuj ponownie.';
+    appendChatMsg('ai',errMsg);
   }
   btn.disabled=false;
 }
@@ -3518,7 +3570,21 @@ async function analyzeLyrics(){
     var parsed=JSON.parse(clean);
     renderLyricsResult(parsed, title, text);
   }catch(e){
-    alert('Błąd analizy: '+e.message+'. Spróbuj ponownie.');
+    console.error('[Lyrics]',e);
+    var msg='Błąd analizy: '+e.message;
+    if(e.message&&(e.message.includes('CORS')||e.message.includes('fetch'))){
+      msg='Nie można połączyć z AI. Sprawdź czy funkcja ai-proxy (super-endpoint) jest aktywna w Supabase.';
+    }
+    document.getElementById('lyrics-result').style.display='none';
+    document.getElementById('lyrics-input-panel').style.display='block';
+    var errEl=document.getElementById('lyrics-error');
+    if(!errEl){
+      errEl=document.createElement('div');
+      errEl.id='lyrics-error';
+      errEl.style.cssText='color:#c33;font-size:13px;margin-top:10px;padding:10px;background:#fcebeb;border-radius:8px';
+      document.getElementById('lyrics-input-panel').appendChild(errEl);
+    }
+    errEl.textContent=msg;
   }
   btn.disabled=false; btn.textContent='🎵 Analizuj z AI';
 }
