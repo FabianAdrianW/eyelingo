@@ -17,9 +17,7 @@ window.showToast=showToast;
 const SUPABASE_URL='https://sntlgkhktscezxpxrchl.supabase.co';
 const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const DOWNLOAD_URL='#';
-const{createClient}
-window.showToast=showToast;
-=supabase;
+const{createClient}=supabase;
 const db=createClient(SUPABASE_URL,SUPABASE_KEY);
 
 // ── API constants ──

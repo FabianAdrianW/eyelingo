@@ -710,7 +710,7 @@ function renderInlineQuizStep(step){
       +'<div style="font-size:20px;font-weight:800;color:var(--navy);font-family:Syne,sans-serif;margin-bottom:14px">'+target.w+'</div>'
       +'<div style="display:flex;flex-direction:column;gap:6px" id="iq-opts">';
     opts.forEach(function(o){
-      html+='<button style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:13px;cursor:pointer;text-align:left;transition:.15s;font-family:'DM Sans',sans-serif" onclick="checkInlineOpt(this,''+o.replace(/'/g,"\'")+'')">' +o+'</button>';
+      html+='<button style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:13px;cursor:pointer;text-align:left" onclick="checkInlineOpt(this,this.textContent)">'+o+'</button>';
     });
     html+='</div>';
     box.innerHTML=html;
@@ -733,6 +733,7 @@ function renderInlineQuizStep(step){
 }
 
 function checkInlineOpt(btn, chosen){
+  chosen=chosen||btn.textContent||'';
   var target=_inlineQuizState.words[0];
   var isOk=chosen.trim().toLowerCase()===target.t.trim().toLowerCase();
   document.querySelectorAll('#iq-opts button').forEach(function(b){
