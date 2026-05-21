@@ -1045,7 +1045,7 @@ function updateNav(li,email){
   const tabs=document.getElementById('nav-tabs');
   if(li){
     const initials=(email||'?').substring(0,2).toUpperCase();
-    n.innerHTML=`<button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="showPage('dash')">Panel</button><div class="nav-avatar" onclick="showPage('dash')" title="${email}">${initials}</div><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="logout()">Wyloguj</button>`;
+    n.innerHTML=`<button id="chat-nav-btn" onclick="toggleChatPanel()" title="Wiadomości" style="position:relative;background:transparent;border:1.5px solid rgba(255,255,255,.2);border-radius:100px;padding:7px 12px;cursor:pointer;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:6px;font-size:13px;transition:.2s"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span id="chat-badge" style="position:absolute;top:-4px;right:-4px;background:#e53e3e;color:#fff;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px"></span></button><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="showPage('dash')">Panel</button><div class="nav-avatar" onclick="showPage('dash')" title="${email}">${initials}</div><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="logout()">Wyloguj</button>`;
     if(tabs) tabs.classList.add('visible');
   } else {
     n.innerHTML=`<button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button><button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>`;
@@ -2551,40 +2551,55 @@ async function doOdkryjSearch(){
 
     res.innerHTML='';
 
-    // SEKCJA 1: Artykuł
-    var articleSection=document.createElement('div');
-    articleSection.style.cssText='margin-bottom:32px';
-    articleSection.innerHTML='<div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:16px;display:flex;align-items:center;gap:8px">📖 Czytanka <span style="font-size:13px;font-weight:400;color:var(--dim2)">'+_odkryjLevel+' · '+getLangName(_odkryjLang)+'</span></div>';
+    // LAYOUT 2-kolumnowy: artykuł (lewo) + słownictwo (prawo, sticky)
+    var mainGrid=document.createElement('div');
+    mainGrid.style.cssText='display:grid;grid-template-columns:1fr 300px;gap:24px;align-items:start';
+
+    // ── LEWA KOLUMNA: artykuł + filmy pod spodem ──
+    var leftCol=document.createElement('div');
+
+    // Nagłówek artykułu
+    var artHeader=document.createElement('div');
+    artHeader.style.cssText='font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:12px;display:flex;align-items:center;gap:8px';
+    artHeader.innerHTML='📖 Czytanka <span style="font-weight:400;text-transform:none;letter-spacing:0">'+_odkryjLevel+' · '+getLangName(_odkryjLang)+'</span>';
+    leftCol.appendChild(artHeader);
 
     if(articleResult.status==='fulfilled'&&articleResult.value){
       var art=articleResult.value;
       var card=document.createElement('div');
-      card.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:24px;cursor:pointer;transition:.2s';
-      card.onmouseover=function(){this.style.borderColor='var(--orange)';};
-      card.onmouseout=function(){this.style.borderColor='var(--border)';};
-      card.innerHTML='<div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:10px">'+art.title+'</div>'
-        +'<div style="font-size:14px;color:var(--dim);line-height:1.7;margin-bottom:16px">'+art.preview+'</div>'
+      card.style.cssText='background:#fff;border:2px solid var(--border);border-radius:20px;padding:24px;cursor:pointer;transition:.25s;margin-bottom:24px';
+      card.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.boxShadow='0 8px 32px rgba(201,106,42,.1)';};
+      card.onmouseout=function(){this.style.borderColor='var(--border)';this.style.boxShadow='none';};
+      card.innerHTML='<div style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:10px;font-family:Syne,sans-serif">'+art.title+'</div>'
+        +'<div style="font-size:14px;color:var(--dim);line-height:1.8;margin-bottom:16px">'+art.preview+'</div>'
         +'<button class="btn btn-orange" style="font-size:13px">📖 Czytaj dalej</button>';
       card.onclick=function(){openOdkryjArticle(art);};
-      articleSection.appendChild(card);
+      leftCol.appendChild(card);
     } else {
-      articleSection.innerHTML+='<div style="color:var(--dim2);font-size:13px;padding:20px;background:var(--paper2);border-radius:12px">Nie udało się wygenerować artykułu. Spróbuj ponownie.</div>';
+      var errDiv=document.createElement('div');
+      errDiv.style.cssText='color:var(--dim2);font-size:13px;padding:20px;background:var(--paper2);border-radius:12px;margin-bottom:24px';
+      errDiv.textContent='Nie udało się wygenerować artykułu. Spróbuj ponownie.';
+      leftCol.appendChild(errDiv);
     }
-    res.appendChild(articleSection);
 
-    // SEKCJA 2: Filmy
-    var videosSection=document.createElement('div');
-    videosSection.style.cssText='margin-bottom:32px';
-    videosSection.innerHTML='<div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:16px;display:flex;align-items:center;gap:8px">🎬 Filmy i podcasty <span style="font-size:13px;font-weight:400;color:var(--dim2)">YouTube · poziom '+_odkryjLevel+'</span></div>';
+    // Filmy pod artykułem
+    var vidHeader=document.createElement('div');
+    vidHeader.style.cssText='font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:12px';
+    vidHeader.innerHTML='🎬 Filmy YouTube · <span style="font-weight:400;text-transform:none;letter-spacing:0">poziom '+_odkryjLevel+'</span>';
+    leftCol.appendChild(vidHeader);
 
     if(videosResult.status==='fulfilled'&&videosResult.value&&videosResult.value.length){
       var vGrid=document.createElement('div');
-      vGrid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px';
+      vGrid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px';
       videosResult.value.forEach(function(v){
         var vCard=document.createElement('div');
-        vCard.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;overflow:hidden;transition:.2s';
-        vCard.innerHTML='<div style="position:relative;padding-top:56.25%;background:#000;border-radius:12px 12px 0 0;overflow:hidden">'
-          +'<iframe style="position:absolute;inset:0;width:100%;height:100%" src="https://www.youtube.com/embed/'+v.id+'?rel=0" frameborder="0" allowfullscreen></iframe>'
+        vCard.style.cssText='background:#fff;border:2px solid var(--border);border-radius:16px;overflow:hidden;transition:.2s;cursor:pointer';
+        vCard.onmouseover=function(){this.style.borderColor='var(--orange)';};
+        vCard.onmouseout=function(){this.style.borderColor='var(--border)';};
+        // Thumbnail zamiast iframe (żeby nie ładować wszystkiego od razu)
+        vCard.innerHTML='<div style="position:relative;padding-top:56.25%;background:#1a2340;overflow:hidden" onclick="this.innerHTML=\'<iframe style=\"position:absolute;inset:0;width:100%;height:100%\" src=\"https://www.youtube.com/embed/'+v.id+'?autoplay=1&rel=0\" frameborder=\"0\" allowfullscreen></iframe>\'">'
+          +(v.thumbnail?'<img src="'+v.thumbnail+'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">':'')
+          +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="width:48px;height:48px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"></polygon></svg></div></div>'
           +'</div>'
           +'<div style="padding:12px">'
           +'<div style="font-size:13px;font-weight:600;color:var(--navy);line-height:1.4;margin-bottom:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+v.title+'</div>'
@@ -2592,40 +2607,60 @@ async function doOdkryjSearch(){
           +'</div>';
         vGrid.appendChild(vCard);
       });
-      videosSection.appendChild(vGrid);
+      leftCol.appendChild(vGrid);
     } else {
-      videosSection.innerHTML+='<div style="color:var(--dim2);font-size:13px;padding:20px;background:var(--paper2);border-radius:12px">Brak filmów dla tego tematu.</div>';
+      var noVid=document.createElement('div');
+      noVid.style.cssText='color:var(--dim2);font-size:13px;padding:16px;background:var(--paper2);border-radius:12px';
+      noVid.textContent='Brak filmów dla tego tematu. Spróbuj innego słowa kluczowego.';
+      leftCol.appendChild(noVid);
     }
-    res.appendChild(videosSection);
+    mainGrid.appendChild(leftCol);
 
-    // SEKCJA 3: Słownictwo
-    var vocabSection=document.createElement('div');
-    vocabSection.innerHTML='<div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:16px;display:flex;align-items:center;gap:8px">📝 Kluczowe słownictwo <span style="font-size:13px;font-weight:400;color:var(--dim2)">'+topic+'</span></div>';
+    // ── PRAWA KOLUMNA: słownictwo (sticky) ──
+    var rightCol=document.createElement('div');
+    rightCol.style.cssText='position:sticky;top:90px';
+
+    var vocabWrap=document.createElement('div');
+    vocabWrap.style.cssText='background:#fff;border:2px solid var(--border);border-radius:20px;overflow:hidden';
+
+    var vocabHead=document.createElement('div');
+    vocabHead.style.cssText='padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between';
+    vocabHead.innerHTML='<div><div style="font-size:14px;font-weight:700;color:var(--navy)">📝 Słownictwo</div>'
+      +'<div style="font-size:11px;color:var(--dim2);margin-top:2px">'+topic+' · '+_odkryjLevel+'</div></div>';
 
     if(vocabResult.status==='fulfilled'&&vocabResult.value&&vocabResult.value.length){
-      var vWrap=document.createElement('div');
-      vWrap.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px';
-      var addAllBtn=document.createElement('button');
-      addAllBtn.className='btn btn-orange';
-      addAllBtn.style.cssText='font-size:13px;margin-bottom:16px';
-      addAllBtn.textContent='+ Dodaj wszystkie do fiszek';
-      addAllBtn.onclick=function(){addVocabToFlashcards(vocabResult.value,topic,_odkryjLang);};
-      vWrap.appendChild(addAllBtn);
-      var vGrid2=document.createElement('div');
-      vGrid2.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px';
-      vocabResult.value.forEach(function(w,i){
-        var wCard=document.createElement('div');
-        wCard.style.cssText='padding:10px 14px;background:var(--paper2);border-radius:10px;border:1px solid var(--border)';
-        wCard.innerHTML='<div style="font-size:14px;font-weight:600;color:var(--navy)">'+w.word+'</div>'
-          +'<div style="font-size:12px;color:var(--orange)">'+w.translation+'</div>';
-        vGrid2.appendChild(wCard);
-      });
-      vWrap.appendChild(vGrid2);
-      vocabSection.appendChild(vWrap);
-    } else {
-      vocabSection.innerHTML+='<div style="color:var(--dim2);font-size:13px;padding:20px;background:var(--paper2);border-radius:12px">Brak słownictwa.</div>';
+      var saveBtn=document.createElement('button');
+      saveBtn.className='btn btn-orange';
+      saveBtn.style.cssText='font-size:12px;padding:7px 14px';
+      saveBtn.textContent='💾 Zapisz zestaw';
+      saveBtn.onclick=function(){addVocabToFlashcards(vocabResult.value,topic,_odkryjLang);};
+      vocabHead.appendChild(saveBtn);
     }
-    res.appendChild(vocabSection);
+    vocabWrap.appendChild(vocabHead);
+
+    if(vocabResult.status==='fulfilled'&&vocabResult.value&&vocabResult.value.length){
+      var vocabList=document.createElement('div');
+      vocabList.style.cssText='padding:12px;display:flex;flex-direction:column;gap:6px;max-height:65vh;overflow-y:auto';
+      vocabResult.value.forEach(function(w){
+        var row=document.createElement('div');
+        row.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--paper2);border-radius:10px;border:1px solid var(--border);gap:8px';
+        row.innerHTML='<span style="font-size:13px;font-weight:600;color:var(--navy)">'+w.word+'</span>'
+          +'<span style="font-size:12px;color:var(--orange);text-align:right">'+w.translation+'</span>';
+        vocabList.appendChild(row);
+      });
+      vocabWrap.appendChild(vocabList);
+    } else {
+      var noVocab=document.createElement('div');
+      noVocab.style.cssText='padding:20px;color:var(--dim2);font-size:13px;text-align:center';
+      noVocab.textContent='Generuję słownictwo...';
+      vocabWrap.appendChild(noVocab);
+    }
+    rightCol.appendChild(vocabWrap);
+    mainGrid.appendChild(rightCol);
+    res.appendChild(mainGrid);
+
+    // Responsywność — na małych ekranach jedna kolumna
+    if(window.innerWidth<768){mainGrid.style.gridTemplateColumns='1fr';}
 
   }catch(e){
     res.innerHTML='<div style="color:#c33;padding:20px;text-align:center">Błąd: '+e.message+'</div>';
@@ -2671,18 +2706,27 @@ async function fetchOdkryjArticle(topic, lang, level, tok){
 }
 
 async function fetchOdkryjVideos(topic, lang, level, tok){
-  var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
-  var query=topic+' '+langNames[lang]+' '+level+' learn';
+  var YT_KEY='AIzaSyCUQJksAT-HtZ3GBBMr3__b19nNlHqxajI';
+  var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'};
+  var langCodes={en:'en',es:'es',nl:'nl',jp:'ja',de:'de',fr:'fr'};
+  var query=encodeURIComponent(topic+' '+langNames[lang]+' '+level+' language learn');
   try{
-    var res=await fetch(ODKRYJ_YT_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':ODKRYJ_APIKEY},
-      body:JSON.stringify({query:query,lang:lang})
-    });
-    if(!res.ok)return[];
+    var url='https://www.googleapis.com/youtube/v3/search?part=snippet&q='+query
+      +'&type=video&maxResults=4&relevanceLanguage='+(langCodes[lang]||'en')
+      +'&videoDuration=medium&videoEmbeddable=true&key='+YT_KEY;
+    var res=await fetch(url);
+    if(!res.ok){console.warn('[YT]',res.status,await res.text());return[];}
     var d=await res.json();
-    return(d.videos||d.items||[]).slice(0,3);
-  }catch(e){return[];}
+    if(!d.items||!d.items.length)return[];
+    return d.items.map(function(item){
+      return{
+        id:item.id.videoId,
+        title:item.snippet.title,
+        channelTitle:item.snippet.channelTitle,
+        thumbnail:item.snippet.thumbnails&&item.snippet.thumbnails.medium?item.snippet.thumbnails.medium.url:''
+      };
+    }).filter(function(v){return v.id;}).slice(0,3);
+  }catch(e){console.warn('[YT fetch]',e.message);return[];}
 }
 
 async function fetchOdkryjVocab(topic, lang, level, tok){
@@ -4796,11 +4840,16 @@ function renderTutors(tutors){
     var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
     var langs=(t.languages||[]).map(function(l){return langFlags[l]||l;}).join(' ');
     var isTop=t.rating_avg>=4.5&&t.rating_count>=3;
-    return '<div class="tutor-card" onclick="viewTutor(\''+t.id+'\')">'
-      +(isTop?'<div style="background:linear-gradient(90deg,#f5c842,#c96a2a);color:#fff;font-size:11px;font-weight:700;padding:6px 16px;text-align:center">⭐ WYRÓŻNIONY LEKTOR</div>':'')
+    var nameEsc=t.display_name.replace(/'/g,"\\'");
+    return '<div style="display:flex;gap:12px;align-items:stretch;margin-bottom:0">'
+      +'<button onclick="event.stopPropagation();openTutorChat(\''+t.id+'\',\''+nameEsc+'\')" title="Napisz wiadomość" style="flex-shrink:0;width:44px;background:var(--paper2);border:2px solid var(--border);border-radius:16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:.2s;color:var(--dim)" onmouseover="this.style.background=\'var(--navy)\';this.style.color=\'#fff\';this.style.borderColor=\'var(--navy)\'" onmouseout="this.style.background=\'var(--paper2)\';this.style.color=\'var(--dim)\';this.style.borderColor=\'var(--border)\'">'
+      +'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>'
+      +'</button>'
+      +'<div onclick="viewTutor(\''+t.id+'\')" style="flex:1;border:2px solid var(--border);border-radius:20px;overflow:hidden;transition:.25s;cursor:pointer;background:#fff" onmouseover="this.style.borderColor=\'var(--orange)\';this.style.boxShadow=\'0 8px 32px rgba(201,106,42,.13)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\';this.style.transform=\'none\'">'
+      +(isTop?'<div style="background:linear-gradient(90deg,#f5c842,#c96a2a);color:#fff;font-size:11px;font-weight:700;padding:5px 16px;letter-spacing:.5px">⭐ WYRÓŻNIONY LEKTOR</div>':'')
       +'<div style="padding:20px">'
       +'<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:12px">'
-      +'<div style="width:56px;height:56px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center">'
+      +'<div style="width:56px;height:56px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:3px solid var(--paper2)">'
       +(t.photo_url?'<img src="'+t.photo_url+'" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">':'<span style="font-size:22px;color:#fff">👤</span>')
       +'</div>'
       +'<div style="flex:1;min-width:0">'
@@ -4813,6 +4862,7 @@ function renderTutors(tutors){
       +'<div style="display:flex;align-items:center;justify-content:space-between">'
       +'<div style="font-size:13px;color:var(--dim2)">Poziomy: <strong style="color:var(--navy)">'+(t.levels||[]).join(', ')+'</strong></div>'
       +(t.price_per_hour?'<div style="font-size:15px;font-weight:700;color:var(--orange)">'+t.price_per_hour+' PLN/h</div>':'<div style="font-size:13px;color:var(--dim2)">Cena do ustalenia</div>')
+      +'</div>'
       +'</div>'
       +'</div>'
       +'</div>';
@@ -4895,7 +4945,7 @@ async function viewTutor(tutorId){
     +(certs.length?'<div style="margin-bottom:20px"><div style="font-size:12px;font-weight:700;color:var(--dim2);margin-bottom:8px">CERTYFIKATY</div>'
     +certs.map(function(c){return'<a href="'+c+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--orange);margin-bottom:4px">📜 '+c.split('/').pop()+'</a><br>';}).join('')+'</div>':'')
 
-    // Oceny
+    // Opinie (bez formularza — ocena przez float button po kontakcie)
     +'<div style="border-top:1px solid var(--border);padding-top:20px;margin-top:4px">'
     +'<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px">Opinie ('+(reviews?reviews.length:0)+')</div>'
     +(reviews&&reviews.length?reviews.map(function(r){
@@ -4907,18 +4957,12 @@ async function viewTutor(tutorId){
         +'</div>'
         +(r.comment?'<div style="font-size:13px;color:var(--dim)">'+r.comment+'</div>':'')
         +'</div>';
-    }).join(''):'<div style="color:var(--dim2);font-size:13px">Brak opinii</div>')
-
-    // Formularz oceny
-    +'<div style="margin-top:16px;padding:16px;background:var(--paper);border-radius:12px;border:1px solid var(--border)">'
-    +'<div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:10px">Oceń lektora</div>'
-    +'<div style="display:flex;gap:4px;margin-bottom:10px" id="tutor-rate-stars">'
-    +[1,2,3,4,5].map(function(n){return'<button class="star-btn" data-val="'+n+'" onclick="setTutorRating('+n+',\''+tutorId+'\')">★</button>';}).join('')
+    }).join(''):'<div style="color:var(--dim2);font-size:13px;padding:16px;background:var(--paper2);border-radius:10px">Brak opinii — bądź pierwszą osobą która oceni tego lektora!</div>')
     +'</div>'
-    +'<textarea id="tutor-review-text" placeholder="Napisz opinię (opcjonalnie)..." rows="2" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border2);font-size:13px;margin-bottom:8px"></textarea>'
-    +'<button class="btn btn-orange" onclick="submitTutorReview(\''+tutorId+'\')" style="font-size:13px;padding:9px 20px">Wyślij opinię</button>'
-    +'<div id="review-msg" style="font-size:12px;margin-top:6px"></div>'
-    +'</div>'
+    +'<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">'
+    +'<button class="btn btn-orange" style="flex:1" onclick="openTutorChat(\''+tutorId+'\',\''+t.display_name.replace(/\'/g,\"\\\'\")+'\')">'
+    +'💬 Napisz wiadomość</button>'
+    +(hasTutorContact(tutorId)?'<button class="btn btn-navy" onclick="openRateModal(\''+tutorId+'\')" style="flex-shrink:0">⭐ Oceń lektora</button>':'')
     +'</div>'
     +'</div>';
 }
@@ -5571,9 +5615,13 @@ async function loadChallengeRanking(){
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div>
-        <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Zdjęcie (URL do JPG/PNG)</label>
-        <input id="tutor-photo" type="url" placeholder="https://..." style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border2);font-size:14px">
-        <div style="font-size:11px;color:var(--dim2);margin-top:3px">Wgraj na imgur.com i wklej link</div>
+        <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Zdjęcie profilowe</label>
+        <div id="tutor-photo-drop" ondragover="event.preventDefault();this.style.borderColor='var(--orange)'" ondragleave="this.style.borderColor='var(--border2)'" ondrop="handleTutorPhotoDrop(event)" style="border:2px dashed var(--border2);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:.2s;background:var(--paper2)" onclick="document.getElementById('tutor-photo-file').click()">
+          <div id="tutor-photo-preview" style="display:none;width:60px;height:60px;border-radius:50%;overflow:hidden;margin:0 auto 8px;border:2px solid var(--border)"><img id="tutor-photo-img" style="width:100%;height:100%;object-fit:cover"></div>
+          <div id="tutor-photo-label" style="font-size:13px;color:var(--dim2)">📷 Upuść zdjęcie lub kliknij<br><span style="font-size:11px">JPG, PNG · max 2MB</span></div>
+        </div>
+        <input type="file" id="tutor-photo-file" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="handleTutorPhotoFile(this)">
+        <input type="hidden" id="tutor-photo">
       </div>
       <div>
         <label style="font-size:12px;font-weight:700;color:var(--dim2);display:block;margin-bottom:6px">Cena za godzinę (PLN)</label>
@@ -7722,4 +7770,479 @@ function endSession(){
     showTrybView('lobby');
   }
 }
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     CHAT Z LEKTORAMI — Floating Panel + Supabase Realtime
+═══════════════════════════════════════════════════════════════════ -->
+
+<!-- Badge czatu w nav -->
+<style>
+#chat-nav-btn{position:relative;display:none}
+#chat-nav-btn.visible{display:flex}
+#chat-badge{position:absolute;top:-4px;right:-4px;background:#e53e3e;color:#fff;font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;display:none}
+#chat-badge.has-unread{display:flex}
+
+/* Floating chat panel */
+#tutor-chat-panel{position:fixed;right:0;bottom:0;width:380px;height:560px;background:#fff;border-radius:20px 20px 0 0;box-shadow:0 -8px 48px rgba(26,35,64,.18);z-index:9998;display:none;flex-direction:column;border:1.5px solid var(--border);border-bottom:none;transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+#tutor-chat-panel.open{display:flex}
+.chat-panel-header{background:var(--navy);padding:14px 18px;display:flex;align-items:center;gap:12px;border-radius:20px 20px 0 0;flex-shrink:0}
+.chat-conv-list{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.chat-conv-item{padding:13px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;border-bottom:1px solid var(--border);transition:.15s}
+.chat-conv-item:hover{background:var(--paper2)}
+.chat-conv-item.active{background:rgba(201,106,42,.08);border-left:3px solid var(--orange)}
+.chat-conv-avatar{width:40px;height:40px;border-radius:50%;background:var(--navy);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;overflow:hidden}
+.chat-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.chat-bubble{max-width:78%;padding:10px 14px;border-radius:16px;font-size:13px;line-height:1.5;word-break:break-word}
+.chat-bubble.mine{background:var(--orange);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.chat-bubble.theirs{background:var(--paper2);color:var(--navy);align-self:flex-start;border-bottom-left-radius:4px;border:1px solid var(--border)}
+.chat-input-row{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;background:#fff;border-radius:0 0 0 0}
+.chat-input-row input{flex:1;border:1.5px solid var(--border);border-radius:100px;padding:9px 16px;font-size:13px;outline:none;font-family:'DM Sans',sans-serif}
+.chat-input-row input:focus{border-color:var(--orange)}
+.chat-send-btn{width:36px;height:36px;border-radius:50%;background:var(--orange);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
+.chat-send-btn:hover{background:var(--navy)}
+
+/* Rate modal */
+#tutor-rate-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;align-items:center;justify-content:center}
+#tutor-rate-modal.open{display:flex}
+.rate-modal-box{background:#fff;border-radius:24px;padding:32px;max-width:440px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(26,35,64,.25)}
+.rate-star{font-size:36px;cursor:pointer;transition:transform .15s;display:inline-block;color:#ddd}
+.rate-star.lit{color:#f5c842}
+.rate-star:hover{transform:scale(1.2)}
+</style>
+
+<!-- Chat floating panel HTML -->
+<div id="tutor-chat-panel">
+  <!-- Header -->
+  <div class="chat-panel-header">
+    <div id="chat-header-avatar" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">💬</div>
+    <div style="flex:1;min-width:0">
+      <div id="chat-header-name" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Wiadomości</div>
+      <div id="chat-header-status" style="font-size:11px;color:rgba(255,255,255,.5)">Wybierz konwersację</div>
+    </div>
+    <button onclick="closeTutorChat()" style="background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:20px;padding:4px;line-height:1">×</button>
+  </div>
+
+  <!-- Lista konwersacji (widok startowy) -->
+  <div id="chat-conv-view" class="chat-conv-list">
+    <div id="chat-conv-list-inner" style="flex:1;overflow-y:auto"></div>
+    <div style="padding:12px;border-top:1px solid var(--border)">
+      <button onclick="showChatConvList()" style="background:var(--paper2);border:1.5px solid var(--border);border-radius:100px;padding:7px 16px;font-size:12px;color:var(--dim2);cursor:pointer;width:100%">← Wszystkie rozmowy</button>
+    </div>
+  </div>
+
+  <!-- Aktywna rozmowa -->
+  <div id="chat-active-view" style="display:none;flex:1;flex-direction:column;overflow:hidden;display:flex">
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <button onclick="showChatConvList()" style="background:none;border:none;font-size:12px;color:var(--dim2);cursor:pointer;padding:4px 0">← Rozmowy</button>
+    </div>
+    <div id="chat-messages" class="chat-messages"></div>
+    <div class="chat-input-row">
+      <input id="chat-msg-input" placeholder="Napisz wiadomość..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg();}">
+      <button class="chat-send-btn" onclick="sendChatMsg()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Rate Modal -->
+<div id="tutor-rate-modal">
+  <div class="rate-modal-box">
+    <button onclick="closeRateModal()" style="position:absolute;top:16px;right:20px;background:none;border:none;font-size:22px;cursor:pointer;color:var(--dim2)">×</button>
+    <div style="font-size:28px;margin-bottom:10px">⭐</div>
+    <h3 id="rate-modal-title" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:6px">Oceń lektora</h3>
+    <p style="font-size:13px;color:var(--dim2);margin-bottom:20px">Twoja opinia pomaga innym uczącym się</p>
+    <div id="rate-stars-row" style="display:flex;gap:6px;justify-content:center;margin-bottom:20px">
+      <span class="rate-star" data-v="1" onclick="setRateModalStar(1)">★</span>
+      <span class="rate-star" data-v="2" onclick="setRateModalStar(2)">★</span>
+      <span class="rate-star" data-v="3" onclick="setRateModalStar(3)">★</span>
+      <span class="rate-star" data-v="4" onclick="setRateModalStar(4)">★</span>
+      <span class="rate-star" data-v="5" onclick="setRateModalStar(5)">★</span>
+    </div>
+    <div id="rate-label" style="font-size:13px;color:var(--orange);font-weight:600;min-height:18px;margin-bottom:12px"></div>
+    <textarea id="rate-comment" placeholder="Napisz opinię (opcjonalnie, max 300 znaków)..." maxlength="300" rows="3" style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:'DM Sans',sans-serif;resize:none;outline:none;margin-bottom:16px"></textarea>
+    <button onclick="submitRateModal()" class="btn btn-orange" style="width:100%;justify-content:center">Wyślij ocenę</button>
+    <div id="rate-msg" style="font-size:12px;margin-top:8px;min-height:16px"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CHAT Z LEKTORAMI — Supabase Realtime
+// ═══════════════════════════════════════════════════════
+var _chatOpen = false;
+var _chatActiveTutorId = null;
+var _chatActiveTutorName = '';
+var _chatRealtimeSub = null;
+var _chatMyId = null;
+var _chatConvs = {}; // tutorId → {messages:[]}
+var _chatUnread = 0;
+
+// Pobierz user ID
+async function getChatMyId(){
+  if(_chatMyId) return _chatMyId;
+  var sess = (await db.auth.getSession()).data.session;
+  _chatMyId = sess ? sess.user.id : null;
+  return _chatMyId;
+}
+
+// Otwórz chat z konkretnym lektorem
+async function openTutorChat(tutorId, tutorName){
+  _chatActiveTutorId = tutorId;
+  _chatActiveTutorName = tutorName;
+
+  var panel = document.getElementById('tutor-chat-panel');
+  panel.classList.add('open');
+  _chatOpen = true;
+
+  document.getElementById('chat-header-name').textContent = tutorName;
+  document.getElementById('chat-header-status').textContent = 'Rozmowa z lektorem';
+  document.getElementById('chat-header-avatar').textContent = tutorName[0]||'👤';
+
+  // Zapisz kontakt (potrzebny do oceniania)
+  await recordTutorContact(tutorId);
+
+  // Pokaż wiadomości
+  await loadChatMessages(tutorId);
+  showChatActiveView();
+
+  // Subscribe do Realtime
+  subscribeChatRealtime(tutorId);
+
+  // Zamknij modal lektora jeśli otwarty
+  var vm = document.getElementById('tutor-view-modal');
+  if(vm) vm.style.display='none';
+}
+
+function closeTutorChat(){
+  document.getElementById('tutor-chat-panel').classList.remove('open');
+  _chatOpen = false;
+  if(_chatRealtimeSub){
+    try{ db.removeChannel(_chatRealtimeSub); }catch(e){}
+    _chatRealtimeSub = null;
+  }
+}
+
+function showChatConvList(){
+  document.getElementById('chat-conv-view').style.display='flex';
+  document.getElementById('chat-conv-view').style.flexDirection='column';
+  document.getElementById('chat-active-view').style.display='none';
+  _chatActiveTutorId = null;
+  loadChatConversations();
+}
+
+function showChatActiveView(){
+  document.getElementById('chat-conv-view').style.display='none';
+  document.getElementById('chat-active-view').style.display='flex';
+  document.getElementById('chat-active-view').style.flexDirection='column';
+  setTimeout(function(){ var el=document.getElementById('chat-msg-input'); if(el)el.focus(); }, 100);
+}
+
+// Ładuj wszystkie konwersacje (lista)
+async function loadChatConversations(){
+  var myId = await getChatMyId();
+  if(!myId) return;
+  var el = document.getElementById('chat-conv-list-inner');
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--dim2);font-size:13px">Ładowanie...</div>';
+  try{
+    // Pobierz ostatnią wiadomość z każdej konwersacji
+    var {data:msgs} = await db.from('tutor_messages')
+      .select('id,sender_id,receiver_id,content,created_at,read_at')
+      .or('sender_id.eq.'+myId+',receiver_id.eq.'+myId)
+      .order('created_at', {ascending:false})
+      .limit(100);
+    if(!msgs||!msgs.length){
+      el.innerHTML='<div style="padding:30px;text-align:center;color:var(--dim2);font-size:13px">Brak rozmów.<br>Kliknij 💬 przy lektorze aby napisać.</div>';
+      return;
+    }
+    // Grupuj po parze (ja ↔ lektor)
+    var convMap = {};
+    msgs.forEach(function(m){
+      var otherId = m.sender_id===myId ? m.receiver_id : m.sender_id;
+      if(!convMap[otherId]) convMap[otherId] = {lastMsg:m, unread:0};
+      if(m.receiver_id===myId && !m.read_at) convMap[otherId].unread++;
+    });
+
+    // Pobierz profile tych osób
+    var otherIds = Object.keys(convMap);
+    var profMap = {};
+    if(otherIds.length){
+      var {data:profs} = await db.from('profiles').select('user_id,username').in('user_id',otherIds);
+      (profs||[]).forEach(function(p){ profMap[p.user_id]=p.username; });
+      // Też sprawdź tutors
+      var {data:tuts} = await db.from('tutors').select('user_id,display_name,photo_url').in('user_id',otherIds);
+      (tuts||[]).forEach(function(t){ profMap[t.user_id]=t.display_name||profMap[t.user_id]; });
+    }
+
+    el.innerHTML='';
+    otherIds.forEach(function(otherId){
+      var conv = convMap[otherId];
+      var name = profMap[otherId]||'Lektor';
+      var lastContent = conv.lastMsg.content||'';
+      if(lastContent.length>40) lastContent=lastContent.slice(0,40)+'...';
+      var timeStr = new Date(conv.lastMsg.created_at).toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
+      var div = document.createElement('div');
+      div.className = 'chat-conv-item';
+      div.innerHTML = '<div class="chat-conv-avatar">'+name[0]+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center">'
+        +'<span style="font-size:13px;font-weight:600;color:var(--navy)">'+name+'</span>'
+        +(conv.unread?'<span style="background:#e53e3e;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px">'+conv.unread+'</span>':'<span style="font-size:11px;color:var(--dim2)">'+timeStr+'</span>')
+        +'</div>'
+        +'<div style="font-size:12px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">'+lastContent+'</div>'
+        +'</div>';
+      div.onclick = function(){ openTutorChat(otherId, name); };
+      el.appendChild(div);
+    });
+  }catch(e){
+    el.innerHTML='<div style="padding:20px;text-align:center;color:#c33;font-size:13px">Błąd: '+e.message+'</div>';
+  }
+}
+
+// Ładuj wiadomości danej rozmowy
+async function loadChatMessages(tutorId){
+  var myId = await getChatMyId();
+  if(!myId) return;
+  var el = document.getElementById('chat-messages');
+  el.innerHTML = '<div style="text-align:center;color:var(--dim2);font-size:12px;padding:20px">Ładowanie...</div>';
+
+  try{
+    var {data:msgs} = await db.from('tutor_messages')
+      .select('id,sender_id,content,created_at,read_at')
+      .or('and(sender_id.eq.'+myId+',receiver_id.eq.'+tutorId+'),and(sender_id.eq.'+tutorId+',receiver_id.eq.'+myId+')')
+      .order('created_at', {ascending:true})
+      .limit(100);
+
+    renderChatMessages(msgs||[], myId);
+
+    // Oznacz jako przeczytane
+    await db.from('tutor_messages')
+      .update({read_at: new Date().toISOString()})
+      .eq('sender_id', tutorId)
+      .eq('receiver_id', myId)
+      .is('read_at', null);
+
+    updateChatBadge();
+  }catch(e){
+    el.innerHTML='<div style="text-align:center;color:#c33;font-size:12px;padding:20px">Nie można załadować wiadomości</div>';
+  }
+}
+
+function renderChatMessages(msgs, myId){
+  var el = document.getElementById('chat-messages');
+  if(!msgs.length){
+    el.innerHTML='<div style="text-align:center;color:var(--dim2);font-size:13px;padding:30px">Napisz pierwszą wiadomość! 👋</div>';
+    return;
+  }
+  el.innerHTML = msgs.map(function(m){
+    var mine = m.sender_id === myId;
+    var time = new Date(m.created_at).toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
+    return '<div style="display:flex;flex-direction:column;align-items:'+(mine?'flex-end':'flex-start')+';gap:2px">'
+      +'<div class="chat-bubble '+(mine?'mine':'theirs')+'">'+escH(m.content||'')+'</div>'
+      +'<span style="font-size:10px;color:var(--dim2);padding:0 4px">'+time+'</span>'
+      +'</div>';
+  }).join('');
+  // Scroll na dół
+  el.scrollTop = el.scrollHeight;
+}
+
+// Wyślij wiadomość
+async function sendChatMsg(){
+  var input = document.getElementById('chat-msg-input');
+  var content = (input.value||'').trim();
+  if(!content || !_chatActiveTutorId) return;
+  var myId = await getChatMyId();
+  if(!myId){ showToast('Zaloguj się aby pisać','error'); return; }
+  input.value='';
+  try{
+    await db.from('tutor_messages').insert({
+      sender_id: myId,
+      receiver_id: _chatActiveTutorId,
+      content: content
+    });
+    // Lokalnie dodaj bąbelek (Realtime to też odświeży)
+    var el = document.getElementById('chat-messages');
+    var time = new Date().toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
+    var bubble = document.createElement('div');
+    bubble.style.cssText='display:flex;flex-direction:column;align-items:flex-end;gap:2px';
+    bubble.innerHTML='<div class="chat-bubble mine">'+escH(content)+'</div>'
+      +'<span style="font-size:10px;color:var(--dim2);padding:0 4px">'+time+'</span>';
+    el.appendChild(bubble);
+    el.scrollTop=el.scrollHeight;
+  }catch(e){ showToast('Błąd wysyłania: '+e.message,'error'); }
+}
+
+// Supabase Realtime subscription
+function subscribeChatRealtime(tutorId){
+  if(_chatRealtimeSub){ try{db.removeChannel(_chatRealtimeSub);}catch(e){} }
+  getChatMyId().then(function(myId){
+    if(!myId) return;
+    _chatRealtimeSub = db.channel('chat:'+myId+':'+tutorId)
+      .on('postgres_changes',{
+        event:'INSERT', schema:'public', table:'tutor_messages',
+        filter:'receiver_id=eq.'+myId
+      }, function(payload){
+        var m = payload.new;
+        if(m.sender_id !== tutorId) return; // nie nasza rozmowa
+        // Dodaj bąbelek
+        var el = document.getElementById('chat-messages');
+        if(!el) return;
+        var time = new Date(m.created_at).toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
+        var bubble = document.createElement('div');
+        bubble.style.cssText='display:flex;flex-direction:column;align-items:flex-start;gap:2px';
+        bubble.innerHTML='<div class="chat-bubble theirs">'+escH(m.content||'')+'</div>'
+          +'<span style="font-size:10px;color:var(--dim2);padding:0 4px">'+time+'</span>';
+        el.appendChild(bubble);
+        el.scrollTop=el.scrollHeight;
+        updateChatBadge();
+      })
+      .subscribe();
+  });
+}
+
+async function updateChatBadge(){
+  var myId = await getChatMyId();
+  if(!myId) return;
+  var {count} = await db.from('tutor_messages')
+    .select('id', {count:'exact',head:true})
+    .eq('receiver_id', myId)
+    .is('read_at', null);
+  var badge = document.getElementById('chat-badge');
+  if(badge){
+    badge.textContent = count||'';
+    badge.className = count>0 ? 'has-unread' : '';
+  }
+}
+
+// Kontakty lektorów (do odblokowywania oceniania)
+var _tutorContacts = JSON.parse(localStorage.getItem('tutor_contacts')||'{}');
+
+async function recordTutorContact(tutorId){
+  if(!_tutorContacts[tutorId]){
+    _tutorContacts[tutorId] = Date.now();
+    localStorage.setItem('tutor_contacts', JSON.stringify(_tutorContacts));
+    // Zapisz do Supabase
+    try{
+      var myId = await getChatMyId();
+      if(myId) await db.from('tutor_contacts').upsert({user_id:myId,tutor_id:tutorId,contacted_at:new Date().toISOString()},{onConflict:'user_id,tutor_id'});
+    }catch(e){}
+  }
+}
+
+function hasTutorContact(tutorId){
+  // Odblokuj ocenianie jeśli kontakt był >0h temu (można zmienić na 24h)
+  return !!_tutorContacts[tutorId];
+}
+
+// ═══ RATE MODAL ═══
+var _rateModalTutorId = null;
+var _rateModalVal = 0;
+var _rateLabels = ['','Bardzo słaby 😞','Słaby 😕','Przeciętny 😐','Dobry 😊','Świetny! 🤩'];
+
+function openRateModal(tutorId){
+  _rateModalTutorId = tutorId;
+  _rateModalVal = 0;
+  document.getElementById('rate-msg').textContent='';
+  document.getElementById('rate-comment').value='';
+  document.getElementById('rate-label').textContent='';
+  document.querySelectorAll('.rate-star').forEach(function(s){ s.classList.remove('lit'); });
+  document.getElementById('tutor-rate-modal').classList.add('open');
+}
+
+function closeRateModal(){
+  document.getElementById('tutor-rate-modal').classList.remove('open');
+}
+
+function setRateModalStar(val){
+  _rateModalVal = val;
+  document.querySelectorAll('.rate-star').forEach(function(s,i){ s.classList.toggle('lit', i<val); });
+  document.getElementById('rate-label').textContent = _rateLabels[val]||'';
+}
+
+async function submitRateModal(){
+  if(!_rateModalVal){ document.getElementById('rate-msg').innerHTML='<span style="color:#c33">Wybierz ocenę gwiazdkową</span>'; return; }
+  var comment = document.getElementById('rate-comment').value.trim();
+  var sess = (await db.auth.getSession()).data.session;
+  if(!sess){ document.getElementById('rate-msg').innerHTML='<span style="color:#c33">Zaloguj się</span>'; return; }
+  try{
+    await db.from('tutor_reviews').upsert({
+      tutor_id:_rateModalTutorId, user_id:sess.user.id,
+      rating:_rateModalVal, comment:comment
+    },{onConflict:'tutor_id,user_id'});
+    var {data:reviews} = await db.from('tutor_reviews').select('rating').eq('tutor_id',_rateModalTutorId);
+    if(reviews&&reviews.length){
+      var avg=reviews.reduce(function(s,r){return s+r.rating;},0)/reviews.length;
+      await db.from('tutors').update({rating_avg:Math.round(avg*10)/10,rating_count:reviews.length}).eq('id',_rateModalTutorId);
+    }
+    document.getElementById('rate-msg').innerHTML='<span style="color:#16a34a">✅ Dziękujemy za opinię!</span>';
+    setTimeout(closeRateModal, 1500);
+    await loadTutors();
+  }catch(e){ document.getElementById('rate-msg').innerHTML='<span style="color:#c33">Błąd: '+e.message+'</span>'; }
+}
+
+// ═══ PHOTO UPLOAD ═══
+function handleTutorPhotoFile(input){
+  var file = input.files&&input.files[0];
+  if(!file) return;
+  if(file.size > 2*1024*1024){ showToast('Plik za duży — max 2MB','error'); return; }
+  uploadTutorPhoto(file);
+}
+
+function handleTutorPhotoDrop(event){
+  event.preventDefault();
+  document.getElementById('tutor-photo-drop').style.borderColor='var(--border2)';
+  var file = event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0];
+  if(!file) return;
+  uploadTutorPhoto(file);
+}
+
+async function uploadTutorPhoto(file){
+  var label = document.getElementById('tutor-photo-label');
+  label.textContent='⏳ Przesyłanie...';
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    if(!sess){ showToast('Zaloguj się','error'); return; }
+    var ext = file.name.split('.').pop()||'jpg';
+    var path = 'tutors/'+sess.user.id+'_'+Date.now()+'.'+ext;
+    var {error} = await db.storage.from('recordings').upload(path, file, {contentType:file.type, upsert:true});
+    if(error) throw error;
+    var {data:urlData} = db.storage.from('recordings').getPublicUrl(path);
+    var url = urlData.publicUrl;
+    document.getElementById('tutor-photo').value = url;
+    // Podgląd
+    document.getElementById('tutor-photo-img').src = url;
+    document.getElementById('tutor-photo-preview').style.display='block';
+    label.textContent='✅ Zdjęcie wgrane!';
+  }catch(e){
+    label.innerHTML='📷 Upuść zdjęcie lub kliknij<br><span style="font-size:11px">JPG, PNG · max 2MB</span>';
+    showToast('Błąd: '+e.message,'error');
+  }
+}
+
+
+function toggleChatPanel(){
+  var panel = document.getElementById('tutor-chat-panel');
+  if(panel.classList.contains('open')){
+    closeTutorChat();
+  } else {
+    panel.classList.add('open');
+    _chatOpen = true;
+    document.getElementById('chat-header-name').textContent='Wiadomości';
+    document.getElementById('chat-header-status').textContent='Twoje rozmowy z lektorami';
+    document.getElementById('chat-header-avatar').textContent='💬';
+    document.getElementById('chat-conv-view').style.display='flex';
+    document.getElementById('chat-conv-view').style.flexDirection='column';
+    document.getElementById('chat-active-view').style.display='none';
+    loadChatConversations();
+    updateChatBadge();
+  }
+}
+
+// Chat badge inicjalizacja po zalogowaniu
+var _origPostLogin = window.postLogin || function(){};
+window.postLogin = function(){
+  if(_origPostLogin) _origPostLogin();
+  setTimeout(updateChatBadge, 1000);
+};
 </script>
