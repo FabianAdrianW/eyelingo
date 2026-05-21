@@ -46,6 +46,53 @@ var _tcp = {
   myId:null, realtimeSub:null,
   contacts: JSON.parse(localStorage.getItem('tutor_contacts')||'{}')
 };
+// ── All module globals ──
+let _fixCategory = '';
+const GENERATE_ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
+const TRANSLATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-sentence';
+const SEARCH_YOUTUBE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
+const LANG_LABELS = {en:'Angielski',es:'Hiszpański',jp:'Japoński',nl:'Niderlandzki'};
+const LANG_FLAGS = {en:'🇬🇧',es:'🇪🇸',jp:'🇯🇵',nl:'🇳🇱'};
+const LEVEL_DESC = {A1:'Początkujący',A2:'Podstawowy',B1:'Średniozaawansowany',B2:'Wyższy średni',C1:'Zaawansowany',C2:'Biegły'};
+let _strefaState = 'langs';
+let _strefaCat = null;
+let _strefaWords = [];
+let _strefaLevels = [];
+let _strefaProfile = null;
+var QUICK_TOPICS=['sport','gotowanie','technologia','muzyka','filmy','podróże','nauka','gry','anime','moda','historia','zdrowie'];
+var _odkryjLang='en';
+var _odkryjLevel='B1';
+var _odkryjRunning=false;
+var _tagCache = {}; // cache: topic → {tags, timestamp};
+var _dailyLoaded = false;
+var _dailyLoadedDate = '';
+var _dailyDone = {word:false, read:false, quiz:false};
+var _dailyXP = 0;
+var _quizAnswered = false;
+var _sentCache={};
+var _ttCache={};
+var _ttHideTimer=null;
+var _challengeTimer=null;
+var _challengeSetCache = null;
+var _chatPersonas={;
+var _srsUserId=null;
+var _srsCards=[];
+var _srsIdx=0;
+var _srsSetName='';
+var _srsFlipped=false;
+const DAYS_PL = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+const DAYS_EN = ['mon','tue','wed','thu','fri','sat','sun'];
+var _trm={tutorId:null,val:0};
+var _trmLabels=['','Bardzo słaby 😞','Słaby 😕','Przeciętny 😐','Dobry 😊','Świetny! 🤩'];
+var _origPostLogin2=window.postLogin;
+var RewardSystem={;
+var _trybCards=[],_trybIdx=0,_trybHintLevel=0,_trybHintPenalty=0;
+var _trybSessionStats={correct:0,total:0,xpGained:0,startTime:0};
+var _trybChallengeMode=false,_trybSessionXPToday=0,_trybPerfectStreak=0;
+var _trybExternalCards=null,_trybExternalName='',_trybSetCards=[];
+var _origRenderLyricsWords = window.renderLyricsWords;
+var _voicesLang = 'en';
+
 
 function getChatUsageToday(){try{return parseInt(localStorage.getItem('chat_usage_'+new Date().toISOString().slice(0,10))||'0');}catch(e){return 0;}}
 
@@ -267,13 +314,10 @@ async function loadLangProgress(uid, levelsBought){
 }
 
 function loadActivityChart(stats){
-  const el=document.getElementById('activity-chart');
   if(!el)return;
-  const days=['Pn','Wt','Śr','Cz','Pt','Sb','Nd'];
   const today=new Date().getDay();
   const reorder=i=>(today-6+i+7)%7;
   // Symulujemy dane na podstawie streak i minut
-  const streak=stats?.streak_days||0;
   const mins=stats?.minutes_active||0;
   const avgMins=streak>0?Math.round(mins/Math.max(streak,1)):0;
   const bars=days.map((_,i)=>{
@@ -284,8 +328,6 @@ function loadActivityChart(stats){
   const maxH=Math.max(...bars,1);
   el.innerHTML=days.map((d,i)=>{
     const ri=reorder(i);
-    const h=bars[ri];
-    const pct=Math.round(h/maxH*100);
     return `<div class="act-bar-wrap">
       <div class="act-bar" style="height:${pct}%;opacity:${h>0?'0.85':'0.15'}"></div>
       <div class="act-label">${d}</div>
@@ -314,7 +356,6 @@ function switchTab(page, btn){
 
 function setActiveTab(page){
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  const btn=document.getElementById('ntab-'+page);
   if(btn) btn.classList.add('active');
 }
 
@@ -323,7 +364,6 @@ async function logout(){await db.auth.signOut();updateNav(false);showPage('home'
 async function activateCode(){
   const code=document.getElementById('code-input').value.trim().toUpperCase();
   if(!code){showMsg('code-msg','Wpisz kod.','error');return}
-  const btn=document.getElementById('code-btn');btn.disabled=true;document.getElementById('code-btn-text').textContent='...';
   try{
     const{data,error}=await db.rpc('activate_premium_code',{p_code:code});if(error)throw error;
     if(data.success){showMsg('code-msg','🏆 '+data.message,'success');document.getElementById('dash-status').textContent='🏆 Premium';document.getElementById('dash-status').style.color='#16a34a';setTimeout(()=>document.getElementById('premium-card').style.display='none',2000)}
@@ -381,12 +421,16 @@ async function loadNotifications(){
     if(!panel&&!badge) return;
     var sess=(await db.auth.getSession()).data.session;
     if(!sess) return;
-    var{data:notifs}=await db.from('notifications')
-      .select('id,type,message,read_at,created_at')
-      .eq('user_id',sess.user.id)
-      .order('created_at',{ascending:false})
-      .limit(20);
-    if(!notifs) return;
+    // notifications table may not exist - safe query
+    var notifs=[];
+    try{
+      var nr=await db.from('notifications')
+        .select('id,type,message,read_at,created_at')
+        .eq('user_id',sess.user.id)
+        .order('created_at',{ascending:false})
+        .limit(20);
+      if(nr.data) notifs=nr.data;
+    }catch(e2){ return; } // table doesn't exist
     var unread=notifs.filter(function(n){return !n.read_at;}).length;
     if(badge) badge.textContent=unread||'';
     if(badge) badge.style.display=unread?'flex':'none';
@@ -412,7 +456,6 @@ async function loadRanking(){
       const{data}=await db.rpc('get_ranking',{p_period:period});
       if(!data) continue;
       for(const cat of ['gold','streak','words']){
-        const el=document.getElementById(`rank-${period}-${cat}`);
         if(!el||!data[cat]) continue;
         el.innerHTML=data[cat].map((r,i)=>`
           <div class="rank-row ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':''}">
@@ -442,7 +485,6 @@ async function loadRanking(){
       .eq('is_public',true)
       .order('likes_count',{ascending:false})
       .limit(5);
-    const el=document.getElementById('rank-top-sets');
     if(el&&sets?.length){
       // Wyróżniony zestaw
       if(sets[0]){
@@ -471,7 +513,6 @@ function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace
 function incrementChatUsage(){
   try{
     var key='chat_usage_'+new Date().toISOString().slice(0,10);
-    var n=getChatUsageToday()+1;
     localStorage.setItem(key,String(n));
     return n;
   }catch(e){return 1;}
@@ -480,7 +521,6 @@ function incrementChatUsage(){
 function updateChatLimitUI(){
   var used=getChatUsageToday();
   var left=Math.max(0,CHAT_DAILY_LIMIT-used);
-  var el=document.getElementById('chat-limit-info');
   if(el){
     el.textContent=left>0?(left+' wiadomości pozostało dziś'):'Limit dzienny wyczerpany';
     el.style.color=left<=3?'#c96a2a':left===0?'#dc2626':'var(--dim2)';
