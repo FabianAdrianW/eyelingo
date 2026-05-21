@@ -3087,6 +3087,10 @@ function openOdkryjArticle(art){
 }
 
 function buildOdkryjArticleHTML(text, lang){
+  // Strip ```json wrapping
+  var bt='`';
+  text=(text||'').replace(new RegExp(bt+bt+bt+'json','g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
+  if(text.startsWith('{')){try{var p=JSON.parse(text);text=p.content||p.text||text;}catch(e){}}
   var sentences=text.match(/[^.!?]+[.!?]+/g)||[text];
   return sentences.map(function(sent,idx){
     var trimmed=sent.trim();
@@ -3798,13 +3802,25 @@ async function loadDailyRead(){
     document.getElementById('dc-read-loading').style.display='none';
     var cont=document.getElementById('dc-read-content');
     cont.style.display='flex';
+
+    // Strip ```json wrapping if AI returned raw JSON
+    var cleanBody = body||'';
+    var bt='`';
+    cleanBody = cleanBody.replace(new RegExp(bt+bt+bt+'json','g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
+    // If it looks like JSON object, try to parse content field
+    if(cleanBody.startsWith('{')){
+      try{
+        var parsed=JSON.parse(cleanBody);
+        cleanBody=parsed.content||parsed.text||parsed.body||title||'';
+        if(parsed.title&&parsed.title!==title) title=parsed.title;
+      }catch(e){}
+    }
+
     document.getElementById('dc-read-title').textContent=title;
-    var wc=Math.ceil(body.split(' ').length/200);
+    var wc=Math.ceil((cleanBody.split(' ').length||1)/200);
     document.getElementById('dc-read-time').textContent=Math.max(1,wc)+' min';
-    // Podziel na zdania + hover na słowach
-    document.getElementById('dc-read-body').innerHTML=buildArticleHTML(body, dLang);
-    // Dodaj przycisk audio
-    addArticleAudioBtn(body, dLang);
+    document.getElementById('dc-read-body').innerHTML=buildArticleHTML(cleanBody, dLang);
+    addArticleAudioBtn(cleanBody, dLang);
   }
 
   // 1. Sprawdź localStorage cache
@@ -3838,11 +3854,17 @@ async function loadDailyRead(){
     if(!res.ok)throw new Error('HTTP '+res.status);
     var d=await res.json();
     // Strip markdown code fences if AI returned raw JSON string
+    // Parse AI response — handle raw JSON, markdown fences, nested objects
     var rawText = d.content||d.text||d.body||'';
-    if(typeof rawText === 'string' && (rawText.trim().startsWith('```') || rawText.trim().startsWith('{'))){
-      var bt = '`';
-      rawText = rawText.replace(new RegExp(bt+bt+bt+'json|'+bt+bt+bt,'g'),'').trim();
-      try{ var parsed2=JSON.parse(rawText); rawText=parsed2.content||parsed2.text||parsed2.body||rawText; }catch(e){}
+    if(typeof d === 'object' && !rawText && d.title) rawText = d.content||'';
+    var bt = '`';
+    rawText = rawText.replace(new RegExp(bt+bt+bt+'json','g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
+    if(rawText.startsWith('{')){
+      try{
+        var parsed2=JSON.parse(rawText);
+        rawText=parsed2.content||parsed2.text||parsed2.body||rawText;
+        if(!d.title&&parsed2.title) d.title=parsed2.title;
+      }catch(e){}
     }
     var title=d.title||topic;
     var body=rawText;
@@ -3873,6 +3895,10 @@ async function loadDailyRead(){
 
 // Buduje HTML artykułu z klikalnymi zdaniami i hoverowanymi słowami
 function buildArticleHTML(text, lang){
+  // Strip ```json if present
+  var bt='`';
+  text=(text||'').replace(new RegExp(bt+bt+bt+'json','g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
+  if(text.startsWith('{')){try{var _p=JSON.parse(text);text=_p.content||_p.text||text;}catch(e){}}
   // Override hover to use sidebar instead of tooltip
   window._articleLang = lang;
   // Podziel na zdania
@@ -4160,12 +4186,12 @@ async function loadDailyQuiz(){
     var qLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
     // Sprawdź czy quiz już zrobiony dziś
     if(getQuizDoneToday()===qLang){
-      document.getElementById('dc-quiz-loading').style.display='none';
-      document.getElementById('dc-quiz-content').style.display='block';
-      document.getElementById('dc-quiz-q').innerHTML='✅ Quiz na dziś ukończony! Wróć jutro po nowe pytanie.';
-      document.getElementById('dc-quiz-opts').innerHTML='';
+      // Old quiz DOM removed — use inline quiz panel
       _dailyDone.quiz=true;
-      document.getElementById('dc-quiz-done').style.display='inline';
+      var dqdEl=document.getElementById('dc-quiz-done2');
+      if(dqdEl) dqdEl.style.display='inline';
+      var iqb=document.getElementById('dc-quiz-inline-body');
+      if(iqb) iqb.innerHTML='<div style="text-align:center;padding:16px"><div style="font-size:32px;margin-bottom:8px">✅</div><div style="font-size:14px;font-weight:700;color:var(--navy)">Quiz ukończony!</div><div style="font-size:12px;color:var(--dim2)">Wróć jutro</div></div>';
       updateDailyProgress();
       return;
     }
@@ -4193,11 +4219,11 @@ async function loadDailyQuiz(){
     var quizzes=allQuizzes[qLang]||allQuizzes['en'];
     var qz=quizzes[Math.floor(Math.random()*quizzes.length)];
     window._currentQuiz={correct:qz.correct,explain:qz.explain};
-    document.getElementById('dc-quiz-loading').style.display='none';
-    document.getElementById('dc-quiz-content').style.display='block';
-    document.getElementById('dc-quiz-q').innerHTML=qz.q;
-    document.getElementById('dc-quiz-social').textContent='';
-    var container=document.getElementById('dc-quiz-opts');
+    // dc-quiz-loading removed
+    // dc-quiz-content removed
+    var _dcqq=document.getElementById('dc-quiz-inline-body');if(_dcqq)_dcqq.innerHTML=qz.q;
+    (document.getElementById('dc-quiz-social')||{}).textContent='';
+    var container=(document.getElementById('dc-quiz-opts')||{});
     container.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
     container.innerHTML='';
     _quizAnswered=false;
@@ -4227,7 +4253,7 @@ function quizAnswer(idx, correct, explain, el){
     el.style.borderColor='#a32d2d';
     el.style.color='#501313';
   }
-  var expl=document.getElementById('dc-quiz-explain');
+  var expl=(document.getElementById('dc-quiz-explain')||{});
   expl.style.display='block';
   expl.innerHTML='<strong style="color:var(--navy)">'+(idx===correct?'✅ Świetnie!':'❌ Nie tym razem')+'</strong> '+explain;
   if(!_dailyDone.quiz){
@@ -4235,7 +4261,7 @@ function quizAnswer(idx, correct, explain, el){
     var qLangNow=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
     setQuizDoneToday(qLangNow);
     addDailyXP(30);
-    document.getElementById('dc-quiz-done').style.display='inline';
+    var _dqd=document.getElementById('dc-quiz-done2');if(_dqd)_dqd.style.display='inline';
     updateDailyProgress();
   }
 }
