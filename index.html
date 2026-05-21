@@ -5694,25 +5694,29 @@ async function loadTcpConvList(){
       if(!convMap[otherId]) convMap[otherId]={lastMsg:m,unread:0};
       if(m.receiver_id===myId&&!m.read_at) convMap[otherId].unread++;
     });
-    // Pobierz nazwy — profiles (username) mają priorytet nad tutors (display_name)
+    // Pobierz nazwy — profiles username priorytetowy
     var otherIds=Object.keys(convMap);
     var nameMap={};
-    var roleMap={}; // tutorId → czy jest lektorem
+    var roleMap={};
     if(otherIds.length){
-      // Najpierw profiles (prawdziwa nazwa konta)
       var {data:profs}=await db.from('profiles').select('user_id,username').in('user_id',otherIds);
-      (profs||[]).forEach(function(p){if(p.username)nameMap[p.user_id]=p.username;});
-      // Tutors jako uzupełnienie i info o roli
+      (profs||[]).forEach(function(p){if(p&&p.username&&p.username.trim())nameMap[p.user_id]=p.username.trim();});
       var {data:tuts}=await db.from('tutors').select('user_id,display_name').in('user_id',otherIds);
       (tuts||[]).forEach(function(t){
         roleMap[t.user_id]=true;
+        // display_name tylko jeśli brak username
         if(!nameMap[t.user_id]&&t.display_name)nameMap[t.user_id]=t.display_name;
+      });
+      // Fallback: pobierz email z wiadomości (sender email nie jest dostępny bez admin key)
+      // Użyj ID jako ostateczny fallback z prefiksem #
+      otherIds.forEach(function(id){
+        if(!nameMap[id])nameMap[id]='Użytkownik #'+id.slice(0,6);
       });
     }
     listEl.innerHTML='';
     otherIds.forEach(function(otherId){
       var conv=convMap[otherId];
-      var name=nameMap[otherId]||'Użytkownik';
+      var name=nameMap[otherId]||'Użytkownik #'+otherId.slice(0,6);
       var isLektor=roleMap[otherId]||false;
       var preview=(conv.lastMsg.content||'').slice(0,32)+(conv.lastMsg.content&&conv.lastMsg.content.length>32?'…':'');
       var item=document.createElement('div');
@@ -5917,11 +5921,100 @@ window.postLogin=function(){if(_origPostLogin2)_origPostLogin2();setTimeout(upda
 // LEKTORZY — nowy design kart (redesign 2.0)
 // Psychologia: pre-attentive processing, spatial memory
 // ═══════════════════════════════════════════════════════
+// ── helper: buduje wizualizację dostępności (poziome paski) ──
+function buildAvailBars(avail){
+  var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
+  var DAY_START=8, DAY_END=22; // oś czasu 08:00–22:00
+
+  function timeToFrac(str){
+    if(!str)return 0;
+    var parts=str.split(':');
+    var h=parseInt(parts[0])||0, m=parseInt(parts[1])||0;
+    return Math.max(0,Math.min(1,(h+m/60-DAY_START)/(DAY_END-DAY_START)));
+  }
+
+  var html='<div style="display:flex;flex-direction:column;gap:4px">';
+  DAYS_EN.forEach(function(d,i){
+    var day=(avail||{})[d];
+    var active=day&&day.active;
+    var fromFrac=active?timeToFrac(day.from):0;
+    var toFrac=active?timeToFrac(day.to):0;
+    var width=Math.max(0,toFrac-fromFrac);
+
+    html+='<div style="display:flex;align-items:center;gap:8px">';
+    html+='<span style="font-size:10px;font-weight:700;color:'+(active?'var(--navy)':'var(--dim2)')+';width:24px;flex-shrink:0">'+DAYS_PL[i].slice(0,2)+'</span>';
+    html+='<div style="flex:1;height:8px;background:var(--paper2);border-radius:4px;overflow:hidden;position:relative">';
+    if(active&&width>0){
+      html+='<div style="position:absolute;top:0;bottom:0;left:'+(fromFrac*100)+'%;width:'+(width*100)+'%;background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:4px"></div>';
+    }
+    html+='</div>';
+    if(active&&day.from&&day.to){
+      html+='<span style="font-size:9px;color:var(--dim2);white-space:nowrap;width:70px;flex-shrink:0">'+day.from+'–'+day.to+'</span>';
+    } else {
+      html+='<span style="font-size:9px;color:var(--border2);width:70px;flex-shrink:0">—</span>';
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+// ── helper: pełny kalendarz dostępności do podglądu lektora ──
+function buildFullAvailCalendar(avail){
+  var DAYS_PL=['Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota','Niedziela'];
+  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
+  var DAY_START=8, DAY_END=22;
+
+  function timeToFrac(str){
+    if(!str)return 0;
+    var parts=str.split(':');
+    return Math.max(0,Math.min(1,(parseInt(parts[0]||0)+parseInt(parts[1]||0)/60-DAY_START)/(DAY_END-DAY_START)));
+  }
+
+  var activeDays=DAYS_EN.filter(function(d){return avail[d]&&avail[d].active;});
+  if(!activeDays.length) return '<div style="color:var(--dim2);font-size:13px;padding:12px">Brak podanej dostępności</div>';
+
+  var html='<div style="display:flex;flex-direction:column;gap:6px">';
+  // Oś godzin
+  html+='<div style="display:flex;align-items:center;gap:8px;padding-left:110px;margin-bottom:2px">';
+  for(var h=DAY_START;h<=DAY_END;h+=2){
+    html+='<span style="font-size:9px;color:var(--dim2);flex:1;text-align:center">'+h+':00</span>';
+  }
+  html+='</div>';
+
+  DAYS_EN.forEach(function(d,i){
+    var day=avail[d];
+    var active=day&&day.active;
+    var fromFrac=active?timeToFrac(day.from):0;
+    var toFrac=active?timeToFrac(day.to):0;
+    var width=Math.max(0,toFrac-fromFrac);
+
+    html+='<div style="display:flex;align-items:center;gap:8px">';
+    html+='<span style="font-size:11px;font-weight:'+(active?'700':'400')+';color:'+(active?'var(--navy)':'var(--dim2)')+';width:102px;flex-shrink:0">'+DAYS_PL[i]+'</span>';
+    html+='<div style="flex:1;height:22px;background:'+(active?'var(--paper2)':'rgba(26,35,64,.04)')+';border-radius:6px;overflow:hidden;position:relative;border:1px solid var(--border)">';
+    if(active&&width>0){
+      html+='<div style="position:absolute;top:0;bottom:0;left:'+(fromFrac*100)+'%;width:'+(width*100)+'%;background:linear-gradient(90deg,rgba(22,163,74,.9),rgba(74,222,128,.8));border-radius:4px;display:flex;align-items:center;justify-content:center">';
+      html+='<span style="font-size:9px;font-weight:700;color:#fff">'+day.from+' – '+day.to+'</span>';
+      html+='</div>';
+    } else {
+      html+='<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="font-size:9px;color:var(--dim2)">niedostępny</span></div>';
+    }
+    html+='</div></div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+// ═══════════════════════════════════════════════════════
+// renderTutors — redesign v3.0
+// Psychologia: pre-attentive processing, F-pattern, visual hierarchy
+// ═══════════════════════════════════════════════════════
 function renderTutors(tutors){
   var el=document.getElementById('tutors-list');
   el.innerHTML='';
   if(!tutors||!tutors.length){
-    el.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Brak lektorów spełniających kryteria</div>';
+    el.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center">Brak lektorów spełniających kryteria</div>';
     return;
   }
   var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
@@ -5931,12 +6024,13 @@ function renderTutors(tutors){
   tutors.forEach(function(t){
     var avail=t.availability||{};
     var activeDays=DAYS_EN.filter(function(d){return avail[d]&&avail[d].active;});
+    var isTop=(t.rating_avg||0)>=4.5&&(t.rating_count||0)>=3;
 
-    // ── Wrapper: chat button + karta ──
+    // ── WRAPPER ──
     var wrapper=document.createElement('div');
     wrapper.style.cssText='display:flex;gap:10px;align-items:stretch';
 
-    // Chat button (lewa strona)
+    // Chat button
     var chatBtn=document.createElement('button');
     chatBtn.title='Napisz wiadomość';
     chatBtn.style.cssText='flex-shrink:0;width:42px;background:var(--paper2);border:2px solid var(--border);border-radius:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;color:var(--dim2)';
@@ -5948,144 +6042,129 @@ function renderTutors(tutors){
 
     // ── KARTA ──
     var card=document.createElement('div');
-    card.style.cssText='flex:1;border:2px solid var(--border);border-radius:20px;overflow:hidden;background:#fff;cursor:pointer;transition:.25s;display:grid;grid-template-columns:1fr 160px';
+    card.style.cssText='flex:1;border:2px solid var(--border);border-radius:20px;overflow:hidden;background:#fff;cursor:pointer;transition:.25s';
     card.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.boxShadow='0 8px 32px rgba(201,106,42,.12)';this.style.transform='translateY(-2px)';};
     card.onmouseout=function(){this.style.borderColor='var(--border)';this.style.boxShadow='none';this.style.transform='none';};
     card.onclick=function(){viewTutor(t.id);};
 
-    // ── LEWA część karty: dane lektora ──
-    var leftPart=document.createElement('div');
-    leftPart.style.cssText='padding:18px 20px;display:flex;flex-direction:column;gap:10px;border-right:1px solid var(--border)';
+    // Top badge wyróżnionego
+    if(isTop){
+      var badge=document.createElement('div');
+      badge.style.cssText='background:linear-gradient(90deg,#f5c842,#c96a2a);color:#fff;font-size:10px;font-weight:700;padding:4px 16px;letter-spacing:.6px;text-align:center';
+      badge.textContent='⭐ WYRÓŻNIONY LEKTOR';
+      card.appendChild(badge);
+    }
 
-    // Rząd 1: avatar + imię + gwiazdki
-    var row1=document.createElement('div');
-    row1.style.cssText='display:flex;gap:12px;align-items:center';
+    // Grid: lewa (info) | prawa (video)
+    var grid=document.createElement('div');
+    grid.style.cssText='display:grid;grid-template-columns:1fr 170px';
+
+    // ── LEWA: info ──
+    var left=document.createElement('div');
+    left.style.cssText='padding:18px 20px;display:flex;flex-direction:column;gap:12px;border-right:1px solid var(--border)';
+
+    // Rząd 1: avatar + identyfikacja
+    var r1=document.createElement('div');
+    r1.style.cssText='display:flex;gap:12px;align-items:flex-start';
 
     var av=document.createElement('div');
-    av.style.cssText='width:52px;height:52px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:2px solid var(--paper2)';
+    av.style.cssText='width:56px;height:56px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:2.5px solid var(--paper2)';
     if(t.photo_url){
       var img=document.createElement('img');
       img.src=t.photo_url;img.style.cssText='width:100%;height:100%;object-fit:cover';
-      img.onerror=function(){this.parentNode.innerHTML='<span style="font-size:20px;color:#fff">👤</span>';};
+      img.onerror=function(){this.parentNode.innerHTML='<span style="font-size:22px;color:#fff">👤</span>';};
       av.appendChild(img);
-    } else { av.innerHTML='<span style="font-size:20px;color:#fff">👤</span>'; }
-    row1.appendChild(av);
+    } else { av.innerHTML='<span style="font-size:22px;color:#fff">👤</span>'; }
+    r1.appendChild(av);
 
-    var nameBlock=document.createElement('div');
-    nameBlock.style.cssText='flex:1;min-width:0';
-    // Wyróżniony badge
-    var isTop=(t.rating_avg||0)>=4.5&&(t.rating_count||0)>=3;
-    nameBlock.innerHTML=(isTop?'<span style="font-size:10px;font-weight:700;background:linear-gradient(90deg,#f5c842,#c96a2a);color:#fff;padding:2px 8px;border-radius:100px;margin-bottom:4px;display:inline-block">⭐ WYRÓŻNIONY</span><br>':'')
-      +'<div style="font-size:16px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(t.display_name)+'</div>'
-      +'<div style="display:flex;align-items:center;gap:6px;margin-top:2px">'
-      +renderStarsDisplay(t.rating_avg||0)
-      +'<span style="font-size:11px;color:var(--dim2)">'+(t.rating_avg||0).toFixed(1)+' ('+( t.rating_count||0)+')</span>'
-      +'<span style="font-size:13px;margin-left:4px">'+(t.languages||[]).map(function(l){return langFlags[l]||'';}).join('')+'</span>'
-      +'</div>';
-    row1.appendChild(nameBlock);
-    leftPart.appendChild(row1);
+    var info=document.createElement('div');
+    info.style.cssText='flex:1;min-width:0';
 
-    // Rząd 2: poziomy + cena
-    var row2=document.createElement('div');
-    row2.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    // Imię (największy element — visual hierarchy)
+    var nameEl=document.createElement('div');
+    nameEl.style.cssText='font-size:17px;font-weight:800;color:var(--navy);font-family:Syne,sans-serif;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    nameEl.textContent=t.display_name||'';
+    info.appendChild(nameEl);
+
+    // Gwiazdki + języki
+    var meta=document.createElement('div');
+    meta.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap';
+    meta.innerHTML=renderStarsDisplay(t.rating_avg||0)
+      +'<span style="font-size:11px;color:var(--dim2)">'+(t.rating_avg||0).toFixed(1)+'</span>'
+      +'<span style="color:var(--border);font-size:11px">·</span>'
+      +(t.languages||[]).map(function(l){return'<span style="font-size:15px">'+( langFlags[l]||'')+'</span>';}).join('');
+    info.appendChild(meta);
+
+    // Poziomy + cena w jednej linii
+    var chips=document.createElement('div');
+    chips.style.cssText='display:flex;align-items:center;gap:5px;flex-wrap:wrap';
     (t.levels||[]).forEach(function(lv){
       var chip=document.createElement('span');
-      chip.style.cssText='font-size:11px;font-weight:700;padding:2px 9px;border-radius:6px;border:1.5px solid var(--orange);color:var(--orange);background:#fff';
-      chip.textContent=lv;
-      row2.appendChild(chip);
+      chip.style.cssText='font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;border:1.5px solid var(--orange);color:var(--orange)';
+      chip.textContent=lv;chips.appendChild(chip);
     });
     if(t.price_per_hour){
-      var priceBadge=document.createElement('span');
-      priceBadge.style.cssText='margin-left:auto;font-size:15px;font-weight:800;color:var(--orange);font-family:Syne,sans-serif;white-space:nowrap';
-      priceBadge.textContent=t.price_per_hour+' PLN/h';
-      row2.appendChild(priceBadge);
-    } else {
-      var noPrice=document.createElement('span');
-      noPrice.style.cssText='margin-left:auto;font-size:12px;color:var(--dim2)';
-      noPrice.textContent='Cena do ustalenia';
-      row2.appendChild(noPrice);
+      var price=document.createElement('span');
+      price.style.cssText='margin-left:auto;font-size:16px;font-weight:800;color:var(--orange);font-family:Syne,sans-serif;white-space:nowrap';
+      price.textContent=t.price_per_hour+' PLN/h';
+      chips.appendChild(price);
     }
-    leftPart.appendChild(row2);
-
-    // Rząd 3: dostępność — kropki dni
-    var row3=document.createElement('div');
-    row3.style.cssText='display:flex;flex-direction:column;gap:4px';
-
-    var dotsRow=document.createElement('div');
-    dotsRow.style.cssText='display:flex;gap:5px;align-items:center';
-    DAYS_EN.forEach(function(d,i){
-      var dot=document.createElement('div');
-      var isActive=avail[d]&&avail[d].active;
-      dot.style.cssText='width:28px;height:28px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;'
-        +(isActive
-          ?'background:#dcfce7;border:1.5px solid #86efac'
-          :'background:var(--paper2);border:1.5px solid var(--border)');
-      dot.innerHTML='<span style="font-size:8px;font-weight:700;color:'+(isActive?'#166534':'var(--dim2)')+'">'+DAYS_PL[i].slice(0,2)+'</span>'
-        +'<span style="font-size:8px;color:'+(isActive?'#16a34a':'var(--border2)')+';">'+(isActive?'●':'○')+'</span>';
-      dot.title=DAYS_PL[i]+(isActive&&avail[d].from?' · '+avail[d].from+'–'+avail[d].to:'');
-      dotsRow.appendChild(dot);
-    });
-    row3.appendChild(dotsRow);
-
-    // Godziny (zakres z pierwszego aktywnego dnia)
-    if(activeDays.length){
-      var firstDay=avail[activeDays[0]];
-      var hoursEl=document.createElement('div');
-      hoursEl.style.cssText='font-size:11px;color:var(--dim2)';
-      hoursEl.textContent='⏰ '+firstDay.from+' – '+firstDay.to+(activeDays.length>1?' ('+activeDays.length+' dni/tyg)':'');
-      row3.appendChild(hoursEl);
-    } else {
-      var noAvail=document.createElement('div');
-      noAvail.style.cssText='font-size:11px;color:var(--dim2)';
-      noAvail.textContent='Brak podanej dostępności';
-      row3.appendChild(noAvail);
-    }
-    leftPart.appendChild(row3);
+    info.appendChild(chips);
+    r1.appendChild(info);
+    left.appendChild(r1);
 
     // Bio (1 linia)
     if(t.bio){
-      var bioEl=document.createElement('div');
-      bioEl.style.cssText='font-size:12px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid var(--border);padding-top:8px;margin-top:2px';
-      bioEl.textContent=t.bio;
-      leftPart.appendChild(bioEl);
+      var bio=document.createElement('div');
+      bio.style.cssText='font-size:12px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-top:1px solid var(--border);padding-top:10px';
+      bio.textContent=t.bio;
+      left.appendChild(bio);
     }
 
-    card.appendChild(leftPart);
+    // ── KALENDARZ DOSTĘPNOŚCI (poziome paski) ──
+    var calWrap=document.createElement('div');
+    calWrap.style.cssText='border-top:1px solid var(--border);padding-top:10px';
+    var calLabel=document.createElement('div');
+    calLabel.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--dim2);margin-bottom:6px';
+    calLabel.textContent='📅 Dostępność';
+    calWrap.appendChild(calLabel);
+    calWrap.innerHTML+=buildAvailBars(avail);
+    left.appendChild(calWrap);
 
-    // ── PRAWA część karty: video ──
-    var rightPart=document.createElement('div');
-    rightPart.style.cssText='width:160px;flex-shrink:0;background:var(--paper2);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative';
+    grid.appendChild(left);
+
+    // ── PRAWA: video ──
+    var right=document.createElement('div');
+    right.style.cssText='display:flex;flex-direction:column;align-items:stretch;justify-content:stretch;background:var(--paper2);overflow:hidden;position:relative';
 
     if(t.video_url){
       var ytMatch=t.video_url.match(/(?:youtu\.be\/|[?&]v=)([^&\/?]+)/);
       if(ytMatch&&ytMatch[1]){
         var vid=ytMatch[1];
         var thumb=document.createElement('div');
-        thumb.style.cssText='width:100%;height:100%;position:relative;cursor:pointer';
+        thumb.style.cssText='flex:1;position:relative;min-height:120px;cursor:pointer';
         thumb.dataset.vid=vid;
         thumb.onclick=function(ev){ev.stopPropagation();playYTEmbed(this);};
-        thumb.innerHTML='<img src="https://img.youtube.com/vi/'+vid+'/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover">'
-          +'<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(26,35,64,.35)">'
-          +'<div style="width:36px;height:36px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:6px">'
-          +'<svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"></polygon></svg></div>'
-          +'<span style="font-size:10px;color:#fff;font-weight:600;text-align:center;line-height:1.3">Autoprezentacja</span>'
+        thumb.innerHTML='<img src="https://img.youtube.com/vi/'+vid+'/mqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">'
+          +'<div style="position:absolute;inset:0;background:rgba(26,35,64,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">'
+          +'<div style="width:36px;height:36px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"></polygon></svg></div>'
+          +'<span style="font-size:10px;color:#fff;font-weight:700;letter-spacing:.3px">AUTOPREZENTACJA</span>'
           +'</div>';
-        rightPart.appendChild(thumb);
+        right.appendChild(thumb);
       }
     } else {
-      // Puste pole — loss aversion
-      rightPart.innerHTML='<div style="padding:16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px">'
-        +'<span style="font-size:28px;opacity:.25">🎬</span>'
-        +'<span style="font-size:10px;color:var(--dim2);line-height:1.4;opacity:.7">Brak autoprezentacji</span>'
+      right.innerHTML='<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;min-height:120px">'
+        +'<span style="font-size:28px;opacity:.2">🎬</span>'
+        +'<span style="font-size:9px;color:var(--dim2);text-align:center;opacity:.7;line-height:1.4">Brak autoprezentacji</span>'
         +'</div>';
     }
 
-    card.appendChild(rightPart);
+    grid.appendChild(right);
+    card.appendChild(grid);
     wrapper.appendChild(card);
     el.appendChild(wrapper);
   });
 }
-
 
 </script>
 
@@ -6735,10 +6814,96 @@ async function viewTutor(tutorId){
 
     // Cena
     var priceBox=document.createElement('div');
-    priceBox.style.cssText='background:#fff;border:2px solid var(--border);border-radius:14px;padding:18px;text-align:center';
-    priceBox.innerHTML=(t.price_per_hour?'<div style="font-size:28px;font-weight:800;color:var(--orange);font-family:Syne,sans-serif">'+t.price_per_hour+' PLN</div><div style="font-size:12px;color:var(--dim2)">za godzinę</div>':'<div style="font-size:14px;font-weight:700;color:var(--navy)">Cena do ustalenia</div>')
-      +(activeDays.length?'<div style="margin-top:8px;font-size:11px;color:var(--dim2)">'+activeDays.length+' dni/tyg dostępny</div>':'');
+    priceBox.style.cssText='background:#fff;border:2px solid var(--border);border-radius:14px;padding:16px;text-align:center';
+    priceBox.innerHTML=(t.price_per_hour
+      ?'<div style="font-size:26px;font-weight:800;color:var(--orange);font-family:Syne,sans-serif">'+t.price_per_hour+' PLN</div><div style="font-size:11px;color:var(--dim2)">za godzinę</div>'
+      :'<div style="font-size:14px;font-weight:700;color:var(--navy)">Cena do ustalenia</div>')
+      +(activeDays.length?'<div style="margin-top:6px;font-size:11px;color:#16a34a;font-weight:600">✓ '+activeDays.length+' dni/tyg</div>':'');
     rc.appendChild(priceBox);
+
+    // ── KALENDARZ DOSTĘPNOŚCI (pełny) ──
+    var calBox=document.createElement('div');
+    calBox.style.cssText='background:#fff;border:2px solid var(--border);border-radius:14px;padding:14px';
+    calBox.innerHTML='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--dim2);margin-bottom:10px">📅 Godziny dostępności</div>'
+      +buildFullAvailCalendar(avail);
+    rc.appendChild(calBox);
+
+    // ── FORMULARZ REZERWACJI ──
+    var bookBox=document.createElement('div');
+    bookBox.style.cssText='background:#fff;border:2px solid var(--orange);border-radius:14px;padding:16px';
+    bookBox.innerHTML='<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:12px">📌 Zarezerwuj lekcję</div>';
+
+    // Wybór dnia
+    var dayLabel=document.createElement('div');
+    dayLabel.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--dim2);margin-bottom:6px';
+    dayLabel.textContent='Dzień';
+    bookBox.appendChild(dayLabel);
+
+    var daySelect=document.createElement('select');
+    daySelect.id='book-day-'+t.id;
+    daySelect.style.cssText='width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;font-family:"DM Sans",sans-serif;margin-bottom:10px;color:var(--navy);background:var(--paper)';
+    var DAYS_PL_FULL=['Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota','Niedziela'];
+    var DAYS_EN_ALL=['mon','tue','wed','thu','fri','sat','sun'];
+    var hasDay=false;
+    DAYS_EN_ALL.forEach(function(d,i){
+      if(avail[d]&&avail[d].active){
+        var opt=document.createElement('option');
+        opt.value=d;opt.textContent=DAYS_PL_FULL[i]+' ('+avail[d].from+'–'+avail[d].to+')';
+        daySelect.appendChild(opt);hasDay=true;
+      }
+    });
+    if(!hasDay){var opt=document.createElement('option');opt.textContent='Brak dostępnych dni';daySelect.appendChild(opt);}
+    bookBox.appendChild(daySelect);
+
+    // Godzina
+    var hourLabel=document.createElement('div');
+    hourLabel.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--dim2);margin-bottom:6px';
+    hourLabel.textContent='Godzina';
+    bookBox.appendChild(hourLabel);
+
+    var hourInput=document.createElement('input');
+    hourInput.type='time';hourInput.id='book-hour-'+t.id;
+    hourInput.style.cssText='width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;margin-bottom:10px;font-family:"DM Sans",sans-serif';
+    hourInput.value='10:00';
+    bookBox.appendChild(hourInput);
+
+    // Notatka
+    var noteLabel=document.createElement('div');
+    noteLabel.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--dim2);margin-bottom:6px';
+    noteLabel.textContent='Wiadomość (opcjonalnie)';
+    bookBox.appendChild(noteLabel);
+
+    var noteInput=document.createElement('textarea');
+    noteInput.placeholder='Np. chcę ćwiczyć konwersację B2...';
+    noteInput.rows=2;
+    noteInput.style.cssText='width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;font-family:"DM Sans",sans-serif;resize:none;margin-bottom:10px';
+    bookBox.appendChild(noteInput);
+
+    // Przycisk
+    var bookBtn=document.createElement('button');
+    bookBtn.className='btn btn-orange';
+    bookBtn.style.cssText='width:100%;justify-content:center;font-size:13px;padding:11px';
+    bookBtn.textContent='💬 Wyślij prośbę o lekcję';
+    bookBtn.onclick=function(){
+      var day=daySelect.value;
+      var hour=hourInput.value;
+      var note=noteInput.value.trim();
+      var dayName=daySelect.options[daySelect.selectedIndex]&&daySelect.options[daySelect.selectedIndex].text||day;
+      var msg='Cześć! Chciałbym/Chciałabym zarezerwować lekcję.
+📅 Dzień: '+dayName+'
+⏰ Godzina: '+hour+(note?'
+
+'+note:'');
+      modal.style.display='none';
+      openTutorChat(t.user_id||tutorId,t.display_name);
+      // Wyślij wiadomość po krótkim opóźnieniu (żeby chat się załadował)
+      setTimeout(function(){
+        var inp=document.getElementById('tcp-input');
+        if(inp){inp.value=msg;sendChatMsg2();}
+      },800);
+    };
+    bookBox.appendChild(bookBtn);
+    rc.appendChild(bookBox);
 
     // Video
     var vbox=document.createElement('div');
