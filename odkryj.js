@@ -465,7 +465,6 @@ async function addVocabToFlashcards(words, topic, lang){
   }catch(e){showToast('Błąd: '+e.message,'error');}
 }
 
-}
 
 async function analyzeOdkryjSentence(el, sentence){
   var panel=document.getElementById('odkryj-sent-analysis');

@@ -1,8 +1,4 @@
 // Eyelingo — AI Partner konwersacyjny
-var _chatHistory=[];
-var _chatLang='en';
-var _chatLevel='beginner';
-const CHAT_DAILY_LIMIT = 15;
 var _chatPersonas={
   en:{name:'Alex',desc:'Native speaker · New York',greeting:"Hey! I'm Alex. Let's have a conversation in English. What would you like to talk about today?"},
   es:{name:'Sofía',desc:'Hablante nativa · Madrid',greeting:'¡Hola! Soy Sofía. Vamos a practicar el español juntos. ¿De qué quieres hablar?'},

@@ -1,4 +1,12 @@
 // Eyelingo — Lektorzy + chat
+// Global state
+  open: false, activeTutorId: null, activeTutorName: '',
+  myId: null, realtimeSub: null,
+  contacts: JSON.parse(localStorage.getItem('tutor_contacts')||'{}')
+};
+var DAYS_PL = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+var DAYS_EN_T = ['mon','tue','wed','thu','fri','sat','sun'];
+
 
 // ── Build availability form ──
 function buildAvailabilityForm(){

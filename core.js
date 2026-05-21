@@ -7,6 +7,46 @@ const DOWNLOAD_URL='#';
 const{createClient}=supabase;
 const db=createClient(SUPABASE_URL,SUPABASE_KEY);
 
+// ── API constants ──
+const APIKEY_CONST = 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
+const AI_PROXY_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/super-endpoint';
+const GENERATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-sentence';
+var ODKRYJ_AI_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/super-endpoint';
+var ODKRYJ_ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
+var ODKRYJ_APIKEY = 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
+var ODKRYJ_YT_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
+const _YT_KEY = 'AIzaSyCUQJksAT-HtZ3GBBMr3__b19nNlHqxajI';
+window._YT_KEY = _YT_KEY;
+
+// ── Global state ──
+let authMode = 'login';
+let _likedSets = new Set();
+let _addedSets = new Set();
+let _matSets = [];
+let _matMyUid = null;
+let _matTab = 'community';
+let _matModal = null;
+let _matEditMode = false;
+let _createIsPublic = false;
+const CHAT_DAILY_LIMIT = 15;
+var _chatHistory = [];
+var _chatLang = 'en';
+var _chatLevel = 'beginner';
+var _lyricsWords = [];
+var _lyricsAllLines = [];
+var _allTutors = [];
+var _myTutorId = null;
+var _strefaCards = [];
+var _strefaIdx = 0;
+var _strefaLang = 'en';
+var _strefaLevel = 'A1';
+var _inlineQuizState = {step:0, done:false, words:[]};
+var _tcp = {
+  open:false, activeTutorId:null, activeTutorName:'',
+  myId:null, realtimeSub:null,
+  contacts: JSON.parse(localStorage.getItem('tutor_contacts')||'{}')
+};
+
 function getChatUsageToday(){try{return parseInt(localStorage.getItem('chat_usage_'+new Date().toISOString().slice(0,10))||'0');}catch(e){return 0;}}
 
 function _showPageBasic(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
