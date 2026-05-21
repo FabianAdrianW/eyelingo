@@ -5291,9 +5291,91 @@ async function saveTutorProfile(){
   }
 }
 
-function openTutorRegisterModal(){
-  document.getElementById('tutor-register-modal').style.display='flex';
+async function openTutorRegisterModal(){
+  var modal=document.getElementById('tutor-register-modal');
+  var btn=document.getElementById('become-tutor-btn');
+
+  // Pokaż modal ze spinnerem
+  modal.style.display='flex';
   buildAvailabilityForm();
+
+  // Zmień tytuł modalu na "Edytuj profil" jeśli lektor już istnieje
+  var modalTitle=modal.querySelector('div[style*="background:var(--navy)"] div');
+  if(modalTitle) modalTitle.textContent='🎓 Profil lektora';
+
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess) return;
+
+    // Pobierz istniejący profil lektora
+    var {data:t}=await db.from('tutors')
+      .select('*')
+      .eq('user_id',sess.user.id)
+      .maybeSingle();
+
+    if(!t) return; // Nowy lektor — pusty formularz
+
+    // ── PRE-FILL: wypełnij pola danymi z bazy ──
+
+    // Podstawowe dane
+    var nameEl=document.getElementById('tutor-name');
+    var bioEl=document.getElementById('tutor-bio');
+    var priceEl=document.getElementById('tutor-price');
+    var videoEl=document.getElementById('tutor-video');
+    var photoInput=document.getElementById('tutor-photo');
+    var photoLabel=document.getElementById('tutor-photo-label');
+    var photoPreview=document.getElementById('tutor-photo-preview');
+    var photoImg=document.getElementById('tutor-photo-img');
+
+    if(nameEl) nameEl.value=t.display_name||'';
+    if(bioEl) bioEl.value=t.bio||'';
+    if(priceEl) priceEl.value=t.price_per_hour||'';
+    if(videoEl) videoEl.value=t.video_url||'';
+
+    // Zdjęcie — pokaż podgląd jeśli istnieje
+    if(t.photo_url&&photoInput&&photoPreview&&photoImg){
+      photoInput.value=t.photo_url;
+      photoImg.src=t.photo_url;
+      photoPreview.style.display='block';
+      if(photoLabel) photoLabel.textContent='✅ Zdjęcie wgrane';
+    }
+
+    // Języki — zaznacz checkboxy
+    document.querySelectorAll('.tutor-lang-cb').forEach(function(cb){
+      cb.checked=(t.languages||[]).includes(cb.value);
+    });
+
+    // Poziomy — zaznacz checkboxy
+    document.querySelectorAll('.tutor-level-cb').forEach(function(cb){
+      cb.checked=(t.levels||[]).includes(cb.value);
+    });
+
+    // Dostępność — wypełnij godziny
+    var avail=t.availability||{};
+    var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
+    DAYS_EN.forEach(function(d){
+      var day=avail[d];
+      if(!day) return;
+      var cb=document.getElementById('avail-'+d+'-active');
+      var times=document.getElementById('avail-'+d+'-times');
+      var fromEl=document.getElementById('avail-'+d+'-from');
+      var toEl=document.getElementById('avail-'+d+'-to');
+      if(cb&&day.active){
+        cb.checked=true;
+        if(times) times.style.display='flex';
+        if(fromEl&&day.from) fromEl.value=day.from;
+        if(toEl&&day.to) toEl.value=day.to;
+      }
+    });
+
+    // Zmień tytuł i przycisk
+    if(modalTitle) modalTitle.textContent='✏️ Edytuj profil lektora';
+    var saveBtn=modal.querySelector('.btn.btn-orange');
+    if(saveBtn) saveBtn.textContent='💾 Zapisz zmiany';
+
+  }catch(e){
+    console.warn('[openTutorModal]', e.message);
+  }
 }
 
 function filterTutors(){
