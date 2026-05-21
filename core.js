@@ -533,6 +533,7 @@ function incrementChatUsage(){
 function updateChatLimitUI(){
   var used=getChatUsageToday();
   var left=Math.max(0,CHAT_DAILY_LIMIT-used);
+  var el=document.getElementById('chat-limit-info');
   if(el){
     el.textContent=left>0?(left+' wiadomości pozostało dziś'):'Limit dzienny wyczerpany';
     el.style.color=left<=3?'#c96a2a':left===0?'#dc2626':'var(--dim2)';

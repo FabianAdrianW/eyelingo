@@ -716,13 +716,29 @@ function renderInlineQuizStep(step){
     box.innerHTML=html;
   } else if(step===1&&words.length>=2){
     var target2=words[1];
-    box.innerHTML='<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:600">Wpisz po angielsku:</div>'
-      +'<div style="font-size:14px;color:var(--dim);margin-bottom:10px;font-style:italic">"'+target2.t+'"</div>'
-      +'<div style="display:flex;gap:6px">'
-      +'<input id="iq-fill" type="text" placeholder="Odpowiedź..." style="flex:1;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;font-family:'DM Sans',sans-serif" onkeydown="if(event.key==='Enter')checkInlineFill(''+target2.w.replace(/'/g,"\'")+'',1)">'
-      +'<button onclick="checkInlineFill(''+target2.w.replace(/'/g,"\'")+'',1)" class="btn btn-orange" style="padding:8px 14px;font-size:13px">✓</button>'
-      +'</div>';
-    setTimeout(function(){var i=document.getElementById('iq-fill');if(i)i.focus();},100);
+    // DOM approach - no quote escaping issues
+    box.innerHTML='';
+    var lbl2=document.createElement('div');
+    lbl2.style.cssText='font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:600';
+    lbl2.textContent='Wpisz po angielsku:';
+    box.appendChild(lbl2);
+    var hint2=document.createElement('div');
+    hint2.style.cssText='font-size:14px;color:var(--dim);margin-bottom:10px;font-style:italic';
+    hint2.textContent='"'+target2.t+'"';
+    box.appendChild(hint2);
+    var row2=document.createElement('div');
+    row2.style.cssText='display:flex;gap:6px';
+    var inp2=document.createElement('input');
+    inp2.id='iq-fill';inp2.type='text';inp2.placeholder='Odpowiedź...';
+    inp2.style.cssText='flex:1;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13px';
+    (function(w){inp2.onkeydown=function(e){if(e.key==='Enter')checkInlineFill(w,1);};})(target2.w);
+    var btn2=document.createElement('button');
+    btn2.className='btn btn-orange';btn2.style.cssText='padding:8px 14px;font-size:13px';
+    btn2.textContent='✓';
+    (function(w){btn2.onclick=function(){checkInlineFill(w,1);};})(target2.w);
+    row2.appendChild(inp2);row2.appendChild(btn2);
+    box.appendChild(row2);
+    setTimeout(function(){inp2.focus();},100);
   } else {
     _inlineQuizState.done=true;
     var doneEl=document.getElementById('dc-quiz-done2');
