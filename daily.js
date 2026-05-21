@@ -1055,7 +1055,6 @@ function chatUseHint(text){
   document.getElementById('chat-input').focus();
 }
 
-const CHAT_DAILY_LIMIT = 15;
 
 function getChatUsageToday(){
   try{
