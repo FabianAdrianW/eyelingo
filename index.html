@@ -2450,9 +2450,9 @@ function strefaBack(){
   </div>
 
   <!-- Modal artykułu -->
-  <div id="article-modal" class="modal-overlay" style="display:none">
+  <div id="article-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this){this.style.display='none';document.body.style.overflow=''}">
     <div class="modal-box" style="max-width:760px;width:100%;max-height:90vh;overflow-y:auto;position:relative">
-      <button class="modal-close" id="article-modal-close">×</button>
+      <button class="modal-close" id="article-modal-close" onclick="document.getElementById('article-modal').style.display='none';document.body.style.overflow=''">×</button>
       <div id="article-modal-content"></div>
     </div>
   </div>
@@ -2583,9 +2583,21 @@ async function doOdkryjSearch(){
     }
 
     // Filmy pod artykułem
+    // Pokaż tagi semantyczne
+    var tags = window._odkryjCurrentTags||[];
+    if(tags.length){
+      var tagsWrap=document.createElement('div');
+      tagsWrap.style.cssText='margin-bottom:14px;display:flex;flex-wrap:wrap;gap:6px;align-items:center';
+      tagsWrap.innerHTML='<span style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.6px;margin-right:4px">🏷️ Tagi:</span>'
+        +tags.map(function(tag){
+          return'<span style="background:var(--navy);color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:100px">'+tag+'</span>';
+        }).join('');
+      leftCol.appendChild(tagsWrap);
+    }
+
     var vidHeader=document.createElement('div');
     vidHeader.style.cssText='font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:12px';
-    vidHeader.innerHTML='🎬 Filmy YouTube · <span style="font-weight:400;text-transform:none;letter-spacing:0">poziom '+_odkryjLevel+'</span>';
+    vidHeader.innerHTML='🎙️ Podcasty · <span style="font-weight:400;text-transform:none;letter-spacing:0">poziom '+_odkryjLevel+'</span>';
     leftCol.appendChild(vidHeader);
 
     if(videosResult.status==='fulfilled'&&videosResult.value&&videosResult.value.length){
@@ -2611,7 +2623,7 @@ async function doOdkryjSearch(){
     } else {
       var noVid=document.createElement('div');
       noVid.style.cssText='color:var(--dim2);font-size:13px;padding:16px;background:var(--paper2);border-radius:12px';
-      noVid.textContent='Brak filmów dla tego tematu. Spróbuj innego słowa kluczowego.';
+      noVid.textContent='Brak podcastów dla tego tematu — spróbuj innego słowa kluczowego lub zmień poziom.';
       leftCol.appendChild(noVid);
     }
     mainGrid.appendChild(leftCol);
@@ -2705,28 +2717,127 @@ async function fetchOdkryjArticle(topic, lang, level, tok){
   return{title:title,content:body,preview:body.slice(0,280)+'...'};
 }
 
+// ── System tagów semantycznych dla podcastów ──
+var _tagCache = {}; // cache: topic → {tags, timestamp}
+
+async function getSemanticTags(topic, lang, tok){
+  var cacheKey = topic.toLowerCase()+'_'+lang;
+  // Sprawdź localStorage cache
+  try{
+    var cached = JSON.parse(localStorage.getItem('odkryj_tags_'+cacheKey)||'null');
+    if(cached && Date.now()-cached.ts < 7*24*3600*1000) return cached.tags; // 7 dni
+  }catch(e){}
+
+  // Sprawdź Supabase cache
+  try{
+    var {data:dbTag} = await db.from('odkryj_tag_cache')
+      .select('tags').eq('topic', topic.toLowerCase()).eq('lang', lang).single();
+    if(dbTag&&dbTag.tags){
+      localStorage.setItem('odkryj_tags_'+cacheKey, JSON.stringify({tags:dbTag.tags, ts:Date.now()}));
+      return dbTag.tags;
+    }
+  }catch(e){}
+
+  // Generuj przez AI
+  try{
+    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'};
+    var res = await fetch(ODKRYJ_AI_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':ODKRYJ_APIKEY},
+      body: JSON.stringify({
+        messages:[{role:'user',content:
+          'Given the search topic "'+topic+'", generate 4-6 semantic category tags for finding podcasts about this topic. '
+          +'If the topic is a person name, include their profession/field. If it is specific, include broader categories. '
+          +'Return ONLY a JSON array of short English tags (2-3 words max each): ["tag1","tag2","tag3"]. No other text.'
+        }],
+        max_tokens:120
+      })
+    });
+    var d = await res.json();
+    var raw = (d?.candidates?.[0]?.content?.parts?.[0]?.text||'[]');
+    var clean = raw.replace(/```json|```/g,'').trim();
+    var tags = [];
+    try{ tags = JSON.parse(clean); }catch(e){ var m=clean.match(/\[[\s\S]*\]/); if(m) try{tags=JSON.parse(m[0]);}catch(e2){} }
+    if(!tags.length) tags = [topic];
+    // Zapisz do Supabase cache
+    try{ await db.from('odkryj_tag_cache').upsert({topic:topic.toLowerCase(),lang:lang,tags:tags},{onConflict:'topic,lang'}); }catch(e){}
+    // Zapisz do localStorage
+    localStorage.setItem('odkryj_tags_'+cacheKey, JSON.stringify({tags:tags, ts:Date.now()}));
+    return tags;
+  }catch(e){ return [topic]; }
+}
+
 async function fetchOdkryjVideos(topic, lang, level, tok){
   var YT_KEY='AIzaSyCUQJksAT-HtZ3GBBMr3__b19nNlHqxajI';
   var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'};
   var langCodes={en:'en',es:'es',nl:'nl',jp:'ja',de:'de',fr:'fr'};
-  var query=encodeURIComponent(topic+' '+langNames[lang]+' '+level+' language learn');
-  try{
-    var url='https://www.googleapis.com/youtube/v3/search?part=snippet&q='+query
-      +'&type=video&maxResults=4&relevanceLanguage='+(langCodes[lang]||'en')
-      +'&videoDuration=medium&videoEmbeddable=true&key='+YT_KEY;
-    var res=await fetch(url);
-    if(!res.ok){console.warn('[YT]',res.status,await res.text());return[];}
-    var d=await res.json();
-    if(!d.items||!d.items.length)return[];
-    return d.items.map(function(item){
-      return{
-        id:item.id.videoId,
-        title:item.snippet.title,
-        channelTitle:item.snippet.channelTitle,
-        thumbnail:item.snippet.thumbnails&&item.snippet.thumbnails.medium?item.snippet.thumbnails.medium.url:''
-      };
-    }).filter(function(v){return v.id;}).slice(0,3);
-  }catch(e){console.warn('[YT fetch]',e.message);return[];}
+  var levelKeywords={A1:'beginner simple',A2:'elementary easy',B1:'intermediate',B2:'upper intermediate',C1:'advanced',C2:'native fluent'};
+  var levelKw = levelKeywords[level]||'intermediate';
+
+  // 1. Pobierz tagi semantyczne
+  var tags = await getSemanticTags(topic, lang, tok);
+  window._odkryjCurrentTags = tags; // do wyświetlenia w UI
+
+  // 2. Buduj zapytania: najpierw dokładny temat, potem tagi
+  var queries = [
+    topic+' podcast '+langNames[lang]+' '+levelKw,
+    tags.slice(0,2).join(' ')+' podcast '+langNames[lang]+' '+levelKw,
+    tags[0]+' podcast education'
+  ];
+
+  var allResults = [];
+  for(var qi=0; qi<queries.length && allResults.length<4; qi++){
+    try{
+      var q = encodeURIComponent(queries[qi]);
+      var url='https://www.googleapis.com/youtube/v3/search?part=snippet&q='+q
+        +'&type=video&maxResults=4&relevanceLanguage='+(langCodes[lang]||'en')
+        +'&videoDuration=medium&videoEmbeddable=true&key='+YT_KEY;
+      var res = await fetch(url);
+      if(!res.ok) continue;
+      var d = await res.json();
+      if(!d.items||!d.items.length) continue;
+      var items = d.items
+        .filter(function(item){
+          // Filtruj tylko podcasty/edukacyjne (wykluczaj klipy muzyczne itp.)
+          var title = (item.snippet.title||'').toLowerCase();
+          var hasPodcast = title.includes('podcast')||title.includes('episode')||title.includes('ep.')||title.includes('interview')||title.includes('learn')||title.includes('lesson')||title.includes('discussion');
+          return item.id.videoId && hasPodcast;
+        })
+        .map(function(item){
+          return{
+            id:item.id.videoId,
+            title:item.snippet.title,
+            channelTitle:item.snippet.channelTitle,
+            thumbnail:item.snippet.thumbnails&&item.snippet.thumbnails.medium?item.snippet.thumbnails.medium.url:'',
+            queryUsed: queries[qi]
+          };
+        });
+      // Dodaj unikalne (bez duplikatów)
+      items.forEach(function(item){
+        if(!allResults.find(function(r){return r.id===item.id;})){
+          allResults.push(item);
+        }
+      });
+    }catch(e){ console.warn('[YT podcast]', e.message); }
+  }
+
+  // Jeśli zero wyników po filtrowaniu — wróć bez filtra
+  if(!allResults.length){
+    try{
+      var fallbackQ = encodeURIComponent(tags[0]+' '+langNames[lang]+' '+levelKw);
+      var url2='https://www.googleapis.com/youtube/v3/search?part=snippet&q='+fallbackQ
+        +'&type=video&maxResults=3&relevanceLanguage='+(langCodes[lang]||'en')
+        +'&videoDuration=medium&videoEmbeddable=true&key='+YT_KEY;
+      var res2 = await fetch(url2);
+      var d2 = await res2.json();
+      allResults = (d2.items||[]).filter(function(i){return i.id.videoId;}).map(function(item){
+        return{id:item.id.videoId,title:item.snippet.title,channelTitle:item.snippet.channelTitle,
+          thumbnail:item.snippet.thumbnails&&item.snippet.thumbnails.medium?item.snippet.thumbnails.medium.url:''};
+      });
+    }catch(e){}
+  }
+
+  return allResults.slice(0,3);
 }
 
 async function fetchOdkryjVocab(topic, lang, level, tok){
@@ -4946,25 +5057,48 @@ async function viewTutor(tutorId){
     +certs.map(function(c){return'<a href="'+c+'" target="_blank" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--orange);margin-bottom:4px">📜 '+c.split('/').pop()+'</a><br>';}).join('')+'</div>':'')
 
     // Opinie (bez formularza — ocena przez float button po kontakcie)
-    +'<div style="border-top:1px solid var(--border);padding-top:20px;margin-top:4px">'
-    +'<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px">Opinie ('+(reviews?reviews.length:0)+')</div>'
-    +(reviews&&reviews.length?reviews.map(function(r){
-      var username=r._username||'Użytkownik';
-      return'<div style="padding:12px;background:var(--paper2);border-radius:10px;margin-bottom:8px">'
-        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-        +'<span style="font-size:13px;font-weight:600;color:var(--navy)">'+username+'</span>'
-        +'<span>'+renderStarsDisplay(r.rating)+'</span>'
-        +'</div>'
-        +(r.comment?'<div style="font-size:13px;color:var(--dim)">'+r.comment+'</div>':'')
-        +'</div>';
-    }).join(''):'<div style="color:var(--dim2);font-size:13px;padding:16px;background:var(--paper2);border-radius:10px">Brak opinii — bądź pierwszą osobą która oceni tego lektora!</div>')
-    +'</div>'
-    +'<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">'
-    +'<button class="btn btn-orange" style="flex:1" onclick="openTutorChat(\''+tutorId+'\',\''+t.display_name.replace(/\'/g,\"\\\'\")+'\')">'
-    +'💬 Napisz wiadomość</button>'
-    +(hasTutorContact(tutorId)?'<button class="btn btn-navy" onclick="openRateModal(\''+tutorId+'\')" style="flex-shrink:0">⭐ Oceń lektora</button>':'')
-    +'</div>'
-    +'</div>';
+    var revHtml='';
+    if(reviews&&reviews.length){
+      revHtml=reviews.map(function(r){
+        var uname=r._username||'Użytkownik';
+        return'<div style="padding:12px;background:var(--paper2);border-radius:10px;margin-bottom:8px">'
+          +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+          +'<span style="font-size:13px;font-weight:600;color:var(--navy)">'+uname+'</span>'
+          +'<span>'+renderStarsDisplay(r.rating)+'</span>'
+          +'</div>'
+          +(r.comment?'<div style="font-size:13px;color:var(--dim)">'+r.comment+'</div>':'')
+          +'</div>';
+      }).join('');
+    } else {
+      revHtml='<div style="color:var(--dim2);font-size:13px;padding:16px;background:var(--paper2);border-radius:10px">Brak opinii — bądź pierwszą osobą która oceni tego lektora!</div>';
+    }
+    var canRate=hasTutorContact(tutorId);
+    content.innerHTML+='<div style="border-top:1px solid var(--border);padding-top:20px;margin-top:4px">'
+      +'<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px">Opinie ('+(reviews?reviews.length:0)+')</div>'
+      +revHtml
+      +'<div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap" id="tutor-view-actions"></div>'
+      +'</div>';
+    // Dodaj przyciski przez JS (unikamy piekła escape'owania)
+    var actEl=content.querySelector('#tutor-view-actions');
+    if(actEl){
+      var msgBtn=document.createElement('button');
+      msgBtn.className='btn btn-orange';
+      msgBtn.style.flex='1';
+      msgBtn.textContent='💬 Napisz wiadomość';
+      msgBtn.onclick=function(){
+        document.getElementById('tutor-view-modal').style.display='none';
+        openTutorChat(tutorId, t.display_name);
+      };
+      actEl.appendChild(msgBtn);
+      if(canRate){
+        var rateBtn=document.createElement('button');
+        rateBtn.className='btn btn-navy';
+        rateBtn.style.flexShrink='0';
+        rateBtn.textContent='⭐ Oceń lektora';
+        rateBtn.onclick=function(){ openRateModal(tutorId); };
+        actEl.appendChild(rateBtn);
+      }
+    }
 }
 
 var _tutorRating=0;
@@ -8245,4 +8379,64 @@ window.postLogin = function(){
   if(_origPostLogin) _origPostLogin();
   setTimeout(updateChatBadge, 1000);
 };
-</script>
+</script>function renderTutors(tutors){
+  var el=document.getElementById('tutors-list');
+  el.innerHTML='';
+  if(!tutors.length){
+    el.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Brak lektorów spełniających kryteria</div>';
+    return;
+  }
+  tutors.forEach(function(t){
+    var stars=renderStarsDisplay(t.rating_avg||0);
+    var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
+    var langs=(t.languages||[]).map(function(l){return langFlags[l]||l;}).join(' ');
+    var isTop=t.rating_avg>=4.5&&t.rating_count>=3;
+
+    // Wrapper
+    var wrapper=document.createElement('div');
+    wrapper.style.cssText='display:flex;gap:12px;align-items:stretch';
+
+    // Chat button
+    var chatBtn=document.createElement('button');
+    chatBtn.title='Napisz wiadomość';
+    chatBtn.style.cssText='flex-shrink:0;width:44px;background:var(--paper2);border:2px solid var(--border);border-radius:16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:.2s;color:var(--dim)';
+    chatBtn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+    chatBtn.onmouseover=function(){this.style.background='var(--navy)';this.style.color='#fff';this.style.borderColor='var(--navy)';};
+    chatBtn.onmouseout=function(){this.style.background='var(--paper2)';this.style.color='var(--dim)';this.style.borderColor='var(--border)';};
+    chatBtn.onclick=function(e){e.stopPropagation();openTutorChat(t.user_id||t.id, t.display_name);};
+    wrapper.appendChild(chatBtn);
+
+    // Card
+    var card=document.createElement('div');
+    card.style.cssText='flex:1;border:2px solid var(--border);border-radius:20px;overflow:hidden;transition:.25s;cursor:pointer;background:#fff';
+    card.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.boxShadow='0 8px 32px rgba(201,106,42,.13)';this.style.transform='translateY(-2px)';};
+    card.onmouseout=function(){this.style.borderColor='var(--border)';this.style.boxShadow='none';this.style.transform='none';};
+    card.onclick=function(){viewTutor(t.id);};
+
+    var topBadge=isTop?'<div style="background:linear-gradient(90deg,#f5c842,#c96a2a);color:#fff;font-size:11px;font-weight:700;padding:5px 16px;letter-spacing:.5px">⭐ WYRÓŻNIONY LEKTOR</div>':'';
+    var photoHtml=t.photo_url
+      ?'<img src="'+t.photo_url+'" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">'
+      :'<span style="font-size:22px;color:#fff">👤</span>';
+    var priceHtml=t.price_per_hour
+      ?'<div style="font-size:15px;font-weight:700;color:var(--orange)">'+t.price_per_hour+' PLN/h</div>'
+      :'<div style="font-size:13px;color:var(--dim2)">Cena do ustalenia</div>';
+
+    card.innerHTML=topBadge
+      +'<div style="padding:20px">'
+      +'<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:12px">'
+      +'<div style="width:56px;height:56px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:3px solid var(--paper2)">'+photoHtml+'</div>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:2px">'+t.display_name+'</div>'
+      +'<div style="font-size:13px;color:var(--dim2);margin-bottom:4px">'+langs+'</div>'
+      +'<div style="display:flex;align-items:center;gap:6px">'+stars+'<span style="font-size:12px;color:var(--dim2)">('+t.rating_count+')</span></div>'
+      +'</div></div>'
+      +'<div style="font-size:13px;color:var(--dim);line-height:1.5;margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+(t.bio||'')+'</div>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between">'
+      +'<div style="font-size:13px;color:var(--dim2)">Poziomy: <strong style="color:var(--navy)">'+(t.levels||[]).join(', ')+'</strong></div>'
+      +priceHtml
+      +'</div></div>';
+    wrapper.appendChild(card);
+    el.appendChild(wrapper);
+  });
+}
+
