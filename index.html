@@ -874,7 +874,13 @@ async function loadDashboard(){
   updateNav(true,name);
 
   // Złoto i statystyki z learning_stats
-  const{data:s}=await db.from('learning_stats').select('gold,cards_seen,minutes_active,streak_days').eq('user_id',user.id).single();
+  // maybeSingle() nie rzuca 406 gdy brak wiersza
+  let{data:s}=await db.from('learning_stats').select('gold,cards_seen,minutes_active,streak_days').eq('user_id',user.id).maybeSingle();
+  if(!s){
+    // Utwórz wiersz dla nowego użytkownika
+    await db.from('learning_stats').upsert({user_id:user.id,gold:0,cards_seen:0,minutes_active:0,streak_days:0},{onConflict:'user_id'});
+    s={gold:0,cards_seen:0,minutes_active:0,streak_days:0};
+  }
   if(s){
     const streak=s.streak_days||0;
     const cards=s.cards_seen||0;
@@ -2488,6 +2494,16 @@ function strefaBack(){
 </style>
 
 <script>
+// Global helpers accessible from inline onclick
+function playYTEmbed(el){
+  var vid=el.dataset.vid;
+  if(!vid)return;
+  el.style.cursor='default';
+  el.innerHTML='<iframe style="position:absolute;inset:0;width:100%;height:100%" src="https://www.youtube.com/embed/'+vid+'?autoplay=1&rel=0" frameborder="0" allowfullscreen></iframe>';
+}
+</script>
+
+<script>
 (function(){
 var ODKRYJ_ARTICLE_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
 var ODKRYJ_YT_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
@@ -2765,12 +2781,6 @@ async function getSemanticTags(topic, lang, tok){
     localStorage.setItem('odkryj_tags_'+cacheKey, JSON.stringify({tags:tags, ts:Date.now()}));
     return tags;
   }catch(e){ return [topic]; }
-}
-
-function playYTEmbed(el){
-  var vid=el.dataset.vid;
-  if(!vid)return;
-  el.innerHTML='<iframe style="position:absolute;inset:0;width:100%;height:100%" src="https://www.youtube.com/embed/'+vid+'?autoplay=1&rel=0" frameborder="0" allowfullscreen></iframe>';
 }
 
 async function fetchOdkryjVideos(topic, lang, level, tok){
@@ -3297,10 +3307,14 @@ async function addVocabToFlashcards(words, topic, lang){
       <div>
         <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Język</label>
         <select id="lyrics-lang" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
-          <option value="en">Angielski</option>
-          <option value="es">Hiszpański</option>
-          <option value="fr">Francuski</option>
-          <option value="de">Niemiecki</option>
+          <option value="en">🇬🇧 Angielski</option>
+          <option value="es">🇪🇸 Hiszpański</option>
+          <option value="fr">🇫🇷 Francuski</option>
+          <option value="de">🇩🇪 Niemiecki</option>
+          <option value="nl">🇳🇱 Holenderski</option>
+          <option value="jp">🇯🇵 Japoński</option>
+          <option value="it">🇮🇹 Włoski</option>
+          <option value="pt">🇵🇹 Portugalski</option>
         </select>
       </div>
       <div>
@@ -3328,17 +3342,27 @@ async function addVocabToFlashcards(words, topic, lang){
       <button class="btn btn-ghost" onclick="lyricsReset()" style="font-size:13px;padding:8px 16px">← Nowa analiza</button>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
-      <!-- Linie -->
-      <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
-        <div id="lyrics-lines" style="display:flex;flex-direction:column;gap:2px"></div>
+    <div style="display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start">
+      <!-- Linie tekstu -->
+      <div style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:20px">
+        <div id="lyrics-lines" style="display:flex;flex-direction:column;gap:1px"></div>
       </div>
 
-      <!-- Panel słówek -->
-      <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;position:sticky;top:100px">
-        <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:12px">Słowa do fiszek</div>
-        <div id="lyrics-words-panel" style="display:flex;flex-direction:column;gap:6px"></div>
-        <button id="lyrics-add-all-btn" class="btn btn-orange" onclick="lyricsAddAll()" style="width:100%;justify-content:center;margin-top:14px;font-size:13px;display:none">+ Dodaj wszystkie do fiszek</button>
+      <!-- Prawa kolumna: analiza + słówka -->
+      <div style="display:flex;flex-direction:column;gap:14px;position:sticky;top:100px">
+        <!-- Analiza wybranej linii -->
+        <div style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:18px;min-height:120px" id="lyrics-analysis-sidebar">
+          <div style="color:var(--dim2);font-size:13px;text-align:center;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px">
+            <span style="font-size:28px">👆</span>
+            <span>Kliknij linię tekstu<br>aby zobaczyć analizę</span>
+          </div>
+        </div>
+        <!-- Słowa do fiszek -->
+        <div style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:18px">
+          <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:12px">🔑 Słowa do fiszek</div>
+          <div id="lyrics-words-panel" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
+          <button id="lyrics-add-all-btn" class="btn btn-orange" onclick="lyricsAddAll()" style="width:100%;justify-content:center;margin-top:12px;font-size:13px;display:none">+ Dodaj wszystkie do fiszek</button>
+        </div>
       </div>
     </div>
   </div>
@@ -3352,10 +3376,10 @@ async function addVocabToFlashcards(words, topic, lang){
 .chat-hint{display:inline-flex;align-items:center;padding:6px 12px;border-radius:20px;font-size:12px;cursor:pointer;background:var(--paper);color:var(--dim);border:1px solid var(--border2);transition:.2s}
 .chat-hint:hover{border-color:var(--orange);color:var(--orange)}
 .chat-info{font-size:11px;color:var(--dim2);text-align:center;padding:2px 0}
-.lyric-line-wrap{padding:8px 10px;border-radius:8px;cursor:pointer;border-left:3px solid transparent;transition:.15s}
-.lyric-line-wrap:hover{background:var(--paper2);border-left-color:var(--border2)}
-.lyric-line-wrap.open{background:var(--paper2);border-left-color:var(--orange)}
-.lyric-line-text{font-size:13px;color:var(--navy);line-height:1.55}
+.lyric-line-wrap{padding:10px 12px;border-radius:10px;cursor:pointer;border-left:3px solid transparent;transition:.15s;margin-bottom:1px}
+.lyric-line-wrap:hover{background:rgba(201,106,42,.07);border-left-color:rgba(201,106,42,.3)}
+.lyric-line-wrap.lyric-active{background:rgba(201,106,42,.12);border-left-color:var(--orange)}
+.lyric-line-text{font-size:14px;color:var(--navy);line-height:1.65}
 .lyric-annotation{display:none;margin-top:8px;padding:10px 12px;background:#fff;border-radius:8px;font-size:12px;color:var(--dim);line-height:1.65;border:1px solid var(--border)}
 .lyric-line-wrap.open .lyric-annotation{display:block}
 .word-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;background:var(--paper2);border:1px solid var(--border);cursor:pointer;transition:.15s;color:var(--navy)}
@@ -3364,7 +3388,7 @@ async function addVocabToFlashcards(words, topic, lang){
 </style>
 
 
-</html><script>
+<script>
 // ═══════════════════════════════════════
 // DZISIEJSZA PORCJA
 // ═══════════════════════════════════════
@@ -4516,7 +4540,18 @@ async function analyzeLyrics(){
 
     for(var chi=0;chi<chunks.length;chi++){
       if(chunks.length>1) btn.textContent='🤖 Analizuję... ('+( chi+1)+'/'+chunks.length+')';
-      var prompt='You are a expert linguist AND cultural analyst specializing in '+langNames[lang]+' music.\n'
+      var prompt='You are a world-class linguist, cultural critic, and musicologist specializing in '+langNames[lang]+' music.\n'
+        +'Your task: provide the deepest possible multi-layer analysis for each line of these song lyrics.\n'
+        +'For EACH line/verse provide ALL of these layers IN POLISH:\n'
+        +'1. Dosłowne znaczenie: co tekst mówi wprost\n'
+        +'2. Znaczenie ukryte: metafory, podteksty emocjonalne, psychologiczne, filozoficzne, alternatywne interpretacje\n'
+        +'3. Gry słowne: double meanings, homonimy, aliteracje, wieloznaczności, rymy znaczeniowe, idiomy, slang, insider language\n'
+        +'4. Kontekst kulturowy: odniesienia historyczne, polityczne, internetowe, religijne, społeczne, popkulturowe, regionalne\n'
+        +'5. Referencje: do innych piosenek/artystów/filmów/wydarzeń/memów — zaznacz pewność (wysoka/prawdopodobne/spekulacja)\n'
+        +'6. Symbolika: symbole, motywy, archetypy, kolory, liczby, miejsca\n'
+        +'7. Warstwa emocjonalna: jakie emocje, mechanizmy psychologiczne\n'
+        +'8. Co łatwo przeoczyć: hidden meanings, easter eggs, subtelności\n'
+        +'\nRules: Never skip lines. If something only works in the original language, explain exactly why.\n'
         +(title?'Song/Artist: '+title+'\n':'')
         +'Genre: '+genreNames[genre]+'\n'
         +(chunks.length>1?'Part '+(chi+1)+' of '+chunks.length+':\n':'')
@@ -4572,32 +4607,99 @@ async function analyzeLyrics(){
   btn.disabled=false; btn.textContent='🔍 Analizuj';
 }
 
+var _lyricsAllLines = [];
+
 function renderLyricsResult(data, title, originalText){
   document.getElementById('lyrics-input-panel').style.display='none';
   document.getElementById('lyrics-result').style.display='block';
   document.getElementById('lyrics-result-title').textContent=title||'Analiza tekstu';
   _lyricsWords=[];
 
-  // Jeśli brak danych z AI — pokaż oryginał linię po linii
   var lines=data.lines||originalText.split('\n').map(function(l){return{text:l,annotation:'',words:[]};});
+  _lyricsAllLines = lines;
 
-  document.getElementById('lyrics-lines').innerHTML=lines.filter(function(l){return l.text&&l.text.trim();}).map(function(l,i){
+  var lyricsEl=document.getElementById('lyrics-lines');
+  lyricsEl.innerHTML='';
+
+  lines.filter(function(l){return l.text&&l.text.trim();}).forEach(function(l,i){
+    var div=document.createElement('div');
+    div.className='lyric-line-wrap';
+    div.id='lyric-'+i;
+    div.dataset.idx=i;
+
     var hasAnnotation=l.annotation&&l.annotation.length>10;
-    return '<div class="lyric-line-wrap'+(hasAnnotation?' ':' ')+(hasAnnotation?'':'') +'" id="lyric-'+i+'" onclick="toggleLyric('+i+')">'
-      +'<div class="lyric-line-text">'+(hasAnnotation?'<span style="color:var(--dim2);font-size:11px;margin-right:6px">▸</span>':'')+l.text+'</div>'
-      +(hasAnnotation?'<div class="lyric-annotation">'+l.annotation+'</div>':'')
-      +'</div>';
-  }).join('');
+
+    // Linia tekstu
+    var lineText=document.createElement('div');
+    lineText.className='lyric-line-text';
+    if(hasAnnotation){
+      var arrow=document.createElement('span');
+      arrow.style.cssText='color:var(--dim2);font-size:11px;margin-right:6px;transition:.2s';
+      arrow.textContent='▸';
+      lineText.appendChild(arrow);
+    }
+    lineText.appendChild(document.createTextNode(l.text));
+    div.appendChild(lineText);
+
+    // Kliknięcie → pokaż analizę po prawej (jak artykuł)
+    div.onclick=function(){
+      // Podświetl aktywną linię
+      document.querySelectorAll('.lyric-line-wrap').forEach(function(el){
+        el.classList.remove('lyric-active');
+      });
+      div.classList.add('lyric-active');
+      showLyricAnalysis(i);
+    };
+
+    // Hover
+    div.onmouseover=function(){if(!div.classList.contains('lyric-active'))div.style.background='var(--paper2)';};
+    div.onmouseout=function(){if(!div.classList.contains('lyric-active'))div.style.background='';};
+
+    lyricsEl.appendChild(div);
+  });
 
   // Zbierz słówka
   lines.forEach(function(l){
     if(l.words) l.words.forEach(function(w){
-      if(!_lyricsWords.find(function(x){return x.word===w.word;})){
+      if(w&&w.word&&!_lyricsWords.find(function(x){return x.word===w.word;})){
         _lyricsWords.push(w);
       }
     });
   });
   renderLyricsWords();
+
+  // Pokaż hint w prawym panelu
+  var sidebar=document.getElementById('lyrics-analysis-sidebar');
+  if(sidebar) sidebar.innerHTML='<div style="color:var(--dim2);font-size:13px;text-align:center;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px"><span style="font-size:28px">👆</span><span>Kliknij linię tekstu<br>aby zobaczyć analizę</span></div>';
+}
+
+function showLyricAnalysis(idx){
+  var line=_lyricsAllLines[idx];
+  if(!line)return;
+  var sidebar=document.getElementById('lyrics-analysis-sidebar');
+  if(!sidebar)return;
+
+  var html='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--dim2);margin-bottom:10px">📌 Wybrana linia</div>'
+    +'<div style="font-size:15px;font-weight:600;color:var(--navy);font-style:italic;margin-bottom:16px;padding:10px 14px;background:var(--paper2);border-radius:10px;border-left:3px solid var(--orange)">"'+escH(line.text)+'"</div>';
+
+  if(line.annotation&&line.annotation.length>5){
+    html+='<div style="font-size:13px;color:var(--dim);line-height:1.75;margin-bottom:16px">'+line.annotation.replace(/\n/g,'<br>')+'</div>';
+  } else {
+    html+='<div style="font-size:13px;color:var(--dim2);margin-bottom:16px;padding:10px;background:var(--paper2);border-radius:8px">Brak szczegółowej analizy tej linii.</div>';
+  }
+
+  if(line.words&&line.words.length){
+    html+='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--dim2);margin-bottom:8px">🔑 Kluczowe słowa</div>'
+      +'<div style="display:flex;flex-direction:column;gap:8px">'
+      +line.words.map(function(w){
+        return'<div style="padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:10px">'
+          +'<div style="font-size:13px;font-weight:700;color:var(--navy)">'+escH(w.word||'')+'</div>'
+          +'<div style="font-size:12px;color:var(--orange);margin-top:2px">'+escH(w.translation||'')+'</div>'
+          +'</div>';
+      }).join('')
+      +'</div>';
+  }
+  sidebar.innerHTML=html;
 }
 
 function toggleLyric(i){
@@ -5182,7 +5284,7 @@ async function viewTutor(tutorId){
       msgBtn.textContent='💬 Napisz wiadomość';
       msgBtn.onclick=function(){
         document.getElementById('tutor-view-modal').style.display='none';
-        openTutorChat(tutorId, t.display_name);
+        openTutorChat(t.user_id||tutorId, t.display_name);
       };
       actEl.appendChild(msgBtn);
       if(canRate){
