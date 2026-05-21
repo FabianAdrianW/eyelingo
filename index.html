@@ -8379,64 +8379,579 @@ window.postLogin = function(){
   if(_origPostLogin) _origPostLogin();
   setTimeout(updateChatBadge, 1000);
 };
-</script>function renderTutors(tutors){
+</script>
+<script>
+// ═══════════════════════════════════════════════════════
+// LEKTORZY — renderTutors (DOM-based, bez string escaping)
+// ═══════════════════════════════════════════════════════
+function renderTutors(tutors){
   var el=document.getElementById('tutors-list');
   el.innerHTML='';
-  if(!tutors.length){
+  if(!tutors||!tutors.length){
     el.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Brak lektorów spełniających kryteria</div>';
     return;
   }
+  var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
   tutors.forEach(function(t){
     var stars=renderStarsDisplay(t.rating_avg||0);
-    var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
     var langs=(t.languages||[]).map(function(l){return langFlags[l]||l;}).join(' ');
-    var isTop=t.rating_avg>=4.5&&t.rating_count>=3;
+    var isTop=(t.rating_avg||0)>=4.5&&(t.rating_count||0)>=3;
 
-    // Wrapper
     var wrapper=document.createElement('div');
     wrapper.style.cssText='display:flex;gap:12px;align-items:stretch';
 
-    // Chat button
+    // ── Chat button po lewej ──
     var chatBtn=document.createElement('button');
     chatBtn.title='Napisz wiadomość';
-    chatBtn.style.cssText='flex-shrink:0;width:44px;background:var(--paper2);border:2px solid var(--border);border-radius:16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:.2s;color:var(--dim)';
+    chatBtn.style.cssText='flex-shrink:0;width:44px;background:var(--paper2);border:2px solid var(--border);border-radius:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;color:var(--dim)';
     chatBtn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
     chatBtn.onmouseover=function(){this.style.background='var(--navy)';this.style.color='#fff';this.style.borderColor='var(--navy)';};
     chatBtn.onmouseout=function(){this.style.background='var(--paper2)';this.style.color='var(--dim)';this.style.borderColor='var(--border)';};
-    chatBtn.onclick=function(e){e.stopPropagation();openTutorChat(t.user_id||t.id, t.display_name);};
+    chatBtn.onclick=function(ev){ev.stopPropagation();openTutorChat(t.user_id||t.id,t.display_name);};
     wrapper.appendChild(chatBtn);
 
-    // Card
+    // ── Karta lektora — rozszerzona ──
     var card=document.createElement('div');
     card.style.cssText='flex:1;border:2px solid var(--border);border-radius:20px;overflow:hidden;transition:.25s;cursor:pointer;background:#fff';
     card.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.boxShadow='0 8px 32px rgba(201,106,42,.13)';this.style.transform='translateY(-2px)';};
     card.onmouseout=function(){this.style.borderColor='var(--border)';this.style.boxShadow='none';this.style.transform='none';};
     card.onclick=function(){viewTutor(t.id);};
 
-    var topBadge=isTop?'<div style="background:linear-gradient(90deg,#f5c842,#c96a2a);color:#fff;font-size:11px;font-weight:700;padding:5px 16px;letter-spacing:.5px">⭐ WYRÓŻNIONY LEKTOR</div>':'';
-    var photoHtml=t.photo_url
-      ?'<img src="'+t.photo_url+'" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">'
-      :'<span style="font-size:22px;color:#fff">👤</span>';
-    var priceHtml=t.price_per_hour
-      ?'<div style="font-size:15px;font-weight:700;color:var(--orange)">'+t.price_per_hour+' PLN/h</div>'
-      :'<div style="font-size:13px;color:var(--dim2)">Cena do ustalenia</div>';
+    // Top badge
+    if(isTop){
+      var badge=document.createElement('div');
+      badge.style.cssText='background:linear-gradient(90deg,#f5c842,#c96a2a);color:#fff;font-size:11px;font-weight:700;padding:5px 16px;letter-spacing:.5px';
+      badge.textContent='⭐ WYRÓŻNIONY LEKTOR';
+      card.appendChild(badge);
+    }
 
-    card.innerHTML=topBadge
-      +'<div style="padding:20px">'
-      +'<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:12px">'
-      +'<div style="width:56px;height:56px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:3px solid var(--paper2)">'+photoHtml+'</div>'
-      +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:2px">'+t.display_name+'</div>'
-      +'<div style="font-size:13px;color:var(--dim2);margin-bottom:4px">'+langs+'</div>'
-      +'<div style="display:flex;align-items:center;gap:6px">'+stars+'<span style="font-size:12px;color:var(--dim2)">('+t.rating_count+')</span></div>'
-      +'</div></div>'
-      +'<div style="font-size:13px;color:var(--dim);line-height:1.5;margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+(t.bio||'')+'</div>'
-      +'<div style="display:flex;align-items:center;justify-content:space-between">'
-      +'<div style="font-size:13px;color:var(--dim2)">Poziomy: <strong style="color:var(--navy)">'+(t.levels||[]).join(', ')+'</strong></div>'
-      +priceHtml
-      +'</div></div>';
+    // Body — 2 kolumny: info + video/placeholder
+    var body=document.createElement('div');
+    body.style.cssText='display:grid;grid-template-columns:1fr auto;gap:16px;padding:20px;align-items:start';
+
+    // Lewa: zdjęcie + dane
+    var infoCol=document.createElement('div');
+    infoCol.style.cssText='display:flex;gap:14px;flex:1;min-width:0';
+
+    var avatar=document.createElement('div');
+    avatar.style.cssText='width:64px;height:64px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:3px solid var(--paper2)';
+    if(t.photo_url){
+      var img=document.createElement('img');
+      img.src=t.photo_url;
+      img.style.cssText='width:100%;height:100%;object-fit:cover';
+      img.onerror=function(){this.style.display='none';};
+      avatar.appendChild(img);
+    } else {
+      avatar.innerHTML='<span style="font-size:26px;color:#fff">👤</span>';
+    }
+    infoCol.appendChild(avatar);
+
+    var textCol=document.createElement('div');
+    textCol.style.cssText='flex:1;min-width:0';
+    textCol.innerHTML='<div style="font-size:17px;font-weight:700;color:var(--navy);margin-bottom:3px">'+t.display_name+'</div>'
+      +'<div style="font-size:13px;color:var(--dim2);margin-bottom:5px">'+langs+'</div>'
+      +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">'+stars+'<span style="font-size:12px;color:var(--dim2)">('+t.rating_count+')</span></div>'
+      +'<div style="font-size:13px;color:var(--dim);line-height:1.55;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+(t.bio||'')+'</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">'
+      +'<span style="font-size:12px;color:var(--dim2)">Poziomy: <strong style="color:var(--navy)">'+(t.levels||[]).join(', ')+'</strong></span>'
+      +(t.price_per_hour?'<span style="font-size:15px;font-weight:700;color:var(--orange);margin-left:auto">'+t.price_per_hour+' PLN/h</span>':'<span style="font-size:13px;color:var(--dim2);margin-left:auto">Cena do ustalenia</span>')
+      +'</div>';
+    infoCol.appendChild(textCol);
+    body.appendChild(infoCol);
+
+    // Prawa: mini video / placeholder
+    var videoCol=document.createElement('div');
+    videoCol.style.cssText='width:140px;flex-shrink:0';
+    if(t.video_url){
+      var ytId=t.video_url.match(/(?:youtu\.be\/|v=)([^&\?]+)/);
+      if(ytId&&ytId[1]){
+        videoCol.innerHTML='<div style="border-radius:12px;overflow:hidden;border:2px solid var(--border)">'
+          +'<div style="position:relative;padding-top:56.25%;background:#1a2340;cursor:pointer" onclick="event.stopPropagation();this.innerHTML=\'<iframe style=\\"position:absolute;inset:0;width:100%;height:100%\\" src=\\"https://www.youtube.com/embed/'+ytId[1]+'?autoplay=1\\" frameborder=\\"0\\" allowfullscreen></iframe>\'">'
+          +'<img src="https://img.youtube.com/vi/'+ytId[1]+'/mqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">'
+          +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="width:32px;height:32px;background:rgba(255,0,0,.85);border-radius:50%;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"></polygon></svg></div></div>'
+          +'</div></div>'
+          +'<div style="font-size:10px;color:var(--dim2);text-align:center;margin-top:4px">▶ Autoprezentacja</div>';
+      } else {
+        videoCol.appendChild(makeVideoPlaceholder(t.display_name));
+      }
+    } else {
+      videoCol.appendChild(makeVideoPlaceholder(t.display_name));
+    }
+    body.appendChild(videoCol);
+    card.appendChild(body);
     wrapper.appendChild(card);
     el.appendChild(wrapper);
   });
 }
 
+function makeVideoPlaceholder(name){
+  var ph=document.createElement('div');
+  ph.style.cssText='width:140px;border-radius:12px;background:var(--paper2);border:2px dashed var(--border);padding:14px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:82px';
+  ph.innerHTML='<span style="font-size:22px">🎬</span>'
+    +'<div style="font-size:10px;color:var(--dim2);line-height:1.4">Brak autoprezentacji</div>';
+  return ph;
+}
+</script>
+
+<style>
+/* ── Chat panel — 2-kolumnowy z historią ── */
+#tutor-chat-panel{
+  position:fixed;right:0;bottom:0;
+  width:640px;height:580px;
+  background:#fff;border-radius:20px 20px 0 0;
+  box-shadow:0 -8px 48px rgba(26,35,64,.18);
+  z-index:9998;display:none;flex-direction:column;
+  border:1.5px solid var(--border);border-bottom:none;
+  overflow:hidden;
+}
+#tutor-chat-panel.open{display:flex}
+
+/* Header */
+.tcp-header{
+  background:var(--navy);padding:13px 16px;
+  display:flex;align-items:center;gap:10px;
+  flex-shrink:0;border-radius:20px 20px 0 0;
+}
+/* 2-kolumnowy layout */
+.tcp-body{display:flex;flex:1;overflow:hidden}
+
+/* Lista konwersacji — lewa kolumna */
+.tcp-convs{
+  width:210px;flex-shrink:0;
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  background:var(--paper2);
+}
+.tcp-convs-title{
+  padding:10px 14px;font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.7px;
+  color:var(--dim2);border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.tcp-convs-list{flex:1;overflow-y:auto}
+.tcp-conv-item{
+  padding:10px 12px;display:flex;align-items:center;gap:9px;
+  cursor:pointer;border-bottom:1px solid rgba(26,35,64,.06);
+  transition:.15s;position:relative;
+}
+.tcp-conv-item:hover{background:rgba(201,106,42,.07)}
+.tcp-conv-item.active{
+  background:rgba(201,106,42,.12);
+  border-left:3px solid var(--orange);
+}
+.tcp-conv-avatar{
+  width:34px;height:34px;border-radius:50%;
+  background:var(--navy);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:#fff;overflow:hidden;
+}
+.tcp-conv-name{font-size:12px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcp-conv-preview{font-size:11px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.tcp-conv-badge{
+  position:absolute;top:8px;right:8px;
+  background:#e53e3e;color:#fff;font-size:9px;font-weight:800;
+  min-width:14px;height:14px;border-radius:7px;
+  display:flex;align-items:center;justify-content:center;padding:0 3px;
+}
+
+/* Aktywny chat — prawa kolumna */
+.tcp-chat{display:flex;flex-direction:column;flex:1;overflow:hidden}
+.tcp-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+.tcp-bubble{max-width:75%;padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.5;word-break:break-word}
+.tcp-bubble.mine{background:var(--orange);color:#fff;align-self:flex-end;border-bottom-right-radius:3px}
+.tcp-bubble.theirs{background:var(--paper2);color:var(--navy);align-self:flex-start;border-bottom-left-radius:3px;border:1px solid var(--border)}
+.tcp-time{font-size:10px;color:var(--dim2);padding:0 4px}
+.tcp-input-row{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;background:#fff}
+.tcp-input{flex:1;border:1.5px solid var(--border);border-radius:100px;padding:9px 16px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;transition:.2s}
+.tcp-input:focus{border-color:var(--orange)}
+.tcp-send{width:36px;height:36px;border-radius:50%;background:var(--orange);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
+.tcp-send:hover{background:var(--navy)}
+.tcp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;color:var(--dim2);font-size:13px;text-align:center;padding:20px;gap:12px}
+
+/* Rate modal */
+#tutor-rate-modal{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.5);z-index:10001;
+  align-items:center;justify-content:center;
+}
+#tutor-rate-modal.open{display:flex}
+.trm-box{
+  background:#fff;border-radius:24px;padding:36px 32px;
+  max-width:420px;width:90%;text-align:center;
+  box-shadow:0 24px 64px rgba(26,35,64,.25);
+  position:relative;
+  animation:modalPop .25s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes modalPop{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+.trm-close{
+  position:absolute;top:14px;right:16px;
+  background:none;border:none;font-size:22px;
+  cursor:pointer;color:var(--dim2);line-height:1;
+  width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;transition:.15s;
+}
+.trm-close:hover{background:var(--paper2);color:var(--navy)}
+.trm-star{font-size:38px;cursor:pointer;transition:transform .12s;display:inline-block;color:#ddd;line-height:1}
+.trm-star.lit{color:#f5c842}
+.trm-star:hover{transform:scale(1.2)}
+</style>
+
+<!-- ── Chat Panel HTML (przepisany) ── -->
+<div id="tutor-chat-panel">
+  <!-- Header -->
+  <div class="tcp-header">
+    <div id="tcp-avatar" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">💬</div>
+    <div style="flex:1;min-width:0">
+      <div id="tcp-name" style="font-size:14px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Wiadomości</div>
+      <div id="tcp-status" style="font-size:11px;color:rgba(255,255,255,.5)">Twoje rozmowy z lektorami</div>
+    </div>
+    <button onclick="closeTutorChat()" style="background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:22px;padding:4px;line-height:1;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;transition:.15s" onmouseover="this.style.background='rgba(255,255,255,.1)'" onmouseout="this.style.background='none'">×</button>
+  </div>
+
+  <!-- 2-kolumnowy body -->
+  <div class="tcp-body">
+    <!-- Lewa: lista konwersacji -->
+    <div class="tcp-convs">
+      <div class="tcp-convs-title">Rozmowy</div>
+      <div class="tcp-convs-list" id="tcp-conv-list">
+        <div class="tcp-empty" style="padding:16px">
+          <span style="font-size:24px">💬</span>
+          <span style="font-size:12px">Brak rozmów</span>
+        </div>
+      </div>
+    </div>
+    <!-- Prawa: aktywny chat -->
+    <div class="tcp-chat">
+      <div id="tcp-messages" class="tcp-messages">
+        <div class="tcp-empty">
+          <span style="font-size:36px">👋</span>
+          <span>Wybierz rozmowę lub kliknij<br>ikonę 💬 przy lektorze</span>
+        </div>
+      </div>
+      <div class="tcp-input-row" id="tcp-input-row" style="display:none">
+        <input id="tcp-input" class="tcp-input" placeholder="Napisz wiadomość..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg2();}">
+        <button class="tcp-send" onclick="sendChatMsg2()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Rate Modal (przepisany z X i Escape) -->
+<div id="tutor-rate-modal" onclick="if(event.target===this)closeRateModal()">
+  <div class="trm-box">
+    <button class="trm-close" onclick="closeRateModal()" title="Zamknij (Esc)">×</button>
+    <div style="font-size:32px;margin-bottom:8px">⭐</div>
+    <h3 id="trm-title" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:4px">Oceń lektora</h3>
+    <p style="font-size:13px;color:var(--dim2);margin-bottom:20px">Twoja opinia pomaga innym uczącym się wybrać najlepszego lektora</p>
+    <div id="trm-stars" style="display:flex;gap:8px;justify-content:center;margin-bottom:10px">
+      <span class="trm-star" onclick="setRateModalStar(1)">★</span>
+      <span class="trm-star" onclick="setRateModalStar(2)">★</span>
+      <span class="trm-star" onclick="setRateModalStar(3)">★</span>
+      <span class="trm-star" onclick="setRateModalStar(4)">★</span>
+      <span class="trm-star" onclick="setRateModalStar(5)">★</span>
+    </div>
+    <div id="trm-label" style="font-size:14px;font-weight:600;color:var(--orange);min-height:20px;margin-bottom:14px"></div>
+    <textarea id="trm-comment" placeholder="Napisz opinię (opcjonalnie, max 300 znaków)…" maxlength="300" rows="3" style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:'DM Sans',sans-serif;resize:none;outline:none;transition:.2s;margin-bottom:16px" onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+    <button onclick="submitRateModal()" class="btn btn-orange" style="width:100%;justify-content:center;padding:13px">Wyślij ocenę</button>
+    <div id="trm-msg" style="font-size:12px;margin-top:10px;min-height:16px"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CHAT V2 — 2-kolumnowy, historia zawsze widoczna
+// ═══════════════════════════════════════════════════════
+var _tcp = {
+  open: false,
+  activeTutorId: null,
+  activeTutorName: '',
+  myId: null,
+  realtimeSub: null,
+  convs: {},        // tutorId → lastMsg
+  contacts: JSON.parse(localStorage.getItem('tutor_contacts')||'{}')
+};
+
+async function _tcpGetMyId(){
+  if(_tcp.myId) return _tcp.myId;
+  var sess=(await db.auth.getSession()).data.session;
+  _tcp.myId = sess ? sess.user.id : null;
+  return _tcp.myId;
+}
+
+// ── Otwórz chat ──
+async function openTutorChat(tutorId, tutorName){
+  var panel=document.getElementById('tutor-chat-panel');
+  panel.classList.add('open');
+  _tcp.open=true;
+
+  // Zapisz kontakt
+  if(!_tcp.contacts[tutorId]){
+    _tcp.contacts[tutorId]=Date.now();
+    localStorage.setItem('tutor_contacts',JSON.stringify(_tcp.contacts));
+    try{
+      var myId=await _tcpGetMyId();
+      if(myId) await db.from('tutor_contacts').upsert({user_id:myId,tutor_id:tutorId,contacted_at:new Date().toISOString()},{onConflict:'user_id,tutor_id'});
+    }catch(e){}
+  }
+
+  // Załaduj listę konwersacji (lewa kolumna)
+  loadTcpConvList();
+
+  // Aktywuj konkretną rozmowę
+  if(tutorId) activateTcpConv(tutorId, tutorName);
+
+  // Zamknij modal lektora
+  var vm=document.getElementById('tutor-view-modal');
+  if(vm) vm.style.display='none';
+}
+
+function closeTutorChat(){
+  document.getElementById('tutor-chat-panel').classList.remove('open');
+  _tcp.open=false;
+  if(_tcp.realtimeSub){try{db.removeChannel(_tcp.realtimeSub);}catch(e){}_tcp.realtimeSub=null;}
+}
+
+function toggleChatPanel(){
+  if(_tcp.open){ closeTutorChat(); }
+  else {
+    var panel=document.getElementById('tutor-chat-panel');
+    panel.classList.add('open');
+    _tcp.open=true;
+    loadTcpConvList();
+  }
+}
+
+// ── Lista konwersacji (lewa kolumna) ──
+async function loadTcpConvList(){
+  var myId=await _tcpGetMyId();
+  var listEl=document.getElementById('tcp-conv-list');
+  if(!myId){listEl.innerHTML='<div class="tcp-empty" style="padding:16px;font-size:12px">Zaloguj się aby zobaczyć wiadomości</div>';return;}
+  try{
+    var {data:msgs}=await db.from('tutor_messages')
+      .select('sender_id,receiver_id,content,created_at,read_at')
+      .or('sender_id.eq.'+myId+',receiver_id.eq.'+myId)
+      .order('created_at',{ascending:false})
+      .limit(200);
+    if(!msgs||!msgs.length){
+      listEl.innerHTML='<div class="tcp-empty" style="padding:16px;font-size:12px"><span style="font-size:22px">💬</span><span>Brak rozmów.<br>Kliknij ikonę przy lektorze.</span></div>';
+      return;
+    }
+    // Grupuj po rozmówcy
+    var convMap={};
+    msgs.forEach(function(m){
+      var otherId=m.sender_id===myId?m.receiver_id:m.sender_id;
+      if(!convMap[otherId]) convMap[otherId]={lastMsg:m,unread:0};
+      if(m.receiver_id===myId&&!m.read_at) convMap[otherId].unread++;
+    });
+    // Pobierz nazwy
+    var otherIds=Object.keys(convMap);
+    var nameMap={};
+    if(otherIds.length){
+      var {data:tuts}=await db.from('tutors').select('user_id,display_name').in('user_id',otherIds);
+      (tuts||[]).forEach(function(t){nameMap[t.user_id]=t.display_name;});
+      var {data:profs}=await db.from('profiles').select('user_id,username').in('user_id',otherIds);
+      (profs||[]).forEach(function(p){if(!nameMap[p.user_id])nameMap[p.user_id]=p.username;});
+    }
+    listEl.innerHTML='';
+    otherIds.forEach(function(otherId){
+      var conv=convMap[otherId];
+      var name=nameMap[otherId]||'Lektor';
+      var preview=(conv.lastMsg.content||'').slice(0,32)+(conv.lastMsg.content&&conv.lastMsg.content.length>32?'…':'');
+      var item=document.createElement('div');
+      item.className='tcp-conv-item'+(otherId===_tcp.activeTutorId?' active':'');
+      item.dataset.tid=otherId;
+      item.innerHTML='<div class="tcp-conv-avatar">'+name[0].toUpperCase()+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div class="tcp-conv-name">'+escH(name)+'</div>'
+        +'<div class="tcp-conv-preview">'+escH(preview)+'</div>'
+        +'</div>'
+        +(conv.unread?'<div class="tcp-conv-badge">'+conv.unread+'</div>':'');
+      item.onclick=function(){activateTcpConv(otherId,name);};
+      listEl.appendChild(item);
+    });
+  }catch(e){listEl.innerHTML='<div style="padding:12px;font-size:12px;color:#c33">Błąd: '+escH(e.message)+'</div>';}
+}
+
+// ── Aktywuj konkretną rozmowę ──
+async function activateTcpConv(tutorId, tutorName){
+  _tcp.activeTutorId=tutorId;
+  _tcp.activeTutorName=tutorName||'Lektor';
+
+  // Aktualizuj header
+  document.getElementById('tcp-name').textContent=_tcp.activeTutorName;
+  document.getElementById('tcp-status').textContent='Rozmowa z lektorem';
+  document.getElementById('tcp-avatar').textContent=(_tcp.activeTutorName[0]||'👤').toUpperCase();
+
+  // Podświetl aktywną konwersację
+  document.querySelectorAll('.tcp-conv-item').forEach(function(el){
+    el.classList.toggle('active',el.dataset.tid===tutorId);
+  });
+
+  // Pokaż pole input
+  document.getElementById('tcp-input-row').style.display='flex';
+
+  // Załaduj wiadomości
+  await loadTcpMessages(tutorId);
+
+  // Realtime
+  subscribeTcpRealtime(tutorId);
+
+  setTimeout(function(){var i=document.getElementById('tcp-input');if(i)i.focus();},100);
+}
+
+// ── Wiadomości ──
+async function loadTcpMessages(tutorId){
+  var myId=await _tcpGetMyId();
+  if(!myId)return;
+  var msgEl=document.getElementById('tcp-messages');
+  msgEl.innerHTML='<div style="text-align:center;padding:20px;color:var(--dim2);font-size:12px">Ładowanie…</div>';
+  try{
+    var {data:msgs}=await db.from('tutor_messages')
+      .select('id,sender_id,content,created_at')
+      .or('and(sender_id.eq.'+myId+',receiver_id.eq.'+tutorId+'),and(sender_id.eq.'+tutorId+',receiver_id.eq.'+myId+')')
+      .order('created_at',{ascending:true})
+      .limit(100);
+    renderTcpMessages(msgs||[],myId);
+    // Oznacz przeczytane
+    await db.from('tutor_messages').update({read_at:new Date().toISOString()})
+      .eq('sender_id',tutorId).eq('receiver_id',myId).is('read_at',null);
+    updateChatBadge();
+    // Odśwież listę (żeby badge zniknął)
+    loadTcpConvList();
+  }catch(e){msgEl.innerHTML='<div style="text-align:center;padding:20px;color:#c33;font-size:12px">Błąd ładowania</div>';}
+}
+
+function renderTcpMessages(msgs,myId){
+  var el=document.getElementById('tcp-messages');
+  if(!msgs.length){
+    el.innerHTML='<div class="tcp-empty"><span style="font-size:32px">👋</span><span>Napisz pierwszą wiadomość!</span></div>';
+    return;
+  }
+  el.innerHTML='';
+  msgs.forEach(function(m){
+    var mine=m.sender_id===myId;
+    var time=new Date(m.created_at).toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
+    var wrap=document.createElement('div');
+    wrap.style.cssText='display:flex;flex-direction:column;align-items:'+(mine?'flex-end':'flex-start')+';gap:2px';
+    wrap.innerHTML='<div class="tcp-bubble '+(mine?'mine':'theirs')+'">'+escH(m.content||'')+'</div>'
+      +'<span class="tcp-time">'+time+'</span>';
+    el.appendChild(wrap);
+  });
+  el.scrollTop=el.scrollHeight;
+}
+
+// ── Wyślij ──
+async function sendChatMsg2(){
+  var input=document.getElementById('tcp-input');
+  var content=(input.value||'').trim();
+  if(!content||!_tcp.activeTutorId)return;
+  var myId=await _tcpGetMyId();
+  if(!myId){showToast('Zaloguj się aby pisać','error');return;}
+  input.value='';
+  try{
+    await db.from('tutor_messages').insert({sender_id:myId,receiver_id:_tcp.activeTutorId,content:content});
+    // Dodaj bąbelek lokalnie
+    var el=document.getElementById('tcp-messages');
+    var time=new Date().toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
+    var wrap=document.createElement('div');
+    wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;gap:2px';
+    wrap.innerHTML='<div class="tcp-bubble mine">'+escH(content)+'</div>'
+      +'<span class="tcp-time">'+time+'</span>';
+    // Usuń empty state jeśli istnieje
+    var empty=el.querySelector('.tcp-empty');
+    if(empty)empty.remove();
+    el.appendChild(wrap);
+    el.scrollTop=el.scrollHeight;
+    // Odśwież listę konwersacji
+    setTimeout(loadTcpConvList,300);
+  }catch(e){showToast('Błąd wysyłania','error');}
+}
+
+// ── Realtime ──
+function subscribeTcpRealtime(tutorId){
+  if(_tcp.realtimeSub){try{db.removeChannel(_tcp.realtimeSub);}catch(e){}}
+  _tcpGetMyId().then(function(myId){
+    if(!myId)return;
+    _tcp.realtimeSub=db.channel('tcp:'+myId+':'+tutorId)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'tutor_messages',filter:'receiver_id=eq.'+myId},function(payload){
+        var m=payload.new;
+        if(m.sender_id!==tutorId)return;
+        var el=document.getElementById('tcp-messages');
+        if(!el)return;
+        var time=new Date(m.created_at).toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
+        var wrap=document.createElement('div');
+        wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-start;gap:2px';
+        wrap.innerHTML='<div class="tcp-bubble theirs">'+escH(m.content||'')+'</div>'
+          +'<span class="tcp-time">'+time+'</span>';
+        el.appendChild(wrap);
+        el.scrollTop=el.scrollHeight;
+        updateChatBadge();
+        loadTcpConvList();
+      })
+      .subscribe();
+  });
+}
+
+async function updateChatBadge(){
+  var myId=await _tcpGetMyId();
+  if(!myId)return;
+  try{
+    var {count}=await db.from('tutor_messages').select('id',{count:'exact',head:true}).eq('receiver_id',myId).is('read_at',null);
+    var badge=document.getElementById('chat-badge');
+    if(badge){badge.textContent=count||'';badge.style.display=count>0?'flex':'none';}
+  }catch(e){}
+}
+
+// ── Rate Modal V2 (z X i Escape) ──
+var _trm={tutorId:null,val:0};
+var _trmLabels=['','Bardzo słaby 😞','Słaby 😕','Przeciętny 😐','Dobry 😊','Świetny! 🤩'];
+
+function openRateModal(tutorId){
+  _trm.tutorId=tutorId;_trm.val=0;
+  document.getElementById('trm-msg').textContent='';
+  document.getElementById('trm-comment').value='';
+  document.getElementById('trm-label').textContent='';
+  document.querySelectorAll('.trm-star').forEach(function(s){s.classList.remove('lit');});
+  document.getElementById('tutor-rate-modal').classList.add('open');
+}
+function closeRateModal(){document.getElementById('tutor-rate-modal').classList.remove('open');}
+function setRateModalStar(val){
+  _trm.val=val;
+  document.querySelectorAll('.trm-star').forEach(function(s,i){s.classList.toggle('lit',i<val);});
+  document.getElementById('trm-label').textContent=_trmLabels[val]||'';
+}
+async function submitRateModal(){
+  if(!_trm.val){document.getElementById('trm-msg').innerHTML='<span style="color:#c33">Wybierz ocenę</span>';return;}
+  var comment=document.getElementById('trm-comment').value.trim();
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess){document.getElementById('trm-msg').innerHTML='<span style="color:#c33">Zaloguj się</span>';return;}
+  try{
+    await db.from('tutor_reviews').upsert({tutor_id:_trm.tutorId,user_id:sess.user.id,rating:_trm.val,comment:comment},{onConflict:'tutor_id,user_id'});
+    var {data:revs}=await db.from('tutor_reviews').select('rating').eq('tutor_id',_trm.tutorId);
+    if(revs&&revs.length){
+      var avg=revs.reduce(function(s,r){return s+r.rating;},0)/revs.length;
+      await db.from('tutors').update({rating_avg:Math.round(avg*10)/10,rating_count:revs.length}).eq('id',_trm.tutorId);
+    }
+    document.getElementById('trm-msg').innerHTML='<span style="color:#16a34a">✅ Dziękujemy za opinię!</span>';
+    setTimeout(closeRateModal,1500);
+    if(typeof loadTutors==='function')loadTutors();
+  }catch(e){document.getElementById('trm-msg').innerHTML='<span style="color:#c33">Błąd: '+escH(e.message)+'</span>';}
+}
+
+// Escape zamyka modal oceny
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){
+    closeRateModal();
+    closeTutorChat();
+  }
+});
+
+// hasTutorContact helper
+function hasTutorContact(tutorId){return !!_tcp.contacts[tutorId];}
+
+// Chat badge po zalogowaniu
+var _origPostLogin2=window.postLogin;
+window.postLogin=function(){if(_origPostLogin2)_origPostLogin2();setTimeout(updateChatBadge,1000);};
+</script>
