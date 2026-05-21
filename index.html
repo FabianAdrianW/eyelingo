@@ -807,6 +807,7 @@ const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const DOWNLOAD_URL='#';
 const{createClient}=supabase;
 const db=createClient(SUPABASE_URL,SUPABASE_KEY);
+function getChatUsageToday(){try{return parseInt(localStorage.getItem('chat_usage_'+new Date().toISOString().slice(0,10))||'0');}catch(e){return 0;}}
 // Global escH helper — available in all script blocks
 window.escH = function(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
 // ── renderStarsDisplay — global ──
@@ -3062,7 +3063,7 @@ async function fetchOdkryjVocab(topic, lang, level, tok){
     });
     var d=await res.json();
     var raw=d?.candidates?.[0]?.content?.parts?.[0]?.text||'[]';
-    var clean=raw.replace(/```json|```/g,'').trim();
+    var _bt='`';var clean=raw.replace(new RegExp(_bt+_bt+_bt+'json|'+_bt+_bt+_bt,'g'),'').trim();
     var parsed=null;
     try{parsed=JSON.parse(clean);}catch(e){var m=clean.match(/\[[\s\S]*\]/);if(m)try{parsed=JSON.parse(m[0]);}catch(e){}}
     return parsed||[];
@@ -3934,29 +3935,44 @@ async function analyzeSentence(el, sentence){
 }
 
 function renderSentenceSidebar(sb, sentence, translation, lang){
-  var langCodes={en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP',de:'de-DE',fr:'fr-FR'};
-  var langCode=langCodes[lang]||'en-GB';
+  sb.innerHTML='';
+  sb.dataset.lang=lang||'en';
 
-  sb.innerHTML=
-    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:10px">📌 Wybrane zdanie</div>'
-    +'<div style="font-size:14px;color:var(--navy);line-height:1.6;margin-bottom:10px;font-style:italic">&ldquo;'+sentence+'&rdquo;</div>'
-    // Przycisk audio zdania
-    +'<button id="sent-audio-btn" onclick="playSentenceAudio(''+sentence.replace(/'/g,"\\'")+'')" style="width:100%;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px;transition:.15s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">🔊 Odtwórz zdanie</button>'
-    +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:6px">🇵🇱 Tłumaczenie</div>'
-    +'<div style="font-size:15px;color:var(--orange);font-weight:600;line-height:1.5">'+translation+'</div>';
+  var h1=document.createElement('div');
+  h1.style.cssText='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:10px';
+  h1.textContent='📌 Wybrane zdanie';
+  sb.appendChild(h1);
 
-  // Zapisz język dla funkcji audio
-  sb.dataset.lang = lang;
+  var sq=document.createElement('div');
+  sq.style.cssText='font-size:14px;color:var(--navy);line-height:1.6;margin-bottom:10px;font-style:italic;border-left:3px solid var(--orange);padding-left:10px';
+  sq.textContent=sentence;
+  sb.appendChild(sq);
+
+  var audioBtn=document.createElement('button');
+  audioBtn.style.cssText='width:100%;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px;transition:.15s;font-family:"DM Sans",sans-serif';
+  audioBtn.textContent='🔊 Odtwórz zdanie';
+  audioBtn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+  audioBtn.onmouseout=function(){this.style.borderColor='var(--border)';};
+  audioBtn.onclick=(function(s,l){return function(){playSentenceAudio(s,l);};})(sentence, lang);
+  sb.appendChild(audioBtn);
+
+  var h2=document.createElement('div');
+  h2.style.cssText='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:6px';
+  h2.textContent='🇵🇱 Tłumaczenie';
+  sb.appendChild(h2);
+
+  var trEl=document.createElement('div');
+  trEl.style.cssText='font-size:15px;color:var(--orange);font-weight:600;line-height:1.5';
+  trEl.textContent=translation;
+  sb.appendChild(trEl);
 }
-
 // Odtwórz audio tylko jednego zdania (zatrzymuje główne TTS)
-function playSentenceAudio(sentence){
-  // Zatrzymaj główne TTS jeśli gra
+function playSentenceAudio(sentence, lang){
   if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
 
   var btn=document.getElementById('sent-audio-btn');
   var sb=document.getElementById('dc-read-sidebar');
-  var lang=sb?sb.dataset.lang||'en':'en';
+  if(!lang) lang=sb?sb.dataset.lang||'en':'en';
   var langCodes={en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP',de:'de-DE',fr:'fr-FR'};
   var langCode=langCodes[lang]||'en-GB';
 
@@ -4351,7 +4367,7 @@ async function loadChallengeSet(ch){
     });
     var data=await res.json();
     var raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||'[]';
-    var clean=raw.replace(/```json|```/g,'').trim();
+    var _bt='`';var clean=raw.replace(new RegExp(_bt+_bt+_bt+'json|'+_bt+_bt+_bt,'g'),'').trim();
     var cards=null;
     try{cards=JSON.parse(clean);}catch(e){var m=clean.match(/\[[\s\S]+\]/);if(m)try{cards=JSON.parse(m[0]);}catch(e2){}}
     if(!cards||!cards.length)throw new Error('Brak fiszek');
@@ -4805,7 +4821,7 @@ async function analyzeLyrics(){
       });
       var data=await res.json();
       var raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
-      var clean=raw.replace(/```json|```/g,'').trim();
+      var _bt='`';var clean=raw.replace(new RegExp(_bt+_bt+_bt+'json|'+_bt+_bt+_bt,'g'),'').trim();
       var chunkParsed=null;
       try{chunkParsed=JSON.parse(clean);}catch(e){}
       if(!chunkParsed){var m2=clean.match(/\{[\s\S]*\}/);if(m2){try{chunkParsed=JSON.parse(m2[0]);}catch(e){}}}
@@ -6117,7 +6133,7 @@ function renderTutors(tutors){
 
     // KARTA — 2 kolumny: lewa (opis) | prawa (dostępność + video)
     var card=document.createElement('div');
-    card.style.cssText='flex:1;border:2px solid var(--border);border-radius:20px;overflow:hidden;background:#fff;cursor:pointer;transition:.25s;display:grid;grid-template-columns:1fr 260px';
+    card.style.cssText='flex:1;border:2px solid var(--border);border-radius:20px;overflow:hidden;background:#fff;cursor:pointer;transition:.25s;display:grid;grid-template-columns:1fr 340px';
     card.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.boxShadow='0 8px 32px rgba(201,106,42,.12)';this.style.transform='translateY(-2px)';};
     card.onmouseout=function(){this.style.borderColor='var(--border)';this.style.boxShadow='none';this.style.transform='none';};
     card.onclick=function(){viewTutor(t.id);};
@@ -6191,7 +6207,7 @@ function renderTutors(tutors){
 
     // Dostępność — kafelki po lewej, godziny po prawej
     var calWrap=document.createElement('div');
-    calWrap.style.cssText='padding:14px;flex:1';
+    calWrap.style.cssText='padding:14px;flex:1;min-width:200px';
     var calLbl=document.createElement('div');
     calLbl.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--dim2);margin-bottom:8px';
     calLbl.textContent='📅 Dostępność';
@@ -6203,7 +6219,7 @@ function renderTutors(tutors){
     DAYS_EN.forEach(function(d,i){
       var day=avail[d];var active=day&&day.active;
       var row=document.createElement('div');
-      row.style.cssText='display:flex;align-items:center;gap:8px';
+      row.style.cssText='display:flex;align-items:center;gap:8px;white-space:nowrap';
       // Kafelek dnia
       var tile=document.createElement('div');
       tile.style.cssText='width:34px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;'
@@ -6237,7 +6253,7 @@ function renderTutors(tutors){
 
     // Video po prawej stronie dostępności
     var vWrap=document.createElement('div');
-    vWrap.style.cssText='width:140px;flex-shrink:0;overflow:hidden;border-left:1px solid var(--border);position:relative;background:var(--paper2);display:flex;align-items:center;justify-content:center';
+    vWrap.style.cssText='flex:1;overflow:hidden;border-left:1px solid var(--border);position:relative;background:var(--paper2);display:flex;align-items:center;justify-content:center;min-height:120px';
     if(t.video_url){
       var ytMatch=t.video_url.match(/(?:youtu\.be\/|[?&]v=)([^&\/?]+)/);
       if(ytMatch&&ytMatch[1]){
