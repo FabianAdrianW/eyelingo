@@ -2951,7 +2951,7 @@ async function getSemanticTags(topic, lang, tok){
     });
     var d = await res.json();
     var raw = (d?.candidates?.[0]?.content?.parts?.[0]?.text||'[]');
-    var clean = raw.replace(/`{3}json|`{3}/g,'').trim();
+    var _bt='`';var clean = raw.replace(new RegExp(_bt+_bt+_bt+'json|'+_bt+_bt+_bt,'g'),'').trim();
     var tags = [];
     try{ tags = JSON.parse(clean); }catch(e){ var m=clean.match(/\[[\s\S]*\]/); if(m) try{tags=JSON.parse(m[0]);}catch(e2){} }
     if(!tags.length) tags = [topic];
@@ -5921,88 +5921,87 @@ window.postLogin=function(){if(_origPostLogin2)_origPostLogin2();setTimeout(upda
 // LEKTORZY — nowy design kart (redesign 2.0)
 // Psychologia: pre-attentive processing, spatial memory
 // ═══════════════════════════════════════════════════════
-// ── helper: buduje wizualizację dostępności (poziome paski) ──
+// ── helper: dostępność — kompaktowe pilulki dni ──
+// Psychologia: chunking — grupujemy info w łatwe do skanowania jednostki
 function buildAvailBars(avail){
   var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
   var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
-  var DAY_START=8, DAY_END=22; // oś czasu 08:00–22:00
-
-  function timeToFrac(str){
-    if(!str)return 0;
-    var parts=str.split(':');
-    var h=parseInt(parts[0])||0, m=parseInt(parts[1])||0;
-    return Math.max(0,Math.min(1,(h+m/60-DAY_START)/(DAY_END-DAY_START)));
-  }
-
-  var html='<div style="display:flex;flex-direction:column;gap:4px">';
+  var activeDays=[];
   DAYS_EN.forEach(function(d,i){
     var day=(avail||{})[d];
-    var active=day&&day.active;
-    var fromFrac=active?timeToFrac(day.from):0;
-    var toFrac=active?timeToFrac(day.to):0;
-    var width=Math.max(0,toFrac-fromFrac);
+    if(day&&day.active) activeDays.push({label:DAYS_PL[i].slice(0,2),from:day.from,to:day.to});
+  });
+  if(!activeDays.length) return '<div style="font-size:11px;color:var(--dim2)">Brak podanej dostępności</div>';
 
-    html+='<div style="display:flex;align-items:center;gap:8px">';
-    html+='<span style="font-size:10px;font-weight:700;color:'+(active?'var(--navy)':'var(--dim2)')+';width:24px;flex-shrink:0">'+DAYS_PL[i].slice(0,2)+'</span>';
-    html+='<div style="flex:1;height:8px;background:var(--paper2);border-radius:4px;overflow:hidden;position:relative">';
-    if(active&&width>0){
-      html+='<div style="position:absolute;top:0;bottom:0;left:'+(fromFrac*100)+'%;width:'+(width*100)+'%;background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:4px"></div>';
-    }
+  // Wypisz tylko aktywne dni jako kompaktowe pilulki
+  // Jeśli godziny są te same dla kilku dni — grupuj
+  var groups={};
+  DAYS_EN.forEach(function(d,i){
+    var day=(avail||{})[d];
+    if(!day||!day.active)return;
+    var key=(day.from||'')+'–'+(day.to||'');
+    if(!groups[key])groups[key]=[];
+    groups[key].push(DAYS_PL[i].slice(0,2));
+  });
+
+  var html='<div style="display:flex;flex-direction:column;gap:5px">';
+  Object.keys(groups).forEach(function(hours){
+    var days=groups[hours];
+    html+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
+    html+='<div style="display:flex;gap:3px">';
+    days.forEach(function(d){
+      html+='<span style="font-size:10px;font-weight:700;background:rgba(22,163,74,.12);color:#15803d;padding:2px 6px;border-radius:5px;border:1px solid rgba(22,163,74,.25)">'+d+'</span>';
+    });
     html+='</div>';
-    if(active&&day.from&&day.to){
-      html+='<span style="font-size:9px;color:var(--dim2);white-space:nowrap;width:70px;flex-shrink:0">'+day.from+'–'+day.to+'</span>';
-    } else {
-      html+='<span style="font-size:9px;color:var(--border2);width:70px;flex-shrink:0">—</span>';
-    }
+    html+='<span style="font-size:10px;color:var(--dim2);font-weight:600">⏰ '+hours+'</span>';
     html+='</div>';
   });
   html+='</div>';
   return html;
 }
 
-// ── helper: pełny kalendarz dostępności do podglądu lektora ──
+// ── helper: tygodniowa siatka dostępności (modal) ──
+// Psychologia: spatial memory — 7 kolumn = 7 dni, natychmiastowy pattern recognition
 function buildFullAvailCalendar(avail){
-  var DAYS_PL=['Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota','Niedziela'];
+  var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
   var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
-  var DAY_START=8, DAY_END=22;
 
-  function timeToFrac(str){
-    if(!str)return 0;
-    var parts=str.split(':');
-    return Math.max(0,Math.min(1,(parseInt(parts[0]||0)+parseInt(parts[1]||0)/60-DAY_START)/(DAY_END-DAY_START)));
-  }
-
-  var activeDays=DAYS_EN.filter(function(d){return avail[d]&&avail[d].active;});
-  if(!activeDays.length) return '<div style="color:var(--dim2);font-size:13px;padding:12px">Brak podanej dostępności</div>';
-
-  var html='<div style="display:flex;flex-direction:column;gap:6px">';
-  // Oś godzin
-  html+='<div style="display:flex;align-items:center;gap:8px;padding-left:110px;margin-bottom:2px">';
-  for(var h=DAY_START;h<=DAY_END;h+=2){
-    html+='<span style="font-size:9px;color:var(--dim2);flex:1;text-align:center">'+h+':00</span>';
-  }
-  html+='</div>';
-
+  // Tygodniowa siatka — 7 kafelków
+  var html='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">';
   DAYS_EN.forEach(function(d,i){
     var day=avail[d];
     var active=day&&day.active;
-    var fromFrac=active?timeToFrac(day.from):0;
-    var toFrac=active?timeToFrac(day.to):0;
-    var width=Math.max(0,toFrac-fromFrac);
+    var isWeekend=i>=5;
 
-    html+='<div style="display:flex;align-items:center;gap:8px">';
-    html+='<span style="font-size:11px;font-weight:'+(active?'700':'400')+';color:'+(active?'var(--navy)':'var(--dim2)')+';width:102px;flex-shrink:0">'+DAYS_PL[i]+'</span>';
-    html+='<div style="flex:1;height:22px;background:'+(active?'var(--paper2)':'rgba(26,35,64,.04)')+';border-radius:6px;overflow:hidden;position:relative;border:1px solid var(--border)">';
-    if(active&&width>0){
-      html+='<div style="position:absolute;top:0;bottom:0;left:'+(fromFrac*100)+'%;width:'+(width*100)+'%;background:linear-gradient(90deg,rgba(22,163,74,.9),rgba(74,222,128,.8));border-radius:4px;display:flex;align-items:center;justify-content:center">';
-      html+='<span style="font-size:9px;font-weight:700;color:#fff">'+day.from+' – '+day.to+'</span>';
-      html+='</div>';
+    html+='<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 6px;border-radius:12px;'
+      +(active
+        ?'background:rgba(22,163,74,.1);border:1.5px solid rgba(22,163,74,.3)'
+        :'background:var(--paper2);border:1.5px solid var(--border)')
+      +'">';
+
+    // Nazwa dnia
+    html+='<span style="font-size:11px;font-weight:700;color:'+(active?'#15803d':'var(--dim2)')+'">'+DAYS_PL[i]+'</span>';
+
+    // Ikona
+    html+='<span style="font-size:16px">'+(active?'✅':'—')+'</span>';
+
+    // Godziny
+    if(active&&day.from&&day.to){
+      html+='<span style="font-size:9px;font-weight:600;color:#15803d;text-align:center;line-height:1.4">'+day.from+'<br>'+day.to+'</span>';
     } else {
-      html+='<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="font-size:9px;color:var(--dim2)">niedostępny</span></div>';
+      html+='<span style="font-size:9px;color:var(--dim2)">—</span>';
     }
-    html+='</div></div>';
+    html+='</div>';
   });
   html+='</div>';
+
+  // Podsumowanie tekstowe pod siatką
+  var activeDays=DAYS_EN.filter(function(d){return avail[d]&&avail[d].active;});
+  if(activeDays.length){
+    html+='<div style="margin-top:10px;font-size:11px;color:var(--dim2);text-align:center">';
+    html+='Dostępny <strong style="color:var(--navy)">'+activeDays.length+' dni</strong> w tygodniu';
+    html+='</div>';
+  }
   return html;
 }
 
@@ -6889,11 +6888,7 @@ async function viewTutor(tutorId){
       var hour=hourInput.value;
       var note=noteInput.value.trim();
       var dayName=daySelect.options[daySelect.selectedIndex]&&daySelect.options[daySelect.selectedIndex].text||day;
-      var msg='Cześć! Chciałbym/Chciałabym zarezerwować lekcję.
-📅 Dzień: '+dayName+'
-⏰ Godzina: '+hour+(note?'
-
-'+note:'');
+      var msg='Cześć! Chciałbym zarezerwować lekcję.\n📅 Dzień: '+dayName+'\n⏰ Godzina: '+hour+(note?'\n\n'+note:'');
       modal.style.display='none';
       openTutorChat(t.user_id||tutorId,t.display_name);
       // Wyślij wiadomość po krótkim opóźnieniu (żeby chat się załadował)
