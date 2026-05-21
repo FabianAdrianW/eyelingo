@@ -807,6 +807,9 @@ const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const DOWNLOAD_URL='#';
 const{createClient}=supabase;
 const db=createClient(SUPABASE_URL,SUPABASE_KEY);
+// Global escH helper — available in all script blocks
+window.escH = function(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+
 let authMode='login';
 
 function _showPageBasic(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
@@ -1124,6 +1127,39 @@ function showPage(name){
   loadNotifications();
   setActiveTab(name);
   return false;
+}
+
+// ── Stub functions (safe fallbacks) ──
+async function loadNotifications(){
+  // Ładuj powiadomienia jeśli panel istnieje
+  try{
+    var panel=document.getElementById('notif-panel');
+    var badge=document.getElementById('notif-badge');
+    if(!panel&&!badge) return;
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess) return;
+    var{data:notifs}=await db.from('notifications')
+      .select('id,type,message,read_at,created_at')
+      .eq('user_id',sess.user.id)
+      .order('created_at',{ascending:false})
+      .limit(20);
+    if(!notifs) return;
+    var unread=notifs.filter(function(n){return !n.read_at;}).length;
+    if(badge) badge.textContent=unread||'';
+    if(badge) badge.style.display=unread?'flex':'none';
+    if(panel){
+      var icon={voice_rated:'🎙️',voice_commented:'💬',material_liked:'❤️',streak:'🔥',gold:'🪙',review:'⭐'};
+      panel.innerHTML=notifs.length
+        ?notifs.map(function(n){
+          return'<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;'+(n.read_at?'opacity:.6':'')+'">'
+            +'<span style="font-size:18px">'+(icon[n.type]||'🔔')+'</span>'
+            +'<div><div style="font-size:13px;color:var(--navy)">'+(n.message||'')+'</div>'
+            +'<div style="font-size:11px;color:var(--dim2)">'+ new Date(n.created_at).toLocaleDateString('pl')+'</div></div>'
+            +'</div>';
+        }).join('')
+        :'<div style="padding:20px;text-align:center;color:var(--dim2);font-size:13px">Brak powiadomień</div>';
+    }
+  }catch(e){ /* silent */ }
 }
 
 // ── Materiały - stan globalny ──
@@ -4659,7 +4695,7 @@ async function analyzeLyrics(){
 
     // Podziel tekst na bloki max 60 linii (unikamy przekroczenia tokenów)
     var allLines=text.split('\n').filter(function(l){return l.trim();});
-    var CHUNK=50;
+    var CHUNK=80;
     var chunks=[];
     for(var ci=0;ci<allLines.length;ci+=CHUNK){
       chunks.push(allLines.slice(ci,ci+CHUNK).join('\n'));
@@ -4669,7 +4705,7 @@ async function analyzeLyrics(){
     var tokL=(await db.auth.getSession()).data.session?.access_token||'';
 
     for(var chi=0;chi<chunks.length;chi++){
-      if(chunks.length>1) btn.textContent='🤖 Analizuję... ('+( chi+1)+'/'+chunks.length+')';
+      if(chunks.length>1) btn.textContent='🤖 AI analizuje tekst... ('+Math.round((chi+1)/chunks.length*100)+'%)';
       var prompt='You are a world-class linguist, cultural critic, and musicologist specializing in '+langNames[lang]+' music.\n'
         +'Your task: provide the deepest possible multi-layer analysis for each line of these song lyrics.\n'
         +'For EACH line/verse provide ALL of these layers IN POLISH:\n'
@@ -4810,7 +4846,7 @@ function showLyricAnalysis(idx){
   if(!sidebar)return;
 
   var html='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--dim2);margin-bottom:10px">📌 Wybrana linia</div>'
-    +'<div style="font-size:15px;font-weight:600;color:var(--navy);font-style:italic;margin-bottom:16px;padding:10px 14px;background:var(--paper2);border-radius:10px;border-left:3px solid var(--orange)">"'+escH(line.text)+'"</div>';
+    +'<div style="font-size:15px;font-weight:600;color:var(--navy);font-style:italic;margin-bottom:16px;padding:10px 14px;background:var(--paper2);border-radius:10px;border-left:3px solid var(--orange)">"'+(line.text||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'"</div>';
 
   if(line.annotation&&line.annotation.length>5){
     html+='<div style="font-size:13px;color:var(--dim);line-height:1.75;margin-bottom:16px">'+line.annotation.replace(/\n/g,'<br>')+'</div>';
@@ -4823,8 +4859,8 @@ function showLyricAnalysis(idx){
       +'<div style="display:flex;flex-direction:column;gap:8px">'
       +line.words.map(function(w){
         return'<div style="padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:10px">'
-          +'<div style="font-size:13px;font-weight:700;color:var(--navy)">'+escH(w.word||'')+'</div>'
-          +'<div style="font-size:12px;color:var(--orange);margin-top:2px">'+escH(w.translation||'')+'</div>'
+          +'<div style="font-size:13px;font-weight:700;color:var(--navy)">'+(w.word||''||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>'
+          +'<div style="font-size:12px;color:var(--orange);margin-top:2px">'+(w.translation||''||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>'
           +'</div>';
       }).join('')
       +'</div>';
@@ -5151,6 +5187,97 @@ var _myTutorId = null;
 
 const DAYS_PL = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
 const DAYS_EN = ['mon','tue','wed','thu','fri','sat','sun'];
+
+// ── escH global helper ──
+function escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Build availability form ──
+function buildAvailabilityForm(){
+  var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
+  var wrap=document.getElementById('tutor-availability-form');
+  if(!wrap) return;
+  wrap.innerHTML='';
+  DAYS_EN.forEach(function(d,i){
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)';
+    row.innerHTML='<label style="display:flex;align-items:center;gap:6px;min-width:70px;font-size:13px;cursor:pointer">'
+      +'<input type="checkbox" id="avail-'+d+'-active" onchange="toggleAvailDay(''+d+'')">'
+      +'<span style="font-weight:600">'+DAYS_PL[i]+'</span>'
+      +'</label>'
+      +'<div id="avail-'+d+'-times" style="display:none;align-items:center;gap:6px;flex:1">'
+      +'<input type="time" id="avail-'+d+'-from" value="09:00" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px">'
+      +'<span style="color:var(--dim2);font-size:12px">–</span>'
+      +'<input type="time" id="avail-'+d+'-to" value="17:00" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px">'
+      +'</div>';
+    wrap.appendChild(row);
+  });
+}
+
+function toggleAvailDay(d){
+  var cb=document.getElementById('avail-'+d+'-active');
+  var times=document.getElementById('avail-'+d+'-times');
+  if(times) times.style.display=cb&&cb.checked?'flex':'none';
+}
+
+async function saveTutorProfile(){
+  var name=(document.getElementById('tutor-name')||{}).value||'';
+  var bio=(document.getElementById('tutor-bio')||{}).value||'';
+  var price=(document.getElementById('tutor-price')||{}).value||'';
+  var photo=(document.getElementById('tutor-photo')||{}).value||'';
+  var video=(document.getElementById('tutor-video')||{}).value||'';
+  var langs=[...document.querySelectorAll('.tutor-lang-cb:checked')].map(function(c){return c.value;});
+  var levels=[...document.querySelectorAll('.tutor-level-cb:checked')].map(function(c){return c.value;});
+  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
+  var availability={};
+  DAYS_EN.forEach(function(d){
+    var cb=document.getElementById('avail-'+d+'-active');
+    if(cb&&cb.checked){
+      availability[d]={active:true,
+        from:(document.getElementById('avail-'+d+'-from')||{}).value||'09:00',
+        to:(document.getElementById('avail-'+d+'-to')||{}).value||'17:00'};
+    } else { availability[d]={active:false}; }
+  });
+  if(!name){showToast('Podaj imię i nazwisko','error');return;}
+  if(!langs.length){showToast('Wybierz co najmniej jeden język','error');return;}
+  var msgEl=document.getElementById('tutor-save-msg');
+  if(msgEl) msgEl.textContent='Zapisuję...';
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){showToast('Zaloguj się','error');return;}
+    var payload={user_id:sess.user.id,display_name:name,bio:bio,
+      photo_url:photo,video_url:video,languages:langs,levels:levels,
+      price_per_hour:price?parseFloat(price):null,
+      availability:availability,is_active:true};
+    await db.from('tutors').upsert(payload,{onConflict:'user_id'});
+    if(msgEl) msgEl.innerHTML='<span style="color:#16a34a">✅ Profil zapisany!</span>';
+    document.getElementById('tutor-register-modal').style.display='none';
+    showToast('Profil lektora zapisany!','success');
+    loadTutors();
+  }catch(e){
+    if(msgEl) msgEl.innerHTML='<span style="color:#c33">Błąd: '+escH(e.message)+'</span>';
+  }
+}
+
+function openTutorRegisterModal(){
+  document.getElementById('tutor-register-modal').style.display='flex';
+  buildAvailabilityForm();
+}
+
+function filterTutors(){
+  var lang=(document.getElementById('tutor-filter-lang')||{}).value||'';
+  var level=(document.getElementById('tutor-filter-level')||{}).value||'';
+  var price=parseInt((document.getElementById('tutor-filter-price')||{}).value||'0')||0;
+  var search=((document.getElementById('tutor-search')||{}).value||'').toLowerCase();
+  var filtered=(_allTutors||[]).filter(function(t){
+    if(lang&&!(t.languages||[]).includes(lang)) return false;
+    if(level&&!(t.levels||[]).includes(level)) return false;
+    if(price&&t.price_per_hour&&t.price_per_hour>price) return false;
+    if(search&&!(t.display_name||'').toLowerCase().includes(search)&&!(t.bio||'').toLowerCase().includes(search)) return false;
+    return true;
+  });
+  renderTutors(filtered);
+}
 
 async function initTutors(){
   await loadTutors();
