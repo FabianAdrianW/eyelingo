@@ -1860,12 +1860,12 @@ async function loadRanking(){
 
 <!-- Modal rejestracji lektora -->
 <div id="tutor-register-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;overflow-y:auto;padding:20px" onclick="if(event.target===this)this.style.display='none'">
-<div style="max-width:600px;margin:40px auto;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 24px 80px rgba(26,35,64,.2)">
+<div style="max-width:600px;margin:40px auto;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 24px 80px rgba(26,35,64,.2);max-height:90vh;display:flex;flex-direction:column">
   <div style="background:var(--navy);padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
     <div style="font-size:16px;font-weight:700;color:#fff">🎓 Profil lektora</div>
     <button onclick="document.getElementById('tutor-register-modal').style.display='none'" style="background:none;border:none;color:rgba(255,255,255,.6);font-size:22px;cursor:pointer;line-height:1">×</button>
   </div>
-  <div style="padding:24px;display:flex;flex-direction:column;gap:16px">
+  <div style="padding:24px;display:flex;flex-direction:column;gap:16px;overflow-y:auto;max-height:calc(88vh - 70px)">
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
       <div>
@@ -5694,26 +5694,33 @@ async function loadTcpConvList(){
       if(!convMap[otherId]) convMap[otherId]={lastMsg:m,unread:0};
       if(m.receiver_id===myId&&!m.read_at) convMap[otherId].unread++;
     });
-    // Pobierz nazwy
+    // Pobierz nazwy — profiles (username) mają priorytet nad tutors (display_name)
     var otherIds=Object.keys(convMap);
     var nameMap={};
+    var roleMap={}; // tutorId → czy jest lektorem
     if(otherIds.length){
-      var {data:tuts}=await db.from('tutors').select('user_id,display_name').in('user_id',otherIds);
-      (tuts||[]).forEach(function(t){nameMap[t.user_id]=t.display_name;});
+      // Najpierw profiles (prawdziwa nazwa konta)
       var {data:profs}=await db.from('profiles').select('user_id,username').in('user_id',otherIds);
-      (profs||[]).forEach(function(p){if(!nameMap[p.user_id])nameMap[p.user_id]=p.username;});
+      (profs||[]).forEach(function(p){if(p.username)nameMap[p.user_id]=p.username;});
+      // Tutors jako uzupełnienie i info o roli
+      var {data:tuts}=await db.from('tutors').select('user_id,display_name').in('user_id',otherIds);
+      (tuts||[]).forEach(function(t){
+        roleMap[t.user_id]=true;
+        if(!nameMap[t.user_id]&&t.display_name)nameMap[t.user_id]=t.display_name;
+      });
     }
     listEl.innerHTML='';
     otherIds.forEach(function(otherId){
       var conv=convMap[otherId];
-      var name=nameMap[otherId]||'Lektor';
+      var name=nameMap[otherId]||'Użytkownik';
+      var isLektor=roleMap[otherId]||false;
       var preview=(conv.lastMsg.content||'').slice(0,32)+(conv.lastMsg.content&&conv.lastMsg.content.length>32?'…':'');
       var item=document.createElement('div');
       item.className='tcp-conv-item'+(otherId===_tcp.activeTutorId?' active':'');
       item.dataset.tid=otherId;
       item.innerHTML='<div class="tcp-conv-avatar">'+name[0].toUpperCase()+'</div>'
         +'<div style="flex:1;min-width:0">'
-        +'<div class="tcp-conv-name">'+escH(name)+'</div>'
+        +'<div class="tcp-conv-name">'+escH(name)+(isLektor?' <span style="font-size:9px;background:var(--orange);color:#fff;padding:1px 5px;border-radius:4px;font-weight:700;vertical-align:middle">LEKTOR</span>':'')+'</div>'
         +'<div class="tcp-conv-preview">'+escH(preview)+'</div>'
         +'</div>'
         +(conv.unread?'<div class="tcp-conv-badge">'+conv.unread+'</div>':'');
@@ -6590,4 +6597,214 @@ window.renderLyricsWords = function(){
       +'</div>';
   }).join('');
 };
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// BRAKUJĄCE FUNKCJE LEKTORÓW
+// ═══════════════════════════════════════════════════════
+
+// ── viewTutor — podgląd profilu lektora ──
+async function viewTutor(tutorId){
+  var modal=document.getElementById('tutor-view-modal');
+  var content=document.getElementById('tutor-view-content');
+  if(!modal||!content)return;
+  modal.style.display='flex';
+  content.innerHTML='<div style="display:flex;align-items:center;justify-content:center;padding:60px;color:var(--dim2);font-size:14px">⏳ Ładowanie...</div>';
+
+  try{
+    var {data:t}=await db.from('tutors').select('*').eq('id',tutorId).maybeSingle();
+    if(!t){content.innerHTML='<div style="padding:40px;text-align:center;color:var(--dim2)">Nie znaleziono lektora</div>';return;}
+
+    var {data:reviews}=await db.from('tutor_reviews')
+      .select('rating,comment,created_at,user_id')
+      .eq('tutor_id',tutorId)
+      .order('created_at',{ascending:false})
+      .limit(10);
+
+    // Pobierz usernames recenzentów
+    if(reviews&&reviews.length){
+      var uids=reviews.map(function(r){return r.user_id;});
+      var {data:rProfs}=await db.from('profiles').select('user_id,username').in('user_id',uids);
+      var rMap={};(rProfs||[]).forEach(function(p){rMap[p.user_id]=p.username;});
+      reviews.forEach(function(r){r._username=rMap[r.user_id]||'Użytkownik';});
+    }
+
+    var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+    var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
+    var langFlags={'en':'🇬🇧 Angielski','es':'🇪🇸 Hiszpański','nl':'🇳🇱 Holenderski','jp':'🇯🇵 Japoński','de':'🇩🇪 Niemiecki','fr':'🇫🇷 Francuski','it':'🇮🇹 Włoski','pt':'🇵🇹 Portugalski'};
+    var avail=t.availability||{};
+    var activeDays=DAYS_EN.filter(function(d){return avail[d]&&avail[d].active;});
+
+    content.innerHTML='';
+    content.style.padding='0';
+
+    var wrap=document.createElement('div');
+    wrap.style.cssText='display:flex;flex-direction:column;height:100%';
+
+    // Header
+    var hdr=document.createElement('div');
+    hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--border);flex-shrink:0';
+    hdr.innerHTML='<span style="font-size:14px;font-weight:700;color:var(--navy)">Profil lektora</span>';
+    var closeX=document.createElement('button');
+    closeX.textContent='×';
+    closeX.style.cssText='background:none;border:none;font-size:24px;cursor:pointer;color:var(--dim2);width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:50%;line-height:1;transition:.15s';
+    closeX.onmouseover=function(){this.style.background='var(--paper2)';};
+    closeX.onmouseout=function(){this.style.background='none';};
+    closeX.onclick=function(){modal.style.display='none';};
+    hdr.appendChild(closeX);
+    wrap.appendChild(hdr);
+
+    // Body 2-col
+    var body=document.createElement('div');
+    body.style.cssText='display:grid;grid-template-columns:1fr 260px;flex:1;overflow:hidden';
+
+    // ── LEWA ──
+    var lc=document.createElement('div');
+    lc.style.cssText='padding:22px;overflow-y:auto;display:flex;flex-direction:column;gap:16px';
+
+    // Avatar + imię
+    var topRow=document.createElement('div');
+    topRow.style.cssText='display:flex;gap:16px;align-items:flex-start';
+    var av=document.createElement('div');
+    av.style.cssText='width:88px;height:88px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:3px solid var(--paper2)';
+    if(t.photo_url){var pi=document.createElement('img');pi.src=t.photo_url;pi.style.cssText='width:100%;height:100%;object-fit:cover';av.appendChild(pi);}
+    else av.innerHTML='<span style="font-size:34px;color:#fff">👤</span>';
+    topRow.appendChild(av);
+    var nb=document.createElement('div');
+    nb.innerHTML='<div style="font-size:22px;font-weight:800;color:var(--navy);font-family:Syne,sans-serif;margin-bottom:4px">'+(t.display_name||'')+'</div>'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+renderStarsDisplay(t.rating_avg||0)
+      +'<span style="font-size:12px;color:var(--dim2)">'+(t.rating_avg||0).toFixed(1)+' ('+( t.rating_count||0)+' opinii)</span></div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:5px">'
+      +(t.languages||[]).map(function(l){return'<span style="background:var(--navy);color:#fff;font-size:11px;font-weight:600;padding:3px 9px;border-radius:100px">'+(langFlags[l]||l)+'</span>';}).join('')
+      +'</div>';
+    topRow.appendChild(nb);
+    lc.appendChild(topRow);
+
+    // Bio
+    if(t.bio){var bioEl=document.createElement('div');bioEl.style.cssText='font-size:13px;color:var(--dim);line-height:1.75;padding:14px;background:var(--paper2);border-radius:12px;border-left:3px solid var(--orange)';bioEl.textContent=t.bio;lc.appendChild(bioEl);}
+
+    // Poziomy
+    var lvlEl=document.createElement('div');
+    lvlEl.style.cssText='background:var(--paper2);border-radius:12px;padding:14px';
+    lvlEl.innerHTML='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--dim2);margin-bottom:8px">📚 Poziomy</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
+      +(t.levels||[]).map(function(lv){return'<span style="background:#fff;border:1.5px solid var(--orange);color:var(--orange);font-size:12px;font-weight:700;padding:3px 10px;border-radius:8px">'+lv+'</span>';}).join('')+'</div>';
+    lc.appendChild(lvlEl);
+
+    // Dostępność
+    var avEl=document.createElement('div');
+    avEl.style.cssText='background:var(--paper2);border-radius:12px;padding:14px';
+    var avHtml='<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--dim2);margin-bottom:10px">📅 Dostępność</div>';
+    DAYS_EN.forEach(function(d,i){
+      var day=avail[d];
+      if(!day||!day.active){avHtml+='<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--dim2)">'+DAYS_PL[i]+'</span><span style="font-size:12px;color:var(--border2)">—</span></div>';}
+      else{avHtml+='<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;font-weight:600;color:var(--navy)">'+DAYS_PL[i]+'</span><span style="font-size:12px;font-weight:600;color:var(--orange)">'+day.from+' – '+day.to+'</span></div>';}
+    });
+    avEl.innerHTML=avHtml;
+    lc.appendChild(avEl);
+
+    // Opinie
+    var revEl=document.createElement('div');
+    revEl.style.cssText='border-top:1px solid var(--border);padding-top:16px';
+    revEl.innerHTML='<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:12px">Opinie ('+(reviews?reviews.length:0)+')</div>'
+      +((reviews&&reviews.length)
+        ?reviews.map(function(r){return'<div style="padding:12px;background:var(--paper2);border-radius:10px;margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:600;color:var(--navy)">'+escH(r._username||'Użytkownik')+'</span>'+renderStarsDisplay(r.rating)+'</div>'+(r.comment?'<div style="font-size:13px;color:var(--dim)">'+escH(r.comment)+'</div>':'')+'</div>';}).join('')
+        :'<div style="color:var(--dim2);font-size:13px;padding:12px;background:var(--paper2);border-radius:10px">Brak opinii — bądź pierwszą osobą!</div>');
+    lc.appendChild(revEl);
+
+    // Akcje
+    var actEl=document.createElement('div');
+    actEl.style.cssText='display:flex;gap:10px;flex-wrap:wrap;margin-top:4px';
+    var msgBtn=document.createElement('button');
+    msgBtn.className='btn btn-orange';msgBtn.style.flex='1';msgBtn.textContent='💬 Napisz wiadomość';
+    msgBtn.onclick=function(){modal.style.display='none';openTutorChat(t.user_id||tutorId,t.display_name);};
+    actEl.appendChild(msgBtn);
+    if(hasTutorContact&&hasTutorContact(tutorId)){
+      var rateBtn=document.createElement('button');
+      rateBtn.className='btn btn-navy';rateBtn.style.flexShrink='0';rateBtn.textContent='⭐ Oceń';
+      rateBtn.onclick=function(){openRateModal(tutorId);};
+      actEl.appendChild(rateBtn);
+    }
+    lc.appendChild(actEl);
+    body.appendChild(lc);
+
+    // ── PRAWA ──
+    var rc=document.createElement('div');
+    rc.style.cssText='padding:22px;border-left:1px solid var(--border);background:var(--paper2);display:flex;flex-direction:column;gap:14px;overflow-y:auto';
+
+    // Cena
+    var priceBox=document.createElement('div');
+    priceBox.style.cssText='background:#fff;border:2px solid var(--border);border-radius:14px;padding:18px;text-align:center';
+    priceBox.innerHTML=(t.price_per_hour?'<div style="font-size:28px;font-weight:800;color:var(--orange);font-family:Syne,sans-serif">'+t.price_per_hour+' PLN</div><div style="font-size:12px;color:var(--dim2)">za godzinę</div>':'<div style="font-size:14px;font-weight:700;color:var(--navy)">Cena do ustalenia</div>')
+      +(activeDays.length?'<div style="margin-top:8px;font-size:11px;color:var(--dim2)">'+activeDays.length+' dni/tyg dostępny</div>':'');
+    rc.appendChild(priceBox);
+
+    // Video
+    var vbox=document.createElement('div');
+    vbox.style.cssText='border-radius:12px;overflow:hidden;border:2px solid var(--border)';
+    if(t.video_url){
+      var ytMatch=t.video_url.match(/(?:youtu\.be\/|[?&]v=)([^&]+)/);
+      if(ytMatch&&ytMatch[1]){
+        vbox.innerHTML='<div style="position:relative;padding-top:56.25%;cursor:pointer" data-vid="'+ytMatch[1]+'" onclick="playYTEmbed(this)">'
+          +'<img src="https://img.youtube.com/vi/'+ytMatch[1]+'/mqdefault.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">'
+          +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="width:40px;height:40px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"></polygon></svg></div></div>'
+          +'</div><div style="padding:8px 10px;background:#fff;font-size:11px;font-weight:600;color:var(--navy)">▶ Autoprezentacja</div>';
+      }
+    } else {
+      vbox.style.border='2px dashed var(--border)';
+      vbox.innerHTML='<div style="padding:24px;text-align:center;background:#fff;display:flex;flex-direction:column;align-items:center;gap:8px"><span style="font-size:32px;opacity:.25">🎬</span><span style="font-size:11px;color:var(--dim2)">Brak videoprezentacji</span></div>';
+    }
+    rc.appendChild(vbox);
+    body.appendChild(rc);
+    wrap.appendChild(body);
+    content.appendChild(wrap);
+
+  }catch(e){
+    content.innerHTML='<div style="padding:40px;text-align:center;color:#c33;font-size:13px">Błąd: '+e.message+'</div>';
+  }
+}
+
+// ── Photo upload functions ──
+function handleTutorPhotoFile(input){
+  var file=input.files&&input.files[0];
+  if(!file)return;
+  if(file.size>2*1024*1024){if(typeof showToast==='function')showToast('Plik za duży — max 2MB','error');return;}
+  uploadTutorPhoto(file);
+}
+
+function handleTutorPhotoDrop(event){
+  event.preventDefault();
+  var dropEl=document.getElementById('tutor-photo-drop');
+  if(dropEl)dropEl.style.borderColor='var(--border)';
+  var file=event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0];
+  if(!file)return;
+  uploadTutorPhoto(file);
+}
+
+async function uploadTutorPhoto(file){
+  var label=document.getElementById('tutor-photo-label');
+  var preview=document.getElementById('tutor-photo-preview');
+  var img=document.getElementById('tutor-photo-img');
+  var photoInput=document.getElementById('tutor-photo');
+  if(label)label.textContent='⏳ Przesyłanie...';
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){if(typeof showToast==='function')showToast('Zaloguj się','error');return;}
+    var ext=file.name.split('.').pop()||'jpg';
+    var path='tutors/'+sess.user.id+'_'+Date.now()+'.'+ext;
+    var {error}=await db.storage.from('recordings').upload(path,file,{contentType:file.type,upsert:true});
+    if(error)throw error;
+    var {data:urlData}=db.storage.from('recordings').getPublicUrl(path);
+    var url=urlData.publicUrl;
+    if(photoInput)photoInput.value=url;
+    if(img)img.src=url;
+    if(preview)preview.style.display='block';
+    if(label)label.textContent='✅ Zdjęcie wgrane!';
+    if(typeof showToast==='function')showToast('Zdjęcie dodane!','success');
+  }catch(e){
+    if(label)label.innerHTML='📷 Upuść zdjęcie lub kliknij<br><span style="font-size:11px">JPG, PNG · max 2MB</span>';
+    if(typeof showToast==='function')showToast('Błąd przesyłania: '+e.message,'error');
+  }
+}
 </script>
