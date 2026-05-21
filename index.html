@@ -2482,11 +2482,21 @@ async function loadContextSentence(word, translation, lang, level){
     throw new Error('Brak sentence/translation w odpowiedzi: '+JSON.stringify(d).slice(0,100));
   }catch(e){
     console.error('[generate-sentence FAIL]',e.message);
-    // Fallback - pokaż słowo bez zdania AI
-    const langMap={en:'angielski',es:'hiszpański',nl:'holenderski',jp:'japoński'};
-    const fb='**'+word+'** — '+translation;
-    const fbTr='(zdanie AI niedostępne — '+langMap[lang]+', '+level+')';
-    renderSentence(word,fb,fbTr,word);
+    // Retry z prostszym promptem
+    try{
+      var sess3=(await db.auth.getSession()).data.session;
+      var tok3=sess3?sess3.access_token:'';
+      var lnm={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'}[lang]||'English';
+      var p3='Write one simple '+lnm+' sentence using "'+word+'". Only the sentence.';
+      var r3=await fetch(AI_PROXY_URL,{method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok3,'apikey':APIKEY_CONST},
+        body:JSON.stringify({messages:[{role:'user',content:p3}],max_tokens:60})
+      });
+      var d3=await r3.json();
+      var s3=(d3&&d3.candidates&&d3.candidates[0]&&d3.candidates[0].content&&d3.candidates[0].content.parts&&d3.candidates[0].content.parts[0]?d3.candidates[0].content.parts[0].text:'').trim();
+      if(s3&&s3.length>3){renderSentence(word,s3,translation,word);return;}
+    }catch(e3){}
+    renderSentence(word,'**'+word+'** — '+translation,'',word);
   }
 }
 
@@ -2516,7 +2526,10 @@ function renderSentence(word, sentence, translation, searchWord){
   // Link Playphrase
   renderYouglish(window._searchWord, _strefaLang);
   // Przycisk nagrywania głosówki
-  addVoiceRecordingBtn(word, window._currentSentence, _strefaLang||'en');
+  // addVoiceRecordingBtn is optional — only call if defined
+  if(typeof addVoiceRecordingBtn === 'function'){
+    addVoiceRecordingBtn(word, window._currentSentence, _strefaLang||'en');
+  }
 }
 
 async function reportTranslation(word, sentence, translation){
@@ -3921,11 +3934,46 @@ async function analyzeSentence(el, sentence){
 }
 
 function renderSentenceSidebar(sb, sentence, translation, lang){
+  var langCodes={en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP',de:'de-DE',fr:'fr-FR'};
+  var langCode=langCodes[lang]||'en-GB';
+
   sb.innerHTML=
     '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:10px">📌 Wybrane zdanie</div>'
-    +'<div style="font-size:14px;color:var(--navy);line-height:1.6;margin-bottom:12px;font-style:italic">&ldquo;'+sentence+'&rdquo;</div>'
+    +'<div style="font-size:14px;color:var(--navy);line-height:1.6;margin-bottom:10px;font-style:italic">&ldquo;'+sentence+'&rdquo;</div>'
+    // Przycisk audio zdania
+    +'<button id="sent-audio-btn" onclick="playSentenceAudio(''+sentence.replace(/'/g,"\\'")+'')" style="width:100%;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px;transition:.15s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">🔊 Odtwórz zdanie</button>'
     +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:6px">🇵🇱 Tłumaczenie</div>'
     +'<div style="font-size:15px;color:var(--orange);font-weight:600;line-height:1.5">'+translation+'</div>';
+
+  // Zapisz język dla funkcji audio
+  sb.dataset.lang = lang;
+}
+
+// Odtwórz audio tylko jednego zdania (zatrzymuje główne TTS)
+function playSentenceAudio(sentence){
+  // Zatrzymaj główne TTS jeśli gra
+  if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+
+  var btn=document.getElementById('sent-audio-btn');
+  var sb=document.getElementById('dc-read-sidebar');
+  var lang=sb?sb.dataset.lang||'en':'en';
+  var langCodes={en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP',de:'de-DE',fr:'fr-FR'};
+  var langCode=langCodes[lang]||'en-GB';
+
+  if(btn) btn.innerHTML='⏹️ Zatrzymaj';
+  if(btn) btn.onclick=function(){speechSynthesis.cancel();if(btn){btn.innerHTML='🔊 Odtwórz zdanie';btn.onclick=function(){playSentenceAudio(sentence);};}};
+
+  var voices=speechSynthesis.getVoices();
+  var preferred=voices.find(function(v){return v.lang===langCode&&v.name.includes('Google');})
+    ||voices.find(function(v){return v.lang===langCode;})
+    ||voices.find(function(v){return v.lang.startsWith(lang);});
+
+  var utt=new SpeechSynthesisUtterance(sentence);
+  utt.lang=langCode;utt.rate=0.9;utt.pitch=1.0;
+  if(preferred)utt.voice=preferred;
+  utt.onend=function(){if(btn){btn.innerHTML='🔊 Odtwórz zdanie';btn.onclick=function(){playSentenceAudio(sentence);};} };
+  utt.onerror=function(){if(btn){btn.innerHTML='🔊 Odtwórz zdanie';btn.onclick=function(){playSentenceAudio(sentence);};}};
+  speechSynthesis.speak(utt);
 }
 
 // Tooltip hover na słowach
@@ -3986,11 +4034,7 @@ async function showWordTooltip(el, word, lang){
       var html='<strong style="font-size:13px">'+word+'</strong><br><span style="font-size:14px;color:#f5c842">'+tr+'</span>';
       _ttCache[cKey]=html;
       tt.innerHTML=html;
-      var sb=document.getElementById('dc-read-sidebar');
-      if(sb) sb.innerHTML='<div style="font-size:12px;color:var(--dim2);margin-bottom:6px">Hover:</div>'
-        +'<div style="font-size:18px;font-weight:700;color:var(--navy)">'+word+'</div>'
-        +'<div style="font-size:15px;color:var(--orange);font-weight:600;margin-top:4px">'+tr+'</div>'
-        +(sentence?'<div style="font-size:11px;color:var(--dim2);margin-top:8px;line-height:1.5">Kontekst: &quot;'+sentence.slice(0,60)+'...&quot;</div>':'');
+      // sidebar reserved for sentence clicks only — no hover update
     }
   }catch(e){
     tt.style.display='none';
@@ -6137,9 +6181,13 @@ function renderTutors(tutors){
     }
     card.appendChild(left);
 
-    // ── PRAWA: dostępność + poziomy + video ──
+    // ── PRAWA: dostępność + video obok siebie ──
     var right=document.createElement('div');
     right.style.cssText='display:flex;flex-direction:column;background:var(--paper2);overflow:hidden';
+
+    // Górna część: dostępność + video obok siebie
+    var rightTop=document.createElement('div');
+    rightTop.style.cssText='display:flex;flex:1;overflow:hidden';
 
     // Dostępność — kafelki po lewej, godziny po prawej
     var calWrap=document.createElement('div');
@@ -6158,14 +6206,14 @@ function renderTutors(tutors){
       row.style.cssText='display:flex;align-items:center;gap:8px';
       // Kafelek dnia
       var tile=document.createElement('div');
-      tile.style.cssText='width:30px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;'
+      tile.style.cssText='width:34px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;'
         +(active?'background:rgba(22,163,74,.15);border:1.5px solid rgba(22,163,74,.4)':'background:var(--paper2);border:1.5px solid var(--border)');
-      tile.innerHTML='<span style="font-size:9px;font-weight:700;color:'+(active?'#15803d':'var(--dim2)')+'">'+DAYS_PL[i].slice(0,2)+'</span>';
+      tile.innerHTML='<span style="font-size:11px;font-weight:800;color:'+(active?'#15803d':'var(--dim2)')+'">'+DAYS_PL[i].slice(0,2)+'</span>';
       row.appendChild(tile);
       // Godziny
       var hrs=document.createElement('span');
-      hrs.style.cssText='font-size:10px;font-weight:'+(active?'600':'400')+';color:'+(active?'#15803d':'var(--dim2)');
-      hrs.textContent=active&&day.from&&day.to?day.from+'–'+day.to:'—';
+      hrs.style.cssText='font-size:12px;font-weight:'+(active?'700':'400')+';color:'+(active?'#15803d':'var(--dim2)');
+      hrs.textContent=active&&day.from&&day.to?day.from+' – '+day.to:'—';
       row.appendChild(hrs);
       daysList.appendChild(row);
     });
@@ -6185,11 +6233,11 @@ function renderTutors(tutors){
       lvlRow.appendChild(rangeChip);
       calWrap.appendChild(lvlRow);
     }
-    right.appendChild(calWrap);
+    rightTop.appendChild(calWrap);
 
-    // Video na dole prawej kolumny
+    // Video po prawej stronie dostępności
     var vWrap=document.createElement('div');
-    vWrap.style.cssText='height:90px;overflow:hidden;border-top:1px solid var(--border);flex-shrink:0;position:relative;background:var(--paper2);display:flex;align-items:center;justify-content:center';
+    vWrap.style.cssText='width:140px;flex-shrink:0;overflow:hidden;border-left:1px solid var(--border);position:relative;background:var(--paper2);display:flex;align-items:center;justify-content:center';
     if(t.video_url){
       var ytMatch=t.video_url.match(/(?:youtu\.be\/|[?&]v=)([^&\/?]+)/);
       if(ytMatch&&ytMatch[1]){
@@ -6207,7 +6255,8 @@ function renderTutors(tutors){
         +'<span style="font-size:9px;color:var(--dim2);opacity:.6;text-align:center">Brak wideo</span>'
         +'</div>';
     }
-    right.appendChild(vWrap);
+    rightTop.appendChild(vWrap);
+    right.appendChild(rightTop);
     card.appendChild(right);
     wrapper.appendChild(card);
     el.appendChild(wrapper);
@@ -6227,12 +6276,19 @@ async function loadChallengeRanking(){
   if(!el) return;
   try{
     var {data}=await db.from('learning_stats')
-      .select('user_id,cards_seen,profiles(username)')
+      .select('user_id,cards_seen')
       .order('cards_seen',{ascending:false})
       .limit(10);
     if(!data||!data.length){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Brak danych</div>';return;}
+    // Fetch usernames separately
+    var uids=data.map(function(r){return r.user_id;});
+    var lbNameMap={};
+    try{
+      var {data:lbProfs}=await db.from('profiles').select('user_id,username').in('user_id',uids);
+      (lbProfs||[]).forEach(function(p){if(p.username)lbNameMap[p.user_id]=p.username;});
+    }catch(e){}
     el.innerHTML=data.map(function(r,i){
-      var name=(r.profiles&&r.profiles.username)||'Użytkownik';
+      var name=lbNameMap[r.user_id]||'Użytkownik';
       var medals=['🥇','🥈','🥉'];
       return'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
         +'<span style="font-size:16px;width:24px">'+(medals[i]||i+1)+'</span>'
@@ -7374,4 +7430,93 @@ async function uploadUserAvatar(file){
 
 // ── SQL hint: dodaj kolumnę avatar_url do profiles ──
 // ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url text;
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// NAUCZYCIEL PRO — initTeacher + page
+// ═══════════════════════════════════════════════════════
+
+// Inject page-teacher if missing
+(function(){
+  if(document.getElementById('page-teacher')) return;
+  var div=document.createElement('div');
+  div.id='page-teacher';div.className='page';
+  div.style.cssText='min-height:100vh;padding:110px 20px 80px;background:var(--paper)';
+  div.innerHTML='<div style="max-width:900px;margin:0 auto">'
+    +'<h2 style="font-family:Syne,sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">👨‍🏫 Nauczyciel PRO</h2>'
+    +'<p style="color:var(--dim2);margin-bottom:28px">Konwersacja z AI w wybranym języku</p>'
+    +'<div id="teacher-ui" style="background:#fff;border:2px solid var(--border);border-radius:20px;overflow:hidden">'
+    +'<div id="teacher-messages" style="min-height:400px;max-height:60vh;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:12px">'
+    +'<div style="text-align:center;color:var(--dim2);font-size:14px;padding:40px">Wybierz nauczyciela i zacznij rozmowę</div>'
+    +'</div>'
+    +'<div style="border-top:1px solid var(--border);padding:16px;display:flex;gap:10px">'
+    +'<input id="teacher-input" type="text" placeholder="Napisz wiadomość..." style="flex:1;padding:10px 16px;border-radius:100px;border:1.5px solid var(--border);font-size:14px;font-family:\'DM Sans\',sans-serif;outline:none" onkeydown="if(event.key===\'Enter\')sendTeacherMsg()">'
+    +'<button onclick="sendTeacherMsg()" class="btn btn-orange" style="padding:10px 20px;font-size:14px">Wyślij</button>'
+    +'</div></div></div>';
+  document.body.appendChild(div);
+})();
+
+async function initTeacher(){
+  var el=document.getElementById('teacher-messages');
+  if(!el)return;
+  if(el.dataset.inited==='1')return;
+  el.dataset.inited='1';
+  // Show welcome
+  var lang=window._strefaLang||'en';
+  var teachers={en:'Alex 🇬🇧',es:'María 🇪🇸',nl:'Lars 🇳🇱',jp:'Yuki 🇯🇵',de:'Klaus 🇩🇪',fr:'Claire 🇫🇷'};
+  var teacher=teachers[lang]||'Alex 🇬🇧';
+  appendTeacherMsg('assistant','Cześć! Jestem '+teacher+', Twój nauczyciel. Porozmawiajmy! O czym chcesz dziś porozmawiać?');
+  window._teacherHistory=[{role:'user',content:'You are '+teacher+', a friendly language teacher. Speak in English (or the target language). Be encouraging. Keep responses short (2-3 sentences max).'}];
+}
+
+function appendTeacherMsg(role, text){
+  var el=document.getElementById('teacher-messages');
+  if(!el)return;
+  var empty=el.querySelector('div[style*="text-align:center"]');
+  if(empty)empty.remove();
+  var div=document.createElement('div');
+  div.style.cssText='display:flex;'+(role==='user'?'justify-content:flex-end':'');
+  var bubble=document.createElement('div');
+  bubble.style.cssText='max-width:70%;padding:10px 16px;border-radius:16px;font-size:14px;line-height:1.6;'
+    +(role==='user'?'background:var(--orange);color:#fff;border-bottom-right-radius:4px':'background:var(--paper2);color:var(--navy);border-bottom-left-radius:4px;border:1px solid var(--border)');
+  bubble.textContent=text;
+  div.appendChild(bubble);el.appendChild(div);
+  el.scrollTop=el.scrollHeight;
+}
+
+async function sendTeacherMsg(){
+  var inp=document.getElementById('teacher-input');
+  if(!inp)return;
+  var msg=inp.value.trim();if(!msg)return;
+  inp.value='';
+  appendTeacherMsg('user',msg);
+  if(!window._teacherHistory)window._teacherHistory=[];
+  window._teacherHistory.push({role:'user',content:msg});
+  // Show typing
+  var typingDiv=document.createElement('div');
+  typingDiv.id='teacher-typing';typingDiv.style.cssText='color:var(--dim2);font-size:13px;font-style:italic;padding:4px 0';
+  typingDiv.textContent='Nauczyciel pisze...';
+  var el=document.getElementById('teacher-messages');if(el)el.appendChild(typingDiv);
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var res=await fetch(AI_PROXY_URL,{method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:window._teacherHistory.slice(-10),max_tokens:200})
+    });
+    var d=await res.json();
+    var reply=(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim();
+    if(typingDiv.parentNode)typingDiv.remove();
+    if(reply){window._teacherHistory.push({role:'assistant',content:reply});appendTeacherMsg('assistant',reply);}
+  }catch(e){if(typingDiv.parentNode)typingDiv.remove();appendTeacherMsg('assistant','Przepraszam, mam problem z połączeniem.');}
+}
+
+// ── addVoiceRecordingBtn stub — prevents errors when not fully implemented ──
+function addVoiceRecordingBtn(word, sentence, lang){
+  // Placeholder — rekord głosowy tworzony przez Strefę Nauki
+  var el=document.getElementById('voice-record-wrap');
+  if(!el)return;
+  el.innerHTML='<button style="background:var(--navy);color:#fff;border:none;border-radius:100px;padding:8px 16px;font-size:12px;cursor:pointer" onclick="startVoiceRecord()">🎙️ Nagraj wymowę</button>';
+}
 </script>
