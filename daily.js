@@ -633,7 +633,8 @@ async function loadDailyQuiz(){
     // dc-quiz-content removed
     var _dcqq=document.getElementById('dc-quiz-inline-body');if(_dcqq)_dcqq.innerHTML=qz.q;
     (document.getElementById('dc-quiz-social')||{}).textContent='';
-    var container=(document.getElementById('dc-quiz-opts')||{});
+    var container=document.getElementById('dc-quiz-opts-x')||document.getElementById('dc-quiz-inline-body');
+    if(!container)return;
     container.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
     container.innerHTML='';
     _quizAnswered=false;
@@ -674,6 +675,81 @@ function quizAnswer(idx, correct, explain, el){
     var _dqd=document.getElementById('dc-quiz-done2');if(_dqd)_dqd.style.display='inline';
     updateDailyProgress();
   }
+}
+
+
+function loadInlineQuiz(){
+  var box=document.getElementById('dc-quiz-inline-body');
+  if(!box)return;
+  var w1El=document.getElementById('dc-word-text');
+  var t1El=document.getElementById('dc-word-translation');
+  var w2El=document.getElementById('dc-word-text2');
+  var t2El=document.getElementById('dc-word-translation2');
+  var w1=w1El&&w1El.textContent;
+  var t1=t1El&&t1El.textContent;
+  var w2=w2El&&w2El.textContent;
+  var t2=t2El&&t2El.textContent;
+  if(!w1||!t1){box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Najpierw zapamiętaj słówka!</div>';return;}
+  var words=[{w:w1,t:t1}];
+  if(w2&&t2)words.push({w:w2,t:t2});
+  _inlineQuizState={step:0,done:false,words:words};
+  renderInlineQuizStep(0);
+}
+
+function renderInlineQuizStep(step){
+  var box=document.getElementById('dc-quiz-inline-body');
+  if(!box||_inlineQuizState.done)return;
+  var words=_inlineQuizState.words.filter(function(x){return x.w&&x.t;});
+  if(!words.length)return;
+  if(step===0){
+    var target=words[0];
+    var otherT=words.slice(1).map(function(x){return x.t;});
+    var fakes=otherT.concat(['dom','czas','dobry','praca','życie','dzień']).filter(function(x){return x&&x.toLowerCase()!==target.t.toLowerCase();}).slice(0,3);
+    var opts=[target.t].concat(fakes).sort(function(){return Math.random()-.5;});
+    var html='<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:600">Wybierz tłumaczenie:</div>'
+      +'<div style="font-size:20px;font-weight:800;color:var(--navy);font-family:Syne,sans-serif;margin-bottom:14px">'+target.w+'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:6px" id="iq-opts">';
+    opts.forEach(function(o){
+      html+='<button style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:13px;cursor:pointer;text-align:left;transition:.15s;font-family:'DM Sans',sans-serif" onclick="checkInlineOpt(this,''+o.replace(/'/g,"\'")+'')">' +o+'</button>';
+    });
+    html+='</div>';
+    box.innerHTML=html;
+  } else if(step===1&&words.length>=2){
+    var target2=words[1];
+    box.innerHTML='<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:600">Wpisz po angielsku:</div>'
+      +'<div style="font-size:14px;color:var(--dim);margin-bottom:10px;font-style:italic">"'+target2.t+'"</div>'
+      +'<div style="display:flex;gap:6px">'
+      +'<input id="iq-fill" type="text" placeholder="Odpowiedź..." style="flex:1;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;font-family:'DM Sans',sans-serif" onkeydown="if(event.key==='Enter')checkInlineFill(''+target2.w.replace(/'/g,"\'")+'',1)">'
+      +'<button onclick="checkInlineFill(''+target2.w.replace(/'/g,"\'")+'',1)" class="btn btn-orange" style="padding:8px 14px;font-size:13px">✓</button>'
+      +'</div>';
+    setTimeout(function(){var i=document.getElementById('iq-fill');if(i)i.focus();},100);
+  } else {
+    _inlineQuizState.done=true;
+    var doneEl=document.getElementById('dc-quiz-done2');
+    if(doneEl)doneEl.style.display='inline';
+    box.innerHTML='<div style="text-align:center;padding:16px"><div style="font-size:36px;margin-bottom:8px">🎉</div><div style="font-size:14px;font-weight:700;color:var(--navy)">Quiz ukończony!</div></div>';
+    if(typeof addDailyXP==='function')addDailyXP(10);
+  }
+}
+
+function checkInlineOpt(btn, chosen){
+  var target=_inlineQuizState.words[0];
+  var isOk=chosen.trim().toLowerCase()===target.t.trim().toLowerCase();
+  document.querySelectorAll('#iq-opts button').forEach(function(b){
+    b.disabled=true;
+    if(b.textContent.trim().toLowerCase()===target.t.trim().toLowerCase())b.style.cssText=b.style.cssText+'background:#dcfce7;border-color:#86efac';
+    else if(b===btn&&!isOk)b.style.cssText=b.style.cssText+'background:#fee2e2;border-color:#fca5a5';
+  });
+  setTimeout(function(){renderInlineQuizStep(1);},800);
+}
+
+function checkInlineFill(correct,step){
+  var inp=document.getElementById('iq-fill');
+  if(!inp)return;
+  var ok=inp.value.trim().toLowerCase()===correct.trim().toLowerCase();
+  inp.style.borderColor=ok?'#86efac':'#fca5a5';
+  inp.style.background=ok?'#dcfce7':'#fee2e2';
+  setTimeout(function(){renderInlineQuizStep(step+1);},700);
 }
 
 function dailyWordDone(){

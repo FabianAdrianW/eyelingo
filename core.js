@@ -1,10 +1,25 @@
 // Eyelingo — Core: globals, auth, routing, nav, utils
 
+// ── showToast — global ──
+function showToast(msg, type){
+  type=type||'info';
+  var t=document.createElement('div');
+  t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;padding:10px 20px;border-radius:100px;font-size:14px;font-weight:600;color:#fff;pointer-events:none;transition:.3s;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.2)';
+  t.style.background=type==='success'?'#16a34a':type==='error'?'#dc2626':'var(--navy)';
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2500);
+}
+window.showToast=showToast;
+
+
 
 const SUPABASE_URL='https://sntlgkhktscezxpxrchl.supabase.co';
 const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const DOWNLOAD_URL='#';
-const{createClient}=supabase;
+const{createClient}
+window.showToast=showToast;
+=supabase;
 const db=createClient(SUPABASE_URL,SUPABASE_KEY);
 
 // ── API constants ──
@@ -354,6 +369,7 @@ function switchTab(page, btn){
 
 function setActiveTab(page){
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  const btn=document.getElementById('ntab-'+page);
   if(btn) btn.classList.add('active');
 }
 
