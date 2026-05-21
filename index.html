@@ -809,6 +809,20 @@ const{createClient}=supabase;
 const db=createClient(SUPABASE_URL,SUPABASE_KEY);
 // Global escH helper — available in all script blocks
 window.escH = function(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+// ── renderStarsDisplay — global ──
+window.renderStarsDisplay = function(rating){
+  var full=Math.floor(rating||0);
+  var half=(rating||0)-full>=0.5;
+  var html='';
+  for(var i=0;i<5;i++){
+    if(i<full) html+='<span style="color:#f5c842;font-size:14px">★</span>';
+    else if(i===full&&half) html+='<span style="color:#f5c842;font-size:14px">½</span>';
+    else html+='<span style="color:#ddd;font-size:14px">★</span>';
+  }
+  return html;
+};
+function renderStarsDisplay(r){ return window.renderStarsDisplay(r); }
+
 
 let authMode='login';
 
@@ -976,7 +990,7 @@ async function loadDashboard(){
   }catch(e){}
 
   // Status premium z profiles
-  const{data:p}=await db.from('profiles').select('is_premium,premium_until,levels_bought,username').eq('user_id',user.id).single();
+  const{data:p}=await db.from('profiles').select('is_premium,premium_until,levels_bought,username').eq('user_id',user.id).maybeSingle();
   const now=new Date();
   const until=p?.premium_until?new Date(p.premium_until):null;
   const isPremium=p?.is_premium&&until&&until>now;
@@ -1232,7 +1246,7 @@ async function loadMySets(){
     .eq('user_id',_matMyUid)
     .order('created_at',{ascending:false});
   if(error){showMatError(error.message);return;}
-  const{data:profile}=await db.from('profiles').select('username').eq('user_id',_matMyUid).single();
+  const{data:profile}=await db.from('profiles').select('username').eq('user_id',_matMyUid).maybeSingle();
   const username=profile?.username||'Ty';
   _matSets=(data||[]).map(s=>({...s,username,user_id:_matMyUid}));
   renderMat();
@@ -2293,7 +2307,7 @@ async function initStrefa(){
   }
   const{data:p}=await db.from('profiles')
     .select('is_premium,premium_until,levels_bought')
-    .eq('user_id',session.user.id).single();
+    .eq('user_id',session.user.id).maybeSingle();
   _strefaProfile=p;
   const levels=p?.levels_bought||[];
   const isPremium=p?.is_premium&&p?.premium_until&&new Date(p.premium_until)>new Date();
@@ -2913,7 +2927,7 @@ async function getSemanticTags(topic, lang, tok){
   // Sprawdź Supabase cache
   try{
     var {data:dbTag} = await db.from('odkryj_tag_cache')
-      .select('tags').eq('topic', topic.toLowerCase()).eq('lang', lang).single();
+      .select('tags').eq('topic', topic.toLowerCase()).eq('lang', lang).maybeSingle();
     if(dbTag&&dbTag.tags){
       localStorage.setItem('odkryj_tags_'+cacheKey, JSON.stringify({tags:dbTag.tags, ts:Date.now()}));
       return dbTag.tags;
@@ -4225,7 +4239,7 @@ async function initChallenge(){
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(sess){
-      var {data:stats}=await db.from('learning_stats').select('cards_seen').eq('user_id',sess.user.id).single();
+      var {data:stats}=await db.from('learning_stats').select('cards_seen').eq('user_id',sess.user.id).maybeSingle();
       var myProgress=Math.min(ch.goal, Math.floor((stats?.cards_seen||0)%ch.goal));
       document.getElementById('ch-progress-text').textContent=myProgress+' / '+ch.goal;
       document.getElementById('ch-progress-bar').style.width=Math.round(myProgress/ch.goal*100)+'%';
@@ -5304,7 +5318,7 @@ async function initTutors(){
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(sess){
-      var{data:t}=await db.from('tutors').select('id').eq('user_id',sess.user.id).single();
+      var{data:t}=await db.from('tutors').select('id').eq('user_id',sess.user.id).maybeSingle();
       if(t){_myTutorId=t.id;document.getElementById('become-tutor-btn').textContent='Edytuj profil';}
     }
   }catch(e){}
@@ -5329,7 +5343,7 @@ async function loadTutors(){
 function filterTutors(){
   var lang=document.getElementById('tutor-filter-lang').value;
   var level=document.getElementById('tutor-filter-level').value;
-  var sort=document.getElementById('tutor-filter-sort').value;
+  var sort=(document.getElementById('tutor-filter-sort')||{}).value||'rating';
   var filtered=_allTutors.filter(function(t){
     if(lang&&!(t.languages||[]).includes(lang))return false;
     if(level&&!(t.levels||[]).includes(level))return false;
