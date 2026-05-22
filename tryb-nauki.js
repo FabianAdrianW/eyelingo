@@ -262,8 +262,7 @@ function showTrybMiniStory(){
       var text=(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim();
       if(!text){box.style.display='none';return;}
       // Format: bold **word** and italics for Polish
-      var html=text.replace(/\*\*([^*]+)\*\*/g,'<strong style="color:var(--gold)">$1</strong>').replace(/
-/g,'<br>');
+      var html=text.replace(/\*\*([^*]+)\*\*/g,'<strong style="color:var(--gold)">$1</strong>').replace(/\n/g,'<br>');
       box.innerHTML='<div style="font-size:13px;line-height:1.7;color:rgba(255,255,255,.9)">📖 '+html+'</div>';
     }).catch(function(){box.style.display='none';});
   });
