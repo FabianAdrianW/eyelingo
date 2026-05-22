@@ -1,4 +1,5 @@
-// Eyelingo — Porcja dnia
+// Eyelingo — daily.js
+
 // ═══════════════════════════════════════
 // DZISIEJSZA PORCJA
 // ═══════════════════════════════════════
@@ -35,19 +36,21 @@ function reloadDailyContent(){
   try{var sel=document.getElementById('daily-lang-select');if(sel)localStorage.setItem('daily_lang',sel.value);}catch(e){}
   _dailyLoaded=true;
   _dailyLoadedDate=''; // force reload
-  // Reset ALL state
+  // Reset
   _dailyDone={word:false,read:false,quiz:false};
   _dailyXP=0;
-  _inlineQuizState={step:0,done:false,words:[]};
-  // Reset button states
-  var btn=document.getElementById('dc-word-btn');
-  if(btn){btn.textContent='✓ Zapamiętałem!';btn.disabled=false;}
-  ['dc-word-done','dc-read-done','dc-quiz-done2'].forEach(function(id){
+  document.getElementById('daily-xp').textContent='0 XP';
+  // Reset wszystkich kart
+  ['dc-word-done','dc-read-done','dc-quiz-done'].forEach(function(id){
     var el=document.getElementById(id);if(el)el.style.display='none';
   });
-  var quizBox=document.getElementById('dc-quiz-inline-body');
-  if(quizBox)quizBox.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:12px;text-align:center"><span style="font-size:24px;display:block;margin-bottom:8px">👆</span>Kliknij "Zapamiętałem!" aby odblokować quiz</div>';
-  document.getElementById('daily-xp').textContent='0 XP';
+  ['dc-word-content','dc-read-content','dc-quiz-content'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.style.display='none';
+  });
+  ['dc-word-loading','dc-read-loading','dc-quiz-loading'].forEach(function(id){
+    var el=document.getElementById(id);if(el){el.style.display='block';el.textContent='Ładowanie...';}
+  });
+  updateDailyProgress();
   loadDailyContent();
 }
 
@@ -125,22 +128,8 @@ async function loadDailyWord(){
     // Fallback: user_sets
     if(pool.length<2){
       try{
-        // Try user_sets filtered by language name in set name
-        var sets_res=await db.from('user_sets')
-          .select('name,user_set_cards(word,translation)')
-          .eq('user_id',sess.user.id).limit(20);
-        if(sets_res.data){
-          var langKeywords={'en':['english','angielski','ang'],'es':['spanish','español','hiszp'],'jp':['japanese','japoński','jap'],'nl':['dutch','niderlandzki','hol'],'de':['german','deutsch','niem'],'fr':['french','français','franc']};
-          var keys=langKeywords[dailyLang]||[];
-          // First try sets matching language name
-          var langSets=sets_res.data.filter(function(s){
-            var n=(s.name||'').toLowerCase();
-            return keys.some(function(k){return n.includes(k);});
-          });
-          // If no language-specific sets, use all sets (last resort)
-          var useSets=langSets.length>0?langSets:sets_res.data;
-          useSets.forEach(function(s){if(s.user_set_cards)pool=pool.concat(s.user_set_cards);});
-        }
+        var sets_res=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(10);
+        if(sets_res.data) sets_res.data.forEach(function(s){if(s.user_set_cards)pool=pool.concat(s.user_set_cards);});
       }catch(e){}
     }
 
@@ -641,41 +630,25 @@ async function loadDailyQuiz(){
     var quizzes=allQuizzes[qLang]||allQuizzes['en'];
     var qz=quizzes[Math.floor(Math.random()*quizzes.length)];
     window._currentQuiz={correct:qz.correct,explain:qz.explain};
+    // dc-quiz-loading removed
+    // dc-quiz-content removed
+    var _dcqq=document.getElementById('dc-quiz-inline-body');if(_dcqq)_dcqq.innerHTML=qz.q;
+    (document.getElementById('dc-quiz-social')||{}).textContent='';
+    var container=(document.getElementById('dc-quiz-opts')||{});
+    container.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
+    container.innerHTML='';
     _quizAnswered=false;
-    var box=document.getElementById('dc-quiz-inline-body');
-    if(!box)return;
-    // Build quiz using DOM — pytanie + opcje w jednym miejscu
-    box.innerHTML='';
-    box.style.cssText='display:flex;flex-direction:column;gap:8px';
-    // Pytanie
-    var qDiv=document.createElement('div');
-    qDiv.style.cssText='font-size:13px;font-weight:600;color:var(--navy);padding:10px 12px;background:var(--paper2);border-radius:10px;border-left:3px solid var(--orange);line-height:1.5';
-    qDiv.innerHTML=qz.q;
-    box.appendChild(qDiv);
-    // Opcje w gridzie 2x2
-    var grid=document.createElement('div');
-    grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
     qz.opts.forEach(function(o,i){
       var div=document.createElement('div');
       div.className='quiz-opt';
       div.dataset.idx=String(i);
-      div.style.cssText='padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:.15s;background:#fff';
-      var letter=document.createElement('span');
-      letter.style.cssText='width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;color:var(--dim2)';
-      letter.textContent=String.fromCharCode(65+i);
-      div.appendChild(letter);
-      div.appendChild(document.createTextNode(o));
-      div.addEventListener('mouseenter',function(){if(!_quizAnswered)this.style.borderColor='var(--orange)';this.style.background='rgba(201,106,42,.05)';});
-      div.addEventListener('mouseleave',function(){if(!_quizAnswered){this.style.borderColor='var(--border)';this.style.background='#fff';}});
+      div.style.cssText='padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:.15s';
+      div.innerHTML='<span style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">'+String.fromCharCode(65+i)+'</span>'+o;
+      div.addEventListener('mouseenter',function(){if(!_quizAnswered)this.style.borderColor='var(--orange)';});
+      div.addEventListener('mouseleave',function(){if(!_quizAnswered)this.style.borderColor='var(--border)';});
       div.addEventListener('click',function(){quizAnswer(parseInt(this.dataset.idx),window._currentQuiz.correct,window._currentQuiz.explain,this);});
-      grid.appendChild(div);
+      container.appendChild(div);
     });
-    box.appendChild(grid);
-    // Miejsce na wyjaśnienie
-    var expl=document.createElement('div');
-    expl.id='dc-quiz-explain-inline';
-    expl.style.cssText='display:none;font-size:13px;color:var(--dim);line-height:1.6;padding:10px 12px;background:var(--paper2);border-radius:10px;margin-top:4px';
-    box.appendChild(expl);
   }
 }
 
@@ -691,9 +664,9 @@ function quizAnswer(idx, correct, explain, el){
     el.style.borderColor='#a32d2d';
     el.style.color='#501313';
   }
-  var expl=document.getElementById('dc-quiz-explain-inline')||(document.getElementById('dc-quiz-explain')||{});
+  var expl=(document.getElementById('dc-quiz-explain')||{});
   expl.style.display='block';
-  expl.innerHTML='<strong style="color:'+(idx===correct?'#16a34a':'#dc2626')+'">'+(idx===correct?'✅ Świetnie!':'❌ Nie tym razem')+'</strong> '+explain;
+  expl.innerHTML='<strong style="color:var(--navy)">'+(idx===correct?'✅ Świetnie!':'❌ Nie tym razem')+'</strong> '+explain;
   if(!_dailyDone.quiz){
     _dailyDone.quiz=true;
     var qLangNow=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
@@ -702,106 +675,6 @@ function quizAnswer(idx, correct, explain, el){
     var _dqd=document.getElementById('dc-quiz-done2');if(_dqd)_dqd.style.display='inline';
     updateDailyProgress();
   }
-}
-
-
-function loadInlineQuiz(){
-  var box=document.getElementById('dc-quiz-inline-body');
-  if(!box)return;
-  var w1El=document.getElementById('dc-word-text');
-  var t1El=document.getElementById('dc-word-translation');
-  var w2El=document.getElementById('dc-word-text2');
-  var t2El=document.getElementById('dc-word-translation2');
-  var w1=w1El&&w1El.textContent;
-  var t1=t1El&&t1El.textContent;
-  var w2=w2El&&w2El.textContent;
-  var t2=t2El&&t2El.textContent;
-  if(!w1||!t1){
-    box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:12px;text-align:center">'
-      +'<span style="font-size:24px;display:block;margin-bottom:8px">👆</span>'
-      +'Kliknij "Zapamiętałem!" aby odblokować quiz</div>';
-    return;
-  }
-  var words=[{w:w1,t:t1}];
-  if(w2&&t2)words.push({w:w2,t:t2});
-  _inlineQuizState={step:0,done:false,words:words};
-  renderInlineQuizStep(0);
-}
-
-function renderInlineQuizStep(step){
-  var box=document.getElementById('dc-quiz-inline-body');
-  if(!box||_inlineQuizState.done)return;
-  var words=_inlineQuizState.words.filter(function(x){return x.w&&x.t;});
-  if(!words.length)return;
-  if(step===0){
-    var target=words[0];
-    var otherT=words.slice(1).map(function(x){return x.t;});
-    // Polish fallbacks (translation is always Polish in Eyelingo)
-    var plFallbacks=['dom','czas','dobry','praca','życie','dzień','woda','ogień','ziemia','niebo','miłość','wiedzieć'];
-    var fakes=otherT.concat(plFallbacks).filter(function(x){return x&&x.toLowerCase()!==target.t.toLowerCase();}).slice(0,3);
-    var opts=[target.t].concat(fakes).sort(function(){return Math.random()-.5;});
-    var html='<div style="font-size:12px;color:var(--dim2);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Co znaczy:</div>'
-      +'<div style="font-size:24px;font-weight:800;color:var(--navy);font-family:Syne,sans-serif;margin-bottom:14px;padding:10px;background:var(--paper2);border-radius:10px;text-align:center">'+target.w+'</div>'
-      +'<div style="font-size:11px;color:var(--dim2);margin-bottom:8px">Wybierz poprawne tłumaczenie:</div>'
-      +'<div style="display:flex;flex-direction:column;gap:6px" id="iq-opts">';
-    opts.forEach(function(o){
-      html+='<button style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:13px;cursor:pointer;text-align:left" onclick="checkInlineOpt(this,this.textContent)">'+o+'</button>';
-    });
-    html+='</div>';
-    box.innerHTML=html;
-  } else if(step===1&&words.length>=2){
-    var target2=words[1];
-    // DOM approach - no quote escaping issues
-    box.innerHTML='';
-    var lbl2=document.createElement('div');
-    lbl2.style.cssText='font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:600';
-    lbl2.textContent='Wpisz po angielsku:';
-    box.appendChild(lbl2);
-    var hint2=document.createElement('div');
-    hint2.style.cssText='font-size:14px;color:var(--dim);margin-bottom:10px;font-style:italic';
-    hint2.textContent='"'+target2.t+'"';
-    box.appendChild(hint2);
-    var row2=document.createElement('div');
-    row2.style.cssText='display:flex;gap:6px';
-    var inp2=document.createElement('input');
-    inp2.id='iq-fill';inp2.type='text';inp2.placeholder='Odpowiedź...';
-    inp2.style.cssText='flex:1;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13px';
-    (function(w){inp2.onkeydown=function(e){if(e.key==='Enter')checkInlineFill(w,1);};})(target2.w);
-    var btn2=document.createElement('button');
-    btn2.className='btn btn-orange';btn2.style.cssText='padding:8px 14px;font-size:13px';
-    btn2.textContent='✓';
-    (function(w){btn2.onclick=function(){checkInlineFill(w,1);};})(target2.w);
-    row2.appendChild(inp2);row2.appendChild(btn2);
-    box.appendChild(row2);
-    setTimeout(function(){inp2.focus();},100);
-  } else {
-    _inlineQuizState.done=true;
-    var doneEl=document.getElementById('dc-quiz-done2');
-    if(doneEl)doneEl.style.display='inline';
-    box.innerHTML='<div style="text-align:center;padding:16px"><div style="font-size:36px;margin-bottom:8px">🎉</div><div style="font-size:14px;font-weight:700;color:var(--navy)">Quiz ukończony!</div></div>';
-    if(typeof addDailyXP==='function')addDailyXP(10);
-  }
-}
-
-function checkInlineOpt(btn, chosen){
-  chosen=chosen||btn.textContent||'';
-  var target=_inlineQuizState.words[0];
-  var isOk=chosen.trim().toLowerCase()===target.t.trim().toLowerCase();
-  document.querySelectorAll('#iq-opts button').forEach(function(b){
-    b.disabled=true;
-    if(b.textContent.trim().toLowerCase()===target.t.trim().toLowerCase())b.style.cssText=b.style.cssText+'background:#dcfce7;border-color:#86efac';
-    else if(b===btn&&!isOk)b.style.cssText=b.style.cssText+'background:#fee2e2;border-color:#fca5a5';
-  });
-  setTimeout(function(){renderInlineQuizStep(1);},800);
-}
-
-function checkInlineFill(correct,step){
-  var inp=document.getElementById('iq-fill');
-  if(!inp)return;
-  var ok=inp.value.trim().toLowerCase()===correct.trim().toLowerCase();
-  inp.style.borderColor=ok?'#86efac':'#fca5a5';
-  inp.style.background=ok?'#dcfce7':'#fee2e2';
-  setTimeout(function(){renderInlineQuizStep(step+1);},700);
 }
 
 function dailyWordDone(){
@@ -1183,6 +1056,7 @@ function chatUseHint(text){
   document.getElementById('chat-input').focus();
 }
 
+const CHAT_DAILY_LIMIT = 15;
 
 function getChatUsageToday(){
   try{
@@ -1578,3 +1452,310 @@ async function lyricsAddAll(){
     showToast('Dodano '+rows.length+' fiszek!','success');
   }catch(e){showToast('Błąd: '+e.message,'error');}
 }
+
+
+// ═══════════════════════════════════════════════════════
+// QUIZ DNIA INLINE + GŁOSÓWKI + PROFIL UŻYTKOWNIKA
+// ═══════════════════════════════════════════════════════
+
+// ── Inline quiz dnia (obok słówek) ──
+var _inlineQuizState = {step:0, done:false, words:[]};
+
+async function loadInlineQuiz(){
+  var box = document.getElementById('dc-quiz-inline-body');
+  if(!box) return;
+
+  box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">⏳ Ładuję quiz z Twoich materiałów...</div>';
+
+  // Pobierz słówka z materiałów użytkownika (user_set_cards)
+  var quizWords = [];
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(sess){
+      var lang = (document.getElementById('daily-lang-select')||{}).value||'en';
+      var {data:cards} = await db.from('user_set_cards')
+        .select('word,translation,user_sets(user_id)')
+        .limit(40);
+      // Filtruj: słowa w wybranym języku (zakładamy angielskie słowa dla EN itp.)
+      if(cards && cards.length >= 4){
+        // Losuj 4 słówka
+        var shuffled = cards.sort(function(){return Math.random()-.5;}).slice(0,4);
+        quizWords = shuffled.map(function(c){return{w:c.word||'',t:c.translation||''};});
+      }
+    }
+  }catch(e){}
+
+  // Fallback: słówka dnia
+  if(quizWords.length < 2){
+    var w1El = document.getElementById('dc-word-text');
+    var t1El = document.getElementById('dc-word-translation');
+    var w2El = document.getElementById('dc-word-text2');
+    var t2El = document.getElementById('dc-word-translation2');
+    var w1 = w1El && w1El.textContent;
+    var t1 = t1El && t1El.textContent;
+    var w2 = w2El && w2El.textContent;
+    var t2 = t2El && t2El.textContent;
+    if(w1&&t1) quizWords.push({w:w1,t:t1});
+    if(w2&&t2) quizWords.push({w:w2,t:t2});
+  }
+
+  if(quizWords.length < 2){
+    box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Dodaj słówka do materiałów, aby quiz działał!</div>';
+    return;
+  }
+
+  _inlineQuizState = {step:0, done:false, words:quizWords};
+  renderInlineQuizStep(0);
+}
+
+function renderInlineQuizStep(step){
+  var box = document.getElementById('dc-quiz-inline-body');
+  if(!box || _inlineQuizState.done) return;
+
+  var words = _inlineQuizState.words.filter(function(x){return x.w&&x.t;});
+  if(!words.length) return;
+
+  if(step === 0){
+    // Krok 1: wielokrotny wybór — podaj tłumaczenie słowa (opcje po polsku z innych słówek)
+    var target = words[0];
+    // Fałszywe odpowiedzi z tłumaczeń innych słówek (po polsku!)
+    var otherTranslations = words.slice(1).map(function(x){return x.t;})
+      .concat(['dom','czas','dobry','praca','życie','dzień','droga','człowiek','pomoc','wiedzieć'])
+      .filter(function(x){return x && x.toLowerCase()!==target.t.toLowerCase();});
+    var fakes = otherTranslations.slice(0,3);
+    var opts = [target.t].concat(fakes).sort(function(){return Math.random()-.5;});
+    var html = '<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:600">Pytanie 1/2 — Wybierz tłumaczenie:</div>'
+      +'<div style="font-size:20px;font-weight:800;color:var(--navy);font-family:Syne,sans-serif;margin-bottom:14px">'+target.w+'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:6px" id="iq-opts">';
+    opts.forEach(function(o,i){
+      html+='<button onclick="checkInlineOpt(\''+o.replace(/'/g,"\\'")+'\',\''+target.t.replace(/'/g,"\\'")+'\','+step+')" '
+        +'style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:13px;cursor:pointer;text-align:left;transition:.15s;font-family:\'DM Sans\',sans-serif" '
+        +'onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'+o+'</button>';
+    });
+    html+='</div>';
+    box.innerHTML=html;
+
+  } else if(step === 1 && words.length >= 2){
+    // Krok 2: uzupełnij lukę
+    var target2 = words[1];
+    var hint = target2.w[0].toUpperCase()+'_'.repeat(Math.max(1,target2.w.length-1));
+    var html2 = '<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:600">Pytanie 2/2 — Wpisz słowo po angielsku:</div>'
+      +'<div style="font-size:14px;color:var(--dim);margin-bottom:10px;font-style:italic">"'+target2.t+'"</div>'
+      +'<div style="font-size:12px;color:var(--dim2);margin-bottom:8px">Podpowiedź: '+hint+'</div>'
+      +'<div style="display:flex;gap:6px">'
+      +'<input id="iq-fill" type="text" placeholder="Wpisz odpowiedź..." style="flex:1;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;font-family:\'DM Sans\',sans-serif" onkeydown="if(event.key===\'Enter\')checkInlineFill(\''+target2.w.replace(/'/g,"\\'")+'\','+step+')">'
+      +'<button onclick="checkInlineFill(\''+target2.w.replace(/'/g,"\\'")+'\','+step+')" class="btn btn-orange" style="padding:8px 14px;font-size:13px">✓</button>'
+      +'</div>';
+    box.innerHTML=html2;
+    setTimeout(function(){var i=document.getElementById('iq-fill');if(i)i.focus();},100);
+
+  } else {
+    // Ukończono
+    _inlineQuizState.done=true;
+    var doneEl=document.getElementById('dc-quiz-done2');
+    if(doneEl)doneEl.style.display='inline';
+    box.innerHTML='<div style="text-align:center;padding:16px">'
+      +'<div style="font-size:36px;margin-bottom:8px">🎉</div>'
+      +'<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Quiz ukończony!</div>'
+      +'<div style="font-size:12px;color:var(--dim2)">+10 XP za dziś</div>'
+      +'</div>';
+    if(typeof addDailyXP==='function') addDailyXP(10);
+    if(typeof updateDailyProgress==='function') updateDailyProgress();
+  }
+}
+
+function checkInlineOpt(chosen, correct, step){
+  var isOk = chosen.trim().toLowerCase() === correct.trim().toLowerCase();
+  var opts = document.querySelectorAll('#iq-opts button');
+  opts.forEach(function(b){
+    b.disabled=true;
+    if(b.textContent.trim().toLowerCase()===correct.trim().toLowerCase())
+      b.style.cssText=b.style.cssText+'background:#dcfce7;border-color:#86efac;color:#166534;font-weight:700';
+    else if(b.textContent.trim()===chosen&&!isOk)
+      b.style.cssText=b.style.cssText+'background:#fee2e2;border-color:#fca5a5;color:#991b1b';
+  });
+  setTimeout(function(){renderInlineQuizStep(step+1);}, 800);
+}
+
+function checkInlineFill(correct, step){
+  var inp = document.getElementById('iq-fill');
+  if(!inp) return;
+  var val = inp.value.trim().toLowerCase();
+  var ok = val === correct.trim().toLowerCase() || (val.length>2 && correct.toLowerCase().includes(val));
+  inp.style.borderColor = ok ? '#86efac' : '#fca5a5';
+  inp.style.background = ok ? '#dcfce7' : '#fee2e2';
+  setTimeout(function(){renderInlineQuizStep(step+1);}, 700);
+}
+
+// ═══════════════════════════════════════════════════════
+// GŁOSÓWKI — z filtrami języka, avatarami, pseudonimami
+// ═══════════════════════════════════════════════════════
+
+var _voicesLang = 'en';
+
+async function loadVoiceRecordings(){
+  var el = document.getElementById('mat-voices-list');
+  if(!el) return;
+
+  // Buduj filtry języka jeśli nie ma
+  var voicesPanel = document.getElementById('mat-voices');
+  if(voicesPanel && !document.getElementById('voices-lang-filter')){
+    var filterBar = document.createElement('div');
+    filterBar.style.cssText='display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap';
+    filterBar.id='voices-lang-filter';
+    var langs=[
+      {code:'en',label:'🇬🇧 Angielski'},
+      {code:'es',label:'🇪🇸 Hiszpański'},
+      {code:'nl',label:'🇳🇱 Holenderski'},
+      {code:'jp',label:'🇯🇵 Japoński'},
+      {code:'de',label:'🇩🇪 Niemiecki'},
+      {code:'fr',label:'🇫🇷 Francuski'}
+    ];
+    langs.forEach(function(l){
+      var btn=document.createElement('button');
+      btn.style.cssText='padding:6px 14px;border-radius:100px;border:1.5px solid var(--border);background:'+(l.code===_voicesLang?'var(--navy)':'var(--paper2)')+';color:'+(l.code===_voicesLang?'#fff':'var(--navy)')+';font-size:12px;font-weight:600;cursor:pointer;transition:.2s';
+      btn.id='vfbtn-'+l.code;
+      btn.textContent=l.label;
+      btn.onclick=function(){
+        _voicesLang=l.code;
+        document.querySelectorAll('[id^="vfbtn-"]').forEach(function(b){
+          b.style.background='var(--paper2)';b.style.color='var(--navy)';
+        });
+        btn.style.background='var(--navy)';btn.style.color='#fff';
+        loadVoiceRecordings();
+      };
+      filterBar.appendChild(btn);
+    });
+    voicesPanel.insertBefore(filterBar, el);
+  }
+
+  el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:20px">Ładowanie głosówek...</div>';
+
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:20px">Zaloguj się aby zobaczyć głosówki</div>';return;}
+
+    var {data:recs,error}=await db.from('voice_recordings')
+      .select('id,user_id,word,sentence,language,audio_url,rating_pronunciation_avg,rating_correctness_avg,rating_count,created_at')
+      .eq('language',_voicesLang)
+      .order('created_at',{ascending:false})
+      .limit(30);
+
+    if(error){el.innerHTML='<div style="color:#c33;font-size:13px;padding:20px">Błąd: '+error.message+'</div>';return;}
+    if(!recs||!recs.length){
+      el.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:30px;text-align:center">'
+        +'<div style="font-size:36px;margin-bottom:12px">🎙️</div>'
+        +'Brak głosówek dla tego języka.<br>Nagraj pierwszą w Strefie Nauki!</div>';
+      return;
+    }
+
+    // Pobierz profile (username + avatar)
+    var uids=[...new Set(recs.map(function(r){return r.user_id;}))];
+    var profMap={};
+    try{
+      var {data:profs}=await db.from('profiles').select('user_id,username,avatar_url').in('user_id',uids);
+      (profs||[]).forEach(function(p){profMap[p.user_id]=p;});
+    }catch(e){}
+
+    var myId=sess.user.id;
+    el.innerHTML='';
+
+    recs.forEach(function(rec){
+      var prof=profMap[rec.user_id]||{};
+      var username=prof.username||'Użytkownik';
+      var avatarUrl=prof.avatar_url||'';
+      var isOwn=rec.user_id===myId;
+
+      var card=document.createElement('div');
+      card.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px';
+
+      // Header: avatar + username + słowo
+      var header=document.createElement('div');
+      header.style.cssText='display:flex;align-items:center;gap:12px';
+
+      // Avatar
+      var avEl=document.createElement('div');
+      avEl.style.cssText='width:40px;height:40px;border-radius:50%;background:var(--navy);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center';
+      if(avatarUrl){
+        avEl.innerHTML='<img src="'+avatarUrl+'" style="width:100%;height:100%;object-fit:cover">';
+      } else {
+        avEl.innerHTML='<span style="font-size:16px;color:#fff;font-weight:700">'+username[0].toUpperCase()+'</span>';
+      }
+      header.appendChild(avEl);
+
+      var userInfo=document.createElement('div');
+      userInfo.style.cssText='flex:1;min-width:0';
+      userInfo.innerHTML='<div style="font-size:13px;font-weight:700;color:var(--navy)">'+username+(isOwn?' <span style="font-size:10px;color:var(--orange)">(Ty)</span>':'')+'</div>'
+        +'<div style="font-size:12px;color:var(--dim2)">'+new Date(rec.created_at).toLocaleDateString('pl')+'</div>';
+      header.appendChild(userInfo);
+
+      // Słowo
+      var wordBadge=document.createElement('div');
+      wordBadge.style.cssText='background:var(--navy);color:#fff;font-size:12px;font-weight:700;padding:4px 12px;border-radius:100px';
+      wordBadge.textContent=rec.word||'';
+      header.appendChild(wordBadge);
+      card.appendChild(header);
+
+      // Zdanie kontekstowe
+      if(rec.sentence){
+        var sentEl=document.createElement('div');
+        sentEl.style.cssText='font-size:13px;color:var(--dim);font-style:italic;border-left:3px solid var(--border2);padding-left:10px;line-height:1.5';
+        sentEl.textContent='"'+rec.sentence+'"';
+        card.appendChild(sentEl);
+      }
+
+      // Audio player
+      if(rec.audio_url){
+        var audio=document.createElement('audio');
+        audio.controls=true;audio.src=rec.audio_url;
+        audio.style.cssText='width:100%;height:36px;border-radius:8px';
+        card.appendChild(audio);
+      }
+
+      // Oceny
+      var ratings=document.createElement('div');
+      ratings.style.cssText='display:flex;align-items:center;gap:12px;font-size:12px;color:var(--dim2)';
+      ratings.innerHTML='<span>🗣️ Wymowa: <strong style="color:var(--navy)">'+(rec.rating_pronunciation_avg||0).toFixed(1)+'</strong></span>'
+        +'<span>✅ Poprawność: <strong style="color:var(--navy)">'+(rec.rating_correctness_avg||0).toFixed(1)+'</strong></span>'
+        +'<span>👥 Ocen: <strong style="color:var(--navy)">'+(rec.rating_count||0)+'</strong></span>';
+      card.appendChild(ratings);
+
+      el.appendChild(card);
+    });
+  }catch(e){
+    el.innerHTML='<div style="color:#c33;font-size:13px;padding:20px">Błąd: '+e.message+'</div>';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// PROFIL UŻYTKOWNIKA — upload zdjęcia profilowego
+// ═══════════════════════════════════════════════════════
+
+async function uploadUserAvatar(file){
+  if(!file) return;
+  if(file.size>2*1024*1024){if(typeof showToast==='function')showToast('Plik za duży — max 2MB','error');return;}
+  var label=document.getElementById('user-avatar-label');
+  var preview=document.getElementById('user-avatar-preview');
+  if(label)label.textContent='⏳ Przesyłanie...';
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){showToast&&showToast('Zaloguj się','error');return;}
+    var ext=file.name.split('.').pop()||'jpg';
+    var path='avatars/'+sess.user.id+'_'+Date.now()+'.'+ext;
+    var {error}=await db.storage.from('recordings').upload(path,file,{contentType:file.type,upsert:true});
+    if(error)throw error;
+    var {data:urlData}=db.storage.from('recordings').getPublicUrl(path);
+    var url=urlData.publicUrl;
+    // Zapisz do profiles
+    await db.from('profiles').upsert({user_id:sess.user.id,avatar_url:url},{onConflict:'user_id'});
+    if(preview){preview.src=url;preview.style.display='block';}
+    if(label)label.textContent='✅ Zdjęcie zapisane!';
+    showToast&&showToast('Zdjęcie profilowe zaktualizowane!','success');
+  }catch(e){
+    if(label)label.textContent='Błąd: '+e.message;
+  }
+}
+
+// ── SQL hint: dodaj kolumnę avatar_url do profiles ──
+// ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url text;
+

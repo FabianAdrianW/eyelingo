@@ -1,4 +1,28 @@
-// Eyelingo — Nauczyciel PRO
+// Eyelingo — teacher.js
+
+// ═══════════════════════════════════════════════════════
+// NAUCZYCIEL PRO — initTeacher + page
+// ═══════════════════════════════════════════════════════
+
+// Inject page-teacher if missing
+(function(){
+  if(document.getElementById('page-teacher')) return;
+  var div=document.createElement('div');
+  div.id='page-teacher';div.className='page';
+  div.style.cssText='min-height:100vh;padding:110px 20px 80px;background:var(--paper)';
+  div.innerHTML='<div style="max-width:900px;margin:0 auto">'
+    +'<h2 style="font-family:Syne,sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">👨‍🏫 Nauczyciel PRO</h2>'
+    +'<p style="color:var(--dim2);margin-bottom:28px">Konwersacja z AI w wybranym języku</p>'
+    +'<div id="teacher-ui" style="background:#fff;border:2px solid var(--border);border-radius:20px;overflow:hidden">'
+    +'<div id="teacher-messages" style="min-height:400px;max-height:60vh;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:12px">'
+    +'<div style="text-align:center;color:var(--dim2);font-size:14px;padding:40px">Wybierz nauczyciela i zacznij rozmowę</div>'
+    +'</div>'
+    +'<div style="border-top:1px solid var(--border);padding:16px;display:flex;gap:10px">'
+    +'<input id="teacher-input" type="text" placeholder="Napisz wiadomość..." style="flex:1;padding:10px 16px;border-radius:100px;border:1.5px solid var(--border);font-size:14px;font-family:\'DM Sans\',sans-serif;outline:none" onkeydown="if(event.key===\'Enter\')sendTeacherMsg()">'
+    +'<button onclick="sendTeacherMsg()" class="btn btn-orange" style="padding:10px 20px;font-size:14px">Wyślij</button>'
+    +'</div></div></div>';
+  document.body.appendChild(div);
+})();
 
 async function initTeacher(){
   var el=document.getElementById('teacher-messages');
@@ -54,3 +78,12 @@ async function sendTeacherMsg(){
     if(reply){window._teacherHistory.push({role:'assistant',content:reply});appendTeacherMsg('assistant',reply);}
   }catch(e){if(typingDiv.parentNode)typingDiv.remove();appendTeacherMsg('assistant','Przepraszam, mam problem z połączeniem.');}
 }
+
+// ── addVoiceRecordingBtn stub — prevents errors when not fully implemented ──
+function addVoiceRecordingBtn(word, sentence, lang){
+  // Placeholder — rekord głosowy tworzony przez Strefę Nauki
+  var el=document.getElementById('voice-record-wrap');
+  if(!el)return;
+  el.innerHTML='<button style="background:var(--navy);color:#fff;border:none;border-radius:100px;padding:8px 16px;font-size:12px;cursor:pointer" onclick="startVoiceRecord()">🎙️ Nagraj wymowę</button>';
+}
+

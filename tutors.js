@@ -1,222 +1,17 @@
-// Eyelingo — Lektorzy + chat
+// Eyelingo — tutors.js
 
-
-// ── Build availability form ──
-function buildAvailabilityForm(){
-  var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
-  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
-  var wrap=document.getElementById('tutor-availability-form');
-  if(!wrap) return;
-  wrap.innerHTML='';
-  DAYS_EN.forEach(function(d,i){
-    var row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)';
-
-    var label=document.createElement('label');
-    label.style.cssText='display:flex;align-items:center;gap:6px;min-width:70px;font-size:13px;cursor:pointer';
-    var cb=document.createElement('input');
-    cb.type='checkbox';
-    cb.id='avail-'+d+'-active';
-    cb.onchange=function(){ toggleAvailDay(d); };
-    var daySpan=document.createElement('span');
-    daySpan.style.fontWeight='600';
-    daySpan.textContent=DAYS_PL[i];
-    label.appendChild(cb);
-    label.appendChild(daySpan);
-    row.appendChild(label);
-
-    var times=document.createElement('div');
-    times.id='avail-'+d+'-times';
-    times.style.cssText='display:none;align-items:center;gap:6px;flex:1';
-    var fromInput=document.createElement('input');
-    fromInput.type='time'; fromInput.id='avail-'+d+'-from'; fromInput.value='09:00';
-    fromInput.style.cssText='padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px';
-    var sep=document.createElement('span');
-    sep.style.cssText='color:var(--dim2);font-size:12px'; sep.textContent='–';
-    var toInput=document.createElement('input');
-    toInput.type='time'; toInput.id='avail-'+d+'-to'; toInput.value='17:00';
-    toInput.style.cssText='padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px';
-    times.appendChild(fromInput); times.appendChild(sep); times.appendChild(toInput);
-    row.appendChild(times);
-    wrap.appendChild(row);
-  });
-}
-
-function toggleAvailDay(d){
-  var cb=document.getElementById('avail-'+d+'-active');
-  var times=document.getElementById('avail-'+d+'-times');
-  if(times) times.style.display=cb&&cb.checked?'flex':'none';
-}
-
-async function saveTutorProfile(){
-  var name=(document.getElementById('tutor-name')||{}).value||'';
-  var bio=(document.getElementById('tutor-bio')||{}).value||'';
-  var price=(document.getElementById('tutor-price')||{}).value||'';
-  var photo=(document.getElementById('tutor-photo')||{}).value||'';
-  var video=(document.getElementById('tutor-video')||{}).value||'';
-  var langs=[...document.querySelectorAll('.tutor-lang-cb:checked')].map(function(c){return c.value;});
-  var levels=[...document.querySelectorAll('.tutor-level-cb:checked')].map(function(c){return c.value;});
-  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
-  var availability={};
-  DAYS_EN.forEach(function(d){
-    var cb=document.getElementById('avail-'+d+'-active');
-    if(cb&&cb.checked){
-      availability[d]={active:true,
-        from:(document.getElementById('avail-'+d+'-from')||{}).value||'09:00',
-        to:(document.getElementById('avail-'+d+'-to')||{}).value||'17:00'};
-    } else { availability[d]={active:false}; }
-  });
-  if(!name){showToast('Podaj imię i nazwisko','error');return;}
-  if(!langs.length){showToast('Wybierz co najmniej jeden język','error');return;}
-  var msgEl=document.getElementById('tutor-save-msg');
-  if(msgEl) msgEl.textContent='Zapisuję...';
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess){showToast('Zaloguj się','error');return;}
-    var payload={user_id:sess.user.id,display_name:name,bio:bio,
-      photo_url:photo,video_url:video,languages:langs,levels:levels,
-      price_per_hour:price?parseFloat(price):null,
-      availability:availability,is_active:true};
-    await db.from('tutors').upsert(payload,{onConflict:'user_id'});
-    if(msgEl) msgEl.innerHTML='<span style="color:#16a34a">✅ Profil zapisany!</span>';
-    document.getElementById('tutor-register-modal').style.display='none';
-    showToast('Profil lektora zapisany!','success');
-    loadTutors();
-  }catch(e){
-    if(msgEl) msgEl.innerHTML='<span style="color:#c33">Błąd: '+escH(e.message)+'</span>';
-  }
-}
-
-async function openTutorRegisterModal(){
-  var modal=document.getElementById('tutor-register-modal');
-  var btn=document.getElementById('become-tutor-btn');
-
-  // Pokaż modal ze spinnerem
-  modal.style.display='flex';
-  buildAvailabilityForm();
-
-  // Zmień tytuł modalu na "Edytuj profil" jeśli lektor już istnieje
-  var modalTitle=modal.querySelector('div[style*="background:var(--navy)"] div');
-  if(modalTitle) modalTitle.textContent='🎓 Profil lektora';
-
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess) return;
-
-    // Pobierz istniejący profil lektora
-    var {data:t}=await db.from('tutors')
-      .select('*')
-      .eq('user_id',sess.user.id)
-      .maybeSingle();
-
-    if(!t) return; // Nowy lektor — pusty formularz
-
-    // ── PRE-FILL: wypełnij pola danymi z bazy ──
-
-    // Podstawowe dane
-    var nameEl=document.getElementById('tutor-name');
-    var bioEl=document.getElementById('tutor-bio');
-    var priceEl=document.getElementById('tutor-price');
-    var videoEl=document.getElementById('tutor-video');
-    var photoInput=document.getElementById('tutor-photo');
-    var photoLabel=document.getElementById('tutor-photo-label');
-    var photoPreview=document.getElementById('tutor-photo-preview');
-    var photoImg=document.getElementById('tutor-photo-img');
-
-    if(nameEl) nameEl.value=t.display_name||'';
-    if(bioEl) bioEl.value=t.bio||'';
-    if(priceEl) priceEl.value=t.price_per_hour||'';
-    if(videoEl) videoEl.value=t.video_url||'';
-
-    // Zdjęcie — pokaż podgląd jeśli istnieje
-    if(t.photo_url&&photoInput&&photoPreview&&photoImg){
-      photoInput.value=t.photo_url;
-      photoImg.src=t.photo_url;
-      photoPreview.style.display='block';
-      if(photoLabel) photoLabel.textContent='✅ Zdjęcie wgrane';
-    }
-
-    // Języki — zaznacz checkboxy
-    document.querySelectorAll('.tutor-lang-cb').forEach(function(cb){
-      cb.checked=(t.languages||[]).includes(cb.value);
-    });
-
-    // Poziomy — zaznacz checkboxy
-    document.querySelectorAll('.tutor-level-cb').forEach(function(cb){
-      cb.checked=(t.levels||[]).includes(cb.value);
-    });
-
-    // Dostępność — wypełnij godziny
-    var avail=t.availability||{};
-    var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
-    DAYS_EN.forEach(function(d){
-      var day=avail[d];
-      if(!day) return;
-      var cb=document.getElementById('avail-'+d+'-active');
-      var times=document.getElementById('avail-'+d+'-times');
-      var fromEl=document.getElementById('avail-'+d+'-from');
-      var toEl=document.getElementById('avail-'+d+'-to');
-      if(cb&&day.active){
-        cb.checked=true;
-        if(times) times.style.display='flex';
-        if(fromEl&&day.from) fromEl.value=day.from;
-        if(toEl&&day.to) toEl.value=day.to;
-      }
-    });
-
-    // Zmień tytuł i przycisk
-    if(modalTitle) modalTitle.textContent='✏️ Edytuj profil lektora';
-    var saveBtn=modal.querySelector('.btn.btn-orange');
-    if(saveBtn) saveBtn.textContent='💾 Zapisz zmiany';
-
-  }catch(e){
-    console.warn('[openTutorModal]', e.message);
-  }
-}
-
-function filterTutors(){
-  var lang=(document.getElementById('tutor-filter-lang')||{}).value||'';
-  var level=(document.getElementById('tutor-filter-level')||{}).value||'';
-  var price=parseInt((document.getElementById('tutor-filter-price')||{}).value||'0')||0;
-  var search=((document.getElementById('tutor-search')||{}).value||'').toLowerCase();
-  var filtered=(_allTutors||[]).filter(function(t){
-    if(lang&&!(t.languages||[]).includes(lang)) return false;
-    if(level&&!(t.levels||[]).includes(level)) return false;
-    if(price&&t.price_per_hour&&t.price_per_hour>price) return false;
-    if(search&&!(t.display_name||'').toLowerCase().includes(search)&&!(t.bio||'').toLowerCase().includes(search)) return false;
-    return true;
-  });
-  renderTutors(filtered);
-}
-
-async function initTutors(){
-  await loadTutors();
-  buildAvailabilityForm();
-  // Sprawdź czy user jest już lektorem
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(sess){
-      var{data:t}=await db.from('tutors').select('id').eq('user_id',sess.user.id).maybeSingle();
-      if(t){_myTutorId=t.id;document.getElementById('become-tutor-btn').textContent='Edytuj profil';}
-    }
-  }catch(e){}
-}
-
-async function loadTutors(){
-  var listEl=document.getElementById('tutors-list');
-  if(!listEl)return;
-  listEl.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Ładowanie lektorów...</div>';
-  try{
-    var{data:tutors}=await db.from('tutors')
-      .select('*').eq('is_active',true)
-      .order('rating_avg',{ascending:false});
-    _allTutors=tutors||[];
-    renderTutors(_allTutors);
-  }catch(e){
-    var el2=document.getElementById('tutors-list');
-    if(el2) el2.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Błąd: '+e.message+'</div>';
-  }
-}
+// ═══════════════════════════════════════════════════════
+// CHAT V2 — 2-kolumnowy, historia zawsze widoczna
+// ═══════════════════════════════════════════════════════
+var _tcp = {
+  open: false,
+  activeTutorId: null,
+  activeTutorName: '',
+  myId: null,
+  realtimeSub: null,
+  convs: {},        // tutorId → lastMsg
+  contacts: JSON.parse(localStorage.getItem('tutor_contacts')||'{}')
+};
 
 async function _tcpGetMyId(){
   if(_tcp.myId) return _tcp.myId;
@@ -475,6 +270,10 @@ async function updateChatBadge(){
   }catch(e){}
 }
 
+// ── Rate Modal V2 (z X i Escape) ──
+var _trm={tutorId:null,val:0};
+var _trmLabels=['','Bardzo słaby 😞','Słaby 😕','Przeciętny 😐','Dobry 😊','Świetny! 🤩'];
+
 function openRateModal(tutorId){
   _trm.tutorId=tutorId;_trm.val=0;
   document.getElementById('trm-msg').textContent='';
@@ -483,15 +282,12 @@ function openRateModal(tutorId){
   document.querySelectorAll('.trm-star').forEach(function(s){s.classList.remove('lit');});
   document.getElementById('tutor-rate-modal').classList.add('open');
 }
-
 function closeRateModal(){document.getElementById('tutor-rate-modal').classList.remove('open');}
-
 function setRateModalStar(val){
   _trm.val=val;
   document.querySelectorAll('.trm-star').forEach(function(s,i){s.classList.toggle('lit',i<val);});
   document.getElementById('trm-label').textContent=_trmLabels[val]||'';
 }
-
 async function submitRateModal(){
   if(!_trm.val){document.getElementById('trm-msg').innerHTML='<span style="color:#c33">Wybierz ocenę</span>';return;}
   var comment=document.getElementById('trm-comment').value.trim();
@@ -518,8 +314,22 @@ async function submitRateModal(){
   }catch(e){document.getElementById('trm-msg').innerHTML='<span style="color:#c33">Błąd: '+escH(e.message)+'</span>';}
 }
 
+// Escape zamyka modal oceny
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){
+    closeRateModal();
+    closeTutorChat();
+  }
+});
+
 // hasTutorContact helper
 function hasTutorContact(tutorId){return !!_tcp.contacts[tutorId];}
+
+// Chat badge po zalogowaniu
+var _origPostLogin2=window.postLogin;
+window.postLogin=function(){if(_origPostLogin2)_origPostLogin2();setTimeout(updateChatBadge,1000);};
+
+
 
 // ═══════════════════════════════════════════════════════
 // LEKTORZY — nowy design kart (redesign 2.0)
@@ -788,6 +598,12 @@ function renderTutors(tutors){
     el.appendChild(wrapper);
   });
 }
+
+
+
+// ═══════════════════════════════════════════════════════
+// BRAKUJĄCE FUNKCJE LEKTORÓW
+// ═══════════════════════════════════════════════════════
 
 // ── viewTutor — podgląd profilu lektora ──
 async function viewTutor(tutorId){
@@ -1082,6 +898,7 @@ async function viewTutor(tutorId){
   }
 }
 
+
 // ── Photo upload functions ──
 function handleTutorPhotoFile(input){
   var file=input.files&&input.files[0];
@@ -1124,3 +941,4 @@ async function uploadTutorPhoto(file){
     if(typeof showToast==='function')showToast('Błąd przesyłania: '+e.message,'error');
   }
 }
+

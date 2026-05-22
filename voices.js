@@ -1,5 +1,4 @@
-// Eyelingo — Głosówki, profil użytkownika
-
+// Eyelingo — voices.js
 async function loadVoiceRecordings(){
   var el = document.getElementById('mat-voices-list');
   if(!el) return;
@@ -158,3 +157,25 @@ async function uploadUserAvatar(file){
     if(label)label.textContent='Błąd: '+e.message;
   }
 }
+
+async function switchMatTab(tab){
+  _matTab=tab;
+  document.querySelectorAll('.mat-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  const createBtn=document.getElementById('mat-create-btn');
+  if(createBtn) createBtn.style.display=(tab==='mine'&&_matMyUid)?'block':'none';
+  const search=document.getElementById('mat-search');
+  if(search) search.value='';
+  const grid=document.getElementById('mat-grid');
+  const voicesPanel=document.getElementById('mat-voices');
+  if(tab==='voices'){
+    if(grid) grid.style.display='none';
+    if(voicesPanel) voicesPanel.style.display='block';
+    loadVoiceRecordings();
+    return;
+  }
+  if(grid) grid.style.display='grid';
+  if(voicesPanel) voicesPanel.style.display='none';
+  grid.innerHTML='<div class="mat-empty">Ładowanie...</div>';
+  tab==='mine'?await loadMySets():await loadCommunity();
+}
+

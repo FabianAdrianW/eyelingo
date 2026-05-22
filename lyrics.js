@@ -1,5 +1,4 @@
-// Eyelingo — Analiza tekstu
-
+// Eyelingo — lyrics.js
 function initLyrics(){}
 
 function lyricsReset(){
@@ -263,3 +262,4 @@ async function lyricsAddAll(){
     showToast('Dodano '+rows.length+' fiszek!','success');
   }catch(e){showToast('Błąd: '+e.message,'error');}
 }
+

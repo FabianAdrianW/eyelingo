@@ -1,45 +1,31 @@
-// Eyelingo — Wyzwanie tygodnia
-
-async function initChallenge(){
-  clearInterval(_challengeTimer);
-  // Oblicz koniec tygodnia (niedziela 23:59)
-  var now=new Date(), day=now.getDay(), diff=(7-day)%7||7;
-  var end=new Date(now); end.setDate(now.getDate()+diff); end.setHours(23,59,59,999);
-
-  function tick(){
-    var rem=end-new Date(), d=Math.floor(rem/86400000), h=Math.floor((rem%86400000)/3600000), m=Math.floor((rem%3600000)/60000);
-    var el=document.getElementById('ch-countdown');
-    if(el) el.textContent=d+'d '+h+'h '+m+'min';
-  }
-  tick(); _challengeTimer=setInterval(tick,60000);
-
-  // Wyzwanie — dynamicznie
-  var challenges=[
-    {name:'Mistrz Podróży 🗺️',desc:'Naucz się 50 słów z kategorii Travel',goal:50,category:'Podróże',topic:'travel, tourism, airports, hotels, transportation, sightseeing, vacation',reward:'500 złota + odznaka Podróżnika'},
-    {name:'Biznes Pro 💼',desc:'Opanuj 40 słów z języka biznesu',goal:40,category:'Business',topic:'business, finance, corporate, meetings, negotiations, management, marketing, economics',reward:'400 złota + odznaka Profesjonalisty'},
-    {name:'Naukowy Umysł 🔬',desc:'Przyswój 30 słów naukowych',goal:30,category:'Science',topic:'science, biology, chemistry, physics, research, laboratory, discoveries, technology',reward:'300 złota + odznaka Naukowca'},
-  ];
-  var week=Math.floor(Date.now()/604800000)%challenges.length;
-  var ch=challenges[week];
-  document.getElementById('ch-name').textContent=ch.name;
-  document.getElementById('ch-desc').textContent=ch.desc;
-  document.getElementById('ch-reward').textContent='Nagroda za ukończenie: '+ch.reward;
-
-  // Pobierz postęp usera
+// Eyelingo — challenge.js
+// ── loadChallengeRanking ──
+async function loadChallengeRanking(){
+  var el=document.getElementById('ch-ranking');
+  if(!el) return;
   try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(sess){
-      var {data:stats}=await db.from('learning_stats').select('cards_seen').eq('user_id',sess.user.id).maybeSingle();
-      var myProgress=Math.min(ch.goal, Math.floor((stats?.cards_seen||0)%ch.goal));
-      document.getElementById('ch-progress-text').textContent=myProgress+' / '+ch.goal;
-      document.getElementById('ch-progress-bar').style.width=Math.round(myProgress/ch.goal*100)+'%';
-    }
-  }catch(e){}
-
-  loadChallengeRanking();
-  document.getElementById('ch-rank-update').textContent='aktualizuje się co 5 min';
-  setTimeout(loadChallengeRanking, 300000);
-  loadChallengeSet(ch);
+    var {data}=await db.from('learning_stats')
+      .select('user_id,cards_seen')
+      .order('cards_seen',{ascending:false})
+      .limit(10);
+    if(!data||!data.length){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Brak danych</div>';return;}
+    // Fetch usernames separately
+    var uids=data.map(function(r){return r.user_id;});
+    var lbNameMap={};
+    try{
+      var {data:lbProfs}=await db.from('profiles').select('user_id,username').in('user_id',uids);
+      (lbProfs||[]).forEach(function(p){if(p.username)lbNameMap[p.user_id]=p.username;});
+    }catch(e){}
+    el.innerHTML=data.map(function(r,i){
+      var name=lbNameMap[r.user_id]||'Użytkownik';
+      var medals=['🥇','🥈','🥉'];
+      return'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
+        +'<span style="font-size:16px;width:24px">'+(medals[i]||i+1)+'</span>'
+        +'<span style="flex:1;font-size:13px;font-weight:600;color:var(--navy)">'+name+'</span>'
+        +'<span style="font-size:13px;color:var(--orange);font-weight:700">'+(r.cards_seen||0)+' słów</span>'
+        +'</div>';
+    }).join('');
+  }catch(e){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Błąd ładowania rankingu</div>';}
 }
 
 async function loadChallengeSet(ch){
@@ -181,31 +167,45 @@ async function importChallengeSet(){
   }
 }
 
-// ── loadChallengeRanking ──
-async function loadChallengeRanking(){
-  var el=document.getElementById('ch-ranking');
-  if(!el) return;
+async function initChallenge(){
+  clearInterval(_challengeTimer);
+  // Oblicz koniec tygodnia (niedziela 23:59)
+  var now=new Date(), day=now.getDay(), diff=(7-day)%7||7;
+  var end=new Date(now); end.setDate(now.getDate()+diff); end.setHours(23,59,59,999);
+
+  function tick(){
+    var rem=end-new Date(), d=Math.floor(rem/86400000), h=Math.floor((rem%86400000)/3600000), m=Math.floor((rem%3600000)/60000);
+    var el=document.getElementById('ch-countdown');
+    if(el) el.textContent=d+'d '+h+'h '+m+'min';
+  }
+  tick(); _challengeTimer=setInterval(tick,60000);
+
+  // Wyzwanie — dynamicznie
+  var challenges=[
+    {name:'Mistrz Podróży 🗺️',desc:'Naucz się 50 słów z kategorii Travel',goal:50,category:'Podróże',topic:'travel, tourism, airports, hotels, transportation, sightseeing, vacation',reward:'500 złota + odznaka Podróżnika'},
+    {name:'Biznes Pro 💼',desc:'Opanuj 40 słów z języka biznesu',goal:40,category:'Business',topic:'business, finance, corporate, meetings, negotiations, management, marketing, economics',reward:'400 złota + odznaka Profesjonalisty'},
+    {name:'Naukowy Umysł 🔬',desc:'Przyswój 30 słów naukowych',goal:30,category:'Science',topic:'science, biology, chemistry, physics, research, laboratory, discoveries, technology',reward:'300 złota + odznaka Naukowca'},
+  ];
+  var week=Math.floor(Date.now()/604800000)%challenges.length;
+  var ch=challenges[week];
+  document.getElementById('ch-name').textContent=ch.name;
+  document.getElementById('ch-desc').textContent=ch.desc;
+  document.getElementById('ch-reward').textContent='Nagroda za ukończenie: '+ch.reward;
+
+  // Pobierz postęp usera
   try{
-    var {data}=await db.from('learning_stats')
-      .select('user_id,cards_seen')
-      .order('cards_seen',{ascending:false})
-      .limit(10);
-    if(!data||!data.length){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Brak danych</div>';return;}
-    // Fetch usernames separately
-    var uids=data.map(function(r){return r.user_id;});
-    var lbNameMap={};
-    try{
-      var {data:lbProfs}=await db.from('profiles').select('user_id,username').in('user_id',uids);
-      (lbProfs||[]).forEach(function(p){if(p.username)lbNameMap[p.user_id]=p.username;});
-    }catch(e){}
-    el.innerHTML=data.map(function(r,i){
-      var name=lbNameMap[r.user_id]||'Użytkownik';
-      var medals=['🥇','🥈','🥉'];
-      return'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
-        +'<span style="font-size:16px;width:24px">'+(medals[i]||i+1)+'</span>'
-        +'<span style="flex:1;font-size:13px;font-weight:600;color:var(--navy)">'+name+'</span>'
-        +'<span style="font-size:13px;color:var(--orange);font-weight:700">'+(r.cards_seen||0)+' słów</span>'
-        +'</div>';
-    }).join('');
-  }catch(e){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Błąd ładowania rankingu</div>';}
+    var sess=(await db.auth.getSession()).data.session;
+    if(sess){
+      var {data:stats}=await db.from('learning_stats').select('cards_seen').eq('user_id',sess.user.id).maybeSingle();
+      var myProgress=Math.min(ch.goal, Math.floor((stats?.cards_seen||0)%ch.goal));
+      document.getElementById('ch-progress-text').textContent=myProgress+' / '+ch.goal;
+      document.getElementById('ch-progress-bar').style.width=Math.round(myProgress/ch.goal*100)+'%';
+    }
+  }catch(e){}
+
+  loadChallengeRanking();
+  document.getElementById('ch-rank-update').textContent='aktualizuje się co 5 min';
+  setTimeout(loadChallengeRanking, 300000);
+  loadChallengeSet(ch);
 }
+

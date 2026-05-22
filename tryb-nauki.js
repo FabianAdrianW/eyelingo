@@ -1,4 +1,39 @@
-// Eyelingo — Tryb nauki SM-2
+// Eyelingo — tryb-nauki.js
+
+// ═══════════════════════════════════════════════════════
+// BRAKUJĄCE FUNKCJE — dodane ponownie
+// ═══════════════════════════════════════════════════════
+
+// ── loadChallengeRanking ──
+async function loadChallengeRanking(){
+  var el=document.getElementById('ch-ranking');
+  if(!el) return;
+  try{
+    var {data}=await db.from('learning_stats')
+      .select('user_id,cards_seen')
+      .order('cards_seen',{ascending:false})
+      .limit(10);
+    if(!data||!data.length){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Brak danych</div>';return;}
+    // Fetch usernames separately
+    var uids=data.map(function(r){return r.user_id;});
+    var lbNameMap={};
+    try{
+      var {data:lbProfs}=await db.from('profiles').select('user_id,username').in('user_id',uids);
+      (lbProfs||[]).forEach(function(p){if(p.username)lbNameMap[p.user_id]=p.username;});
+    }catch(e){}
+    el.innerHTML=data.map(function(r,i){
+      var name=lbNameMap[r.user_id]||'Użytkownik';
+      var medals=['🥇','🥈','🥉'];
+      return'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
+        +'<span style="font-size:16px;width:24px">'+(medals[i]||i+1)+'</span>'
+        +'<span style="flex:1;font-size:13px;font-weight:600;color:var(--navy)">'+name+'</span>'
+        +'<span style="font-size:13px;color:var(--orange);font-weight:700">'+(r.cards_seen||0)+' słów</span>'
+        +'</div>';
+    }).join('');
+  }catch(e){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Błąd ładowania rankingu</div>';}
+}
+
+// ── TRYB NAUKI — pełny moduł ──
 var RewardSystem={
   _key:'tryb_nauki_v1',
   _state:null,
@@ -39,7 +74,6 @@ var RewardSystem={
   ];}
 };
 
-
 function sm2Local(card,quality){
   var ef=card.ease_factor||2.5,reps=card.repetitions||0,interval=card.interval_days||1;
   if(quality>=3){if(reps===0)interval=1;else if(reps===1)interval=3;else interval=Math.round(interval*ef);reps++;}
@@ -47,6 +81,11 @@ function sm2Local(card,quality){
   ef=ef+(0.1-(5-quality)*(0.08+(5-quality)*0.02));if(ef<1.3)ef=1.3;
   return{ease_factor:parseFloat(ef.toFixed(3)),repetitions:reps,interval_days:interval,next_review:new Date(Date.now()+interval*86400000).toISOString().slice(0,10)};
 }
+
+var _trybCards=[],_trybIdx=0,_trybHintLevel=0,_trybHintPenalty=0;
+var _trybSessionStats={correct:0,total:0,xpGained:0,startTime:0};
+var _trybChallengeMode=false,_trybSessionXPToday=0,_trybPerfectStreak=0;
+var _trybExternalCards=null,_trybExternalName='',_trybSetCards=[];
 
 async function initTrybNauki(){
   RewardSystem.load();
@@ -61,6 +100,7 @@ function startTrybNauki(cardsRaw,setName){
   catch(e){_trybExternalCards=null;}
   RewardSystem.load();showPage('tryb');setTimeout(function(){startSession('set_external');},150);
 }
+window.startTrybNauki=startTrybNauki;
 
 function showTrybView(v){
   var lobby=document.getElementById('tryb-lobby');
@@ -242,30 +282,8 @@ function saveTrybMnemonic(){
 function showTrybMiniStory(){
   var box=document.getElementById('tryb-story-box');if(!box)return;
   if(box.style.display==='block'){box.style.display='none';return;}
-  // Generate AI mini-story using current word in context
-  var currentCard=_trybCards[_trybIdx];
-  if(!currentCard){box.style.display='none';return;}
-  box.innerHTML='<div style="color:var(--dim2);font-size:12px">⏳ Generuję historyjkę...</div>';
-  box.style.display='block';
-  db.auth.getSession().then(function(r){
-    var tok=r.data.session?r.data.session.access_token:'';
-    var w=currentCard.word||'';
-    var t=currentCard.translation||'';
-    var prompt='Write a short story (3-4 sentences) in English that naturally uses the word "'+w+'" (meaning: "'+t+'"). '
-      +'Bold the target word every time it appears like **'+w+'**. '
-      +'Make the story interesting and the meaning of the word clear from context. '
-      +'Then add a Polish translation of the story in italics on a new line.';
-    fetch(AI_PROXY_URL,{method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-      body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:300})
-    }).then(function(res){return res.json();}).then(function(d){
-      var text=(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim();
-      if(!text){box.style.display='none';return;}
-      // Format: bold **word** and italics for Polish
-      var html=text.replace(/\*\*([^*]+)\*\*/g,'<strong style="color:var(--gold)">$1</strong>').replace(/\n/g,'<br>');
-      box.innerHTML='<div style="font-size:13px;line-height:1.7;color:rgba(255,255,255,.9)">📖 '+html+'</div>';
-    }).catch(function(){box.style.display='none';});
-  });
+  var words=_trybSetCards.slice(0,5).map(function(c){return'<strong style="color:var(--gold)">'+(c.word||'')+'</strong>';});
+  box.innerHTML='📖 <em>Krótka historia łącząca słowa: '+words.join(', ')+'.<br>Użyj ich wszystkich w rozmowie!</em>';
   box.style.display='block';
 }
 
@@ -301,9 +319,7 @@ function updateXPBar(){
   var fill=document.getElementById('tryb-xp-fill');var lbl=document.getElementById('tryb-xp-label');var lvl=document.getElementById('tryb-level-badge');
   if(fill)fill.style.width=(s.xp%100)+'%';if(lbl)lbl.textContent=s.xp+' XP';if(lvl)lvl.textContent='Lv.'+s.level;
 }
-
 function updateStreakBadge(){RewardSystem.load();var el=document.getElementById('tryb-streak-badge');if(el)el.textContent='🔥 '+(RewardSystem._state.streak||0);}
-
 function updateChallengeMode(on){var sl=document.getElementById('tryb-toggle-slider');var kn=document.getElementById('tryb-toggle-knob');if(sl)sl.style.background=on?'var(--orange)':'rgba(255,255,255,.2)';if(kn)kn.style.left=on?'25px':'3px';}
 
 function renderTrybBadges(){
@@ -352,14 +368,12 @@ async function awardGoldBonus(amount){
   catch(e){try{var sess2=(await db.auth.getSession()).data.session;if(!sess2)return;var {data:ls}=await db.from('learning_stats').select('gold').eq('user_id',sess2.user.id).maybeSingle();var ng=((ls&&ls.gold)||0)+amount;await db.from('learning_stats').update({gold:ng}).eq('user_id',sess2.user.id);}catch(e2){}}
 }
 
-window.startTrybNauki=startTrybNauki;
-
-document.addEventListener('DOMContentLoaded', function(){
+// Tryb Nauki page HTML injection
 (function(){
   if(document.getElementById('page-tryb'))return;
   var div=document.createElement('div');
   div.id='page-tryb';div.className='page';
-  div.style.cssText='min-height:100vh;background:var(--paper);padding:130px 20px 80px';
+  div.style.cssText='min-height:100vh;background:var(--paper);padding:100px 20px 60px';
   div.innerHTML='<div style="max-width:860px;margin:0 auto">'
     +'<div id="tryb-lobby">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;padding-top:8px">'
@@ -470,14 +484,7 @@ document.addEventListener('DOMContentLoaded', function(){
     +'<button onclick="showPage(\'community\')" class="btn btn-navy">← Materiały</button>'
     +'</div></div>'
     +'</div>';
-  // Inject into learn panel if exists, otherwise body
-  var learnPanel = document.getElementById('learn-panel-tryb');
-  if(learnPanel){
-    learnPanel.innerHTML = '';
-    learnPanel.appendChild(div);
-  } else {
-    document.body.appendChild(div);
-  }
+  document.body.appendChild(div);
 
   // Confetti canvas
   if(!document.getElementById('tryb-confetti')){
@@ -486,8 +493,7 @@ document.addEventListener('DOMContentLoaded', function(){
     canvas.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:9999;display:none';
     document.body.appendChild(canvas);
   }
-})()
-});;
+})();
 
 // ── Napraw słówka do fiszek w analizie — tylko słowo + tłumaczenie, bez kontekstu ──
 var _origRenderLyricsWords = window.renderLyricsWords;
@@ -508,3 +514,4 @@ window.renderLyricsWords = function(){
       +'</div>';
   }).join('');
 };
+

@@ -1,28 +1,4 @@
-// Eyelingo — Community
-
-function renderMat(query=''){
-  const el=document.getElementById('mat-grid');
-  const countEl=document.getElementById('mat-count');
-  if(!el)return;
-  let filtered=_matSets;
-  if(query){
-    const q=query.toLowerCase();
-    filtered=_matSets.filter(s=>
-      s.name.toLowerCase().includes(q)||
-      (s.username||'').toLowerCase().includes(q)
-    );
-  }
-  if(countEl) countEl.textContent=filtered.length?`${filtered.length} zestaw${filtered.length===1?'':'ów'}`:'';
-  if(!filtered.length){
-    el.innerHTML=`<div class="mat-empty">${query?`Brak wyników dla "${query}"`
-      :_matTab==='mine'?'Nie masz jeszcze żadnych zestawów.'
-      :'Brak publicznych zestawów.'}</div>`;
-    return;
-  }
-  el.innerHTML=filtered.map(s=>setCard(s)).join('');
-}
-
-
+// Eyelingo — community.js
 async function loadCommunity(){
   document.getElementById('mat-grid').innerHTML='<div class="mat-empty">Ładowanie...</div>';
   try{
@@ -88,6 +64,28 @@ async function loadMySets(){
   const username=profile?.username||'Ty';
   _matSets=(data||[]).map(s=>({...s,username,user_id:_matMyUid}));
   renderMat();
+}
+
+function renderMat(query=''){
+  const el=document.getElementById('mat-grid');
+  const countEl=document.getElementById('mat-count');
+  if(!el)return;
+  let filtered=_matSets;
+  if(query){
+    const q=query.toLowerCase();
+    filtered=_matSets.filter(s=>
+      s.name.toLowerCase().includes(q)||
+      (s.username||'').toLowerCase().includes(q)
+    );
+  }
+  if(countEl) countEl.textContent=filtered.length?`${filtered.length} zestaw${filtered.length===1?'':'ów'}`:'';
+  if(!filtered.length){
+    el.innerHTML=`<div class="mat-empty">${query?`Brak wyników dla "${query}"`
+      :_matTab==='mine'?'Nie masz jeszcze żadnych zestawów.'
+      :'Brak publicznych zestawów.'}</div>`;
+    return;
+  }
+  el.innerHTML=filtered.map(s=>setCard(s)).join('');
 }
 
 function filterMat(q){renderMat(q)}
@@ -297,14 +295,7 @@ async function saveEdit(setId){
 }
 
 async function deleteSet(id){
-  const confirmed = await showConfirmModal({
-    title: 'Usuń zestaw',
-    message: 'Tej operacji <strong>nie można cofnąć</strong>. Zestaw i wszystkie fiszki zostaną trwale usunięte.',
-    confirmText: '🗑️ Tak, usuń',
-    cancelText: 'Anuluj',
-    danger: true
-  });
-  if(!confirmed) return;
+  if(!confirm('Usunąć ten zestaw? Tej operacji nie można cofnąć.'))return;
   await db.from('user_sets').delete().eq('id',id);
   closeMatModal();
   _matTab==='mine'?loadMySets():loadCommunity();
@@ -484,3 +475,4 @@ function showMatError(msg){
   const el=document.getElementById('mat-grid');
   if(el)el.innerHTML=`<div class="mat-empty" style="color:#f87">${msg}</div>`;
 }
+

@@ -1,30 +1,4 @@
-// Eyelingo — AI Partner konwersacyjny
-var _chatPersonas={
-  en:{name:'Alex',desc:'Native speaker · New York',greeting:"Hey! I'm Alex. Let's have a conversation in English. What would you like to talk about today?"},
-  es:{name:'Sofía',desc:'Hablante nativa · Madrid',greeting:'¡Hola! Soy Sofía. Vamos a practicar el español juntos. ¿De qué quieres hablar?'},
-  nl:{name:'Daan',desc:'Moedertaalspreker · Amsterdam',greeting:'Hallo! Ik ben Daan. Laten we Nederlands oefenen. Waar wil je het over hebben?'},
-  jp:{name:'Yuki',desc:'ネイティブスピーカー · 東京',greeting:'こんにちは！ゆきです。一緒に日本語を練習しましょう。何について話したいですか？'}
-};
-
-
-
-function chatUpdatePersona(){
-  _chatLang=document.getElementById('chat-lang').value;
-  var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
-  document.getElementById('chat-persona-name').textContent=p.name;
-  document.getElementById('chat-persona-desc').textContent=p.desc;
-  var langTag={en:'EN · B1→B2',es:'ES · A2→B1',nl:'NL · A1→A2',jp:'JP · N5→N4'}[_chatLang]||'EN';
-  document.getElementById('chat-persona-tags').innerHTML=
-    '<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:#e6f1fb;color:#0c447c;font-weight:600">'+langTag+'</span>';
-  var langPlaceholder={en:'Napisz po angielsku...',es:'Escribe en español...',nl:'Schrijf in het Nederlands...',jp:'日本語で書いてください...'};
-  var inp=document.getElementById('chat-input');
-  if(inp) inp.placeholder=langPlaceholder[_chatLang]||'Napisz...';
-  // Przeładuj słabe słowa dla nowego języka
-  loadChatWeakWords();
-  // Reset rozmowy przy zmianie języka
-  chatReset();
-}
-
+// Eyelingo — chat-partner.js
 async function initChat(){
   chatUpdatePersona();
   await loadChatWeakWords();
@@ -249,3 +223,21 @@ async function chatSend(){
   }
   btn.disabled=false;
 }
+
+function chatUpdatePersona(){
+  _chatLang=document.getElementById('chat-lang').value;
+  var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
+  document.getElementById('chat-persona-name').textContent=p.name;
+  document.getElementById('chat-persona-desc').textContent=p.desc;
+  var langTag={en:'EN · B1→B2',es:'ES · A2→B1',nl:'NL · A1→A2',jp:'JP · N5→N4'}[_chatLang]||'EN';
+  document.getElementById('chat-persona-tags').innerHTML=
+    '<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:#e6f1fb;color:#0c447c;font-weight:600">'+langTag+'</span>';
+  var langPlaceholder={en:'Napisz po angielsku...',es:'Escribe en español...',nl:'Schrijf in het Nederlands...',jp:'日本語で書いてください...'};
+  var inp=document.getElementById('chat-input');
+  if(inp) inp.placeholder=langPlaceholder[_chatLang]||'Napisz...';
+  // Przeładuj słabe słowa dla nowego języka
+  loadChatWeakWords();
+  // Reset rozmowy przy zmianie języka
+  chatReset();
+}
+
