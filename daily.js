@@ -706,8 +706,9 @@ function renderInlineQuizStep(step){
     var otherT=words.slice(1).map(function(x){return x.t;});
     var fakes=otherT.concat(['dom','czas','dobry','praca','życie','dzień']).filter(function(x){return x&&x.toLowerCase()!==target.t.toLowerCase();}).slice(0,3);
     var opts=[target.t].concat(fakes).sort(function(){return Math.random()-.5;});
-    var html='<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:600">Wybierz tłumaczenie:</div>'
-      +'<div style="font-size:20px;font-weight:800;color:var(--navy);font-family:Syne,sans-serif;margin-bottom:14px">'+target.w+'</div>'
+    var html='<div style="font-size:12px;color:var(--dim2);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Co znaczy:</div>'
+      +'<div style="font-size:24px;font-weight:800;color:var(--navy);font-family:Syne,sans-serif;margin-bottom:14px;padding:10px;background:var(--paper2);border-radius:10px;text-align:center">'+target.w+'</div>'
+      +'<div style="font-size:11px;color:var(--dim2);margin-bottom:8px">Wybierz poprawne tłumaczenie:</div>'
       +'<div style="display:flex;flex-direction:column;gap:6px" id="iq-opts">';
     opts.forEach(function(o){
       html+='<button style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:13px;cursor:pointer;text-align:left" onclick="checkInlineOpt(this,this.textContent)">'+o+'</button>';

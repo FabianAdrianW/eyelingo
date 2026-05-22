@@ -325,24 +325,25 @@ async function loadLangProgress(uid, levelsBought){
 }
 
 function loadActivityChart(stats){
+  const el=document.getElementById('activity-chart');
   if(!el)return;
+  const days=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
   const today=new Date().getDay();
-  const reorder=i=>(today-6+i+7)%7;
-  // Symulujemy dane na podstawie streak i minut
+  const streak=stats?.streak_days||0;
   const mins=stats?.minutes_active||0;
   const avgMins=streak>0?Math.round(mins/Math.max(streak,1)):0;
   const bars=days.map((_,i)=>{
     const active=i>=(7-streak)&&streak>0;
-    const h=active?Math.max(20,Math.min(100,avgMins*2)):Math.random()<0.2?Math.round(Math.random()*20):0;
-    return h;
+    return active?Math.max(20,Math.min(100,avgMins*2)):Math.random()<0.2?Math.round(Math.random()*20):0;
   });
   const maxH=Math.max(...bars,1);
   el.innerHTML=days.map((d,i)=>{
-    const ri=reorder(i);
-    return `<div class="act-bar-wrap">
-      <div class="act-bar" style="height:${pct}%;opacity:${h>0?'0.85':'0.15'}"></div>
-      <div class="act-label">${d}</div>
-    </div>`;
+    const h=bars[i];
+    const pct=Math.round(h/maxH*100);
+    return '<div class="act-bar-wrap">'
+      +'<div class="act-bar" style="height:'+pct+'%;opacity:'+(h>0?'0.85':'0.15')+'"></div>'
+      +'<div class="act-label">'+d+'</div>'
+      +'</div>';
   }).join('');
 }
 
@@ -531,7 +532,17 @@ function updateChatLimitUI(){
   }
 }
 
-function renderStarsDisplay(r){ return window.renderStarsDisplay(r); }
+function renderStarsDisplay(rating){
+  var r=rating||0;
+  var html='';
+  for(var i=0;i<5;i++){
+    if(i<Math.floor(r)) html+='<span style="color:#f5c842;font-size:14px">★</span>';
+    else if(i===Math.floor(r)&&r%1>=0.5) html+='<span style="color:#f5c842;font-size:12px">½</span>';
+    else html+='<span style="color:#ddd;font-size:14px">★</span>';
+  }
+  return html;
+}
+window.renderStarsDisplay=renderStarsDisplay;
 
 async function initToFixPage(){
   const{data:{session}}=await db.auth.getSession();
