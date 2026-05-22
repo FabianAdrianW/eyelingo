@@ -26,8 +26,8 @@ function showConfirmModal({title, message, confirmText='Potwierdź', cancelText=
         +'<h3 id="confirm-modal-title" style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--navy);margin-bottom:8px;text-align:center"></h3>'
         +'<p id="confirm-modal-message" style="font-size:14px;color:var(--dim);line-height:1.6;text-align:center;margin-bottom:24px"></p>'
         +'<div style="display:flex;flex-direction:column;gap:8px">'
-        +'<button id="confirm-modal-ok" style="width:100%;padding:13px;border-radius:12px;border:none;font-size:15px;font-weight:700;cursor:pointer;transition:.15s;font-family:'DM Sans',sans-serif"></button>'
-        +'<button id="confirm-modal-cancel" style="width:100%;padding:13px;border-radius:12px;border:2px solid var(--border);background:#fff;font-size:14px;font-weight:600;cursor:pointer;color:var(--dim2);transition:.15s;font-family:'DM Sans',sans-serif"></button>'
+        +'<button id="confirm-modal-ok" style="width:100%;padding:13px;border-radius:12px;border:none;font-size:15px;font-weight:700;cursor:pointer;transition:.15s"></button>'
+        +'<button id="confirm-modal-cancel" style="width:100%;padding:13px;border-radius:12px;border:2px solid var(--border);background:#fff;font-size:14px;font-weight:600;cursor:pointer;color:var(--dim2);transition:.15s"></button>'
         +'</div></div>';
       document.body.appendChild(modal);
       // Add animation keyframe
