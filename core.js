@@ -12,6 +12,77 @@ function showToast(msg, type){
 }
 window.showToast=showToast;
 
+// ── Custom confirm modal (zastępuje natywny confirm()) ──
+function showConfirmModal({title, message, confirmText='Potwierdź', cancelText='Anuluj', danger=false}){
+  return new Promise(function(resolve){
+    var modal = document.getElementById('confirm-modal');
+    if(!modal){
+      // Utwórz modal jeśli nie istnieje
+      modal = document.createElement('div');
+      modal.id = 'confirm-modal';
+      modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(26,35,64,.55);z-index:99999;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+      modal.innerHTML = '<div id="confirm-modal-box" style="background:#fff;border-radius:20px;padding:28px 28px 24px;max-width:400px;width:100%;box-shadow:0 24px 80px rgba(26,35,64,.22);animation:confirmPop .2s cubic-bezier(.34,1.56,.64,1)">'
+        +'<div id="confirm-modal-icon" style="font-size:36px;margin-bottom:12px;text-align:center"></div>'
+        +'<h3 id="confirm-modal-title" style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--navy);margin-bottom:8px;text-align:center"></h3>'
+        +'<p id="confirm-modal-message" style="font-size:14px;color:var(--dim);line-height:1.6;text-align:center;margin-bottom:24px"></p>'
+        +'<div style="display:flex;flex-direction:column;gap:8px">'
+        +'<button id="confirm-modal-ok" style="width:100%;padding:13px;border-radius:12px;border:none;font-size:15px;font-weight:700;cursor:pointer;transition:.15s;font-family:'DM Sans',sans-serif"></button>'
+        +'<button id="confirm-modal-cancel" style="width:100%;padding:13px;border-radius:12px;border:2px solid var(--border);background:#fff;font-size:14px;font-weight:600;cursor:pointer;color:var(--dim2);transition:.15s;font-family:'DM Sans',sans-serif"></button>'
+        +'</div></div>';
+      document.body.appendChild(modal);
+      // Add animation keyframe
+      if(!document.getElementById('confirm-modal-style')){
+        var style = document.createElement('style');
+        style.id = 'confirm-modal-style';
+        style.textContent = '@keyframes confirmPop{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}';
+        document.head.appendChild(style);
+      }
+    }
+
+    // Fill content
+    var icon = document.getElementById('confirm-modal-icon');
+    var titleEl = document.getElementById('confirm-modal-title');
+    var msgEl = document.getElementById('confirm-modal-message');
+    var okBtn = document.getElementById('confirm-modal-ok');
+    var cancelBtn = document.getElementById('confirm-modal-cancel');
+
+    if(icon) icon.textContent = danger ? '⚠️' : '❓';
+    if(titleEl) titleEl.textContent = title;
+    if(msgEl) msgEl.innerHTML = message;
+    if(okBtn){
+      okBtn.textContent = confirmText;
+      okBtn.style.background = danger ? '#dc2626' : 'var(--orange)';
+      okBtn.style.color = '#fff';
+      okBtn.onmouseover = function(){ this.style.opacity = '.88'; };
+      okBtn.onmouseout = function(){ this.style.opacity = '1'; };
+    }
+    if(cancelBtn) cancelBtn.textContent = cancelText;
+
+    // Show
+    modal.style.display = 'flex';
+
+    // Handlers
+    function cleanup(result){
+      modal.style.display = 'none';
+      if(okBtn) okBtn.onclick = null;
+      if(cancelBtn) cancelBtn.onclick = null;
+      modal.onclick = null;
+      resolve(result);
+    }
+
+    if(okBtn) okBtn.onclick = function(){ cleanup(true); };
+    if(cancelBtn) cancelBtn.onclick = function(){ cleanup(false); };
+    modal.onclick = function(e){ if(e.target === modal) cleanup(false); };
+
+    // ESC key
+    function onKey(e){ if(e.key === 'Escape'){ cleanup(false); document.removeEventListener('keydown', onKey); } }
+    document.addEventListener('keydown', onKey);
+  });
+}
+window.showConfirmModal = showConfirmModal;
+
+
+
 
 
 const SUPABASE_URL='https://sntlgkhktscezxpxrchl.supabase.co';
@@ -427,28 +498,7 @@ function showPage(name){
 
 // ── Stub functions (safe fallbacks) ──
 async function loadNotifications(){
-  // Silent - notifications table may not exist
-  try{
-    var badge=document.getElementById('notif-badge');
-    var panel=document.getElementById('notif-panel');
-    if(!badge&&!panel) return;
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess) return;
-    var res=await db.from('notifications')
-      .select('id,type,message,read_at,created_at')
-      .eq('user_id',sess.user.id)
-      .order('created_at',{ascending:false})
-      .limit(20);
-    if(res.error) return; // table doesn't exist - silent fail
-    var notifs=res.data||[];
-    var unread=notifs.filter(function(n){return !n.read_at;}).length;
-    if(badge){badge.textContent=unread||'';badge.style.display=unread?'flex':'none';}
-    if(panel&&notifs.length){
-      panel.innerHTML=notifs.map(function(n){
-        return'<div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;color:var(--navy)">'+(n.message||'')+'</div>';
-      }).join('');
-    }
-  }catch(e){/* silent */}
+  // notifications table not created yet - silent stub
 }
 
 async function loadRanking(){

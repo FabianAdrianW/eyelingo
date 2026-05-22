@@ -297,7 +297,14 @@ async function saveEdit(setId){
 }
 
 async function deleteSet(id){
-  if(!confirm('Usunąć ten zestaw? Tej operacji nie można cofnąć.'))return;
+  const confirmed = await showConfirmModal({
+    title: 'Usuń zestaw',
+    message: 'Tej operacji <strong>nie można cofnąć</strong>. Zestaw i wszystkie fiszki zostaną trwale usunięte.',
+    confirmText: '🗑️ Tak, usuń',
+    cancelText: 'Anuluj',
+    danger: true
+  });
+  if(!confirmed) return;
   await db.from('user_sets').delete().eq('id',id);
   closeMatModal();
   _matTab==='mine'?loadMySets():loadCommunity();
