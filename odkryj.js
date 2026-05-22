@@ -542,3 +542,239 @@ async function fetchOdkryjVocab(topic, lang, level, tok){
     return parsed||[];
   }catch(e){return[];}
 }
+
+// ═══════════════════════════════════════════════════════
+// KALENDARZ KULTUR
+// ═══════════════════════════════════════════════════════
+
+var _kkHistory = JSON.parse(localStorage.getItem('kk_history')||'[]');
+var _kkLoading = false;
+
+async function loadKalendarzKultur(){
+  if(_kkLoading) return;
+  _kkLoading = true;
+
+  var lang = document.getElementById('kk-lang').value || 'pl';
+  var langNames = {pl:'polski',en:'english',es:'español',fr:'français',de:'deutsch'};
+  var today = new Date().toISOString().slice(0,10);
+  var cacheKey = 'kk_'+today+'_'+lang;
+
+  // Sprawdź cache
+  try{
+    var cached = localStorage.getItem(cacheKey);
+    if(cached){
+      var data = JSON.parse(cached);
+      renderKalendarzKultur(data);
+      _kkLoading = false;
+      return;
+    }
+  }catch(e){}
+
+  // Show loading
+  document.getElementById('kk-empty').style.display = 'none';
+  document.getElementById('kk-card').style.display = 'none';
+  document.getElementById('kk-loading').style.display = 'block';
+
+  var steps = ['Wybieram kulturę dnia...','Piszę artykuł...','Tworzę quiz...','Finalizuję...'];
+  var step = 0;
+  var loadingText = document.getElementById('kk-loading-text');
+  var progress = document.getElementById('kk-progress');
+  var stepTimer = setInterval(function(){
+    if(step < steps.length - 1){
+      step++;
+      if(loadingText) loadingText.textContent = steps[step];
+      if(progress) progress.style.width = ((step+1)/steps.length*100)+'%';
+    }
+  }, 1800);
+
+  var ostatnie = _kkHistory.slice(-30).map(function(h){return h.kultura;}).join(', ');
+
+  var prompt = 'Jesteś ekspertem kulturoznawstwa i copywriterem specjalizującym się w angażujących artykułach edukacyjnych.\n\n'
+    + 'Data: '+today+'\n'
+    + 'Język artykułu: '+langNames[lang]+'\n'
+    + 'Kultura dnia: (wybierz automatycznie)\n'
+    + (ostatnie ? 'Unikaj tych kultur z ostatnich 30 dni: '+ostatnie+'\n' : '')
+    + '\nLOGIKA: Sprawdź czy data '+today+' pokrywa się ze znaczącym świętem/rocznicą/wydarzeniem kulturowym. Jeśli tak — wybierz tę kulturę. Jeśli nie — wybierz losową kulturę.\n\n'
+    + 'STRUKTURA ARTYKUŁU (450-650 słów):\n'
+    + '1. NAGŁÓWEK — chwytliwy tytuł z nazwą kultury\n'
+    + '2. PODTYTUŁ — curiosity gap (buduje ciekawość bez zdradzania)\n'
+    + '3. INTRO HACZYK — 2-3 zdania od zaskakującego faktu/obrazu zmysłowego\n'
+    + '4. KONTEKST KULTUROWY — 3-4 akapity: geografia/historia, zwyczaje/wartości, jedzenie/muzyka/rytuał\n'
+    + '5. CIEKAWOSTKA "TEGO NIE WIESZ" — 1 rozmowny akapit z mało znanym faktem\n'
+    + '6. MOST DO CZYTELNIKA — analogia do kultury czytelnika, empatia\n\n'
+    + 'TON: ciepły, ciekawski, dla 12-latka ale nie nudny dla 40-latka. ZAKAZ: "egzotyczny", "dziwny", "niesamowity".\n\n'
+    + 'SŁOWO DNIA: jedno słowo/wyrażenie w języku tej kultury + wymowa fonetyczna + znaczenie dosłowne i kulturowe + przykład użycia.\n\n'
+    + 'QUIZ: 3 pytania (łatwe/średnie/trudne).\n\n'
+    + 'Odpowiedz TYLKO w JSON, bez markdown, bez tekstu przed ani po:\n'
+    + '{"tytul":"...","podtytul":"...","intro":"...","sekcje":[{"naglowek":"...","tresc":"..."}],"ciekawostka":"...","most":"...","metadane":{"kultura":"...","kraj":"...","powiazanie_z_data":true,"opis_powiazania":"...lub null"},"slowo_dnia":{"slowo":"...","fonetyka":"...","znaczenie":"...","przyklad":"..."},"quiz":[{"pytanie":"...","odpowiedzi":["A:...","B:...","C:...","D:..."],"poprawna":"A","wyjasnienie":"..."}],"tagi":["..."],"dla_dzieci":true}';
+
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    var tok = sess ? sess.access_token : '';
+    var res = await fetch(AI_PROXY_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:prompt}], max_tokens:3000})
+    });
+    var d = await res.json();
+    var raw = (d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim();
+
+    var bt = '`';
+    raw = raw.replace(new RegExp(bt+bt+bt+'json|'+bt+bt+bt,'g'),'').trim();
+    if(raw.startsWith('{') || raw.startsWith('[')){ /* ok */ }
+    else { var m = raw.match(/\{[\s\S]*\}/); if(m) raw = m[0]; }
+
+    var data = JSON.parse(raw);
+
+    // Cache + historia
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+    if(data.metadane && data.metadane.kultura){
+      _kkHistory.push({data:today,kultura:data.metadane.kultura});
+      if(_kkHistory.length > 30) _kkHistory = _kkHistory.slice(-30);
+      localStorage.setItem('kk_history', JSON.stringify(_kkHistory));
+    }
+
+    clearInterval(stepTimer);
+    document.getElementById('kk-loading').style.display = 'none';
+    renderKalendarzKultur(data);
+
+  }catch(e){
+    clearInterval(stepTimer);
+    document.getElementById('kk-loading').style.display = 'none';
+    document.getElementById('kk-empty').style.display = 'block';
+    document.getElementById('kk-empty').innerHTML = '<div style="font-size:36px;margin-bottom:12px">⚠️</div>'
+      +'<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:6px">Błąd generowania</div>'
+      +'<div style="font-size:13px;color:var(--dim2);margin-bottom:16px">'+e.message+'</div>'
+      +'<button onclick="loadKalendarzKultur()" class="btn btn-orange">Spróbuj ponownie</button>';
+    if(typeof showToast==='function') showToast('Błąd Kalendarza Kultur: '+e.message,'error');
+  }
+  _kkLoading = false;
+}
+
+function renderKalendarzKultur(data){
+  var card = document.getElementById('kk-card');
+  if(!card) return;
+
+  // Meta
+  var meta = document.getElementById('kk-meta');
+  if(meta && data.metadane){
+    var today = new Date().toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long'});
+    meta.innerHTML = '<span style="font-size:12px;font-weight:600;color:var(--dim2)">📅 '+today+'</span>'
+      +(data.metadane.powiazanie_z_data
+        ?'<span style="font-size:11px;font-weight:700;background:rgba(201,106,42,.12);color:var(--orange);padding:3px 10px;border-radius:100px">🗓️ Powiązane z datą</span>'
+        :'')
+      +(data.metadane.kraj
+        ?'<span style="font-size:12px;color:var(--dim2)">🌍 '+data.metadane.kraj+'</span>'
+        :'');
+  }
+
+  // Tytuł
+  var titleEl = document.getElementById('kk-title');
+  if(titleEl) titleEl.textContent = data.tytul||'';
+
+  var subtitleEl = document.getElementById('kk-subtitle');
+  if(subtitleEl) subtitleEl.textContent = data.podtytul||'';
+
+  // Treść
+  var body = document.getElementById('kk-body');
+  if(body){
+    var html = '';
+    // Intro
+    if(data.intro){
+      html += '<p style="font-size:15px;font-weight:500;color:var(--navy);line-height:1.8;margin-bottom:20px;padding:16px 20px;background:var(--paper2);border-radius:12px;border-left:3px solid var(--orange)">'
+        +data.intro+'</p>';
+    }
+    // Sekcje
+    (data.sekcje||[]).forEach(function(s){
+      if(s.naglowek) html += '<h4 style="font-family:Syne,sans-serif;font-size:15px;font-weight:700;color:var(--navy);margin:20px 0 8px">'+s.naglowek+'</h4>';
+      if(s.tresc) html += '<p style="margin-bottom:14px;line-height:1.8">'+s.tresc+'</p>';
+    });
+    // Ciekawostka
+    if(data.ciekawostka){
+      html += '<div style="margin:20px 0;padding:16px 20px;background:rgba(26,35,64,.04);border-radius:12px;border:1.5px solid var(--border)">'
+        +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--dim2);margin-bottom:8px">💡 Tego nie wiesz</div>'
+        +'<p style="margin:0;line-height:1.75;font-size:13px">'+data.ciekawostka+'</p>'
+        +'</div>';
+    }
+    // Most
+    if(data.most){
+      html += '<p style="margin-top:16px;line-height:1.8;font-size:13px;color:var(--dim2)">'+data.most+'</p>';
+    }
+    body.innerHTML = html;
+  }
+
+  // Słowo dnia
+  var wordSection = document.getElementById('kk-word');
+  if(wordSection && data.slowo_dnia){
+    var w = data.slowo_dnia;
+    document.getElementById('kk-word-text').textContent = w.slowo||'';
+    document.getElementById('kk-word-phonetic').textContent = w.fonetyka ? '['+w.fonetyka+']' : '';
+    document.getElementById('kk-word-meaning').innerHTML = (w.znaczenie||'')
+      +(w.przyklad ? '<div style="margin-top:8px;font-style:italic;color:rgba(255,255,255,.6);font-size:12px">„'+w.przyklad+'"</div>' : '');
+    wordSection.style.display = 'block';
+  }
+
+  // Quiz
+  var quizSection = document.getElementById('kk-quiz-section');
+  var quizBody = document.getElementById('kk-quiz-body');
+  if(quizSection && quizBody && data.quiz && data.quiz.length){
+    quizBody.innerHTML = '';
+    data.quiz.forEach(function(q, qi){
+      var qEl = document.createElement('div');
+      qEl.style.cssText = 'background:var(--paper2);border-radius:14px;padding:16px';
+      var qText = document.createElement('div');
+      qText.style.cssText = 'font-size:14px;font-weight:600;color:var(--navy);margin-bottom:12px;line-height:1.5';
+      qText.textContent = (qi+1)+'. '+q.pytanie;
+      qEl.appendChild(qText);
+
+      var opts = document.createElement('div');
+      opts.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+      var answered = false;
+      (q.odpowiedzi||[]).forEach(function(opt){
+        var letter = opt.charAt(0);
+        var btn = document.createElement('button');
+        btn.style.cssText = 'padding:9px 14px;border-radius:10px;border:1.5px solid var(--border);background:#fff;font-size:13px;cursor:pointer;text-align:left;transition:.15s;color:var(--navy)';
+        btn.textContent = opt;
+        btn.onmouseover = function(){if(!answered)this.style.borderColor='var(--orange)';};
+        btn.onmouseout = function(){if(!answered)this.style.borderColor='var(--border)';};
+        btn.onclick = function(){
+          if(answered) return;
+          answered = true;
+          var correct = q.poprawna;
+          if(letter === correct){
+            btn.style.cssText = btn.style.cssText+'background:#dcfce7;border-color:#86efac;color:#166534;font-weight:600';
+          } else {
+            btn.style.cssText = btn.style.cssText+'background:#fee2e2;border-color:#fca5a5;color:#991b1b';
+            // Podświetl poprawną
+            opts.querySelectorAll('button').forEach(function(b){
+              if(b.textContent.charAt(0)===correct) b.style.cssText=b.style.cssText+'background:#dcfce7;border-color:#86efac;color:#166534;font-weight:600';
+            });
+          }
+          // Wyjaśnienie
+          if(q.wyjasnienie){
+            var expl = document.createElement('div');
+            expl.style.cssText = 'margin-top:10px;font-size:12px;color:var(--dim2);padding:10px 12px;background:#fff;border-radius:8px;line-height:1.6';
+            expl.textContent = '💡 '+q.wyjasnienie;
+            qEl.appendChild(expl);
+          }
+        };
+        opts.appendChild(btn);
+      });
+      qEl.appendChild(opts);
+      quizBody.appendChild(qEl);
+    });
+    quizSection.style.display = 'block';
+  }
+
+  // Tagi
+  var footer = document.getElementById('kk-footer');
+  if(footer && data.tagi){
+    footer.innerHTML = '<span style="font-size:11px;color:var(--dim2);margin-right:4px">Tagi:</span>'
+      +data.tagi.map(function(t){
+        return'<span style="font-size:11px;background:var(--paper2);color:var(--dim2);padding:3px 10px;border-radius:100px;border:1px solid var(--border)">'+t+'</span>';
+      }).join('');
+  }
+
+  card.style.display = 'block';
+  card.scrollIntoView({behavior:'smooth', block:'nearest'});
+}

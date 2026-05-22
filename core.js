@@ -13,7 +13,174 @@ function showToast(msg, type){
 window.showToast=showToast;
 
 // ── Custom confirm modal (zastępuje natywny confirm()) ──
-function showConfirmModal({title, message, confirmText='Potwierdź', cancelText='Anuluj', danger=false}){
+function showConfirmModal({title, message, confirmText, cancelText, danger}){
+  confirmText = confirmText||'Potwierdź';
+  cancelText = cancelText||'Anuluj';
+  danger = danger||false;
+  return new Promise(function(resolve){
+    var existing=document.getElementById('confirm-modal');
+    if(existing)existing.remove();
+
+    if(!document.getElementById('confirm-modal-style')){
+      var st=document.createElement('style');
+      st.id='confirm-modal-style';
+      st.textContent=[
+        '@keyframes cmUp{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}',
+        '@keyframes cmFade{from{opacity:0}to{opacity:1}}',
+        '#confirm-modal{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px}',
+        '#cm-bd{position:absolute;inset:0;background:rgba(26,35,64,.38);animation:cmFade .2s ease;backdrop-filter:blur(4px)}',
+        '#cm-box{position:relative;background:#fff;border-radius:22px;width:100%;max-width:360px;overflow:hidden;box-shadow:0 32px 80px rgba(26,35,64,.18);animation:cmUp .22s cubic-bezier(.34,1.3,.64,1)}',
+        '#cm-body{padding:28px 24px 24px;display:flex;flex-direction:column;align-items:flex-start;gap:8px}',
+        '#cm-ico{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}',
+        '#cm-title{font-family:Syne,sans-serif;font-size:17px;font-weight:800;color:var(--navy);line-height:1.3}',
+        '#cm-msg{font-size:13px;color:var(--dim2);line-height:1.65;margin-top:2px}',
+        '#cm-foot{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border)}',
+        '#cm-cancel{padding:15px;background:none;border:none;border-right:1px solid var(--border);font-size:14px;font-weight:600;color:var(--dim);cursor:pointer;transition:.15s}',
+        '#cm-cancel:hover{background:var(--paper2)}',
+        '#cm-ok{padding:15px;background:none;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:.15s}',
+        '#cm-ok:hover{background:var(--paper2)}',
+      ].join('');
+      document.head.appendChild(st);
+    }
+
+    var modal=document.createElement('div'); modal.id='confirm-modal';
+    var bd=document.createElement('div'); bd.id='cm-bd'; modal.appendChild(bd);
+    var box=document.createElement('div'); box.id='cm-box';
+
+    var body=document.createElement('div'); body.id='cm-body';
+
+    var ico=document.createElement('div'); ico.id='cm-ico';
+    ico.style.background=danger?'rgba(220,38,38,.1)':'rgba(201,106,42,.1)';
+    ico.textContent=danger?'🗑️':'❓';
+    body.appendChild(ico);
+
+    var titleEl=document.createElement('div'); titleEl.id='cm-title';
+    titleEl.textContent=title;
+    body.appendChild(titleEl);
+
+    var msgEl=document.createElement('div'); msgEl.id='cm-msg';
+    msgEl.innerHTML=message;
+    body.appendChild(msgEl);
+
+    box.appendChild(body);
+
+    var foot=document.createElement('div'); foot.id='cm-foot';
+    var cancelBtn=document.createElement('button'); cancelBtn.id='cm-cancel';
+    cancelBtn.textContent=cancelText;
+    var okBtn=document.createElement('button'); okBtn.id='cm-ok';
+    okBtn.textContent=confirmText;
+    okBtn.style.color=danger?'#dc2626':'var(--orange)';
+    foot.appendChild(cancelBtn); foot.appendChild(okBtn);
+    box.appendChild(foot); modal.appendChild(box);
+    document.body.appendChild(modal);
+
+    function cleanup(r){
+      box.style.animation='cmUp .15s ease reverse';
+      bd.style.animation='cmFade .15s ease reverse';
+      setTimeout(function(){modal.remove();},140);
+      resolve(r);
+    }
+    okBtn.onclick=function(){cleanup(true);};
+    cancelBtn.onclick=function(){cleanup(false);};
+    bd.onclick=function(){cleanup(false);};
+    function onKey(e){if(e.key==='Escape'){cleanup(false);document.removeEventListener('keydown',onKey);}}
+    document.addEventListener('keydown',onKey);
+  });
+}
+window.showConfirmModal=showConfirmModal;){
+  return new Promise(function(resolve){
+    var existing=document.getElementById('confirm-modal');
+    if(existing)existing.remove();
+
+    if(!document.getElementById('confirm-modal-style')){
+      var style=document.createElement('style');
+      style.id='confirm-modal-style';
+      style.textContent=[
+        '@keyframes cmUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}',
+        '@keyframes cmFade{from{opacity:0}to{opacity:1}}',
+        '#confirm-modal{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;pointer-events:all}',
+        '#cm-backdrop{position:absolute;inset:0;background:rgba(26,35,64,.4);animation:cmFade .2s ease;backdrop-filter:blur(3px)}',
+        '#cm-box{position:relative;background:#fff;border-radius:22px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 24px 64px rgba(26,35,64,.18);animation:cmUp .22s cubic-bezier(.34,1.4,.64,1)}',
+        '#cm-top{padding:28px 28px 20px}',
+        '#cm-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:14px}',
+        '#cm-title{font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--navy);margin-bottom:6px;line-height:1.3}',
+        '#cm-msg{font-size:13px;color:var(--dim2);line-height:1.65}',
+        '#cm-actions{display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid var(--border)}',
+        '#cm-cancel{padding:16px;background:#fff;border:none;border-right:1px solid var(--border);font-size:14px;font-weight:600;color:var(--dim);cursor:pointer;transition:.15s;font-family:"DM Sans",sans-serif}',
+        '#cm-cancel:hover{background:var(--paper2)}',
+        '#cm-ok{padding:16px;background:#fff;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;font-family:"DM Sans",sans-serif}',
+        '#cm-ok:hover{opacity:.85}',
+      ].join('');
+      document.head.appendChild(style);
+    }
+
+    var modal=document.createElement('div');
+    modal.id='confirm-modal';
+
+    var backdrop=document.createElement('div');
+    backdrop.id='cm-backdrop';
+    modal.appendChild(backdrop);
+
+    var box=document.createElement('div');
+    box.id='cm-box';
+
+    var top=document.createElement('div');
+    top.id='cm-top';
+
+    // Ikona
+    var icon=document.createElement('div');
+    icon.id='cm-icon';
+    icon.style.cssText=danger
+      ?'background:#fee2e2;color:#dc2626;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:14px'
+      :'background:rgba(201,106,42,.1);color:var(--orange);width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:14px';
+    icon.textContent=danger?'🗑️':'❓';
+    top.appendChild(icon);
+
+    var titleEl=document.createElement('div');
+    titleEl.id='cm-title';
+    titleEl.textContent=title;
+    top.appendChild(titleEl);
+
+    var msgEl=document.createElement('div');
+    msgEl.id='cm-msg';
+    msgEl.innerHTML=message;
+    top.appendChild(msgEl);
+
+    box.appendChild(top);
+
+    var actions=document.createElement('div');
+    actions.id='cm-actions';
+
+    var cancelBtn=document.createElement('button');
+    cancelBtn.id='cm-cancel';
+    cancelBtn.textContent=cancelText;
+
+    var okBtn=document.createElement('button');
+    okBtn.id='cm-ok';
+    okBtn.textContent=confirmText;
+    okBtn.style.color=danger?'#dc2626':'var(--orange)';
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(okBtn);
+    box.appendChild(actions);
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+
+    function cleanup(result){
+      box.style.animation='cmUp .18s ease reverse';
+      backdrop.style.animation='cmFade .18s ease reverse';
+      setTimeout(function(){modal.remove();},160);
+      resolve(result);
+    }
+
+    okBtn.onclick=function(){cleanup(true);};
+    cancelBtn.onclick=function(){cleanup(false);};
+    backdrop.onclick=function(){cleanup(false);};
+    function onKey(e){if(e.key==='Escape'){cleanup(false);document.removeEventListener('keydown',onKey);}}
+    document.addEventListener('keydown',onKey);
+  });
+}
+window.showConfirmModal=showConfirmModal;){
   return new Promise(function(resolve){
 
     // Usuń poprzedni modal jeśli istnieje
