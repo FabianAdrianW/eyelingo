@@ -5,31 +5,100 @@ const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const DOWNLOAD_URL='#';
 const{createClient}=supabase;
 const db=createClient(SUPABASE_URL,SUPABASE_KEY);
-function getChatUsageToday(){try{return parseInt(localStorage.getItem('chat_usage_'+new Date().toISOString().slice(0,10))||'0');}catch(e){return 0;}}
-// Global escH helper — available in all script blocks
-window.escH = function(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
-// ── renderStarsDisplay — global ──
-window.renderStarsDisplay = function(rating){
-  var full=Math.floor(rating||0);
-  var half=(rating||0)-full>=0.5;
-  var html='';
-  for(var i=0;i<5;i++){
-    if(i<full) html+='<span style="color:#f5c842;font-size:14px">★</span>';
-    else if(i===full&&half) html+='<span style="color:#f5c842;font-size:14px">½</span>';
-    else html+='<span style="color:#ddd;font-size:14px">★</span>';
-  }
-  return html;
-};
-function renderStarsDisplay(r){ return window.renderStarsDisplay(r); }
 
+// ── API constants ──
+const APIKEY_CONST='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
+const AI_PROXY_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/super-endpoint';
+const GENERATE_SENTENCE_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-sentence';
+var ODKRYJ_AI_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/super-endpoint';
+var ODKRYJ_ARTICLE_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
+var ODKRYJ_APIKEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
+var ODKRYJ_YT_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
+const _YT_KEY='AIzaSyCUQJksAT-HtZ3GBBMr3__b19nNlHqxajI';
+window._YT_KEY=_YT_KEY;
 
+// ── Global state ──
 let authMode='login';
+let _likedSets=new Set();
+let _addedSets=new Set();
+let _matSets=[];
+let _matMyUid=null;
+let _matTab='community';
+let _matModal=null;
+let _matEditMode=false;
+let _createIsPublic=false;
+const CHAT_DAILY_LIMIT=15;
+var _chatHistory=[];
+var _chatLang='en';
+var _chatLevel='beginner';
+var _lyricsWords=[];
+var _lyricsAllLines=[];
+var _allTutors=[];
+var _myTutorId=null;
+var _strefaCards=[];
+var _strefaIdx=0;
+var _strefaLang='en';
+var _strefaLevel='A1';
+var _strefaWords=[];
+var _strefaLevels=[];
+var _strefaProfile=null;
+var _inlineQuizState={step:0,done:false,words:[]};
+var _tcp={open:false,activeTutorId:null,activeTutorName:'',myId:null,realtimeSub:null,contacts:JSON.parse(localStorage.getItem('tutor_contacts')||'{}')};
+var _dailyDone={word:false,read:false,quiz:false};
+var _dailyXP=0;
+var _dailyLoaded=false;
+var _dailyLoadedDate='';
+var _quizAnswered=false;
+var _sentCache={};
+var _ttCache={};
+var _srsUserId=null;
+var _srsCards=[];
+var _srsIdx=0;
+var _srsSetName='';
+var _srsFlipped=false;
+var _challengeTimer=null;
+var _challengeSetCache=null;
+var _trybCards=[];
+var _trybIdx=0;
+var _voicesLang='en';
+var LANG_FLAGS={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
+const LANG_FLAGS_STREFA={en:'🇬🇧',es:'🇪🇸',jp:'🇯🇵',nl:'🇳🇱'};
+const LANG_LABELS={en:'Angielski',es:'Hiszpański',jp:'Japoński',nl:'Niderlandzki'};
+var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
+const DAYS_EN_T=['mon','tue','wed','thu','fri','sat','sun'];
 
-function _showPageBasic(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
+function getChatUsageToday(){try{return parseInt(localStorage.getItem('chat_usage_'+new Date().toISOString().slice(0,10))||'0');}catch(e){return 0;}}
+
+function incrementChatUsage(){
+  try{
+    var key='chat_usage_'+new Date().toISOString().slice(0,10);
+    var n=getChatUsageToday()+1;
+    localStorage.setItem(key,String(n));
+    return n;
+  }catch(e){return 1;}
+}
+
+function updateChatLimitUI(){
+  var used=getChatUsageToday();
+  var left=Math.max(0,CHAT_DAILY_LIMIT-used);
+  var el=document.getElementById('chat-limit-info');
+  if(el){
+    el.textContent=left>0?(left+' wiadomości pozostało dziś'):'Limit dzienny wyczerpany';
+    el.style.color=left<=3?'#c96a2a':left===0?'#dc2626':'var(--dim2)';
+  }
+}
+
+
+
 function navHome(){showPage('home');return false}
+
 function navSection(sel){showPage('home');setTimeout(()=>{const el=document.querySelector(sel);if(el)el.scrollIntoView({behavior:'smooth'})},60);return false}
+
 function showAuth(m){authMode=m;showPage('auth');updateAuthUI();clearMsg('auth-msg')}
+
 function toggleAuthMode(){authMode=authMode==='login'?'register':'login';updateAuthUI();clearMsg('auth-msg')}
+
 function updateAuthUI(){
   const l=authMode==='login';
   document.getElementById('auth-title').textContent=l?'Witaj z powrotem 👋':'Utwórz konto 🚀';
@@ -40,7 +109,9 @@ function updateAuthUI(){
     :'Masz już konto? <a onclick="toggleAuthMode()">Zaloguj się</a>';
   document.getElementById('fg-username').style.display=l?'none':'block';
 }
+
 function showMsg(id,t,tp){const e=document.getElementById(id);e.textContent=t;e.className='amsg '+tp+' show'}
+
 function clearMsg(id){document.getElementById(id).className='amsg'}
 
 async function submitAuth(){
@@ -302,6 +373,7 @@ async function activateCode(){
 }
 
 function showModal(name){document.getElementById('modal-'+name).style.display='flex'}
+
 function closeModal(name){document.getElementById('modal-'+name).style.display='none'}
 
 async function handleCreateSet(){
@@ -312,10 +384,11 @@ async function handleCreateSet(){
 
 function handleDownload(e){if(DOWNLOAD_URL==='#'){e.preventDefault();alert('Plik .exe będzie dostępny wkrótce!')}}
 
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('page-auth').classList.contains('active'))submitAuth()});
-
 // ── Strony Community i Ranking ──
 function showPage(name){
+  if(name&&name!=='auth'){try{sessionStorage.setItem('eyelingo_page',name);}catch(e){}}
+  if(name==='tryb'){name='strefa';setTimeout(function(){if(typeof switchLearnTab==='function')switchLearnTab('tryb');},80);}
+  else if(name==='challenge'){name='daily';setTimeout(function(){var s=document.getElementById('daily-challenge-section');if(s)s.scrollIntoView({behavior:'smooth'});if(typeof initChallenge==='function')initChallenge();},100);}
   // Stop any ongoing TTS
   if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
   // Stop any audio elements
@@ -344,533 +417,8 @@ function showPage(name){
 
 // ── Stub functions (safe fallbacks) ──
 async function loadNotifications(){
-  // Ładuj powiadomienia jeśli panel istnieje
-  try{
-    var panel=document.getElementById('notif-panel');
-    var badge=document.getElementById('notif-badge');
-    if(!panel&&!badge) return;
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess) return;
-    var{data:notifs}=await db.from('notifications')
-      .select('id,type,message,read_at,created_at')
-      .eq('user_id',sess.user.id)
-      .order('created_at',{ascending:false})
-      .limit(20);
-    if(!notifs) return;
-    var unread=notifs.filter(function(n){return !n.read_at;}).length;
-    if(badge) badge.textContent=unread||'';
-    if(badge) badge.style.display=unread?'flex':'none';
-    if(panel){
-      var icon={voice_rated:'🎙️',voice_commented:'💬',material_liked:'❤️',streak:'🔥',gold:'🪙',review:'⭐'};
-      panel.innerHTML=notifs.length
-        ?notifs.map(function(n){
-          return'<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;'+(n.read_at?'opacity:.6':'')+'">'
-            +'<span style="font-size:18px">'+(icon[n.type]||'🔔')+'</span>'
-            +'<div><div style="font-size:13px;color:var(--navy)">'+(n.message||'')+'</div>'
-            +'<div style="font-size:11px;color:var(--dim2)">'+ new Date(n.created_at).toLocaleDateString('pl')+'</div></div>'
-            +'</div>';
-        }).join('')
-        :'<div style="padding:20px;text-align:center;color:var(--dim2);font-size:13px">Brak powiadomień</div>';
-    }
-  }catch(e){ /* silent */ }
+  // Silent — table may not exist
 }
-
-// ── Materiały - stan globalny ──
-let _likedSets = new Set();
-let _addedSets = new Set();
-let _matSets = [];
-let _matMyUid = null;
-let _matTab = 'community';
-let _matModal = null;
-let _matEditMode = false;
-
-async function loadCommunity(){
-  document.getElementById('mat-grid').innerHTML='<div class="mat-empty">Ładowanie...</div>';
-  try{
-    const{data:{session}}=await db.auth.getSession();
-    _matMyUid=session?.user?.id||null;
-
-    // Pobierz publiczne zestawy
-    const{data,error}=await db.from('user_sets')
-      .select('id,name,likes_count,user_id,created_at,is_public,user_set_cards(id,word,translation)')
-      .eq('is_public',true)
-      .order('likes_count',{ascending:false})
-      .limit(60);
-    if(error)throw error;
-
-    // Pobierz usernames osobno
-    const userIds=[...new Set((data||[]).map(s=>s.user_id))];
-    let usernameMap={};
-    if(userIds.length){
-      const{data:profiles}=await db.from('profiles')
-        .select('user_id,username')
-        .in('user_id',userIds);
-      (profiles||[]).forEach(p=>usernameMap[p.user_id]=p.username);
-    }
-
-    // Pobierz lajki użytkownika
-    _likedSets=new Set();
-    if(_matMyUid){
-      const{data:likes}=await db.from('set_likes')
-        .select('set_id')
-        .eq('user_id',_matMyUid);
-      if(likes) likes.forEach(l=>_likedSets.add(l.set_id));
-    }
-
-    const now=Date.now();
-    _matSets=(data||[]).map(s=>{
-      const age=(now-new Date(s.created_at).getTime())/(1000*3600);
-      const hot=(s.likes_count||0)/Math.pow(age+2,1.5);
-      return{...s,_hot:hot,username:usernameMap[s.user_id]||'Nieznany'};
-    }).sort((a,b)=>b._hot-a._hot);
-
-    renderMat();
-  }catch(e){
-    showMatError('Błąd: '+e.message);
-    console.error('[loadCommunity]',e);
-  }
-}
-
-async function loadMySets(){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){
-    document.getElementById('mat-grid').innerHTML='<div class="mat-empty">Zaloguj się aby zobaczyć swoje zestawy.<br><br><button class="btn btn-navy" onclick="showAuth(\'login\')" style="margin-top:8px">Zaloguj się</button></div>';
-    const countEl=document.getElementById('mat-count');
-    if(countEl) countEl.textContent='';
-    return;
-  }
-  _matMyUid=session.user.id;
-  const{data,error}=await db.from('user_sets')
-    .select('id,name,likes_count,is_public,created_at,user_set_cards(id,word,translation)')
-    .eq('user_id',_matMyUid)
-    .order('created_at',{ascending:false});
-  if(error){showMatError(error.message);return;}
-  const{data:profile}=await db.from('profiles').select('username').eq('user_id',_matMyUid).maybeSingle();
-  const username=profile?.username||'Ty';
-  _matSets=(data||[]).map(s=>({...s,username,user_id:_matMyUid}));
-  renderMat();
-}
-
-function renderMat(query=''){
-  const el=document.getElementById('mat-grid');
-  const countEl=document.getElementById('mat-count');
-  if(!el)return;
-  let filtered=_matSets;
-  if(query){
-    const q=query.toLowerCase();
-    filtered=_matSets.filter(s=>
-      s.name.toLowerCase().includes(q)||
-      (s.username||'').toLowerCase().includes(q)
-    );
-  }
-  if(countEl) countEl.textContent=filtered.length?`${filtered.length} zestaw${filtered.length===1?'':'ów'}`:'';
-  if(!filtered.length){
-    el.innerHTML=`<div class="mat-empty">${query?`Brak wyników dla "${query}"`
-      :_matTab==='mine'?'Nie masz jeszcze żadnych zestawów.'
-      :'Brak publicznych zestawów.'}</div>`;
-    return;
-  }
-  el.innerHTML=filtered.map(s=>setCard(s)).join('');
-}
-
-function filterMat(q){renderMat(q)}
-
-function setCard(s){
-  const isOwn = s.user_id === _matMyUid;
-  const isMineTab = _matTab === 'mine';
-  const cards = s.user_set_cards || [];
-  const liked = _likedSets.has(s.id);
-  const added = _addedSets.has(s.id);
-
-  const preview = cards.slice(0,3).map(c=>`
-    <div class="mat-preview-row">
-      <span class="mat-pf">${esc(c.word)}</span>
-      <span class="mat-pb">${esc(c.translation)}</span>
-    </div>`).join('');
-
-  // Lajk — zawsze widoczny, ale nie można lajkować własnych
-  const likeBtn = `
-    <div class="mat-card-likes${liked?' liked':''}" id="like-btn-${s.id}"
-      onclick="event.stopPropagation();toggleLike(${s.id})"
-      title="${isOwn?'Nie możesz lajkować własnych zestawów':liked?'Usuń lajk':'Dodaj lajk'}">
-      ${liked?'❤️':'🤍'} <span id="like-count-${s.id}">${s.likes_count||0}</span>
-    </div>`;
-
-  // Stopka zależy od zakładki
-  let foot = '';
-  if(isMineTab){
-    // Moje zestawy: edytuj + usuń + publiczny/prywatny
-    foot = `
-      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-        <button class="mat-pub-toggle ${s.is_public?'pub':'priv'}"
-          onclick="event.stopPropagation();quickTogglePublic(${s.id},this)">
-          ${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}
-        </button>
-        <div class="mat-card-actions">
-          <button class="mat-btn-edit" onclick="event.stopPropagation();openEditSet(${s.id})">✏️ Edytuj</button>
-          <button class="mat-btn-del" onclick="event.stopPropagation();deleteSet(${s.id})">🗑️ Usuń</button>
-        </div>
-      </div>`;
-  } else {
-    // Społeczność: tylko "Dodaj do moich zestawów" (nie dla własnych)
-    if(!isOwn){
-      foot = `
-        <button class="mat-btn-add${added?' added':''}" id="add-btn-${s.id}"
-          onclick="event.stopPropagation();addSetToMine(${s.id})"
-          ${added?'disabled':''}>
-          ${added?'✓ Dodano do zestawów':'+ Dodaj do zestawów'}
-        </button>`;
-    }
-  }
-
-  return `
-    <div class="mat-card" onclick="openSet(${s.id})">
-      <div class="mat-card-head">
-        <div>
-          <div class="mat-card-name">${esc(s.name)}</div>
-          <div class="mat-card-meta">
-            by ${s.username||'Nieznany'} · ${cards.length} fiszek
-          </div>
-        </div>
-        ${likeBtn}
-      </div>
-      ${preview?`<div class="mat-preview">${preview}</div>`:''}
-      ${foot?`<div class="mat-card-foot">${foot}</div>`:''}
-    </div>`;
-}
-
-async function quickTogglePublic(id, btn){
-  const s = _matSets.find(x=>x.id===id);
-  if(!s) return;
-  // Blokuj zestawy zaimportowane z wyzwań i artykułów
-  if(s.name&&(s.name.includes('(mój)')||s.name.includes('🏆'))){
-    showToast('Zaimportowane zestawy nie mogą być publiczne.','error');
-    return;
-  }
-  const newVal = !s.is_public;
-  await db.from('user_sets').update({is_public:newVal}).eq('id',id);
-  s.is_public = newVal;
-  btn.className = `mat-pub-toggle ${newVal?'pub':'priv'}`;
-  btn.textContent = newVal?'🌐 Publiczny':'🔒 Prywatny';
-}
-
-function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-
-async function openSet(id){
-  const s=_matSets.find(x=>x.id===id);
-  if(!s)return;
-  _matModal=s; _matEditMode=false;
-  showSetModal(s,false);
-}
-
-function showSetModal(s,editMode){
-  const cards=s.user_set_cards||[];
-  const isOwn=s.user_id===_matMyUid;
-  document.getElementById('mat-modal-title').textContent=editMode?'Edytuj zestaw':s.name;
-  document.getElementById('mat-modal-body').innerHTML=editMode?renderEditForm(s):renderViewCards(cards,s,isOwn);
-  document.getElementById('mat-modal').style.display='flex';
-}
-
-function renderViewCards(cards, s, isOwn){
-  const isMineTab = _matTab === 'mine';
-  const liked = _likedSets.has(s.id);
-  const added = _addedSets.has(s.id);
-  return `
-    <div class="mat-modal-meta">
-      by ${s.username||'Nieznany'} · ${cards.length} fiszek
-      <span class="mat-card-likes${liked?' liked':''}" style="display:inline-flex;margin-left:8px;cursor:pointer"
-        onclick="toggleLike(${s.id});this.textContent=(window._likedSets?.has(${s.id})?'❤️':'🤍')+' '+(${s.likes_count||0}+(window._likedSets?.has(${s.id})?1:-1))">
-        ${liked?'❤️':'🤍'} ${s.likes_count||0}
-      </span>
-    </div>
-    <div class="mat-modal-cards">
-      ${cards.map(c=>`
-        <div class="mat-modal-row">
-          <span>${esc(c.word)}</span>
-          <span class="mat-modal-tr">${esc(c.translation)}</span>
-        </div>`).join('')}
-    </div>
-    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
-      <button class="btn btn-orange" style="flex:1;min-width:140px;font-weight:700;font-size:15px" onclick="closeMatModal();startTrybNauki(${JSON.stringify(cards).replace(/"/g,'&quot;')},${JSON.stringify(s.name).replace(/"/g,'&quot;')})">📚 Ucz się</button>
-      ${isMineTab?`
-        <button class="btn btn-navy" onclick="switchToEdit()">✏️ Edytuj</button>
-        <button class="mat-btn-del" style="padding:10px 18px" onclick="deleteSet(${s.id})">🗑️ Usuń</button>
-        <button class="mat-pub-toggle ${s.is_public?'pub':'priv'}" onclick="togglePublic(${s.id})">
-          ${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}
-        </button>
-      `:`
-        ${!isOwn?`<button class="btn btn-navy" style="flex:1" id="modal-add-btn"
-          onclick="addSetToMine(${s.id})" ${added?'disabled':''}>
-          ${added?'✓ Dodano do zestawów':'+ Dodaj do moich zestawów'}
-        </button>`:''}
-      `}
-    </div>`;
-}
-
-function renderEditForm(s){
-  const cards=s.user_set_cards||[];
-  return `
-    <div style="margin-bottom:12px">
-      <label style="font-size:12px;color:var(--dim2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Nazwa zestawu</label>
-      <input id="edit-name" class="fi" value="${esc(s.name)}" style="width:100%;margin-top:4px">
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">
-      <span>Słowo / pytanie</span><span>Tłumaczenie / odpowiedź</span>
-    </div>
-    <div id="edit-rows" style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto">
-      ${cards.map((c,i)=>`
-        <div class="edit-row" data-id="${c.id}">
-          <input class="fi edit-word" value="${esc(c.word)}" placeholder="słowo">
-          <input class="fi edit-translation" value="${esc(c.translation)}" placeholder="tłumaczenie">
-          <button onclick="removeEditRow(this)" style="background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;cursor:pointer;color:#c33">✕</button>
-        </div>
-      `).join('')}
-    </div>
-    <button onclick="addEditRow()" style="margin-top:8px;background:transparent;border:1px dashed var(--dim2);border-radius:8px;padding:8px;width:100%;cursor:pointer;color:var(--dim2);font-size:13px">+ Dodaj wiersz</button>
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-navy" onclick="saveEdit(${s.id})" style="flex:1">💾 Zapisz</button>
-      <button class="btn btn-ghost" onclick="switchToView()" style="flex:1">Anuluj</button>
-    </div>
-  `;
-}
-
-async function openEditSet(id){
-  let s=_matSets.find(x=>x.id===id);
-  if(!s)return;
-  if(!s.user_set_cards||!s.user_set_cards.length){
-    const{data}=await db.from('user_set_cards')
-      .select('id,word,translation,sort_order')
-      .eq('set_id',id)
-      .order('sort_order');
-    s.user_set_cards=data||[];
-  }
-  _matModal=s; _matEditMode=true;
-  document.getElementById('mat-modal-title').textContent='Edytuj zestaw';
-  document.getElementById('mat-modal-body').innerHTML=renderEditForm(s);
-  document.getElementById('mat-modal').style.display='flex';
-}
-
-function switchToEdit(){_matEditMode=true;showSetModal(_matModal,true)}
-function switchToView(){_matEditMode=false;showSetModal(_matModal,false)}
-
-function addEditRow(){
-  const row=document.createElement('div');
-  row.className='edit-row';
-  row.innerHTML=`<input class="fi edit-word" placeholder="słowo"><input class="fi edit-translation" placeholder="tłumaczenie"><button onclick="removeEditRow(this)" style="background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;cursor:pointer;color:#c33">✕</button>`;
-  document.getElementById('edit-rows').appendChild(row);
-}
-function removeEditRow(btn){btn.closest('.edit-row').remove()}
-
-async function saveEdit(setId){
-  const name=document.getElementById('edit-name').value.trim();
-  if(!name){alert('Wpisz nazwę zestawu');return}
-  const rows=[...document.querySelectorAll('.edit-row')];
-  const cards=rows.map(r=>({
-    word:r.querySelector('.edit-word').value.trim(),
-    translation:r.querySelector('.edit-translation').value.trim()
-  })).filter(c=>c.word&&c.translation);
-  if(!cards.length){alert('Dodaj co najmniej jedną fiszkę');return}
-  try{
-    await db.from('user_sets').update({name}).eq('id',setId);
-    await db.from('user_set_cards').delete().eq('set_id',setId);
-    await db.from('user_set_cards').insert(cards.map((c,i)=>({set_id:setId,word:c.word,translation:c.translation,sort_order:i})));
-    closeMatModal();
-    _matTab==='mine'?loadMySets():loadCommunity();
-  }catch(e){alert('Błąd: '+e.message)}
-}
-
-async function deleteSet(id){
-  if(!confirm('Usunąć ten zestaw? Tej operacji nie można cofnąć.'))return;
-  await db.from('user_sets').delete().eq('id',id);
-  closeMatModal();
-  _matTab==='mine'?loadMySets():loadCommunity();
-}
-
-async function togglePublic(id){
-  const s=_matSets.find(x=>x.id===id);
-  if(!s)return;
-  const newVal=!s.is_public;
-  await db.from('user_sets').update({is_public:newVal}).eq('id',id);
-  s.is_public=newVal;
-  s.user_set_cards=s.user_set_cards||[];
-  showSetModal(s,false);
-  _matTab==='mine'?loadMySets():loadCommunity();
-}
-
-async function toggleLike(setId){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){showToast('Zaloguj się aby lajkować','error');return;}
-  try{
-    const{data,error}=await db.rpc('toggle_like',{p_set_id:setId});
-    if(error)throw error;
-    if(!data)return;
-    if(data.liked){_likedSets.add(setId)}else{_likedSets.delete(setId)}
-    const s=_matSets.find(x=>x.id===setId);
-    if(s) s.likes_count=(s.likes_count||0)+(data.liked?1:-1);
-    const btn=document.getElementById(`like-btn-${setId}`);
-    if(btn){
-      btn.className='mat-card-likes'+(data.liked?' liked':'');
-      btn.innerHTML=`${data.liked?'❤️':'🤍'} <span id="like-count-${setId}">${s?.likes_count||0}</span>`;
-    }
-    if(data.reward>0) showToast(`🏺 Gratulacje! Otrzymałeś ${data.reward.toLocaleString('pl-PL')} złota!`,'success');
-  }catch(e){showToast('Błąd: '+e.message,'error')}
-}
-
-async function addSetToMine(setId){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){showToast('Zaloguj się aby dodać zestaw','error');return;}
-  if(_addedSets.has(setId))return;
-  _addedSets.add(setId);
-  const btn=document.getElementById(`add-btn-${setId}`);
-  if(btn){btn.disabled=true;btn.textContent='✓ Dodano do zestawów';btn.classList.add('added');}
-  showToast('✅ Zestaw dodany do Twoich materiałów!','success');
-}
-
-let _createIsPublic = false;
-
-function openCreateSet(){
-  _createIsPublic = false;
-  document.getElementById('mat-modal-title').textContent='Nowy zestaw';
-  document.getElementById('mat-modal-body').innerHTML=`
-    <div style="margin-bottom:10px">
-      <label style="font-size:12px;color:var(--dim2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Nazwa zestawu</label>
-      <input id="create-name" class="fi" placeholder="np. Angielski – sprawdzian" style="width:100%;margin-top:4px">
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div style="display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;flex:1;font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px">
-        <span>Słowo / pytanie</span><span>Tłumaczenie / odpowiedź</span><span></span>
-      </div>
-    </div>
-    <div id="create-rows" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto"></div>
-    <div style="margin-top:8px;font-size:12px;color:var(--dim2)">💡 Naciśnij <kbd style="background:rgba(0,0,0,.08);padding:1px 6px;border-radius:4px;font-family:monospace">Tab</kbd> aby szybko dodać nowy wiersz</div>
-    <button onclick="addCreateRow()" style="margin-top:8px;background:transparent;border:1px dashed var(--dim2);border-radius:8px;padding:8px;width:100%;cursor:pointer;color:var(--dim2);font-size:13px">+ Dodaj wiersz</button>
-    <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
-      <button id="create-pub-btn" onclick="toggleCreatePublic()" style="border:1px solid rgba(100,100,120,.3);background:rgba(100,100,120,.08);color:var(--dim2);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s">🔒 Prywatny</button>
-      <button class="btn btn-orange" style="flex:1" onclick="saveNewSet()">💾 Stwórz zestaw</button>
-    </div>
-    <div id="create-msg" style="margin-top:8px;font-size:13px;text-align:center;color:#c33"></div>
-  `;
-  document.getElementById('mat-modal').style.display='flex';
-  // Dodaj 5 domyślnych wierszy
-  for(let i=0;i<5;i++) addCreateRow();
-  // Focus na pierwszym polu
-  setTimeout(()=>{const f=document.querySelector('#create-rows .cr-word');if(f)f.focus()},50);
-}
-
-function addCreateRow(){
-  const row=document.createElement('div');
-  row.className='edit-row';
-  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;align-items:center';
-  const wInp=document.createElement('input');
-  wInp.className='fi cr-word';wInp.placeholder='słowo';
-  const tInp=document.createElement('input');
-  tInp.className='fi cr-tr';tInp.placeholder='tłumaczenie';
-  const del=document.createElement('button');
-  del.textContent='✕';del.style.cssText='background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#c33;font-size:11px';
-  del.onclick=()=>row.remove();
-  // TAB z ostatniego pola tłumaczenia → nowy wiersz
-  // TAB from word input -> translation input
-  wInp.addEventListener('keydown',e=>{
-    if(e.key==='Tab'&&!e.shiftKey){
-      e.preventDefault();
-      tInp.focus();
-    }
-  });
-  // TAB from translation input -> next word input or new row
-  tInp.addEventListener('keydown',e=>{
-    if(e.key==='Tab'&&!e.shiftKey){
-      const rows=[...document.querySelectorAll('#create-rows .edit-row')];
-      if(row===rows[rows.length-1]){
-        e.preventDefault();
-        addCreateRow();
-        setTimeout(()=>{const last=document.querySelectorAll('#create-rows .cr-word');if(last.length)last[last.length-1].focus()},20);
-      } else {
-        e.preventDefault();
-        const nextRow=rows[rows.indexOf(row)+1];
-        if(nextRow){const nextWord=nextRow.querySelector('.cr-word');if(nextWord)nextWord.focus();}
-      }
-    }
-  });
-  // Prevent TAB on delete button
-  del.setAttribute('tabindex','-1');
-  row.append(wInp,tInp,del);
-  document.getElementById('create-rows').appendChild(row);
-}
-
-function toggleCreatePublic(){
-  _createIsPublic=!_createIsPublic;
-  const btn=document.getElementById('create-pub-btn');
-  if(_createIsPublic){
-    btn.textContent='🌐 Publiczny';
-    btn.style.cssText='border:1px solid rgba(22,163,74,.3);background:rgba(22,163,74,.1);color:#16a34a;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s';
-  } else {
-    btn.textContent='🔒 Prywatny';
-    btn.style.cssText='border:1px solid rgba(100,100,120,.3);background:rgba(100,100,120,.08);color:var(--dim2);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s';
-  }
-}
-
-async function saveNewSet(){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){showAuth('login');return;}
-  const name=document.getElementById('create-name').value.trim();
-  if(!name){document.getElementById('create-msg').textContent='Wpisz nazwę zestawu.';return;}
-  const rows=[...document.querySelectorAll('#create-rows .edit-row')];
-  const cards=rows.map(r=>({
-    word:r.querySelector('.cr-word').value.trim(),
-    translation:r.querySelector('.cr-tr').value.trim()
-  })).filter(c=>c.word&&c.translation);
-  if(cards.length<1){document.getElementById('create-msg').textContent='Dodaj co najmniej jedną fiszkę.';return;}
-  try{
-    const{data:setData,error:se}=await db.from('user_sets').insert({
-      user_id:session.user.id,name,is_public:_createIsPublic
-    }).select().single();
-    if(se)throw se;
-    const{error:ce}=await db.from('user_set_cards').insert(
-      cards.map((c,i)=>({set_id:setData.id,word:c.word,translation:c.translation,sort_order:i}))
-    );
-    if(ce)throw ce;
-    closeMatModal();
-    showToast('✅ Zestaw został utworzony!','success');
-    switchMatTab('mine');
-  }catch(e){document.getElementById('create-msg').textContent='Błąd: '+e.message;}
-}
-
-function closeMatModal(){document.getElementById('mat-modal').style.display='none';_matModal=null}
-
-async function switchMatTab(tab){
-  _matTab=tab;
-  document.querySelectorAll('.mat-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  const createBtn=document.getElementById('mat-create-btn');
-  if(createBtn) createBtn.style.display=(tab==='mine'&&_matMyUid)?'block':'none';
-  const search=document.getElementById('mat-search');
-  if(search) search.value='';
-  const grid=document.getElementById('mat-grid');
-  const voicesPanel=document.getElementById('mat-voices');
-  if(tab==='voices'){
-    if(grid) grid.style.display='none';
-    if(voicesPanel) voicesPanel.style.display='block';
-    loadVoiceRecordings();
-    return;
-  }
-  if(grid) grid.style.display='grid';
-  if(voicesPanel) voicesPanel.style.display='none';
-  grid.innerHTML='<div class="mat-empty">Ładowanie...</div>';
-  tab==='mine'?await loadMySets():await loadCommunity();
-}
-
-function showMatError(msg){
-  const el=document.getElementById('mat-grid');
-  if(el)el.innerHTML=`<div class="mat-empty" style="color:#f87">${msg}</div>`;
-}
-
-function showToast(msg,type='info'){
-  const t=document.createElement('div');
-  t.className=`toast toast-${type}`;t.textContent=msg;
-  document.body.appendChild(t);
-  setTimeout(()=>t.classList.add('show'),10);
-  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300)},3500);
-}
-
 async function loadRanking(){
   // Tabele rankingu
   for(const period of ['all','weekly']){
@@ -929,35 +477,37 @@ async function loadRanking(){
   // Admin panel moved to admin.html
 }
 
-(async()=>{
+// ── escH global helper ──
+function escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+
+
+async function initToFixPage(){
   const{data:{session}}=await db.auth.getSession();
-  if(session){await loadDashboard();showPage('dash')}
-  // Obsługa parametru ?page= i hash routing
-  const urlParams=new URLSearchParams(window.location.search);
-  const pg=urlParams.get('page');
-  const hash=window.location.hash.slice(1);
-  const validHashes=['home','dash','community','daily','challenge','chat','teacher','strefa','odkryj','tutors','ranking','tofix','lyrics'];
-
-  // Check session and redirect
-  db.auth.getSession().then(function(res){
-    var session=res.data&&res.data.session;
-    if(session){
-      loadDashboard().then(function(){
-        // Restore from hash or query param
-        var target = hash&&validHashes.includes(hash)?hash : pg==='community'?'community':pg==='ranking'?'ranking':'dash';
-        showPage(target);
-      });
-    } else {
-      // Not logged in — go to hash if valid and public, else home
-      var publicPages=['home','tutors'];
-      if(hash&&publicPages.includes(hash)) showPage(hash);
-      else if(pg==='community') showPage('community');
-    }
-  });
-})();
-
-
-let _fixCategory = '';
+  // Zawsze resetuj formularz przy wejściu na stronę
+  document.getElementById('fix-form-wrap').innerHTML=`
+    <label class="fix-label">Kategoria problemu</label>
+    <div class="fix-category">
+      <button class="fix-cat-btn" onclick="selectCat(this,'UI/UX')">🎨 UI/UX</button>
+      <button class="fix-cat-btn" onclick="selectCat(this,'Płatności')">💳 Płatności</button>
+      <button class="fix-cat-btn" onclick="selectCat(this,'Fiszki')">📚 Fiszki</button>
+      <button class="fix-cat-btn" onclick="selectCat(this,'Błąd techniczny')">⚙️ Błąd techniczny</button>
+      <button class="fix-cat-btn" onclick="selectCat(this,'Inne')">💬 Inne</button>
+    </div>
+    <label class="fix-label" style="margin-top:16px;display:block">Opis problemu</label>
+    <textarea id="fix-desc" class="fi" rows="5" placeholder="Opisz co się dzieje, kiedy się pojawia i jak można to odtworzyć..." style="width:100%;margin-top:8px;resize:vertical;min-height:120px"></textarea>
+    <label class="fix-label" style="margin-top:16px;display:block">Screenshot (opcjonalny)</label>
+    <input type="file" id="fix-screenshot" accept="image/*" style="margin-top:8px;font-size:13px;color:var(--dim2)">
+    <div id="fix-msg" style="margin-top:12px;font-size:13px;text-align:center;color:#c33"></div>
+    <button class="btn btn-navy" style="width:100%;margin-top:16px" onclick="submitBugReport()">📤 Wyślij zgłoszenie</button>
+  `;
+  _fixCategory = null;
+  if(!session){
+    document.getElementById('fix-form-wrap').innerHTML='<div style="text-align:center;padding:40px 0"><p style="color:var(--dim2);margin-bottom:16px">Zaloguj się aby wysłać zgłoszenie.</p><button class="btn btn-navy" onclick="showAuth(\'login\')">Zaloguj się</button></div>';
+  }
+}
 
 function selectCat(btn, cat){
   document.querySelectorAll('.fix-cat-btn').forEach(b=>b.classList.remove('active'));
@@ -995,28 +545,243 @@ async function submitBugReport(){
   }
 }
 
-async function initToFixPage(){
-  const{data:{session}}=await db.auth.getSession();
-  // Zawsze resetuj formularz przy wejściu na stronę
-  document.getElementById('fix-form-wrap').innerHTML=`
-    <label class="fix-label">Kategoria problemu</label>
-    <div class="fix-category">
-      <button class="fix-cat-btn" onclick="selectCat(this,'UI/UX')">🎨 UI/UX</button>
-      <button class="fix-cat-btn" onclick="selectCat(this,'Płatności')">💳 Płatności</button>
-      <button class="fix-cat-btn" onclick="selectCat(this,'Fiszki')">📚 Fiszki</button>
-      <button class="fix-cat-btn" onclick="selectCat(this,'Błąd techniczny')">⚙️ Błąd techniczny</button>
-      <button class="fix-cat-btn" onclick="selectCat(this,'Inne')">💬 Inne</button>
-    </div>
-    <label class="fix-label" style="margin-top:16px;display:block">Opis problemu</label>
-    <textarea id="fix-desc" class="fi" rows="5" placeholder="Opisz co się dzieje, kiedy się pojawia i jak można to odtworzyć..." style="width:100%;margin-top:8px;resize:vertical;min-height:120px"></textarea>
-    <label class="fix-label" style="margin-top:16px;display:block">Screenshot (opcjonalny)</label>
-    <input type="file" id="fix-screenshot" accept="image/*" style="margin-top:8px;font-size:13px;color:var(--dim2)">
-    <div id="fix-msg" style="margin-top:12px;font-size:13px;text-align:center;color:#c33"></div>
-    <button class="btn btn-navy" style="width:100%;margin-top:16px" onclick="submitBugReport()">📤 Wyślij zgłoszenie</button>
-  `;
-  _fixCategory = null;
-  if(!session){
-    document.getElementById('fix-form-wrap').innerHTML='<div style="text-align:center;padding:40px 0"><p style="color:var(--dim2);margin-bottom:16px">Zaloguj się aby wysłać zgłoszenie.</p><button class="btn btn-navy" onclick="showAuth(\'login\')">Zaloguj się</button></div>';
-  }
-}
 
+
+// ── Missing module globals ──
+var _chatPersonas={
+  en:{name:'Alex',desc:'Native speaker · New York',greeting:"Hey! I'm Alex. Let's have a conversation in English. What would you like to talk about today?"},
+  es:{name:'Sofía',desc:'Hablante nativa · Madrid',greeting:'¡Hola! Soy Sofía. Vamos a practicar el español juntos. ¿De qué quieres hablar?'},
+  nl:{name:'Daan',desc:'Moedertaalspreker · Amsterdam',greeting:'Hallo! Ik ben Daan. Laten we Nederlands oefenen. Waar wil je het over hebben?'},
+  jp:{name:'Yuki',desc:'ネイティブスピーカー · 東京',greeting:'こんにちは！ゆきです。一緒に日本語を練習しましょう。何について話したいですか？'}
+};
+var RewardSystem={
+  _key:'tryb_nauki_v1',
+  _state:null,
+  load:function(){
+    try{this._state=JSON.parse(localStorage.getItem(this._key)||'null');}catch(e){}
+    if(!this._state)this._state={xp:0,level:1,streak:0,lastStudyDate:'',streakFreezes:2,totalCards:0,totalSessions:0,badges:{},perfectStreak:0,etymologyUses:0,weeklyXP:0,weekDate:''};
+    return this._state;
+  },
+  save:function(){localStorage.setItem(this._key,JSON.stringify(this._state));},
+  addXP:function(amount){this._state.xp+=amount;this._state.weeklyXP=(this._state.weeklyXP||0)+amount;this._state.level=Math.min(20,Math.floor(this._state.xp/100)+1);this.save();updateXPBar();},
+  getStreak:function(){return this._state.streak||0;},
+  updateStreak:function(){
+    var today=new Date().toISOString().slice(0,10);
+    var last=this._state.lastStudyDate;
+    if(last===today)return;
+    var yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
+    if(last===yesterday){this._state.streak++;}
+    else if(last&&last!==yesterday){if(this._state.streakFreezes>0)this._state.streakFreezes--;else this._state.streak=1;}
+    else{this._state.streak=Math.max(1,(this._state.streak||0)+1);}
+    this._state.lastStudyDate=today;this.save();
+  },
+  checkMilestones:function(sd){
+    var earned=[];var s=this._state;
+    var defs=[
+      {id:'first',icon:'🌱',name:'Pierwszy krok',desc:'Ukończ pierwszą sesję',check:function(){return s.totalSessions>=1;}},
+      {id:'streak7',icon:'🔥',name:'Tydzień ognia',desc:'7-dniowy streak',check:function(){return s.streak>=7;}},
+      {id:'perfect10',icon:'💯',name:'Perfekcjonista',desc:'10 kart z rzędu z oceną 4',check:function(){return s.perfectStreak>=10;}},
+      {id:'speed',icon:'⚡',name:'Błyskawica',desc:'10 kart w < 2 minuty',check:function(){return sd&&sd.cards>=10&&sd.time<120;}}
+    ];
+    defs.forEach(function(d){if(!s.badges[d.id]&&d.check()){s.badges[d.id]={earned:true,date:new Date().toISOString()};earned.push(d);}});
+    this.save();return earned;
+  },
+  getBadgeDefs:function(){return[
+    {id:'first',icon:'🌱',name:'Pierwszy krok',desc:'Ukończ pierwszą sesję'},
+    {id:'streak7',icon:'🔥',name:'Tydzień ognia',desc:'7-dniowy streak'},
+    {id:'perfect10',icon:'💯',name:'Perfekcjonista',desc:'10 kart z rzędu ocena 4'},
+    {id:'speed',icon:'⚡',name:'Błyskawica',desc:'10 kart w < 2 min'}
+  ];}
+};
+var _origPostLogin2=window.postLogin;
+window.postLogin=function(){if(_origPostLogin2)_origPostLogin2();setTimeout(updateChatBadge,1000);};
+var _origRenderLyricsWords = window.renderLyricsWords;
+window.renderLyricsWords = function(){
+  var panel=document.getElementById('lyrics-words-panel');
+  var addBtn=document.getElementById('lyrics-add-all-btn');
+  if(!_lyricsWords||!_lyricsWords.length){
+    if(panel)panel.innerHTML='<div style="color:var(--dim2);font-size:13px">Brak słów</div>';
+    return;
+  }
+  if(addBtn)addBtn.style.display='flex';
+  if(!panel)return;
+  panel.innerHTML=_lyricsWords.map(function(w,i){
+    return'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">'
+      +'<div><div style="font-size:13px;font-weight:600;color:var(--navy)">'+(w.word||'')+'</div>'
+      +'<div style="font-size:12px;color:var(--orange)">'+(w.translation||'').split('+')[0].trim()+'</div></div>'
+      +'<span class="word-badge" id="wb-'+i+'" onclick="lyricsAddWord('+i+')" style="white-space:nowrap">+ Fiszka</span>'
+      +'</div>';
+  }).join('');
+};
+
+var QUICK_TOPICS=['sport','gotowanie','technologia','muzyka','filmy','podróże','nauka','gry','anime','moda','historia','zdrowie'];
+const TRANSLATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-sentence';
+const SEARCH_YOUTUBE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
+const LEVEL_DESC = {A1:'Początkujący',A2:'Podstawowy',B1:'Średniozaawansowany',B2:'Wyższy średni',C1:'Zaawansowany',C2:'Biegły'};
+var _odkryjLang='en';
+var _odkryjLevel='B1';
+var _odkryjRunning=false;
+var _tagCache = {}; // cache: topic → {tags, timestamp};
+var _trm={tutorId:null,val:0};
+var _trmLabels=['','Bardzo słaby 😞','Słaby 😕','Przeciętny 😐','Dobry 😊','Świetny! 🤩'];
+let _fixCategory = '';
+
+function showToast(msg, type){
+  type=type||'info';
+  var t=document.createElement('div');
+  t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999;padding:10px 22px;border-radius:100px;font-size:14px;font-weight:600;color:#fff;pointer-events:none;transition:opacity .3s;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.18)';
+  t.style.background=type==='success'?'#16a34a':type==='error'?'#dc2626':'var(--navy)';
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2500);
+}
+window.showToast=showToast;
+
+function showConfirmModal({title, message, confirmText, cancelText, danger}){
+  confirmText=confirmText||'Potwierdź';
+  cancelText=cancelText||'Anuluj';
+  danger=danger||false;
+  return new Promise(function(resolve){
+    var ex=document.getElementById('confirm-modal');
+    if(ex)ex.remove();
+    if(!document.getElementById('cm-style')){
+      var st=document.createElement('style');st.id='cm-style';
+      st.textContent='@keyframes cmUp{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}'
+        +'@keyframes cmFade{from{opacity:0}to{opacity:1}}'
+        +'#confirm-modal{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px}'
+        +'#cm-bd{position:absolute;inset:0;background:rgba(26,35,64,.4);animation:cmFade .2s ease;backdrop-filter:blur(4px)}'
+        +'#cm-box{position:relative;background:#fff;border-radius:22px;width:100%;max-width:340px;overflow:hidden;box-shadow:0 28px 72px rgba(26,35,64,.16);animation:cmUp .22s cubic-bezier(.34,1.3,.64,1)}'
+        +'#cm-body{padding:30px 26px 22px;text-align:center}'
+        +'#cm-title{font-family:Syne,sans-serif;font-size:19px;font-weight:800;color:var(--navy);margin-bottom:8px;line-height:1.3}'
+        +'#cm-msg{font-size:14px;color:var(--dim2);line-height:1.65}'
+        +'#cm-foot{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border)}'
+        +'#cm-cancel{padding:16px;background:none;border:none;border-right:1px solid var(--border);font-size:14px;font-weight:600;color:var(--dim);cursor:pointer;transition:.15s;font-family:inherit}'
+        +'#cm-ok{padding:16px;background:none;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit}'
+        +'#cm-cancel:hover{background:var(--paper2)}'
+        +'#cm-ok:hover{background:var(--paper2)}';
+      document.head.appendChild(st);
+    }
+    var modal=document.createElement('div');modal.id='confirm-modal';
+    var bd=document.createElement('div');bd.id='cm-bd';modal.appendChild(bd);
+    var box=document.createElement('div');box.id='cm-box';
+    var body=document.createElement('div');body.id='cm-body';
+    var t=document.createElement('div');t.id='cm-title';t.textContent=title;body.appendChild(t);
+    var m=document.createElement('div');m.id='cm-msg';m.innerHTML=message;body.appendChild(m);
+    box.appendChild(body);
+    var foot=document.createElement('div');foot.id='cm-foot';
+    var cb=document.createElement('button');cb.id='cm-cancel';cb.textContent=cancelText;
+    var ob=document.createElement('button');ob.id='cm-ok';ob.textContent=confirmText;
+    ob.style.color=danger?'#dc2626':'var(--orange)';
+    foot.appendChild(cb);foot.appendChild(ob);
+    box.appendChild(foot);modal.appendChild(box);
+    document.body.appendChild(modal);
+    function cleanup(r){box.style.animation='cmUp .15s ease reverse';bd.style.animation='cmFade .15s ease reverse';setTimeout(function(){modal.remove();},140);resolve(r);}
+    ob.onclick=function(){cleanup(true);};cb.onclick=function(){cleanup(false);};
+    bd.onclick=function(){cleanup(false);};
+    function onKey(e){if(e.key==='Escape'){cleanup(false);document.removeEventListener('keydown',onKey);}}
+    document.addEventListener('keydown',onKey);
+  });
+}
+window.showConfirmModal=showConfirmModal;){
+  confirmText=confirmText||'Potwierdź';
+  cancelText=cancelText||'Anuluj';
+  danger=danger||false;
+  return new Promise(function(resolve){
+    var ex=document.getElementById('confirm-modal');
+    if(ex)ex.remove();
+    if(!document.getElementById('cm-style')){
+      var st=document.createElement('style');st.id='cm-style';
+      st.textContent='@keyframes cmUp{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}'
+        +'@keyframes cmFade{from{opacity:0}to{opacity:1}}'
+        +'#confirm-modal{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px}'
+        +'#cm-bd{position:absolute;inset:0;background:rgba(26,35,64,.4);animation:cmFade .2s ease;backdrop-filter:blur(4px)}'
+        +'#cm-box{position:relative;background:#fff;border-radius:22px;width:100%;max-width:340px;overflow:hidden;box-shadow:0 28px 72px rgba(26,35,64,.16);animation:cmUp .22s cubic-bezier(.34,1.3,.64,1)}'
+        +'#cm-body{padding:30px 26px 22px;text-align:center}'
+        +'#cm-title{font-family:Syne,sans-serif;font-size:19px;font-weight:800;color:var(--navy);margin-bottom:8px;line-height:1.3}'
+        +'#cm-msg{font-size:14px;color:var(--dim2);line-height:1.65}'
+        +'#cm-foot{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border)}'
+        +'#cm-cancel{padding:16px;background:none;border:none;border-right:1px solid var(--border);font-size:14px;font-weight:600;color:var(--dim);cursor:pointer;transition:.15s;font-family:inherit}'
+        +'#cm-ok{padding:16px;background:none;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit}'
+        +'#cm-cancel:hover{background:var(--paper2)}'
+        +'#cm-ok:hover{background:var(--paper2)}';
+      document.head.appendChild(st);
+    }
+    var modal=document.createElement('div');modal.id='confirm-modal';
+    var bd=document.createElement('div');bd.id='cm-bd';modal.appendChild(bd);
+    var box=document.createElement('div');box.id='cm-box';
+    var body=document.createElement('div');body.id='cm-body';
+    var t=document.createElement('div');t.id='cm-title';t.textContent=title;body.appendChild(t);
+    var m=document.createElement('div');m.id='cm-msg';m.innerHTML=message;body.appendChild(m);
+    box.appendChild(body);
+    var foot=document.createElement('div');foot.id='cm-foot';
+    var cb=document.createElement('button');cb.id='cm-cancel';cb.textContent=cancelText;
+    var ob=document.createElement('button');ob.id='cm-ok';ob.textContent=confirmText;
+    ob.style.color=danger?'#dc2626':'var(--orange)';
+    foot.appendChild(cb);foot.appendChild(ob);
+    box.appendChild(foot);modal.appendChild(box);
+    document.body.appendChild(modal);
+    function cleanup(r){box.style.animation='cmUp .15s ease reverse';bd.style.animation='cmFade .15s ease reverse';setTimeout(function(){modal.remove();},140);resolve(r);}
+    ob.onclick=function(){cleanup(true);};cb.onclick=function(){cleanup(false);};
+    bd.onclick=function(){cleanup(false);};
+    function onKey(e){if(e.key==='Escape'){cleanup(false);document.removeEventListener('keydown',onKey);}}
+    document.addEventListener('keydown',onKey);
+  });
+}
+window.showConfirmModal=showConfirmModal;
+
+function switchLearnTab(tab){
+  var panels={tryb:'learn-panel-tryb',strefa:'learn-panel-strefa'};
+  var btns={tryb:'learn-tab-tryb',strefa:'learn-tab-strefa'};
+  Object.keys(panels).forEach(function(key){
+    var panel=document.getElementById(panels[key]);
+    var btn=document.getElementById(btns[key]);
+    if(panel)panel.style.display=key===tab?'block':'none';
+    if(btn){
+      if(key===tab){btn.style.background='var(--navy)';btn.style.color='#fff';btn.style.fontWeight='700';}
+      else{btn.style.background='transparent';btn.style.color='var(--dim)';btn.style.fontWeight='600';}
+    }
+  });
+  if(tab==='tryb'){
+    if(typeof initTrybNauki==='function')initTrybNauki();
+  }
+  if(tab==='strefa'&&typeof initStrefa==='function')initStrefa();
+}
+window.switchLearnTab=switchLearnTab;
+
+// Override navHome to scroll to top when already on home
+window.navHome=function(){
+  if(document.getElementById('page-home')&&document.getElementById('page-home').classList.contains('active')){
+    window.scrollTo({top:0,behavior:'smooth'});
+  } else {
+    showPage('home');window.scrollTo({top:0,behavior:'smooth'});
+  }
+  return false;
+};
+
+// ── Session restore ──
+document.addEventListener('DOMContentLoaded',async function(){
+  try{
+    var res=await db.auth.getSession();
+    var session=res.data.session;
+    if(session){
+      await loadDashboard();
+      var last=sessionStorage.getItem('eyelingo_page')||'home';
+      var valid=['home','dash','community','daily','challenge','chat','teacher','lyrics','tutors','tryb','strefa','odkryj','ranking','tofix'];
+      showPage(valid.includes(last)?last:'home');
+    } else {
+      showPage('home');
+    }
+  }catch(e){showPage('home');}
+});
+
+function renderStarsDisplay(rating){
+  var r=parseFloat(rating)||0;
+  var html='';
+  for(var i=0;i<5;i++){
+    if(i<Math.floor(r)) html+='<span style="color:#f5c842;font-size:14px">★</span>';
+    else if(i===Math.floor(r)&&r%1>=0.5) html+='<span style="color:#f5c842;font-size:11px">★</span>';
+    else html+='<span style="color:#ddd;font-size:14px">★</span>';
+  }
+  return html;
+}
+window.renderStarsDisplay=renderStarsDisplay;
