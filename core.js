@@ -14,6 +14,95 @@ window.showToast=showToast;
 
 // ── Custom confirm modal (zastępuje natywny confirm()) ──
 function showConfirmModal({title, message, confirmText, cancelText, danger}){
+  confirmText=confirmText||'Potwierdź';
+  cancelText=cancelText||'Anuluj';
+  danger=danger||false;
+  return new Promise(function(resolve){
+    var ex=document.getElementById('confirm-modal');
+    if(ex)ex.remove();
+    if(!document.getElementById('cm-style')){
+      var st=document.createElement('style');st.id='cm-style';
+      st.textContent='@keyframes cmUp{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}'
+        +'@keyframes cmFade{from{opacity:0}to{opacity:1}}'
+        +'#confirm-modal{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px}'
+        +'#cm-bd{position:absolute;inset:0;background:rgba(26,35,64,.4);animation:cmFade .2s ease;backdrop-filter:blur(4px)}'
+        +'#cm-box{position:relative;background:#fff;border-radius:22px;width:100%;max-width:340px;overflow:hidden;'
+        +'box-shadow:0 28px 72px rgba(26,35,64,.16);animation:cmUp .22s cubic-bezier(.34,1.3,.64,1)}'
+        +'#cm-body{padding:30px 26px 22px;text-align:center}'
+        +'#cm-title{font-family:Syne,sans-serif;font-size:19px;font-weight:800;color:var(--navy);margin-bottom:8px;line-height:1.3}'
+        +'#cm-msg{font-size:14px;color:var(--dim2);line-height:1.65}'
+        +'#cm-foot{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border)}'
+        +'#cm-cancel{padding:16px;background:none;border:none;border-right:1px solid var(--border);font-size:14px;font-weight:600;color:var(--dim);cursor:pointer;transition:.15s;font-family:inherit}'
+        +'#cm-ok{padding:16px;background:none;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit}'
+        +'#cm-cancel:hover{background:var(--paper2)}'
+        +'#cm-ok:hover{background:var(--paper2)}';
+      document.head.appendChild(st);
+    }
+    var modal=document.createElement('div');modal.id='confirm-modal';
+    var bd=document.createElement('div');bd.id='cm-bd';modal.appendChild(bd);
+    var box=document.createElement('div');box.id='cm-box';
+    var body=document.createElement('div');body.id='cm-body';
+    var t=document.createElement('div');t.id='cm-title';t.textContent=title;body.appendChild(t);
+    var m=document.createElement('div');m.id='cm-msg';m.innerHTML=message;body.appendChild(m);
+    box.appendChild(body);
+    var foot=document.createElement('div');foot.id='cm-foot';
+    var cb=document.createElement('button');cb.id='cm-cancel';cb.textContent=cancelText;
+    var ob=document.createElement('button');ob.id='cm-ok';ob.textContent=confirmText;
+    ob.style.color=danger?'#dc2626':'var(--orange)';
+    foot.appendChild(cb);foot.appendChild(ob);
+    box.appendChild(foot);modal.appendChild(box);
+    document.body.appendChild(modal);
+    function cleanup(r){box.style.animation='cmUp .15s ease reverse';bd.style.animation='cmFade .15s ease reverse';setTimeout(function(){modal.remove();},140);resolve(r);}
+    ob.onclick=function(){cleanup(true);};cb.onclick=function(){cleanup(false);};
+    bd.onclick=function(){cleanup(false);};
+    function onKey(e){if(e.key==='Escape'){cleanup(false);document.removeEventListener('keydown',onKey);}}
+    document.addEventListener('keydown',onKey);
+  });
+}
+window.showConfirmModal=showConfirmModal;
+
+// ── Wewnętrzne zakładki w sekcji Nauka ──
+function switchLearnTab(tab){
+  var panels = {tryb:'learn-panel-tryb', strefa:'learn-panel-strefa'};
+  var btns = {tryb:'learn-tab-tryb', strefa:'learn-tab-strefa'};
+  Object.keys(panels).forEach(function(key){
+    var panel = document.getElementById(panels[key]);
+    var btn = document.getElementById(btns[key]);
+    if(panel) panel.style.display = key===tab ? 'block' : 'none';
+    if(btn){
+      if(key===tab){
+        btn.style.background='var(--navy)';
+        btn.style.color='#fff';
+        btn.style.fontWeight='700';
+      } else {
+        btn.style.background='transparent';
+        btn.style.color='var(--dim)';
+        btn.style.fontWeight='600';
+      }
+    }
+  });
+  // Inicjuj tryb nauki jeśli jeszcze nie
+  if(tab==='tryb'){
+    var placeholder = document.getElementById('strefa-tryb-placeholder');
+    var trybPage = document.getElementById('page-tryb');
+    if(trybPage && placeholder){
+      // Przenieś zawartość page-tryb do placeholder
+      placeholder.style.display='none';
+      if(!document.getElementById('tryb-lobby')){
+        // Tryb nie załadowany - init
+        if(typeof initTrybNauki==='function') initTrybNauki();
+      }
+    } else if(typeof initTrybNauki==='function'){
+      initTrybNauki();
+    }
+  }
+  if(tab==='strefa' && typeof initStrefa==='function'){
+    initStrefa();
+  }
+}
+window.switchLearnTab = switchLearnTab;
+
+){
   confirmText = confirmText||'Potwierdź';
   cancelText = cancelText||'Anuluj';
   danger = danger||false;
@@ -440,7 +529,7 @@ function updateNav(li,email){
   const tabs=document.getElementById('nav-tabs');
   if(li){
     const initials=(email||'?').substring(0,2).toUpperCase();
-    n.innerHTML=`<button id="chat-nav-btn" onclick="toggleChatPanel()" title="Wiadomości" style="position:relative;background:transparent;border:1.5px solid rgba(255,255,255,.2);border-radius:100px;padding:7px 12px;cursor:pointer;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:6px;font-size:13px;transition:.2s"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span id="chat-badge" style="position:absolute;top:-4px;right:-4px;background:#e53e3e;color:#fff;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px"></span></button><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="showPage('home')">Panel</button><div class="nav-avatar" onclick="showPage('home')" title="${email}">${initials}</div><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="logout()">Wyloguj</button>`;
+    n.innerHTML=`<button id="chat-nav-btn" onclick="toggleChatPanel()" title="Wiadomości" style="position:relative;background:transparent;border:1.5px solid rgba(255,255,255,.2);border-radius:100px;padding:7px 12px;cursor:pointer;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:6px;font-size:13px;transition:.2s"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span id="chat-badge" style="position:absolute;top:-4px;right:-4px;background:#e53e3e;color:#fff;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px"></span></button><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="showPage('dash')">Panel</button><div class="nav-avatar" onclick="showPage('home')" title="${email}">${initials}</div><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="logout()">Wyloguj</button>`;
     if(tabs) tabs.classList.add('visible');
   } else {
     n.innerHTML=`<button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button><button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>`;
@@ -497,13 +586,17 @@ function showPage(name){
   document.querySelectorAll('audio').forEach(function(a){try{a.pause();a.currentTime=0;}catch(e){}});
   // Update URL hash
   try{history.replaceState(null,'','#'+name);}catch(e){}
+  // Route: tryb → strefa, challenge → daily
+  if(name==='tryb'){ name='strefa'; setTimeout(function(){switchLearnTab('tryb');},80); }
+  else if(name==='challenge'){ name='daily'; setTimeout(function(){var s=document.getElementById('daily-challenge-section');if(s)s.scrollIntoView({behavior:'smooth'});if(typeof initChallenge==='function')initChallenge();},100); }
+
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const pg=document.getElementById('page-'+name);
   if(pg){pg.classList.add('active');window.scrollTo(0,0);}
   if(name==='community') loadCommunity();
   if(name==='ranking') loadRanking();
   if(name==='tofix') initToFixPage();
-  if(name==='strefa') initStrefa();
+  if(name==='strefa'){setTimeout(function(){switchLearnTab('tryb');initStrefa();},50);}
   if(name==='odkryj') initOdkryj();
   if(name==='daily') initDaily();
   if(name==='challenge') initChallenge();

@@ -470,7 +470,14 @@ document.addEventListener('DOMContentLoaded', function(){
     +'<button onclick="showPage(\'community\')" class="btn btn-navy">← Materiały</button>'
     +'</div></div>'
     +'</div>';
-  document.body.appendChild(div);
+  // Inject into learn panel if exists, otherwise body
+  var learnPanel = document.getElementById('learn-panel-tryb');
+  if(learnPanel){
+    learnPanel.innerHTML = '';
+    learnPanel.appendChild(div);
+  } else {
+    document.body.appendChild(div);
+  }
 
   // Confetti canvas
   if(!document.getElementById('tryb-confetti')){

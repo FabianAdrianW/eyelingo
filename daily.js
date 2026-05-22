@@ -125,8 +125,22 @@ async function loadDailyWord(){
     // Fallback: user_sets
     if(pool.length<2){
       try{
-        var sets_res=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(10);
-        if(sets_res.data) sets_res.data.forEach(function(s){if(s.user_set_cards)pool=pool.concat(s.user_set_cards);});
+        // Try user_sets filtered by language name in set name
+        var sets_res=await db.from('user_sets')
+          .select('name,user_set_cards(word,translation)')
+          .eq('user_id',sess.user.id).limit(20);
+        if(sets_res.data){
+          var langKeywords={'en':['english','angielski','ang'],'es':['spanish','español','hiszp'],'jp':['japanese','japoński','jap'],'nl':['dutch','niderlandzki','hol'],'de':['german','deutsch','niem'],'fr':['french','français','franc']};
+          var keys=langKeywords[dailyLang]||[];
+          // First try sets matching language name
+          var langSets=sets_res.data.filter(function(s){
+            var n=(s.name||'').toLowerCase();
+            return keys.some(function(k){return n.includes(k);});
+          });
+          // If no language-specific sets, use all sets (last resort)
+          var useSets=langSets.length>0?langSets:sets_res.data;
+          useSets.forEach(function(s){if(s.user_set_cards)pool=pool.concat(s.user_set_cards);});
+        }
       }catch(e){}
     }
 
