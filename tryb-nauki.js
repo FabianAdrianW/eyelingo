@@ -602,6 +602,7 @@ async function awardGoldBonus(amount){
 }
 
 // Tryb Nauki page HTML injection
+document.addEventListener('DOMContentLoaded', function(){
 (function(){
   if(document.getElementById('page-tryb'))return;
   var div=document.createElement('div');
@@ -726,7 +727,8 @@ async function awardGoldBonus(amount){
     canvas.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:9999;display:none';
     document.body.appendChild(canvas);
   }
-})();
+})()
+});;
 
 // ── Napraw słówka do fiszek w analizie — tylko słowo + tłumaczenie, bez kontekstu ──
 var _origRenderLyricsWords = window.renderLyricsWords;

@@ -35,21 +35,19 @@ function reloadDailyContent(){
   try{var sel=document.getElementById('daily-lang-select');if(sel)localStorage.setItem('daily_lang',sel.value);}catch(e){}
   _dailyLoaded=true;
   _dailyLoadedDate=''; // force reload
-  // Reset
+  // Reset ALL state
   _dailyDone={word:false,read:false,quiz:false};
   _dailyXP=0;
+  _inlineQuizState={step:0,done:false,words:[]};
+  // Reset button states
+  var btn=document.getElementById('dc-word-btn');
+  if(btn){btn.textContent='✓ Zapamiętałem!';btn.disabled=false;}
+  ['dc-word-done','dc-read-done','dc-quiz-done2'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.style.display='none';
+  });
+  var quizBox=document.getElementById('dc-quiz-inline-body');
+  if(quizBox)quizBox.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:12px;text-align:center"><span style="font-size:24px;display:block;margin-bottom:8px">👆</span>Kliknij "Zapamiętałem!" aby odblokować quiz</div>';
   document.getElementById('daily-xp').textContent='0 XP';
-  // Reset wszystkich kart
-  ['dc-word-done','dc-read-done','dc-quiz-done'].forEach(function(id){
-    var el=document.getElementById(id);if(el)el.style.display='none';
-  });
-  ['dc-word-content','dc-read-content','dc-quiz-content'].forEach(function(id){
-    var el=document.getElementById(id);if(el)el.style.display='none';
-  });
-  ['dc-word-loading','dc-read-loading','dc-quiz-loading'].forEach(function(id){
-    var el=document.getElementById(id);if(el){el.style.display='block';el.textContent='Ładowanie...';}
-  });
-  updateDailyProgress();
   loadDailyContent();
 }
 
@@ -689,7 +687,12 @@ function loadInlineQuiz(){
   var t1=t1El&&t1El.textContent;
   var w2=w2El&&w2El.textContent;
   var t2=t2El&&t2El.textContent;
-  if(!w1||!t1){box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Najpierw zapamiętaj słówka!</div>';return;}
+  if(!w1||!t1){
+    box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:12px;text-align:center">'
+      +'<span style="font-size:24px;display:block;margin-bottom:8px">👆</span>'
+      +'Kliknij "Zapamiętałem!" aby odblokować quiz</div>';
+    return;
+  }
   var words=[{w:w1,t:t1}];
   if(w2&&t2)words.push({w:w2,t:t2});
   _inlineQuizState={step:0,done:false,words:words};
@@ -704,7 +707,9 @@ function renderInlineQuizStep(step){
   if(step===0){
     var target=words[0];
     var otherT=words.slice(1).map(function(x){return x.t;});
-    var fakes=otherT.concat(['dom','czas','dobry','praca','życie','dzień']).filter(function(x){return x&&x.toLowerCase()!==target.t.toLowerCase();}).slice(0,3);
+    // Polish fallbacks (translation is always Polish in Eyelingo)
+    var plFallbacks=['dom','czas','dobry','praca','życie','dzień','woda','ogień','ziemia','niebo','miłość','wiedzieć'];
+    var fakes=otherT.concat(plFallbacks).filter(function(x){return x&&x.toLowerCase()!==target.t.toLowerCase();}).slice(0,3);
     var opts=[target.t].concat(fakes).sort(function(){return Math.random()-.5;});
     var html='<div style="font-size:12px;color:var(--dim2);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Co znaczy:</div>'
       +'<div style="font-size:24px;font-weight:800;color:var(--navy);font-family:Syne,sans-serif;margin-bottom:14px;padding:10px;background:var(--paper2);border-radius:10px;text-align:center">'+target.w+'</div>'
