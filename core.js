@@ -228,10 +228,10 @@ async function submitAuth(){
         if(username&&res.data.user){
           await db.from('profiles').upsert({user_id:res.data.user.id,username},{onConflict:'user_id'}).select();
         }
-        await loadDashboard();showPage('dash');
+        await loadDashboard();showPage('home');
       }
     } else {
-      await loadDashboard();showPage('dash');
+      await loadDashboard();showPage('home');
     }
   }catch(e){
     const m=e.message||'';
@@ -423,7 +423,7 @@ function updateNav(li,email){
   const tabs=document.getElementById('nav-tabs');
   if(li){
     const initials=(email||'?').substring(0,2).toUpperCase();
-    n.innerHTML=`<button id="chat-nav-btn" onclick="toggleChatPanel()" title="Wiadomości" style="position:relative;background:transparent;border:1.5px solid rgba(255,255,255,.2);border-radius:100px;padding:7px 12px;cursor:pointer;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:6px;font-size:13px;transition:.2s"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span id="chat-badge" style="position:absolute;top:-4px;right:-4px;background:#e53e3e;color:#fff;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px"></span></button><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="showPage('dash')">Panel</button><div class="nav-avatar" onclick="showPage('dash')" title="${email}">${initials}</div><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="logout()">Wyloguj</button>`;
+    n.innerHTML=`<button id="chat-nav-btn" onclick="toggleChatPanel()" title="Wiadomości" style="position:relative;background:transparent;border:1.5px solid rgba(255,255,255,.2);border-radius:100px;padding:7px 12px;cursor:pointer;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:6px;font-size:13px;transition:.2s"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span id="chat-badge" style="position:absolute;top:-4px;right:-4px;background:#e53e3e;color:#fff;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px"></span></button><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="showPage('home')">Panel</button><div class="nav-avatar" onclick="showPage('home')" title="${email}">${initials}</div><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="logout()">Wyloguj</button>`;
     if(tabs) tabs.classList.add('visible');
   } else {
     n.innerHTML=`<button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button><button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>`;
@@ -470,6 +470,10 @@ function handleDownload(e){if(DOWNLOAD_URL==='#'){e.preventDefault();alert('Plik
 
 // ── Strony Community i Ranking ──
 function showPage(name){
+  // Zapisz aktywną stronę (nie zapisuj auth/home)
+  if(name && name !== 'auth'){
+    try{ sessionStorage.setItem('eyelingo_page', name); }catch(e){}
+  }
   // Stop any ongoing TTS
   if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
   // Stop any audio elements
@@ -654,3 +658,26 @@ async function submitBugReport(){
     document.getElementById('fix-msg').style.color='#c33';
   }
 }
+
+// ── Session restore — sprawdź czy użytkownik jest zalogowany przy starcie ──
+document.addEventListener('DOMContentLoaded', async function(){
+  try{
+    var {data:{session}} = await db.auth.getSession();
+    if(session){
+      await loadDashboard();
+      // Przywróć ostatnią stronę lub pokaż home
+      var lastPage = sessionStorage.getItem('eyelingo_page')||'home';
+      var validPages = ['home','dash','community','daily','challenge','chat','teacher',
+                        'lyrics','tutors','tryb','strefa','odkryj','ranking','tofix'];
+      showPage(validPages.includes(lastPage) ? lastPage : 'home');
+    } else {
+      showPage('home');
+    }
+  }catch(e){
+    showPage('home');
+  }
+});
+
+// ── Zapisuj aktywną stronę ──
+var _origShowPage = null;
+
