@@ -15,6 +15,107 @@ window.showToast=showToast;
 // ── Custom confirm modal (zastępuje natywny confirm()) ──
 function showConfirmModal({title, message, confirmText='Potwierdź', cancelText='Anuluj', danger=false}){
   return new Promise(function(resolve){
+
+    // Usuń poprzedni modal jeśli istnieje
+    var existing = document.getElementById('confirm-modal');
+    if(existing) existing.remove();
+
+    // ── Style ──
+    if(!document.getElementById('confirm-modal-style')){
+      var style = document.createElement('style');
+      style.id = 'confirm-modal-style';
+      style.textContent = [
+        '@keyframes cmSlideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}',
+        '@keyframes cmFadeIn{from{opacity:0}to{opacity:1}}',
+        '#confirm-modal{position:fixed;inset:0;z-index:99999;display:flex;align-items:flex-end;justify-content:center;padding:0 0 32px;pointer-events:none}',
+        '#confirm-modal.cm-open{pointer-events:all}',
+        '#confirm-modal-backdrop{position:absolute;inset:0;background:rgba(26,35,64,.35);animation:cmFadeIn .2s ease;backdrop-filter:blur(2px)}',
+        '#confirm-modal-box{position:relative;background:#fff;border-radius:20px 20px 16px 16px;padding:24px 24px 20px;width:100%;max-width:420px;box-shadow:0 -4px 40px rgba(26,35,64,.12),0 8px 32px rgba(26,35,64,.08);animation:cmSlideUp .25s cubic-bezier(.34,1.4,.64,1);border:1.5px solid rgba(26,35,64,.08)}',
+        '#confirm-modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 18px}',
+        '#confirm-modal-title{font-family:Syne,sans-serif;font-size:17px;font-weight:800;color:var(--navy);margin-bottom:6px}',
+        '#confirm-modal-message{font-size:13px;color:var(--dim2);line-height:1.6;margin-bottom:20px}',
+        '#confirm-modal-actions{display:flex;gap:8px}',
+        '#confirm-modal-ok{flex:1;padding:12px;border-radius:12px;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;letter-spacing:.01em}',
+        '#confirm-modal-cancel{flex:1;padding:12px;border-radius:12px;border:1.5px solid var(--border);background:transparent;font-size:14px;font-weight:600;cursor:pointer;color:var(--dim);transition:.15s}',
+        '#confirm-modal-cancel:hover{background:var(--paper2);border-color:var(--border2)}',
+      ].join('');
+      document.head.appendChild(style);
+    }
+
+    // ── Buduj modal ──
+    var modal = document.createElement('div');
+    modal.id = 'confirm-modal';
+
+    var backdrop = document.createElement('div');
+    backdrop.id = 'confirm-modal-backdrop';
+    modal.appendChild(backdrop);
+
+    var box = document.createElement('div');
+    box.id = 'confirm-modal-box';
+
+    // Handle (jak bottom sheet)
+    var handle = document.createElement('div');
+    handle.id = 'confirm-modal-handle';
+    box.appendChild(handle);
+
+    // Nagłówek z ikoną inline
+    var titleEl = document.createElement('div');
+    titleEl.id = 'confirm-modal-title';
+    titleEl.innerHTML = (danger
+      ? '<span style="display:inline-block;background:#fee2e2;color:#dc2626;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700;letter-spacing:.5px;margin-bottom:8px">NIEODWRACALNE</span><br>'
+      : '') + title;
+    box.appendChild(titleEl);
+
+    var msgEl = document.createElement('div');
+    msgEl.id = 'confirm-modal-message';
+    msgEl.innerHTML = message;
+    box.appendChild(msgEl);
+
+    // Przyciski
+    var actions = document.createElement('div');
+    actions.id = 'confirm-modal-actions';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.id = 'confirm-modal-cancel';
+    cancelBtn.textContent = cancelText;
+
+    var okBtn = document.createElement('button');
+    okBtn.id = 'confirm-modal-ok';
+    okBtn.textContent = confirmText;
+    okBtn.style.cssText = danger
+      ? 'background:#fee2e2;color:#dc2626;border:1.5px solid #fecaca'
+      : 'background:var(--orange);color:#fff;border:none';
+    okBtn.onmouseover = function(){ this.style.opacity='.85'; };
+    okBtn.onmouseout = function(){ this.style.opacity='1'; };
+
+    // Anuluj po lewej — psychologia: bezpieczna opcja bliżej lewego kciuka
+    actions.appendChild(cancelBtn);
+    actions.appendChild(okBtn);
+    box.appendChild(actions);
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+
+    // Animacja otwarcia
+    requestAnimationFrame(function(){ modal.classList.add('cm-open'); });
+
+    function cleanup(result){
+      box.style.animation = 'cmSlideUp .2s cubic-bezier(.4,0,1,1) reverse';
+      backdrop.style.animation = 'cmFadeIn .2s ease reverse';
+      setTimeout(function(){ modal.remove(); }, 180);
+      resolve(result);
+    }
+
+    okBtn.onclick = function(){ cleanup(true); };
+    cancelBtn.onclick = function(){ cleanup(false); };
+    backdrop.onclick = function(){ cleanup(false); };
+    function onKey(e){
+      if(e.key==='Escape'){ cleanup(false); document.removeEventListener('keydown',onKey); }
+    }
+    document.addEventListener('keydown', onKey);
+  });
+}
+window.showConfirmModal = showConfirmModal;){
+  return new Promise(function(resolve){
     var modal = document.getElementById('confirm-modal');
     if(!modal){
       // Utwórz modal jeśli nie istnieje
@@ -180,7 +281,16 @@ function getChatUsageToday(){try{return parseInt(localStorage.getItem('chat_usag
 
 function _showPageBasic(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
 
-function navHome(){showPage('home');return false}
+function navHome(){
+  if(document.getElementById('page-home').classList.contains('active')){
+    // Już jesteśmy na stronie głównej - przewiń do góry płynnie
+    window.scrollTo({top:0, behavior:'smooth'});
+  } else {
+    showPage('home');
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+  return false;
+}
 
 function navSection(sel){showPage('home');setTimeout(()=>{const el=document.querySelector(sel);if(el)el.scrollIntoView({behavior:'smooth'})},60);return false}
 
