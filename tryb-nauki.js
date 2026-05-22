@@ -359,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function(){
   if(document.getElementById('page-tryb'))return;
   var div=document.createElement('div');
   div.id='page-tryb';div.className='page';
-  div.style.cssText='min-height:100vh;background:var(--paper);padding:100px 20px 60px';
+  div.style.cssText='min-height:100vh;background:var(--paper);padding:110px 20px 80px';
   div.innerHTML='<div style="max-width:860px;margin:0 auto">'
     +'<div id="tryb-lobby">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;padding-top:8px">'
