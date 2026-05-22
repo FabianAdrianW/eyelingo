@@ -416,39 +416,9 @@ function showPage(name){
 }
 
 // ── Stub functions (safe fallbacks) ──
-async function loadNotifications(){return; // table not ready
-  try{
-  // Ładuj powiadomienia jeśli panel istnieje
-  try{
-    var panel=document.getElementById('notif-panel');
-    var badge=document.getElementById('notif-badge');
-    if(!panel&&!badge) return;
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess) return;
-    var{data:notifs}=await db.from('notifications')
-      .select('id,type,message,read_at,created_at')
-      .eq('user_id',sess.user.id)
-      .order('created_at',{ascending:false})
-      .limit(20);
-    if(!notifs) return;
-    var unread=notifs.filter(function(n){return !n.read_at;}).length;
-    if(badge) badge.textContent=unread||'';
-    if(badge) badge.style.display=unread?'flex':'none';
-    if(panel){
-      var icon={voice_rated:'🎙️',voice_commented:'💬',material_liked:'❤️',streak:'🔥',gold:'🪙',review:'⭐'};
-      panel.innerHTML=notifs.length
-        ?notifs.map(function(n){
-          return'<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;'+(n.read_at?'opacity:.6':'')+'">'
-            +'<span style="font-size:18px">'+(icon[n.type]||'🔔')+'</span>'
-            +'<div><div style="font-size:13px;color:var(--navy)">'+(n.message||'')+'</div>'
-            +'<div style="font-size:11px;color:var(--dim2)">'+ new Date(n.created_at).toLocaleDateString('pl')+'</div></div>'
-            +'</div>';
-        }).join('')
-        :'<div style="padding:20px;text-align:center;color:var(--dim2);font-size:13px">Brak powiadomień</div>';
-    }
-  }catch(e){ /* silent */ }
+async function loadNotifications(){
+  // Silent — table may not exist
 }
-
 async function loadRanking(){
   // Tabele rankingu
   for(const period of ['all','weekly']){
