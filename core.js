@@ -482,7 +482,7 @@ function escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
-function renderStarsDisplay(r){ return window.renderStarsDisplay(r); }
+
 
 async function initToFixPage(){
   const{data:{session}}=await db.auth.getSession();
@@ -545,6 +545,86 @@ async function submitBugReport(){
   }
 }
 
+
+
+// ── Missing module globals ──
+var _chatPersonas={
+  en:{name:'Alex',desc:'Native speaker · New York',greeting:"Hey! I'm Alex. Let's have a conversation in English. What would you like to talk about today?"},
+  es:{name:'Sofía',desc:'Hablante nativa · Madrid',greeting:'¡Hola! Soy Sofía. Vamos a practicar el español juntos. ¿De qué quieres hablar?'},
+  nl:{name:'Daan',desc:'Moedertaalspreker · Amsterdam',greeting:'Hallo! Ik ben Daan. Laten we Nederlands oefenen. Waar wil je het over hebben?'},
+  jp:{name:'Yuki',desc:'ネイティブスピーカー · 東京',greeting:'こんにちは！ゆきです。一緒に日本語を練習しましょう。何について話したいですか？'}
+};
+var RewardSystem={
+  _key:'tryb_nauki_v1',
+  _state:null,
+  load:function(){
+    try{this._state=JSON.parse(localStorage.getItem(this._key)||'null');}catch(e){}
+    if(!this._state)this._state={xp:0,level:1,streak:0,lastStudyDate:'',streakFreezes:2,totalCards:0,totalSessions:0,badges:{},perfectStreak:0,etymologyUses:0,weeklyXP:0,weekDate:''};
+    return this._state;
+  },
+  save:function(){localStorage.setItem(this._key,JSON.stringify(this._state));},
+  addXP:function(amount){this._state.xp+=amount;this._state.weeklyXP=(this._state.weeklyXP||0)+amount;this._state.level=Math.min(20,Math.floor(this._state.xp/100)+1);this.save();updateXPBar();},
+  getStreak:function(){return this._state.streak||0;},
+  updateStreak:function(){
+    var today=new Date().toISOString().slice(0,10);
+    var last=this._state.lastStudyDate;
+    if(last===today)return;
+    var yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
+    if(last===yesterday){this._state.streak++;}
+    else if(last&&last!==yesterday){if(this._state.streakFreezes>0)this._state.streakFreezes--;else this._state.streak=1;}
+    else{this._state.streak=Math.max(1,(this._state.streak||0)+1);}
+    this._state.lastStudyDate=today;this.save();
+  },
+  checkMilestones:function(sd){
+    var earned=[];var s=this._state;
+    var defs=[
+      {id:'first',icon:'🌱',name:'Pierwszy krok',desc:'Ukończ pierwszą sesję',check:function(){return s.totalSessions>=1;}},
+      {id:'streak7',icon:'🔥',name:'Tydzień ognia',desc:'7-dniowy streak',check:function(){return s.streak>=7;}},
+      {id:'perfect10',icon:'💯',name:'Perfekcjonista',desc:'10 kart z rzędu z oceną 4',check:function(){return s.perfectStreak>=10;}},
+      {id:'speed',icon:'⚡',name:'Błyskawica',desc:'10 kart w < 2 minuty',check:function(){return sd&&sd.cards>=10&&sd.time<120;}}
+    ];
+    defs.forEach(function(d){if(!s.badges[d.id]&&d.check()){s.badges[d.id]={earned:true,date:new Date().toISOString()};earned.push(d);}});
+    this.save();return earned;
+  },
+  getBadgeDefs:function(){return[
+    {id:'first',icon:'🌱',name:'Pierwszy krok',desc:'Ukończ pierwszą sesję'},
+    {id:'streak7',icon:'🔥',name:'Tydzień ognia',desc:'7-dniowy streak'},
+    {id:'perfect10',icon:'💯',name:'Perfekcjonista',desc:'10 kart z rzędu ocena 4'},
+    {id:'speed',icon:'⚡',name:'Błyskawica',desc:'10 kart w < 2 min'}
+  ];}
+};
+var _origPostLogin2=window.postLogin;
+window.postLogin=function(){if(_origPostLogin2)_origPostLogin2();setTimeout(updateChatBadge,1000);};
+var _origRenderLyricsWords = window.renderLyricsWords;
+window.renderLyricsWords = function(){
+  var panel=document.getElementById('lyrics-words-panel');
+  var addBtn=document.getElementById('lyrics-add-all-btn');
+  if(!_lyricsWords||!_lyricsWords.length){
+    if(panel)panel.innerHTML='<div style="color:var(--dim2);font-size:13px">Brak słów</div>';
+    return;
+  }
+  if(addBtn)addBtn.style.display='flex';
+  if(!panel)return;
+  panel.innerHTML=_lyricsWords.map(function(w,i){
+    return'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">'
+      +'<div><div style="font-size:13px;font-weight:600;color:var(--navy)">'+(w.word||'')+'</div>'
+      +'<div style="font-size:12px;color:var(--orange)">'+(w.translation||'').split('+')[0].trim()+'</div></div>'
+      +'<span class="word-badge" id="wb-'+i+'" onclick="lyricsAddWord('+i+')" style="white-space:nowrap">+ Fiszka</span>'
+      +'</div>';
+  }).join('');
+};
+
+var QUICK_TOPICS=['sport','gotowanie','technologia','muzyka','filmy','podróże','nauka','gry','anime','moda','historia','zdrowie'];
+const TRANSLATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-sentence';
+const SEARCH_YOUTUBE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
+const LEVEL_DESC = {A1:'Początkujący',A2:'Podstawowy',B1:'Średniozaawansowany',B2:'Wyższy średni',C1:'Zaawansowany',C2:'Biegły'};
+var _odkryjLang='en';
+var _odkryjLevel='B1';
+var _odkryjRunning=false;
+var _tagCache = {}; // cache: topic → {tags, timestamp};
+var _trm={tutorId:null,val:0};
+var _trmLabels=['','Bardzo słaby 😞','Słaby 😕','Przeciętny 😐','Dobry 😊','Świetny! 🤩'];
+let _fixCategory = '';
 
 function showToast(msg, type){
   type=type||'info';
@@ -648,3 +728,15 @@ document.addEventListener('DOMContentLoaded',async function(){
     }
   }catch(e){showPage('home');}
 });
+
+function renderStarsDisplay(rating){
+  var r=parseFloat(rating)||0;
+  var html='';
+  for(var i=0;i<5;i++){
+    if(i<Math.floor(r)) html+='<span style="color:#f5c842;font-size:14px">★</span>';
+    else if(i===Math.floor(r)&&r%1>=0.5) html+='<span style="color:#f5c842;font-size:11px">★</span>';
+    else html+='<span style="color:#ddd;font-size:14px">★</span>';
+  }
+  return html;
+}
+window.renderStarsDisplay=renderStarsDisplay;
