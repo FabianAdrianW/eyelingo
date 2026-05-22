@@ -426,39 +426,28 @@ function showPage(name){
 
 // ── Stub functions (safe fallbacks) ──
 async function loadNotifications(){
-  // Ładuj powiadomienia jeśli panel istnieje
+  // Silent - notifications table may not exist
   try{
-    var panel=document.getElementById('notif-panel');
     var badge=document.getElementById('notif-badge');
-    if(!panel&&!badge) return;
+    var panel=document.getElementById('notif-panel');
+    if(!badge&&!panel) return;
     var sess=(await db.auth.getSession()).data.session;
     if(!sess) return;
-    // notifications table may not exist - safe query
-    var notifs=[];
-    try{
-      var nr=await db.from('notifications')
-        .select('id,type,message,read_at,created_at')
-        .eq('user_id',sess.user.id)
-        .order('created_at',{ascending:false})
-        .limit(20);
-      if(nr.data) notifs=nr.data;
-    }catch(e2){ return; } // table doesn't exist
+    var res=await db.from('notifications')
+      .select('id,type,message,read_at,created_at')
+      .eq('user_id',sess.user.id)
+      .order('created_at',{ascending:false})
+      .limit(20);
+    if(res.error) return; // table doesn't exist - silent fail
+    var notifs=res.data||[];
     var unread=notifs.filter(function(n){return !n.read_at;}).length;
-    if(badge) badge.textContent=unread||'';
-    if(badge) badge.style.display=unread?'flex':'none';
-    if(panel){
-      var icon={voice_rated:'🎙️',voice_commented:'💬',material_liked:'❤️',streak:'🔥',gold:'🪙',review:'⭐'};
-      panel.innerHTML=notifs.length
-        ?notifs.map(function(n){
-          return'<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;'+(n.read_at?'opacity:.6':'')+'">'
-            +'<span style="font-size:18px">'+(icon[n.type]||'🔔')+'</span>'
-            +'<div><div style="font-size:13px;color:var(--navy)">'+(n.message||'')+'</div>'
-            +'<div style="font-size:11px;color:var(--dim2)">'+ new Date(n.created_at).toLocaleDateString('pl')+'</div></div>'
-            +'</div>';
-        }).join('')
-        :'<div style="padding:20px;text-align:center;color:var(--dim2);font-size:13px">Brak powiadomień</div>';
+    if(badge){badge.textContent=unread||'';badge.style.display=unread?'flex':'none';}
+    if(panel&&notifs.length){
+      panel.innerHTML=notifs.map(function(n){
+        return'<div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;color:var(--navy)">'+(n.message||'')+'</div>';
+      }).join('');
     }
-  }catch(e){ /* silent */ }
+  }catch(e){/* silent */}
 }
 
 async function loadRanking(){
@@ -468,6 +457,7 @@ async function loadRanking(){
       const{data}=await db.rpc('get_ranking',{p_period:period});
       if(!data) continue;
       for(const cat of ['gold','streak','words']){
+        const el=document.getElementById('rank-'+(period==='all'?'all':'weekly')+'-'+cat);
         if(!el||!data[cat]) continue;
         el.innerHTML=data[cat].map((r,i)=>`
           <div class="rank-row ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':''}">
@@ -497,13 +487,14 @@ async function loadRanking(){
       .eq('is_public',true)
       .order('likes_count',{ascending:false})
       .limit(5);
-    if(el&&sets?.length){
+    const el2=document.getElementById('rank-sets');
+    if(el2&&sets?.length){
       // Wyróżniony zestaw
       if(sets[0]){
         document.getElementById('feat-set').textContent=sets[0].name;
         document.getElementById('feat-set-meta').textContent=`❤️ ${sets[0].likes_count||0} lajków · by ${sets[0].username||'Nieznany'}`;
       }
-      el.innerHTML=sets.map((s,i)=>`
+      el2.innerHTML=sets.map((s,i)=>`
         <div class="rank-row ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':''}">
           <span class="rank-pos">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span>
           <span class="rank-name">${s.name} <span style="font-size:12px;color:var(--dim2);font-weight:400">by ${s.username||'Nieznany'}</span></span>
