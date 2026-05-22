@@ -627,26 +627,41 @@ async function loadDailyQuiz(){
     var quizzes=allQuizzes[qLang]||allQuizzes['en'];
     var qz=quizzes[Math.floor(Math.random()*quizzes.length)];
     window._currentQuiz={correct:qz.correct,explain:qz.explain};
-    // dc-quiz-loading removed
-    // dc-quiz-content removed
-    var _dcqq=document.getElementById('dc-quiz-inline-body');if(_dcqq)_dcqq.innerHTML=qz.q;
-    (document.getElementById('dc-quiz-social')||{}).textContent='';
-    var container=document.getElementById('dc-quiz-opts-x')||document.getElementById('dc-quiz-inline-body');
-    if(!container)return;
-    container.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
-    container.innerHTML='';
     _quizAnswered=false;
+    var box=document.getElementById('dc-quiz-inline-body');
+    if(!box)return;
+    // Build quiz using DOM — pytanie + opcje w jednym miejscu
+    box.innerHTML='';
+    box.style.cssText='display:flex;flex-direction:column;gap:8px';
+    // Pytanie
+    var qDiv=document.createElement('div');
+    qDiv.style.cssText='font-size:13px;font-weight:600;color:var(--navy);padding:10px 12px;background:var(--paper2);border-radius:10px;border-left:3px solid var(--orange);line-height:1.5';
+    qDiv.innerHTML=qz.q;
+    box.appendChild(qDiv);
+    // Opcje w gridzie 2x2
+    var grid=document.createElement('div');
+    grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
     qz.opts.forEach(function(o,i){
       var div=document.createElement('div');
       div.className='quiz-opt';
       div.dataset.idx=String(i);
-      div.style.cssText='padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:.15s';
-      div.innerHTML='<span style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">'+String.fromCharCode(65+i)+'</span>'+o;
-      div.addEventListener('mouseenter',function(){if(!_quizAnswered)this.style.borderColor='var(--orange)';});
-      div.addEventListener('mouseleave',function(){if(!_quizAnswered)this.style.borderColor='var(--border)';});
+      div.style.cssText='padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:.15s;background:#fff';
+      var letter=document.createElement('span');
+      letter.style.cssText='width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;color:var(--dim2)';
+      letter.textContent=String.fromCharCode(65+i);
+      div.appendChild(letter);
+      div.appendChild(document.createTextNode(o));
+      div.addEventListener('mouseenter',function(){if(!_quizAnswered)this.style.borderColor='var(--orange)';this.style.background='rgba(201,106,42,.05)';});
+      div.addEventListener('mouseleave',function(){if(!_quizAnswered){this.style.borderColor='var(--border)';this.style.background='#fff';}});
       div.addEventListener('click',function(){quizAnswer(parseInt(this.dataset.idx),window._currentQuiz.correct,window._currentQuiz.explain,this);});
-      container.appendChild(div);
+      grid.appendChild(div);
     });
+    box.appendChild(grid);
+    // Miejsce na wyjaśnienie
+    var expl=document.createElement('div');
+    expl.id='dc-quiz-explain-inline';
+    expl.style.cssText='display:none;font-size:13px;color:var(--dim);line-height:1.6;padding:10px 12px;background:var(--paper2);border-radius:10px;margin-top:4px';
+    box.appendChild(expl);
   }
 }
 
@@ -662,9 +677,9 @@ function quizAnswer(idx, correct, explain, el){
     el.style.borderColor='#a32d2d';
     el.style.color='#501313';
   }
-  var expl=(document.getElementById('dc-quiz-explain')||{});
+  var expl=document.getElementById('dc-quiz-explain-inline')||(document.getElementById('dc-quiz-explain')||{});
   expl.style.display='block';
-  expl.innerHTML='<strong style="color:var(--navy)">'+(idx===correct?'✅ Świetnie!':'❌ Nie tym razem')+'</strong> '+explain;
+  expl.innerHTML='<strong style="color:'+(idx===correct?'#16a34a':'#dc2626')+'">'+(idx===correct?'✅ Świetnie!':'❌ Nie tym razem')+'</strong> '+explain;
   if(!_dailyDone.quiz){
     _dailyDone.quiz=true;
     var qLangNow=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';

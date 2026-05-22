@@ -242,8 +242,31 @@ function saveTrybMnemonic(){
 function showTrybMiniStory(){
   var box=document.getElementById('tryb-story-box');if(!box)return;
   if(box.style.display==='block'){box.style.display='none';return;}
-  var words=_trybSetCards.slice(0,5).map(function(c){return'<strong style="color:var(--gold)">'+(c.word||'')+'</strong>';});
-  box.innerHTML='📖 <em>Krótka historia łącząca słowa: '+words.join(', ')+'.<br>Użyj ich wszystkich w rozmowie!</em>';
+  // Generate AI mini-story using current word in context
+  var currentCard=_trybCards[_trybIdx];
+  if(!currentCard){box.style.display='none';return;}
+  box.innerHTML='<div style="color:var(--dim2);font-size:12px">⏳ Generuję historyjkę...</div>';
+  box.style.display='block';
+  db.auth.getSession().then(function(r){
+    var tok=r.data.session?r.data.session.access_token:'';
+    var w=currentCard.word||'';
+    var t=currentCard.translation||'';
+    var prompt='Write a short story (3-4 sentences) in English that naturally uses the word "'+w+'" (meaning: "'+t+'"). '
+      +'Bold the target word every time it appears like **'+w+'**. '
+      +'Make the story interesting and the meaning of the word clear from context. '
+      +'Then add a Polish translation of the story in italics on a new line.';
+    fetch(AI_PROXY_URL,{method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:300})
+    }).then(function(res){return res.json();}).then(function(d){
+      var text=(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim();
+      if(!text){box.style.display='none';return;}
+      // Format: bold **word** and italics for Polish
+      var html=text.replace(/\*\*([^*]+)\*\*/g,'<strong style="color:var(--gold)">$1</strong>').replace(/
+/g,'<br>');
+      box.innerHTML='<div style="font-size:13px;line-height:1.7;color:rgba(255,255,255,.9)">📖 '+html+'</div>';
+    }).catch(function(){box.style.display='none';});
+  });
   box.style.display='block';
 }
 
