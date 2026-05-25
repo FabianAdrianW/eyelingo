@@ -1754,7 +1754,8 @@ async function loadRanking(){
       else if(pg==='community') showPage('community');
     }
   });
-})();
+}
+injectTrybPage(); // run on load
 </script>
 
 <!-- ═══ COMMUNITY PAGE ═══ -->
@@ -2422,6 +2423,8 @@ async function initToFixPage(){
   <!-- Panel: Kalendarz Kultur (embedded) -->
   <div id="odkryj-panel-kultura" style="display:none">
     <div id="odkryj-kk-root" style="max-width:720px;margin:0 auto">
+      <!-- Month calendar -->
+      <div id="kk-month-cal" style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px"></div>
       <div id="odkryj-kk-loading" style="text-align:center;padding:60px 20px">
         <div style="font-size:32px;margin-bottom:12px">🌍</div>
         <div style="font-size:15px;color:var(--dim2)">Ładuję artykuł dnia...</div>
@@ -2475,20 +2478,12 @@ async function initToFixPage(){
       <option value="jp">🇯🇵 Japoński</option>
     </select>
   </div>
-  <div style="display:flex;align-items:center;gap:10px">
-    <label style="font-size:12px;color:var(--dim2);font-weight:600" for="daily-level-select">Poziom:</label>
-    <select id="daily-level-select" onchange="saveLangLevel()" style="padding:7px 12px;border-radius:20px;border:1.5px solid var(--border2);font-size:13px;background:var(--paper);color:var(--navy);font-weight:500;cursor:pointer">
-      <option value="A1">A1 – Podstawowy</option>
-      <option value="A2">A2 – Elementarny</option>
-      <option value="B1" selected>B1 – Średniozaawansowany</option>
-      <option value="B2">B2 – Wyższy średni</option>
-      <option value="C1">C1 – Zaawansowany</option>
-      <option value="C2">C2 – Biegły</option>
-    </select>
-    <button onclick="openLevelSettings()" style="display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:20px;border:1.5px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;transition:.15s" title="Ustaw poziomy dla wszystkich języków">
-      ⚙️ Ustawienia poziomów
-    </button>
-  </div>
+  <!-- Level selector hidden - accessible via profile settings -->
+  <select id="daily-level-select" style="display:none" onchange="saveLangLevel()">
+    <option value="A1">A1</option><option value="A2">A2</option>
+    <option value="B1" selected>B1</option><option value="B2">B2</option>
+    <option value="C1">C1</option><option value="C2">C2</option>
+  </select>
   <div style="background:var(--navy);color:#fff;border-radius:12px;padding:10px 20px;font-size:13px;font-weight:600" id="daily-countdown">Odnawia się o północy</div>
 </div>
 
@@ -3139,11 +3134,8 @@ async function loadDailyWord(){
         if(langFiltered.length>=2){
           pool=langFiltered.map(function(r){return{word:r.flashcards.word,translation:r.flashcards.translation};});
         }
-        // If not enough for selected lang — fallback to all langs
-        if(pool.length<2){
-          pool=wp_res.data.filter(function(r){return r.flashcards&&r.flashcards.word;})
-            .map(function(r){return{word:r.flashcards.word,translation:r.flashcards.translation};});
-        }
+        // If not enough for selected lang — DON'T fall back to other languages
+        // showDailyWordFallback() will provide language-specific hardcoded words
       }
     }catch(e){}
 
@@ -6111,7 +6103,7 @@ async function awardGoldBonus(amount){
 }
 
 // Tryb Nauki page HTML injection
-(function(){
+function injectTrybPage(){
   if(document.getElementById('page-tryb'))return;
   var div=document.createElement('div');
   div.id='page-tryb';div.className='page';
@@ -6999,35 +6991,323 @@ function odkryjShowTab(tab){
   if(tab==='lyrics')  odkryjLoadLyrics();
 }
 
+
+var CULTURE_COLOR_MAP = {
+  // Asia - deep blues and reds
+  'japonia': '#1a0a0a', 'japan': '#1a0a0a',
+  'chiny': '#1a0808', 'china': '#1a0808',
+  'indie': '#1a0e00', 'india': '#1a0e00',
+  'korea': '#0a0a1a', 'tajlandia': '#1a1200',
+  // Africa - earthy oranges/browns
+  'afryka': '#1a0e00', 'maroko': '#160a00', 'etiopia': '#0a1200',
+  'nigeria': '#001200', 'egipt': '#1a1400',
+  // Latin America - warm greens/yellows
+  'meksyk': '#0a1a00', 'brazylia': '#001a08', 'argentyna': '#001a14',
+  'peru': '#0a0a1a', 'kolumbia': '#1a1000',
+  // Europe
+  'grecja': '#00081a', 'wlochy': '#00100a', 'francja': '#00061a',
+  'hiszpania': '#1a0400', 'portugalia': '#001a10',
+  // Middle East
+  'iran': '#1a0800', 'turcja': '#1a0600', 'arabia': '#1a1200',
+  // Default by region hints
+  'azja': '#1a2030', 'europa': '#0a0a2a', 'ameryka': '#0a1a0a'
+};
+
+function getCultureColor(culture, country) {
+  var key = (culture + ' ' + (country||'')).toLowerCase();
+  for (var k in CULTURE_COLOR_MAP) {
+    if (key.indexOf(k) >= 0) return CULTURE_COLOR_MAP[k];
+  }
+  // Fallback: hash culture name to a rich dark color
+  var hash = 0;
+  for (var i = 0; i < culture.length; i++) hash = culture.charCodeAt(i) + ((hash<<5) - hash);
+  var h = Math.abs(hash) % 360;
+  return 'hsl(' + h + ',60%,12%)';
+}
+
+var _kkCurrentArticle = null;
+var _kkQuizData = [];
+var _kkQIdx = 0, _kkScore = 0, _kkAnswered = false;
+
 function odkryjLoadKultura(){
-  var wrap=document.getElementById('odkryj-kk-content');
-  var loading=document.getElementById('odkryj-kk-loading');
-  if(!wrap||wrap.dataset.loaded==='1') return;
-  wrap.dataset.loaded='1';
-  // Pobierz artykuł z Supabase i wyrenderuj
+  var wrap = document.getElementById('odkryj-kk-content');
+  var loading = document.getElementById('odkryj-kk-loading');
+  if(!wrap) return;
+  // Always reload (don't cache - fresh each visit)
+  loading.style.display = 'block';
+  wrap.style.display = 'none';
+  wrap.innerHTML = '';
   (async function(){
     try{
-      var today=new Date().toISOString().split('T')[0];
-      var {data}=await db.from('culture_articles').select('*').eq('date',today).single();
-      if(!data){loading.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--dim2)">Artykuł na dziś jeszcze nie jest gotowy.</div>';return;}
-      loading.style.display='none';
-      wrap.style.display='block';
-      // Render uproszczony
-      wrap.innerHTML='<div style="background:'+data.hero_color+';border-radius:16px;padding:24px;margin-bottom:16px">'
-        +'<div style="font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Kultura dnia</div>'
-        +'<h3 style="font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:#fff;line-height:1.2;margin-bottom:6px">'+data.headline+'</h3>'
-        +'<div style="font-size:13px;color:rgba(255,255,255,0.6);font-style:italic">'+data.subline+'</div></div>'
-        +'<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">'
-        +'<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">⚡ Intro</div>'
-        +'<p style="font-size:15px;line-height:1.75;color:var(--navy);border-left:3px solid var(--orange);padding-left:12px;margin:0">'+data.hook+'</p></div>'
-        +(data.paragraphs||[]).map(function(p){return'<p style="font-size:15px;line-height:1.75;color:var(--navy);margin-bottom:12px">'+p+'</p>';}).join('')
-        +'<div style="background:'+data.hero_color+';border-radius:12px;padding:16px;margin-top:8px">'
-        +'<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:6px">🔤 Słowo dnia</div>'
-        +'<div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#fff">'+data.word+'</div>'
-        +'<div style="font-size:13px;color:rgba(255,255,255,0.6)">'+data.word_phonetic+'</div>'
-        +'<div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:6px">'+data.word_meaning+'</div></div>';
-    }catch(e){loading.innerHTML='<div style="color:var(--dim2);padding:20px">Błąd: '+e.message+'</div>';}
+      var today = new Date().toISOString().split('T')[0];
+      var {data} = await db.from('culture_articles').select('*').eq('date', today).single();
+      if(!data){
+        loading.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:32px;margin-bottom:12px">🌍</div>Artykuł na dziś jeszcze nie jest gotowy.</div>';
+        return;
+      }
+      _kkCurrentArticle = data;
+      _kkQuizData = data.quiz || [];
+      var color = getCultureColor(data.culture||'', data.country||'');
+      loading.style.display = 'none';
+      wrap.style.display = 'block';
+      kkRenderFull(wrap, data, color);
+      kkRenderMonthCalendar(today);
+    }catch(e){
+      loading.innerHTML = '<div style="color:var(--dim2);padding:20px;text-align:center">Błąd ładowania: '+e.message+'</div>';
+    }
   })();
+}
+
+function kkRenderFull(wrap, d, color){
+  var dateStr = new Date(d.date+'T12:00:00').toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long'});
+  wrap.innerHTML =
+    // HERO
+    '<div style="background:'+color+';border-radius:20px;padding:28px;position:relative;overflow:hidden;margin-bottom:16px">'
+      +'<div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,0.04);pointer-events:none"></div>'
+      +'<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.12);border:0.5px solid rgba(255,255,255,0.2);border-radius:100px;padding:4px 12px;font-size:11px;color:rgba(255,255,255,0.7);margin-bottom:14px">'
+        +'<span style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block"></span>'
+        +dateStr+'</div>'
+      +'<div style="font-size:11px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Kultura dnia · '+( d.country||'')+'</div>'
+      +'<h2 style="font-family:Syne,sans-serif;font-size:clamp(18px,3vw,24px);font-weight:800;color:#fff;line-height:1.25;margin-bottom:8px">'+d.headline+'</h2>'
+      +'<div style="font-size:13px;color:rgba(255,255,255,0.55);font-style:italic;line-height:1.5">'+( d.subline||'')+'</div>'
+    +'</div>'
+    // STREAK
+    +'<div id="kk-streak-bar-odkryj" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:14px">'
+      +'<span style="font-size:18px">🔥</span>'
+      +'<div><div style="font-size:13px;color:var(--dim)">Seria czytania: <strong id="kk-streak-num-odkryj" style="color:var(--navy)">1 dzień</strong></div>'
+      +'<div style="font-size:11px;color:var(--dim2)" id="kk-streak-sub-odkryj"></div></div>'
+    +'</div>'
+    // INTRO
+    +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:10px">'
+      +'<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">⚡ Intro</div>'
+      +'<div style="font-size:15px;line-height:1.75;color:var(--navy);border-left:3px solid var(--orange);padding-left:12px">'+( d.hook||'')+'</div>'
+    +'</div>'
+    // KONTEKST
+    +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:10px">'
+      +'<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">🌐 Kontekst kulturowy</div>'
+      +(( d.paragraphs||[]).map(function(p){return'<p style="font-size:15px;line-height:1.75;color:var(--navy);margin-bottom:12px">'+p+'</p>';}).join(''))
+    +'</div>'
+    // CIEKAWOSTKA
+    +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:10px">'
+      +'<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">💡 Tego nie wiesz</div>'
+      +'<div style="background:var(--paper);border-radius:10px;padding:12px"><p style="font-size:14px;line-height:1.7;color:var(--navy);margin:0">'+( d.fact||'')+'</p></div>'
+    +'</div>'
+    // MOST
+    +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:10px">'
+      +'<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">🤝 Bliżej niż myślisz</div>'
+      +'<p style="font-size:15px;line-height:1.75;color:var(--navy);margin:0">'+( d.bridge||'')+'</p>'
+    +'</div>'
+    // SŁOWO DNIA
+    +'<div style="background:'+color+';border-radius:14px;padding:18px;margin-bottom:14px">'
+      +'<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.5);margin-bottom:10px">🔤 Słowo dnia</div>'
+      +'<div style="font-family:Syne,sans-serif;font-size:32px;font-weight:800;color:#fff;letter-spacing:-0.5px;margin-bottom:4px">'+( d.word||'')+'</div>'
+      +'<div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:8px">'+( d.word_phonetic||'')+'</div>'
+      +'<div style="font-size:13px;color:rgba(255,255,255,0.8);line-height:1.6;margin-bottom:6px">'+( d.word_meaning||'')+'</div>'
+      +'<div style="font-size:12px;color:rgba(255,255,255,0.5);font-style:italic">'+( d.word_example||'')+'</div>'
+      +'<button onclick="kkSpeak()" style="display:inline-flex;align-items:center;gap:5px;margin-top:10px;background:rgba(255,255,255,0.12);border:0.5px solid rgba(255,255,255,0.2);border-radius:100px;padding:5px 12px;font-size:11px;color:rgba(255,255,255,0.8);cursor:pointer">🔊 Posłuchaj</button>'
+    +'</div>'
+    // TAGI
+    +'<div id="kk-tags-odkryj" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px"></div>'
+    // QUIZ BUTTON
+    +'<button onclick="kkStartQuizOdkryj()" style="width:100%;padding:13px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;font-family:'DM Sans',sans-serif">🎯 Quiz kulturowy (3 pytania)</button>'
+    +'<button onclick="kkAddFlashcardOdkryj()" style="width:100%;padding:11px;background:transparent;color:var(--dim);border:1.5px dashed var(--border2);border-radius:100px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">＋ Dodaj słowo dnia do fiszek</button>'
+    // QUIZ AREA
+    +'<div id="kk-quiz-odkryj" style="display:none;margin-top:16px">'
+      +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px">'
+        +'<div id="kk-quiz-progress-odkryj" style="display:flex;gap:4px;margin-bottom:14px"></div>'
+        +'<div id="kk-quiz-body-odkryj"></div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">'
+          +'<button onclick="kkHideQuizOdkryj()" style="padding:7px 14px;border-radius:100px;border:1px solid var(--border2);background:transparent;color:var(--dim);font-size:12px;cursor:pointer">← Wróć</button>'
+          +'<button id="kk-next-odkryj" onclick="kkNextQOdkryj()" style="display:none;padding:7px 18px;border-radius:100px;border:none;background:var(--navy);color:#fff;font-size:12px;font-weight:600;cursor:pointer">Dalej →</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>'
+    // ARCHIWUM
+    +'<div style="margin-top:20px">'
+      +'<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">📅 Poprzednie artykuły</div>'
+      +'<div id="kk-archive-odkryj"></div>'
+    +'</div>';
+
+  // Render tags
+  var tagsWrap = document.getElementById('kk-tags-odkryj');
+  if(tagsWrap)(d.tags||[]).forEach(function(t){
+    var s=document.createElement('span');
+    s.textContent=t;
+    s.style.cssText='padding:3px 10px;background:var(--paper2);border:1px solid var(--border);border-radius:100px;font-size:11px;color:var(--dim2)';
+    tagsWrap.appendChild(s);
+  });
+
+  // Streak
+  kkUpdateStreakOdkryj(d.date);
+  // Archive
+  kkLoadArchiveOdkryj(d.date);
+}
+
+function kkUpdateStreakOdkryj(todayDate){
+  try{
+    var last=localStorage.getItem('kk_last_read');
+    var count=parseInt(localStorage.getItem('kk_streak')||'0',10);
+    var yesterday=new Date(Date.now()-86400000).toISOString().split('T')[0];
+    if(last===todayDate){}
+    else if(last===yesterday){count+=1;}
+    else{count=1;}
+    localStorage.setItem('kk_last_read',todayDate);
+    localStorage.setItem('kk_streak',String(count));
+    var sn=document.getElementById('kk-streak-num-odkryj');
+    var ss=document.getElementById('kk-streak-sub-odkryj');
+    if(sn)sn.textContent=count+(count===1?' dzień':' dni');
+    if(ss)ss.textContent=count>=7?'🏆 Odznaka "Kulturoznawca tygodnia" odblokowana!':'Jeszcze '+(7-count)+' '+(7-count===1?'dzień':'dni')+' do odznaki tygodnia';
+  }catch(e){}
+}
+
+async function kkLoadArchiveOdkryj(todayDate){
+  try{
+    var {data}=await db.from('culture_articles').select('date,culture,country,headline,hero_color').neq('date',todayDate).order('date',{ascending:false}).limit(5);
+    var wrap=document.getElementById('kk-archive-odkryj');
+    if(!wrap)return;
+    if(!data||!data.length){wrap.innerHTML='<div style="font-size:12px;color:var(--dim2)">To pierwszy artykuł — jutro pojawi się historia.</div>';return;}
+    data.forEach(function(a){
+      var color=getCultureColor(a.culture||'',a.country||'');
+      var d=document.createElement('div');
+      d.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:6px;transition:.15s';
+      d.onmouseover=function(){this.style.background='var(--paper2)';};
+      d.onmouseout=function(){this.style.background='#fff';};
+      d.onclick=function(){kkLoadArchiveDayOdkryj(a.date);};
+      var dot=document.createElement('div');
+      dot.style.cssText='width:32px;height:32px;border-radius:8px;flex-shrink:0;background:'+color+';display:flex;align-items:center;justify-content:center;font-size:14px';
+      dot.textContent='🌍';
+      var dl=new Date(a.date+'T12:00:00').toLocaleDateString('pl-PL',{day:'numeric',month:'short'});
+      var info=document.createElement('div');
+      info.innerHTML='<div style="font-size:12px;font-weight:600;color:var(--navy)">'+a.culture+' · '+dl+'</div>'
+        +'<div style="font-size:11px;color:var(--dim2)">'+a.headline.slice(0,55)+'…</div>';
+      d.appendChild(dot);d.appendChild(info);wrap.appendChild(d);
+    });
+  }catch(e){}
+}
+
+async function kkLoadArchiveDayOdkryj(date){
+  var wrap=document.getElementById('odkryj-kk-content');
+  var loading=document.getElementById('odkryj-kk-loading');
+  if(!wrap)return;
+  loading.style.display='block';wrap.style.display='none';
+  var {data}=await db.from('culture_articles').select('*').eq('date',date).single();
+  if(data){
+    _kkCurrentArticle=data;_kkQuizData=data.quiz||[];
+    var color=getCultureColor(data.culture||'',data.country||'');
+    loading.style.display='none';wrap.style.display='block';
+    kkRenderFull(wrap,data,color);
+  }
+}
+
+function kkSpeak(){
+  if(!_kkCurrentArticle||!window.speechSynthesis)return;
+  var utt=new SpeechSynthesisUtterance(_kkCurrentArticle.word);
+  utt.rate=0.85;window.speechSynthesis.speak(utt);
+}
+
+function kkStartQuizOdkryj(){
+  _kkQIdx=0;_kkScore=0;_kkAnswered=false;
+  document.getElementById('kk-quiz-odkryj').style.display='block';
+  kkRenderQOdkryj();
+}
+function kkHideQuizOdkryj(){document.getElementById('kk-quiz-odkryj').style.display='none';}
+
+function kkRenderQOdkryj(){
+  _kkAnswered=false;
+  var q=_kkQuizData[_kkQIdx];if(!q){kkShowScoreOdkryj();return;}
+  var prog=document.getElementById('kk-quiz-progress-odkryj');
+  if(prog)prog.innerHTML=_kkQuizData.map(function(_,i){
+    var bg=i<_kkQIdx?'var(--navy)':i===_kkQIdx?'var(--orange)':'var(--border)';
+    return'<div style="flex:1;height:3px;border-radius:2px;background:'+bg+'"></div>';
+  }).join('');
+  var body=document.getElementById('kk-quiz-body-odkryj');
+  if(body)body.innerHTML='<div style="font-size:11px;color:var(--dim2);margin-bottom:4px">Pytanie '+(_kkQIdx+1)+' z '+_kkQuizData.length+' · '+(q.trudnosc||'')+'</div>'
+    +'<div style="font-size:14px;font-weight:600;color:var(--navy);margin-bottom:12px;line-height:1.4">'+q.pytanie+'</div>'
+    +(q.odpowiedzi||[]).map(function(a,i){
+      return'<div onclick="kkSelectAnsOdkryj('+i+')" style="display:flex;align-items:flex-start;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:13px;color:var(--navy);margin-bottom:6px;background:#fff">'
+        +'<span style="width:20px;height:20px;border-radius:50%;background:var(--paper2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--dim2);flex-shrink:0">'+['A','B','C','D'][i]+'</span>'
+        +'<span>'+a+'</span></div>';
+    }).join('')
+    +'<div id="kk-expl-odkryj" style="display:none;margin-top:8px;padding:8px 10px;background:var(--paper);border-radius:8px;font-size:12px;color:var(--dim);line-height:1.5">'+(q.wyjasnienie||'')+'</div>';
+  var nb=document.getElementById('kk-next-odkryj');if(nb)nb.style.display='none';
+}
+
+function kkSelectAnsOdkryj(idx){
+  if(_kkAnswered)return;_kkAnswered=true;
+  var q=_kkQuizData[_kkQIdx];
+  document.getElementById('kk-quiz-body-odkryj').querySelectorAll('div[onclick]').forEach(function(el,i){
+    el.style.cursor='default';
+    if(i===q.poprawna){el.style.background='#eaf3de';el.style.borderColor='#639922';el.style.color='#3b6d11';}
+    else if(i===idx&&i!==q.poprawna){el.style.background='#fcebeb';el.style.borderColor='#e24b4a';el.style.color='#a32d2d';}
+  });
+  if(idx===q.poprawna)_kkScore++;
+  var ex=document.getElementById('kk-expl-odkryj');if(ex)ex.style.display='block';
+  var nb=document.getElementById('kk-next-odkryj');
+  if(nb){nb.style.display='inline-block';nb.textContent=_kkQIdx<_kkQuizData.length-1?'Dalej →':'Zobacz wynik';}
+}
+
+function kkNextQOdkryj(){_kkQIdx++;if(_kkQIdx>=_kkQuizData.length){kkShowScoreOdkryj();return;}kkRenderQOdkryj();}
+
+function kkShowScoreOdkryj(){
+  var body=document.getElementById('kk-quiz-body-odkryj');
+  if(body)body.innerHTML='<div style="text-align:center;padding:20px">'
+    +'<div style="font-family:Syne,sans-serif;font-size:48px;font-weight:800;color:var(--navy)">'+_kkScore+'/'+_kkQuizData.length+'</div>'
+    +'<div style="font-size:13px;color:var(--dim);margin-top:4px">'+(['Spróbuj jeszcze raz!','Nieźle — bliżej niż myślisz.','Świetna robota! 🎉'][_kkScore-1]||'Dobry wynik!')+'</div>'
+    +'</div>';
+  var nb=document.getElementById('kk-next-odkryj');if(nb)nb.style.display='none';
+}
+
+function kkAddFlashcardOdkryj(){
+  if(!_kkCurrentArticle)return;
+  if(typeof showToast==='function')showToast('Słowo "'+_kkCurrentArticle.word+'" dodane do fiszek!','success');
+}
+
+async function kkRenderMonthCalendar(todayStr){
+  var wrap=document.getElementById('kk-month-cal');
+  if(!wrap)return;
+  var today=new Date(todayStr+'T12:00:00');
+  var year=today.getFullYear(),month=today.getMonth();
+  var firstDay=new Date(year,month,1);
+  var daysInMonth=new Date(year,month+1,0).getDate();
+  var monthName=today.toLocaleDateString('pl-PL',{month:'long',year:'numeric'});
+  var dayNames=['Pn','Wt','Śr','Cz','Pt','So','Nd'];
+  // fetch all articles this month
+  var from=year+'-'+String(month+1).padStart(2,'0')+'-01';
+  var to=year+'-'+String(month+1).padStart(2,'0')+'-'+String(daysInMonth).padStart(2,'0');
+  var articles={};
+  try{
+    var {data}=await db.from('culture_articles').select('date,culture,country').gte('date',from).lte('date',to);
+    if(data)data.forEach(function(a){articles[a.date]={culture:a.culture,country:a.country};});
+  }catch(e){}
+
+  var startDow=(firstDay.getDay()+6)%7; // Mon=0
+  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    +'<div style="font-size:13px;font-weight:600;color:var(--navy);text-transform:capitalize">'+monthName+'</div>'
+    +'<div style="font-size:11px;color:var(--dim2)">Kliknij dzień aby zobaczyć kulturę</div></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px">'
+    +dayNames.map(function(d){return'<div style="text-align:center;font-size:10px;font-weight:600;color:var(--dim2);padding:4px 0">'+d+'</div>';}).join('')
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">'
+    +Array(startDow).fill('<div></div>').join('');
+
+  for(var day=1;day<=daysInMonth;day++){
+    var dateStr2=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+    var isToday=dateStr2===todayStr;
+    var art=articles[dateStr2];
+    var color=art?getCultureColor(art.culture||'',art.country||''):'transparent';
+    var hasCulture=!!art;
+    html+='<div onclick="'+(hasCulture?'kkLoadArchiveDayOdkryj(''+dateStr2+'')':'')+'" '
+      +'style="border-radius:8px;padding:4px 2px;text-align:center;cursor:'+(hasCulture?'pointer':'default')+';'
+      +'background:'+(hasCulture?color:'var(--paper2)')+';'
+      +'border:2px solid '+(isToday?'var(--orange)':'transparent')+';'
+      +'transition:.15s;" '
+      +(hasCulture?'title="'+( art.culture)+'"':'')+'>'
+      +'<div style="font-size:12px;font-weight:'+(isToday?'700':'400')+';color:'+(hasCulture?'rgba(255,255,255,0.9)':isToday?'var(--orange)':'var(--dim2)')+'">'+day+'</div>'
+      +(hasCulture?'<div style="font-size:9px;color:rgba(255,255,255,0.6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 2px">'+( art.culture.slice(0,8))+'</div>':'')
+      +'</div>';
+  }
+  html+='</div>';
+  wrap.innerHTML=html;
 }
 
 function odkryjLoadLyrics(){
@@ -7061,10 +7341,12 @@ function strefaLoadTryb(){
     embed.innerHTML='<div style="text-align:center;padding:40px;color:var(--dim2)">Tryb Nauki niedostępny.</div>';
     return;
   }
-  // Remove old page-tryb if exists
+  // Remove old page-tryb and reinject fresh
   var old=document.getElementById('page-tryb');
   if(old) old.parentNode.removeChild(old);
-  // initTrybNauki appends page-tryb to body
+  // Reinject page-tryb HTML
+  if(typeof injectTrybPage==='function') injectTrybPage();
+  // Now init
   initTrybNauki();
   // Wait for DOM to settle then move content
   var attempts = 0;
