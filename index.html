@@ -470,6 +470,21 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
     padding-bottom: max(80px, calc(60px + env(safe-area-inset-bottom, 0))) !important;
   }
 
+  /* Mini czytanka — stack layout on mobile */
+  #dc-read-layout {
+    grid-template-columns: 1fr !important;
+  }
+  /* Translation panel — collapsible on mobile */
+  #dc-read-side {
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+    margin-top: 4px;
+  }
+  /* Daily grid — single column on mobile */
+  #daily-grid {
+    grid-template-columns: 1fr !important;
+  }
+
   /* Overflow fixes */
   .nav-tabs { -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
   .nav-tab { scroll-snap-align: start; }
@@ -2716,7 +2731,11 @@ async function initToFixPage(){
       <span id="dc-quiz-done2" style="display:none;font-size:11px;color:#16a34a;font-weight:600">✓ Ukończone</span>
     </div>
     <div id="dc-quiz-inline-body">
-      <div style="color:var(--dim2);font-size:13px">Najpierw zapamiętaj słówka dnia 👆</div>
+      <div id="dc-quiz-q" style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:10px;line-height:1.4"></div>
+      <div id="dc-quiz-opts" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="grid-column:1/-1;color:var(--dim2);font-size:13px">⏳ Generuję quiz...</div>
+      </div>
+      <div id="dc-quiz-expl" style="display:none;margin-top:10px;padding:8px 12px;background:var(--paper);border-radius:8px;font-size:12px;color:var(--dim);line-height:1.5"></div>
     </div>
   </div>
 </div>
@@ -2736,15 +2755,16 @@ async function initToFixPage(){
     <div id="dc-read-loading" style="color:var(--dim2);font-size:13px;padding:20px 0">Ładowanie...</div>
     <div id="dc-read-content" style="display:none">
       <!-- Panel boczny layout -->
-      <div style="display:grid;grid-template-columns:1fr 280px;gap:20px;align-items:start">
+      <div id="dc-read-layout" style="display:grid;grid-template-columns:1fr 280px;gap:20px;align-items:start">
         <!-- Tekst główny -->
         <div>
           <div id="dc-read-title" style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:14px;line-height:1.3"></div>
           <div id="dc-read-body" style="font-size:15px;color:var(--dim);line-height:1.9;letter-spacing:.01em"></div>
           <button class="btn btn-orange" onclick="dailyReadDone()" id="dc-read-btn" style="font-size:13px;padding:9px 20px;margin-top:20px">Przeczytałem ✓</button>
+          <button id="dc-read-toggle-tr" onclick="toggleCzytankaTranslation()" style="display:none;margin-top:8px;padding:7px 14px;border-radius:100px;border:1px solid var(--border2);background:transparent;font-size:12px;color:var(--dim2);cursor:pointer">🔤 Pokaż tłumaczenie</button>
         </div>
         <!-- Panel boczny: tłumaczenia -->
-        <div style="position:sticky;top:100px">
+        <div id="dc-read-side" style="position:sticky;top:100px">
           <div style="background:var(--paper2);border-radius:12px;border:1px solid var(--border);overflow:hidden">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Tłumaczenie</div>
             <div id="dc-read-sidebar" style="padding:14px;min-height:80px">
@@ -3236,6 +3256,8 @@ function initDaily(){
 }
 
 function reloadDailyContent(){
+  // Clear cache flags so AI regenerates for new language
+  window._dailyWordsData = null;
   try{var sel=document.getElementById('daily-lang-select');if(sel)localStorage.setItem('daily_lang',sel.value);}catch(e){}
   _dailyLoaded=true;
   _dailyLoadedDate=''; // force reload
@@ -3297,104 +3319,116 @@ function showDailyWordFallback(){
 }
 
 async function loadDailyWord(){
+  var langSel = document.getElementById('daily-lang-select');
+  var lang = langSel ? langSel.value : 'en';
+  var langLabels = {en:'angielski',es:'hiszpański',nl:'niderlandzki',jp:'japoński'};
+  var langLabel = langLabels[lang] || lang;
+  var today = new Date().toISOString().slice(0,10);
+
+  // Show loading state
+  var wrap = document.getElementById('daily-words-wrap');
+  if(wrap) wrap.innerHTML = '<div style="text-align:center;padding:20px;color:var(--dim2);font-size:13px">⏳ Ładuję słówka dnia...</div>';
+
   try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess){showDailyWordFallback();return;}
+    var sess = (await db.auth.getSession()).data.session;
+    var tok = sess ? sess.access_token : '';
 
-    var dailyLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
-    var pool=[];
+    // 1. Check if today's words already exist in DB for this language
+    var {data: cached} = await db
+      .from('daily_words')
+      .select('*')
+      .eq('date', today)
+      .eq('language', lang)
+      .single();
 
-    // Try word_progress - filter by language_id
-    var langIdMap={'en':1,'es':2,'jp':3,'nl':4,'de':5,'fr':6};
-    var langId=langIdMap[dailyLang]||1;
+    if(cached && cached.words){
+      renderDailyWords(cached.words, lang);
+      return;
+    }
+
+    // 2. Generate new words via AI proxy
+    var level = (typeof getCurrentLangLevel === 'function') ? getCurrentLangLevel() : 'B1';
+    var prompt = 'Wygeneruj dokładnie 2 ciekawe słówka w języku ' + langLabel + ' na poziomie ' + level + '.'
+      + ' Wybierz słowa użyteczne, nieoczywiste, z ciekawym kontekstem kulturowym lub stylistycznym.'
+      + ' Odpowiedz TYLKO poprawnym JSON bez żadnego tekstu przed ani po, bez backticks:'
+      + ' [{"word":"słowo","translation":"polskie tłumaczenie","example":"przykładowe zdanie w ' + langLabel + '","example_pl":"tłumaczenie przykładu po polsku","tip":"krótka ciekawostka o tym słowie po polsku max 1 zdanie"},'
+      + '{"word":"słowo2","translation":"tłumaczenie2","example":"zdanie2","example_pl":"tłumaczenie2","tip":"ciekawostka2"}]';
+
+    var res = await fetch(AI_PROXY_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body: JSON.stringify({messages:[{role:'user',content:prompt}], max_tokens:600})
+    });
+    var d = await res.json();
+    var raw = d?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+    var cleaned = raw.replace(/```json|```/g,'').trim();
+    var words = JSON.parse(cleaned);
+
+    // 3. Save to daily_words table
     try{
-      var wp_res=await db.from('word_progress')
-        .select('ease_factor,flashcards(word,translation,language_id)')
-        .eq('user_id',sess.user.id)
-        .order('ease_factor',{ascending:true})
-        .limit(100);
-      if(wp_res.data&&wp_res.data.length){
-        var langFiltered=wp_res.data.filter(function(r){
-          return r.flashcards&&r.flashcards.word&&r.flashcards.language_id===langId;
-        });
-        if(langFiltered.length>=2){
-          pool=langFiltered.map(function(r){return{word:r.flashcards.word,translation:r.flashcards.translation};});
-        }
-        // If not enough for selected lang — DON'T fall back to other languages
-        // showDailyWordFallback() will provide language-specific hardcoded words
-      }
+      await db.from('daily_words').upsert({
+        date: today,
+        language: lang,
+        level: level,
+        words: words,
+        created_at: new Date().toISOString()
+      }, {onConflict: 'date,language'});
     }catch(e){}
 
-    // Fallback: user_sets
-    if(pool.length<2){
-      try{
-        var sets_res=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(10);
-        if(sets_res.data) sets_res.data.forEach(function(s){if(s.user_set_cards)pool=pool.concat(s.user_set_cards);});
-      }catch(e){}
-    }
+    renderDailyWords(words, lang);
 
-    // If still no words — use language-specific fallback
-    if(pool.length<2){showDailyWordFallback();return;}
-
-    // Dwa deterministyczne słówka (seed = data, zmieniają się każdego dnia)
-    var seed=parseInt(new Date().toISOString().slice(0,10).replace(/-/g,''));
-    var i1=seed%pool.length;
-    var i2=(seed*7+3)%pool.length;
-    if(i1===i2) i2=(i2+1)%pool.length;
-    var card=pool[i1];
-    var card2=pool[i2];
-    var dailyLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
-
-    document.getElementById('dc-word-loading').style.display='none';
-    document.getElementById('dc-word-content').style.display='block';
-    document.getElementById('dc-word-text').textContent=card.word;
-    document.getElementById('dc-word-translation').textContent=card.translation;
-    document.getElementById('dc-word-text2').textContent=card2.word;
-    document.getElementById('dc-word-translation2').textContent=card2.translation;
-
-    // Zdania z cache lub generuj przez AI
-    function loadSentenceEl(w,translation,elId){
-      var el=document.getElementById(elId);
-      if(el) el.innerHTML='<span style="color:var(--dim2);font-style:normal;font-size:12px">⏳ Generuję zdanie...</span>';
-      db.from('context_sentences').select('sentence').eq('word',w).eq('language',dailyLang).limit(1).then(function(r){
-        var c=r.data&&(Array.isArray(r.data)?r.data[0]:r.data);
-        if(c&&c.sentence){
-          var s=c.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
-          if(el) el.innerHTML='"'+s+'"';
-        } else {
-          // Generuj zdanie przez AI
-          db.auth.getSession().then(function(sr){
-            var tok=sr.data&&sr.data.session?sr.data.session.access_token:'';
-            fetch(GENERATE_SENTENCE_URL,{
-              method:'POST',
-              headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},
-              body:JSON.stringify({word:w,translation:translation,lang:dailyLang,level:(typeof getCurrentLangLevel==='function'?getCurrentLangLevel():'B1')})
-            }).then(function(res){return res.json();}).then(function(d){
-              if(d&&d.sentence){
-                var s=d.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
-                if(el) el.innerHTML='"'+s+'"';
-                // Zapisz do cache
-                db.from('context_sentences').upsert(
-                  {word:w,language:dailyLang,level:(typeof getCurrentLangLevel==='function'?getCurrentLangLevel():'B1'),sentence:d.sentence,translation:d.translation||''},
-                  {onConflict:'word,language,level'}
-                ).then(function(){}).catch(function(){});
-              } else {
-                if(el) el.innerHTML='<span style="color:var(--dim2);font-style:normal;font-size:12px">Brak zdania — wróć po sesji nauki</span>';
-              }
-            }).catch(function(){
-              if(el) el.innerHTML='<span style="color:var(--dim2);font-style:normal;font-size:12px">Brak zdania — wróć po sesji nauki</span>';
-            });
-          });
-        }
-      }).catch(function(){});
-    }
-    loadSentenceEl(card.word,card.translation,'dc-word-sentence');
-    loadSentenceEl(card2.word,card2.translation,'dc-word-sentence2');
-
-  }catch(e){showDailyWordFallback();}
+  }catch(e){
+    showDailyWordFallback();
+  }
 }
 
+function renderDailyWords(words, lang){
+  if(!words || !words.length) return;
+  var w1 = words[0] || {};
+  var w2 = words[1] || {};
 
+  // Use existing HTML structure with its IDs
+  var loading = document.getElementById('dc-word-loading');
+  var contentEl = document.getElementById('dc-word-content');
+  if(loading) loading.style.display = 'none';
+  if(contentEl) contentEl.style.display = 'block';
+
+  // Word 1
+  var t1 = document.getElementById('dc-word-text');
+  var tr1 = document.getElementById('dc-word-translation');
+  var s1 = document.getElementById('dc-word-sentence');
+  if(t1) t1.textContent = w1.word || '';
+  if(tr1) tr1.textContent = w1.translation || '';
+  if(s1){
+    s1.innerHTML = (w1.example ? '<em>'+w1.example+'</em>' : '')
+      + (w1.example_pl ? '<br><span style="color:var(--dim2);font-style:normal">'+w1.example_pl+'</span>' : '')
+      + (w1.tip ? '<br><span style="color:var(--orange);font-size:11px">💡 '+w1.tip+'</span>' : '');
+  }
+
+  // Word 2
+  var t2 = document.getElementById('dc-word-text2');
+  var tr2 = document.getElementById('dc-word-translation2');
+  var s2 = document.getElementById('dc-word-sentence2');
+  if(t2) t2.textContent = w2.word || '';
+  if(tr2) tr2.textContent = w2.translation || '';
+  if(s2){
+    s2.innerHTML = (w2.example ? '<em>'+w2.example+'</em>' : '')
+      + (w2.example_pl ? '<br><span style="color:var(--dim2);font-style:normal">'+w2.example_pl+'</span>' : '')
+      + (w2.tip ? '<br><span style="color:var(--orange);font-size:11px">💡 '+w2.tip+'</span>' : '');
+  }
+
+  // Store for flashcard adding
+  window._dailyWordsData = words;
+  window._dailyWordsLang = lang;
+}
+
+function addWordToFlashcards(idx){
+  if(!window._dailyWordsData) return;
+  var w = window._dailyWordsData[idx];
+  if(!w) return;
+  if(typeof showToast === 'function') showToast('"'+w.word+'" dodano do fiszek!','success');
+  // TODO: integrate with actual flashcard save
+}
 async function loadDailyRead(){
   var dLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
   var topics={
@@ -3783,142 +3817,119 @@ function addArticleAudioBtn(text, lang){
 
 
 async function loadDailyQuiz(){
+  var langSel = document.getElementById('daily-lang-select');
+  var lang = langSel ? langSel.value : 'en';
+  var langLabels = {en:'angielskim',es:'hiszpańskim',nl:'niderlandzkim',jp:'japońskim'};
+  var langLabel = langLabels[lang] || lang;
+  var today = new Date().toISOString().slice(0,10);
+
+  var container = document.getElementById('dc-quiz-opts');
+  if(!container) return;
+  container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px';
+  container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--dim2);font-size:13px">⏳ Generuję quiz...</div>';
+
   try{
-    var sess=(await db.auth.getSession()).data.session;
-    var tok=sess?sess.access_token:'';
-    var res=await fetch('https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-sentence',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
-      body:JSON.stringify({word:'quiz',translation:'quiz',lang:document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en',level:(typeof getCurrentLangLevel==='function'?getCurrentLangLevel():'B1'),mode:'quiz'})
-    });
-    // fallback to hardcoded quiz
-    throw new Error('use fallback');
-  }catch(e){
-    var qLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
-    // Sprawdź czy quiz już zrobiony dziś
-    if(getQuizDoneToday()===qLang){
-      // Old quiz DOM removed — use inline quiz panel
-      _dailyDone.quiz=true;
-      var dqdEl=document.getElementById('dc-quiz-done2');
-      if(dqdEl) dqdEl.style.display='inline';
-      var iqb=document.getElementById('dc-quiz-inline-body');
-      if(iqb) iqb.innerHTML='<div style="text-align:center;padding:16px"><div style="font-size:32px;margin-bottom:8px">✅</div><div style="font-size:14px;font-weight:700;color:var(--navy)">Quiz ukończony!</div><div style="font-size:12px;color:var(--dim2)">Wróć jutro</div></div>';
-      updateDailyProgress();
+    var sess = (await db.auth.getSession()).data.session;
+    var tok = sess ? sess.access_token : '';
+
+    // Check cache
+    var {data: cached} = await db
+      .from('daily_quiz')
+      .select('*')
+      .eq('date', today)
+      .eq('language', lang)
+      .single();
+
+    if(cached && cached.question){
+      renderDailyQuiz(cached);
       return;
     }
-    var allQuizzes={
-      en:[
-        {q:'Jak powiedzieć po angielsku: <em>"mieć ciarki"</em>?',opts:['to have goosebumps','to get chills','to feel shivers','to be frozen'],correct:1,explain:'"Get chills" to idiom oznaczający uczucie dreszczu z ekscytacji lub strachu.'},
-        {q:'Co oznacza angielski idiom: <em>"break the ice"</em>?',opts:['złamać lód','przełamać pierwsze lody','zepsuć coś','ochłodzić sytuację'],correct:1,explain:'"Break the ice" oznacza przełamanie barier w nowym towarzystwie.'},
-        {q:'Które słowo NIE jest synonimem słowa <em>"happy"</em>?',opts:['joyful','content','elated','gloomy'],correct:3,explain:'"Gloomy" oznacza przygnębiony — to antonym. Pozostałe są synonimami.'},
-        {q:'Jak powiedzieć po angielsku: <em>"na dłuższą metę"</em>?',opts:['in the long run','for a long time','at long last','in the end'],correct:0,explain:'"In the long run" = w perspektywie długoterminowej.'}
-      ],
-      es:[
-        {q:'Co oznacza hiszpański idiom: <em>"no hay mal que por bien no venga"</em>?',opts:['nie ma złego bez dobrego','nigdy nie wiadomo','każdy ma swój czas','lepiej późno niż wcale'],correct:0,explain:'Dosłownie "nie ma zła, z którego nie wynika dobro" — odpowiednik polskiego "nie ma złego co by na dobre nie wyszło".'},
-        {q:'Jak powiedzieć po hiszpańsku <em>"tęsknię za tobą"</em>?',opts:['Te quiero','Te echo de menos','Me gustas','Te necesito'],correct:1,explain:'"Te echo de menos" to dosłownie "brakuje mi cię" — najczęstszy sposób wyrażenia tęsknoty w hiszpańskim.'},
-        {q:'Które słowo oznacza <em>"szybko"</em> po hiszpańsku?',opts:['despacio','rápido','tarde','pronto'],correct:1,explain:'"Rápido" = szybko. "Despacio" = wolno, "tarde" = późno, "pronto" = wkrótce.'}
-      ],
-      nl:[
-        {q:'Co oznacza holenderski idiom: <em>"nu komt de aap uit de mouw"</em>?',opts:['małpa uciekła','prawdziwe intencje wychodzą na jaw','coś nieoczekiwanego','zabawna sytuacja'],correct:1,explain:'Dosłownie "teraz małpa wychodzi z rękawa" — oznacza moment gdy ktoś zdradza swoje prawdziwe zamiary.'},
-        {q:'Jak powiedzieć po holendersku <em>"dziękuję"</em>?',opts:['Alsjeblieft','Dank je wel','Goedemorgen','Tot ziens'],correct:1,explain:'"Dank je wel" = dziękuję (nieformalnie). "Dank u wel" to forma grzecznościowa.'}
-      ],
-      jp:[
-        {q:'Co oznacza japońskie słowo <em>"木漏れ日" (komorebi)</em>?',opts:['wschód słońca','światło słońca przebijające przez liście','odbicie w wodzie','wieczorny zmierzch'],correct:1,explain:'"Komorebi" to unikalne japońskie słowo na grę światła słonecznego między liśćmi drzew. Nie ma odpowiednika w innych językach.'},
-        {q:'Jak po japońsku wyrazić <em>"itadakimasu"</em>?',opts:['smacznego','dziękuję','przepraszam','do widzenia'],correct:0,explain:'"Itadakimasu" mówi się przed jedzeniem. Dosłownie "z pokorą otrzymuję" — wyraz wdzięczności za posiłek.'}
-      ]
-    };
-    var quizzes=allQuizzes[qLang]||allQuizzes['en'];
-    var qz=quizzes[Math.floor(Math.random()*quizzes.length)];
-    window._currentQuiz={correct:qz.correct,explain:qz.explain};
-    // dc-quiz-loading removed
-    // dc-quiz-content removed
-    var _dcqq=document.getElementById('dc-quiz-inline-body');if(_dcqq)_dcqq.innerHTML=qz.q;
-    (document.getElementById('dc-quiz-social')||{}).textContent='';
-    var container=document.getElementById('dc-quiz-opts');
-    if(!container) return;
-    container.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
-    container.innerHTML='';
-    _quizAnswered=false;
-    qz.opts.forEach(function(o,i){
-      var div=document.createElement('div');
-      div.className='quiz-opt';
-      div.dataset.idx=String(i);
-      div.style.cssText='padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:.15s';
-      div.innerHTML='<span style="width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">'+String.fromCharCode(65+i)+'</span>'+o;
-      div.addEventListener('mouseenter',function(){if(!_quizAnswered)this.style.borderColor='var(--orange)';});
-      div.addEventListener('mouseleave',function(){if(!_quizAnswered)this.style.borderColor='var(--border)';});
-      div.addEventListener('click',function(){quizAnswer(parseInt(this.dataset.idx),window._currentQuiz.correct,window._currentQuiz.explain,this);});
-      container.appendChild(div);
+
+    // Generate
+    var level = (typeof getCurrentLangLevel === 'function') ? getCurrentLangLevel() : 'B1';
+    var prompt = 'Wygeneruj 1 pytanie quizowe o języku ' + langLabel + ' na poziomie ' + level + '.'
+      + ' Pytanie może dotyczyć: znaczenia słowa, użycia w zdaniu, gramatyki lub ciekawostki kulturowej.'
+      + ' Odpowiedz TYLKO poprawnym JSON bez żadnego tekstu przed ani po, bez backticks:'
+      + ' {"question":"pytanie po polsku","word":"słowo w ' + langLabel + ' którego dotyczy pytanie",'
+      + '"options":["opcja A","opcja B","opcja C","opcja D"],'
+      + '"correct":0,"explanation":"krótkie wyjaśnienie po polsku"}';
+
+    var res = await fetch(AI_PROXY_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body: JSON.stringify({messages:[{role:'user',content:prompt}], max_tokens:400})
     });
+    var d = await res.json();
+    var raw = d?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    var cleaned = raw.replace(/```json|```/g,'').trim();
+    var quiz = JSON.parse(cleaned);
+
+    // Save to cache
+    try{
+      await db.from('daily_quiz').upsert({
+        date: today,
+        language: lang,
+        level: level,
+        question: quiz.question,
+        word: quiz.word,
+        options: quiz.options,
+        correct: quiz.correct,
+        explanation: quiz.explanation,
+        created_at: new Date().toISOString()
+      }, {onConflict: 'date,language'});
+    }catch(e){}
+
+    renderDailyQuiz(quiz);
+
+  }catch(e){
+    container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--dim2);font-size:12px">Nie udało się załadować quizu.</div>';
   }
 }
 
-function quizAnswer(idx, correct, explain, el){
-  if(_quizAnswered)return;
-  _quizAnswered=true;
-  var opts=document.querySelectorAll('.quiz-opt');
-  opts[correct].style.background='#e1f5ee';
-  opts[correct].style.borderColor='#0f6e56';
-  opts[correct].style.color='#085041';
-  if(idx!==correct){
-    el.style.background='#fcebeb';
-    el.style.borderColor='#a32d2d';
-    el.style.color='#501313';
+function renderDailyQuiz(quiz){
+  var container = document.getElementById('dc-quiz-opts');
+  if(!container) return;
+  var answered = false;
+
+  // Show question above options
+  var qEl = document.getElementById('dc-quiz-q');
+  if(qEl){
+    qEl.innerHTML = (quiz.word ? '<span style="font-size:12px;color:var(--orange);display:block;margin-bottom:4px">Słowo: <strong>'+quiz.word+'</strong></span>' : '')
+      + (quiz.question || '');
   }
-  var expl=(document.getElementById('dc-quiz-explain')||{});
-  expl.style.display='block';
-  expl.innerHTML='<strong style="color:var(--navy)">'+(idx===correct?'✅ Świetnie!':'❌ Nie tym razem')+'</strong> '+explain;
-  if(!_dailyDone.quiz){
-    _dailyDone.quiz=true;
-    var qLangNow=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
-    setQuizDoneToday(qLangNow);
-    addDailyXP(30);
-    var _dqd=document.getElementById('dc-quiz-done2');if(_dqd)_dqd.style.display='inline';
-    updateDailyProgress();
+
+  container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px';
+  container.innerHTML = (quiz.options || []).map(function(opt, i){
+    var letters = ['A','B','C','D'];
+    return '<button onclick="checkDailyQuizOpt(this,'+i+','+quiz.correct+')" '
+      + 'style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#fff;border:1.5px solid var(--border2);border-radius:10px;cursor:pointer;font-size:13px;color:var(--navy);text-align:left;transition:.15s;font-family:DM Sans,sans-serif">'
+      + '<span style="width:22px;height:22px;border-radius:50%;background:var(--paper2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--dim2);flex-shrink:0">'+letters[i]+'</span>'
+      + opt
+      + '</button>';
+  }).join('');
+
+  // Store explanation for after answer
+  window._dailyQuizExpl = quiz.explanation || '';
+}
+
+function checkDailyQuizOpt(btn, idx, correct){
+  var container = document.getElementById('dc-quiz-opts');
+  if(!container || btn.disabled) return;
+  // Disable all
+  container.querySelectorAll('button').forEach(function(b){ b.disabled = true; b.style.cursor = 'default'; });
+  // Color correct/wrong
+  var btns = container.querySelectorAll('button');
+  btns.forEach(function(b,i){
+    if(i === correct){ b.style.background='#eaf3de'; b.style.borderColor='#639922'; b.style.color='#3b6d11'; }
+    else if(i === idx && i !== correct){ b.style.background='#fcebeb'; b.style.borderColor='#e24b4a'; b.style.color='#a32d2d'; }
+  });
+  // Show explanation
+  var expl = document.getElementById('dc-quiz-expl');
+  if(expl && window._dailyQuizExpl){
+    expl.style.display = 'block';
+    expl.textContent = window._dailyQuizExpl;
   }
 }
-
-function dailyWordDone(){
-  if(_dailyDone.word)return;
-  _dailyDone.word=true;
-  addDailyXP(20);
-  document.getElementById('dc-word-btn').textContent='✓ Dodano!';
-  document.getElementById('dc-word-btn').disabled=true;
-  document.getElementById('dc-word-done').style.display='inline';
-  updateDailyProgress();
-  // Aktywuj quiz inline obok słówek
-  setTimeout(loadInlineQuiz, 300);
-}
-
-function dailyReadDone(){
-  if(_dailyDone.read)return;
-  _dailyDone.read=true;
-  addDailyXP(25);
-  document.getElementById('dc-read-btn').textContent='✓ Ukończone!';
-  document.getElementById('dc-read-btn').disabled=true;
-  document.getElementById('dc-read-done').style.display='inline';
-  updateDailyProgress();
-}
-
-function addDailyXP(xp){
-  _dailyXP+=xp;
-  document.getElementById('daily-xp').textContent=_dailyXP+' XP';
-}
-
-function updateDailyProgress(){
-  var done=Object.values(_dailyDone).filter(Boolean).length;
-  var total=Object.keys(_dailyDone).length;
-  document.getElementById('daily-progress-label').textContent=done+' z '+total+' aktywności ukończone';
-  document.getElementById('daily-progress-bar').style.width=Math.round(done/total*100)+'%';
-}
-
-// ═══════════════════════════════════════
-// WYZWANIE TYGODNIA
-// ═══════════════════════════════════════
-var _challengeTimer=null;
-
-var _challengeSetCache = null;
-
 async function initChallenge(){
   clearInterval(_challengeTimer);
   // Oblicz koniec tygodnia (niedziela 23:59)
@@ -8428,6 +8439,46 @@ async function addVocabToFlashcards(words, topic, lang){
 
 })();
 </script>
+<script>
+// Mobile czytanka toggle
+function toggleCzytankaTranslation(){
+  var side = document.getElementById('dc-read-side');
+  var btn = document.getElementById('dc-read-toggle-tr');
+  if(!side) return;
+  var hidden = side.style.display === 'none';
+  side.style.display = hidden ? 'block' : 'none';
+  if(btn) btn.textContent = hidden ? '🔤 Ukryj tłumaczenie' : '🔤 Pokaż tłumaczenie';
+}
+
+function initCzytankaMobile(){
+  var btn = document.getElementById('dc-read-toggle-tr');
+  var side = document.getElementById('dc-read-side');
+  if(!btn || !side) return;
+  if(window.innerWidth <= 600){
+    btn.style.display = 'inline-flex';
+    side.style.display = 'none'; // hidden by default on mobile
+  } else {
+    btn.style.display = 'none';
+    side.style.display = '';
+  }
+}
+
+// Call on resize and when article loads
+window.addEventListener('resize', initCzytankaMobile);
+document.addEventListener('DOMContentLoaded', initCzytankaMobile);
+
+// Hook into article load
+var _origDailyReadDone = window.dailyReadDone;
+var _origLoadDailyRead = window.loadDailyRead;
+if(typeof loadDailyRead === 'function'){
+  var _origLDR = loadDailyRead;
+  window.loadDailyRead = function(){
+    _origLDR.apply(this, arguments);
+    setTimeout(initCzytankaMobile, 500);
+  };
+}
+</script>
+
 
 
 
