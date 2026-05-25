@@ -1126,20 +1126,17 @@ function showPage(name){
   if(name==='community') loadCommunity();
   if(name==='ranking') loadRanking();
   if(name==='tofix') initToFixPage();
-  if(name==='strefa') initStrefa();
-  if(name==='odkryj') initOdkryj();
-  if(name==='daily') initDaily();
-  if(name==='challenge') initChallenge();
-  if(name==='tryb') initTrybNauki();
-  if(name==='chat') initChat();
-  if(name==='teacher') initTeacher();
-  if(name==='lyrics') initLyrics();
+  if(name==='strefa'){ initStrefa(); }
+  if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
+  if(name==='daily'){ initDaily(); dailyShowTab('daily'); }
+  if(name==='teacher'){ initTeacher(); }
   if(name==='tutors') initTutors();
-  if(name==='kultura'){odkryjShowTab('kultura');switchTab('odkryj',document.getElementById('ntab-odkryj'));return false;}
-  if(name==='challenge'){dailyShowTab('challenge');switchTab('daily',document.getElementById('ntab-daily'));return false;}
-  if(name==='chat'){teacherShowTab('chat');switchTab('teacher',document.getElementById('ntab-teacher'));return false;}
-  if(name==='lyrics'){odkryjShowTab('lyrics');switchTab('odkryj',document.getElementById('ntab-odkryj'));return false;}
-  if(name==='tryb'){strefaShowTab('tryb');switchTab('strefa',document.getElementById('ntab-strefa'));return false;}
+  // Redirects for merged pages — route to parent hub
+  if(name==='kultura'){showPage('odkryj');setTimeout(function(){odkryjShowTab('kultura');},50);return false;}
+  if(name==='challenge'){showPage('daily');setTimeout(function(){dailyShowTab('challenge');},50);return false;}
+  if(name==='chat'){showPage('teacher');setTimeout(function(){teacherShowTab('chat');},50);return false;}
+  if(name==='lyrics'){showPage('odkryj');setTimeout(function(){odkryjShowTab('lyrics');},50);return false;}
+  if(name==='tryb'){showPage('strefa');setTimeout(function(){strefaShowTab('tryb');},50);return false;}
   loadNotifications();
   setActiveTab(name);
   return false;
@@ -1946,7 +1943,7 @@ async function loadRanking(){
 </div>
 </div>
 
-<div id="page-ranking" class="page" style="min-height:100vh;padding:160px 20px 80px">
+<div id="page-ranking" class="page" style="min-height:100vh;padding:120px 20px 80px">
   <div style="max-width:960px;margin:0 auto">
     <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Ranking</h2>
     <p style="color:var(--dim2);margin-bottom:32px">Najlepsi uczący się w społeczności Eyelingo</p>
@@ -1989,7 +1986,7 @@ async function loadRanking(){
 </div>
 
 <!-- ═══ TO FIX PAGE ═══ -->
-<div id="page-tofix" class="page" style="min-height:100vh;padding:160px 20px 80px">
+<div id="page-tofix" class="page" style="min-height:100vh;padding:120px 20px 80px">
   <div style="max-width:600px;margin:0 auto">
     <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">To Fix</h2>
     <p style="color:var(--dim2);margin-bottom:32px">Coś nie działa? Powiedz nam o tym — poprawimy to jak najszybciej.</p>
@@ -3489,7 +3486,8 @@ async function addVocabToFlashcards(words, topic, lang){
 <!-- ═══ AI NAUCZYCIEL (chat embedded) ═══ -->
 <div id="page-chat" class="page" style="display:none"><!-- stara strona ukryta, logika przeniesiona do teacher --></div>
 
-<div id="page-teacher-wrapper" style="display:none"><!-- placeholder --></div>
+<div id="page-teacher" class="page" style="min-height:100vh;padding:120px 20px 80px;background:var(--paper)">
+<div style="max-width:960px;margin:0 auto">
 
   <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start">
 
@@ -3591,7 +3589,9 @@ async function addVocabToFlashcards(words, topic, lang){
 
   </div>
 </div>
-</div>
+</div><!-- /grid -->
+</div><!-- /max-width -->
+</div><!-- /page-teacher -->
 
 <!-- ═══ ANALIZA LYRICS ═══ -->
 <div id="page-lyrics" class="page" style="min-height:100vh;padding:120px 20px 80px">
@@ -4324,7 +4324,8 @@ async function loadDailyQuiz(){
     // dc-quiz-content removed
     var _dcqq=document.getElementById('dc-quiz-inline-body');if(_dcqq)_dcqq.innerHTML=qz.q;
     (document.getElementById('dc-quiz-social')||{}).textContent='';
-    var container=(document.getElementById('dc-quiz-opts')||{});
+    var container=document.getElementById('dc-quiz-opts');
+    if(!container) return;
     container.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
     container.innerHTML='';
     _quizAnswered=false;
@@ -7737,9 +7738,13 @@ function odkryjLoadLyrics(){
   var embed=document.getElementById('odkryj-lyrics-embed');
   if(!embed||embed.dataset.loaded==='1') return;
   embed.dataset.loaded='1';
-  // Skopiuj zawartość page-lyrics do embedu
   var src=document.getElementById('page-lyrics');
-  if(src) embed.innerHTML=src.innerHTML;
+  if(src){
+    // Move children so JS stays attached
+    while(src.firstChild){ embed.appendChild(src.firstChild); }
+    src.style.display='none';
+  }
+  if(typeof initLyrics==='function') setTimeout(initLyrics,100);
 }
 
 // ── STREFA NAUKI ──
@@ -7754,17 +7759,20 @@ function strefaShowTab(tab){
 
 function strefaLoadTryb(){
   var embed=document.getElementById('strefa-tryb-embed');
-  if(!embed||embed.dataset.loaded==='1') return;
-  embed.dataset.loaded='1';
-  // Wywołaj initTrybNauki które samo wstrzyknie page-tryb
-  if(typeof initTrybNauki==='function'){
-    // Przenieś zawartość page-tryb do embedu po inicjalizacji
-    initTrybNauki();
-    setTimeout(function(){
-      var src=document.getElementById('page-tryb');
-      if(src) embed.innerHTML=src.innerHTML;
-    },300);
-  }
+  if(!embed) return;
+  embed.innerHTML='';
+  // initTrybNauki injects page-tryb into body - move it into embed instead
+  if(typeof initTrybNauki==='function') initTrybNauki();
+  setTimeout(function(){
+    var src=document.getElementById('page-tryb');
+    if(src){
+      // Move children (not clone) so JS event listeners stay attached
+      while(src.firstChild){ embed.appendChild(src.firstChild); }
+      src.style.display='none';
+    } else {
+      embed.innerHTML='<div style="text-align:center;padding:40px;color:var(--dim2)">Nie udało się załadować Trybu Nauki.</div>';
+    }
+  },400);
 }
 
 // ── PORCJA DNIA ──
@@ -7792,18 +7800,8 @@ function teacherShowTab(tab){
 }
 
 function teacherLoadChat(){
-  var embed=document.getElementById('teacher-ui-chat');
-  if(!embed||embed.dataset.loaded==='1') return;
-  embed.dataset.loaded='1';
-  var src=document.getElementById('page-chat');
-  if(src) embed.innerHTML=src.innerHTML;
-  else {
-    embed.innerHTML='<div style="padding:24px">'
-      +'<div id="chat-messages" style="min-height:300px;max-height:50vh;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">'
-      +'<div style="text-align:center;color:var(--dim2);font-size:14px;padding:40px">Załaduj czat...</div>'
-      +'</div></div>';
-    if(typeof initChat==='function') setTimeout(initChat,100);
-  }
+  // Chat UI is already embedded in teacher-panel-chat
+  if(typeof initChat==='function') initChat();
 }
 
 </script>
