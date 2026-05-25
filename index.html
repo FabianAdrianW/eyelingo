@@ -1140,6 +1140,7 @@ function showPage(name){
   if(name==='teacher') initTeacher();
   if(name==='lyrics') initLyrics();
   if(name==='tutors') initTutors();
+  if(name==='kultura') initKultura();
   loadNotifications();
   setActiveTab(name);
   return false;
@@ -7564,242 +7565,413 @@ function addVoiceRecordingBtn(word, sentence, lang){
 }
 </script>
 
-// ═══════════════════════════════════════════════════════════════
-// Edge Function: generate-culture-article
-// Wywołanie: cron codziennie o 00:05 LUB ręcznie POST
-// ═══════════════════════════════════════════════════════════════
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+<!-- ═══ PAGE: KALENDARZ KULTUR ═══ -->
+<div id="page-kultura" class="page" style="min-height:100vh;padding:110px 20px 80px;background:var(--paper)">
+<div style="max-width:720px;margin:0 auto" id="kk-root">
 
-const OPENROUTER_KEY = Deno.env.get("OPENROUTER_KEY") ?? "";
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  <!-- LOADING -->
+  <div id="kk-loading" style="text-align:center;padding:80px 20px">
+    <div style="font-size:32px;margin-bottom:12px">🌍</div>
+    <div style="font-size:15px;color:var(--dim2)">Ładuję artykuł dnia...</div>
+  </div>
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash-lite";
+  <!-- ERROR -->
+  <div id="kk-error" style="display:none;text-align:center;padding:80px 20px">
+    <div style="font-size:32px;margin-bottom:12px">😔</div>
+    <div style="font-size:15px;color:var(--dim2)" id="kk-error-msg">Artykuł na dziś jeszcze nie jest gotowy.</div>
+    <div style="font-size:13px;color:var(--dim2);margin-top:8px">Sprawdź ponownie za chwilę lub jutro.</div>
+  </div>
 
-const REGION_COLORS: Record<string, string> = {
-  "Azja":              "#1a2a3a",
-  "Japonia":           "#2a1a1a",
-  "Indie":             "#2a1a0a",
-  "Afryka":            "#2a1a08",
-  "Ameryka Łacińska":  "#1a3a2a",
-  "Europa":            "#1a1a3a",
-  "Bliski Wschód":     "#2a2a0a",
-  "default":           "#1a2340",
-};
+  <!-- ARTICLE -->
+  <div id="kk-article" style="display:none">
 
-function getHeroColor(country: string): string {
-  for (const [region, color] of Object.entries(REGION_COLORS)) {
-    if (country.toLowerCase().includes(region.toLowerCase())) return color;
-  }
-  return REGION_COLORS["default"];
-}
+    <!-- HERO -->
+    <div id="kk-hero" style="border-radius:20px;padding:32px 28px 24px;position:relative;overflow:hidden;margin-bottom:20px">
+      <div style="position:absolute;top:-50px;right:-50px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,0.04);pointer-events:none"></div>
+      <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.12);border:0.5px solid rgba(255,255,255,0.2);border-radius:100px;padding:4px 12px;font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:16px">
+        <span style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block"></span>
+        <span id="kk-date-badge">Dziś</span>
+      </div>
+      <div style="font-size:12px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Kultura dnia</div>
+      <h2 id="kk-headline" style="font-family:'Syne',sans-serif;font-size:clamp(18px,3vw,26px);font-weight:800;color:#fff;line-height:1.2;margin-bottom:8px"></h2>
+      <div id="kk-subline" style="font-size:14px;color:rgba(255,255,255,0.55);font-style:italic;line-height:1.5"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:16px">
+        <span style="font-size:12px;color:rgba(255,255,255,0.4)">⏱ 4 min czytania</span>
+        <span id="kk-country-badge" style="font-size:12px;color:rgba(255,255,255,0.4)"></span>
+        <span id="kk-streak-badge" style="font-size:12px;color:rgba(255,255,255,0.4)"></span>
+      </div>
+    </div>
 
-function buildPrompt(date: string, lastCultures: string[]): string {
-  const lastList = lastCultures.length > 0 ? lastCultures.join(", ") : "brak";
+    <!-- STREAK -->
+    <div id="kk-streak-bar" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:16px">
+      <span style="font-size:20px;color:var(--orange)">🔥</span>
+      <div>
+        <div style="font-size:13px;color:var(--dim)">Twoja seria: <strong id="kk-streak-num" style="color:var(--navy)">1 dzień</strong></div>
+        <div style="font-size:11px;color:var(--dim2)" id="kk-streak-sub"></div>
+      </div>
+    </div>
 
-  return `Jesteś ekspertem kulturoznawstwa i copywriterem specjalizującym się w angażujących artykułach edukacyjnych dla szerokiej publiczności (dzieci, dorośli, rodziny). Tworzysz dzienny artykuł do sekcji "Kalendarz Kultur".
+    <!-- HOOK -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">⚡ Intro</div>
+      <div id="kk-hook" style="font-size:16px;line-height:1.75;color:var(--navy);border-left:3px solid var(--orange);padding-left:14px"></div>
+    </div>
 
-DATA: ${date}
-JĘZYK: polski
-KULTURA: (wybierz automatycznie)
-OSTATNIE KULTURY (unikaj): ${lastList}
+    <!-- KONTEKST -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">🌐 Kontekst kulturowy</div>
+      <div id="kk-paragraphs"></div>
+    </div>
 
-LOGIKA WYBORU KULTURY:
-1. Sprawdź czy data ${date} pokrywa się ze znaczącym świętem lub rocznicą kulturową. Jeśli tak — wybierz tę kulturę.
-2. Jeśli nie — wybierz losowo, unikając kultur z listy: ${lastList}
+    <!-- CIEKAWOSTKA -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">💡 Tego nie wiesz</div>
+      <div style="background:var(--paper);border-radius:10px;padding:14px">
+        <p id="kk-fact" style="font-size:14px;line-height:1.7;color:var(--navy);margin:0"></p>
+      </div>
+    </div>
 
-STRUKTURA ARTYKUŁU (450–650 słów łącznie):
-1. Nagłówek chwytliwy z nazwą kultury
-2. Podtytuł z "curiosity gap"
-3. Intro-haczyk (2–3 zdania, zaskakujący fakt lub obraz zmysłowy)
-4. Kontekst kulturowy (3–4 akapity: geografia/historia, zwyczaje, jedzenie/muzyka/sztuka)
-5. Ciekawostka "Tego nie wiesz" (1 akapit, rozmowny ton)
-6. Most do czytelnika (1 akapit, analogia do kultury polskiej)
-7. Słowo dnia (jedno słowo w języku kultury)
+    <!-- MOST -->
+    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">🤝 Bliżej niż myślisz</div>
+      <p id="kk-bridge" style="font-size:15px;line-height:1.75;color:var(--navy);margin:0"></p>
+    </div>
 
-TON: ciepły, ciekawski, zrozumiały dla 12-latka ale nie nudny dla 40-latka. ZAKAZ słów: egzotyczny, dziwny, niesamowity.
+    <!-- SŁOWO DNIA -->
+    <div id="kk-word-hero" style="border-radius:16px;padding:20px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.5);margin-bottom:12px">🔤 Słowo dnia</div>
+      <div id="kk-word" style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:4px"></div>
+      <div id="kk-word-phonetic" style="font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:10px"></div>
+      <div id="kk-word-meaning" style="font-size:13px;color:rgba(255,255,255,0.8);line-height:1.6;margin-bottom:6px"></div>
+      <div id="kk-word-example" style="font-size:13px;color:rgba(255,255,255,0.5);font-style:italic"></div>
+      <button onclick="kkSpeakWord()" style="display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:rgba(255,255,255,0.12);border:0.5px solid rgba(255,255,255,0.2);border-radius:100px;padding:6px 14px;font-size:12px;color:rgba(255,255,255,0.8);cursor:pointer" id="kk-speak-btn">
+        🔊 Posłuchaj wymowy
+      </button>
+    </div>
 
-Odpowiedz WYŁĄCZNIE poprawnym JSON, bez żadnego tekstu przed ani po, bez backticks:
+    <!-- TAGI -->
+    <div id="kk-tags-wrap" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px"></div>
 
-{
-  "kultura": "nazwa kultury",
-  "kraj": "kraj lub region",
-  "powiazanie_z_data": true,
-  "opis_powiazania": "krótki opis lub null",
-  "naglowek": "chwytliwy nagłówek",
-  "podtytul": "podtytuł z curiosity gap",
-  "hook": "intro-haczyk (2-3 zdania)",
-  "akapity": [
-    "akapit 1 — geografia i historia",
-    "akapit 2 — zwyczaje i wartości",
-    "akapit 3 — jedzenie/muzyka/sztuka",
-    "akapit 4 — dodatkowy kontekst"
-  ],
-  "ciekawostka": "jeden akapit rozmowny",
-  "most": "jeden akapit analogia do polskiej kultury",
-  "slowo": "słowo w języku kultury",
-  "slowo_fonetyka": "/wymowa/",
-  "slowo_znaczenie": "znaczenie dosłowne i kulturowe",
-  "slowo_przyklad": "przykład użycia z tłumaczeniem",
-  "quiz": [
-    {
-      "pytanie": "pytanie łatwe",
-      "odpowiedzi": ["A", "B", "C", "D"],
-      "poprawna": 0,
-      "wyjasnienie": "wyjaśnienie",
-      "trudnosc": "łatwe"
-    },
-    {
-      "pytanie": "pytanie średnie",
-      "odpowiedzi": ["A", "B", "C", "D"],
-      "poprawna": 1,
-      "wyjasnienie": "wyjaśnienie",
-      "trudnosc": "średnie"
-    },
-    {
-      "pytanie": "pytanie trudne",
-      "odpowiedzi": ["A", "B", "C", "D"],
-      "poprawna": 2,
-      "wyjasnienie": "wyjaśnienie",
-      "trudnosc": "trudne"
+    <!-- PRZYCISKI -->
+    <button onclick="kkStartQuiz()" style="width:100%;padding:14px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.background='var(--navy2)'" onmouseout="this.style.background='var(--navy)'">
+      🎯 Sprawdź wiedzę — Quiz (3 pytania)
+    </button>
+    <button onclick="kkAddFlashcard()" style="width:100%;padding:12px;background:transparent;color:var(--dim);border:1.5px dashed var(--border2);border-radius:100px;font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='var(--paper2)'" onmouseout="this.style.background='transparent'">
+      ＋ Dodaj słowo dnia do fiszek Eyelingo
+    </button>
+
+    <!-- ARCHIWUM -->
+    <div style="margin-top:24px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">📅 Poprzednie artykuły</div>
+      <div id="kk-archive" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+  </div>
+
+  <!-- QUIZ -->
+  <div id="kk-quiz" style="display:none">
+    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:12px">🎯 Quiz kulturowy</div>
+      <div id="kk-quiz-progress" style="display:flex;gap:4px;margin-bottom:16px"></div>
+      <div id="kk-quiz-body"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">
+        <button onclick="kkShowArticle()" style="padding:8px 16px;border-radius:100px;border:1px solid var(--border2);background:transparent;color:var(--dim);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">← Wróć</button>
+        <button id="kk-next-btn" onclick="kkNextQ()" style="display:none;padding:8px 20px;border-radius:100px;border:none;background:var(--navy);color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Dalej →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WYNIK -->
+  <div id="kk-score" style="display:none">
+    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:40px 20px;text-align:center">
+      <div id="kk-score-num" style="font-family:'Syne',sans-serif;font-size:56px;font-weight:800;color:var(--navy);line-height:1"></div>
+      <div id="kk-score-lbl" style="font-size:15px;color:var(--dim);margin-top:6px;margin-bottom:24px"></div>
+      <button onclick="kkShowArticle()" style="padding:12px 28px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer">Przeczytaj ponownie</button>
+    </div>
+  </div>
+
+</div>
+</div>
+<!-- ═══ END: KALENDARZ KULTUR ═══ -->
+
+<script>
+var _kkArticle = null;
+var _kkQuiz = [];
+var _kkQIdx = 0;
+var _kkScore = 0;
+var _kkAnswered = false;
+
+async function initKultura() {
+  var loading = document.getElementById('kk-loading');
+  var error   = document.getElementById('kk-error');
+  var article = document.getElementById('kk-article');
+
+  if (loading) loading.style.display = 'block';
+  if (error)   error.style.display   = 'none';
+  if (article) article.style.display = 'none';
+
+  try {
+    var sess = (await db.auth.getSession()).data.session;
+    if (!sess) { kkShowError('Zaloguj się, aby czytać artykuły.'); return; }
+
+    var today = new Date().toISOString().split('T')[0];
+
+    var { data, error: dbErr } = await db
+      .from('culture_articles')
+      .select('*')
+      .eq('date', today)
+      .single();
+
+    if (dbErr || !data) {
+      kkShowError('Artykuł na dziś jeszcze nie jest gotowy. Zajrzyj jutro!');
+      return;
     }
-  ],
-  "tagi": ["tag1", "tag2", "tag3"],
-  "poziom_trudnosci": "średni",
-  "czy_dla_dzieci": true
-}`;
+
+    _kkArticle = data;
+    _kkQuiz    = data.quiz || [];
+    kkRenderArticle(data);
+    kkLoadArchive(today);
+
+  } catch(e) {
+    kkShowError('Błąd ładowania: ' + e.message);
+  }
 }
 
-Deno.serve(async (req) => {
-  const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+function kkShowError(msg) {
+  document.getElementById('kk-loading').style.display = 'none';
+  document.getElementById('kk-error').style.display   = 'block';
+  document.getElementById('kk-error-msg').textContent  = msg;
+}
 
-  let targetDate: string;
-  try {
-    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
-    targetDate = body.date ?? new Date(Date.now() + 86400000).toISOString().split("T")[0];
-  } catch {
-    targetDate = new Date(Date.now() + 86400000).toISOString().split("T")[0];
-  }
+function kkRenderArticle(d) {
+  document.getElementById('kk-loading').style.display = 'none';
+  document.getElementById('kk-article').style.display = 'block';
 
-  console.log(`[KalendarzKultur] Generuję artykuł na: ${targetDate}`);
+  var hero = document.getElementById('kk-hero');
+  hero.style.background = d.hero_color || '#1a2340';
 
-  // Sprawdź czy artykuł już istnieje
-  const { data: existing } = await db
-    .from("culture_articles")
-    .select("id, culture")
-    .eq("date", targetDate)
-    .single();
+  var wordHero = document.getElementById('kk-word-hero');
+  wordHero.style.background = d.hero_color || '#1a2340';
 
-  if (existing) {
-    return new Response(
-      JSON.stringify({ status: "exists", date: targetDate, culture: existing.culture }),
-      { headers: { "Content-Type": "application/json" } }
-    );
-  }
+  var dateStr = new Date(d.date + 'T12:00:00').toLocaleDateString('pl-PL', { weekday:'long', day:'numeric', month:'long' });
+  document.getElementById('kk-date-badge').textContent = dateStr;
 
-  // Ostatnie 30 kultur (unikanie powtórzeń)
-  const { data: history } = await db
-    .from("culture_history")
-    .select("culture")
-    .order("date", { ascending: false })
-    .limit(30);
+  document.getElementById('kk-headline').textContent      = d.headline      || '';
+  document.getElementById('kk-subline').textContent       = d.subline       || '';
+  document.getElementById('kk-country-badge').textContent = '📍 ' + (d.country || '');
+  document.getElementById('kk-hook').textContent          = d.hook          || '';
+  document.getElementById('kk-fact').textContent          = d.fact          || '';
+  document.getElementById('kk-bridge').textContent        = d.bridge        || '';
+  document.getElementById('kk-word').textContent          = d.word          || '';
+  document.getElementById('kk-word-phonetic').textContent = d.word_phonetic || '';
+  document.getElementById('kk-word-meaning').textContent  = d.word_meaning  || '';
+  document.getElementById('kk-word-example').textContent  = d.word_example  || '';
 
-  const lastCultures = (history ?? []).map((h: { culture: string }) => h.culture);
-
-  // Wywołaj OpenRouter API
-  const prompt = buildPrompt(targetDate, lastCultures);
-
-  let orResponse: Response;
-  try {
-    orResponse = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENROUTER_KEY}`,
-        "HTTP-Referer": "https://eyelingo.app",
-        "X-Title": "Eyelingo Kalendarz Kultur",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.85,
-        max_tokens: 4096,
-        response_format: { type: "json_object" },
-      }),
-    });
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "OpenRouter connection failed", detail: String(err) }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  if (!orResponse.ok) {
-    const errText = await orResponse.text();
-    console.error("[KalendarzKultur] OpenRouter error:", errText);
-    return new Response(
-      JSON.stringify({ error: "OpenRouter API error", detail: errText }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  const orData = await orResponse.json();
-  const rawText: string = orData?.choices?.[0]?.message?.content ?? "";
-
-  // Parsuj JSON
-  let article: Record<string, unknown>;
-  try {
-    const cleaned = rawText.replace(/```json|```/g, "").trim();
-    article = JSON.parse(cleaned);
-  } catch (err) {
-    console.error("[KalendarzKultur] JSON parse error:", rawText.slice(0, 500));
-    return new Response(
-      JSON.stringify({ error: "JSON parse failed", raw: rawText.slice(0, 500) }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  // Zapisz do Supabase
-  const { error: insertError } = await db.from("culture_articles").insert({
-    date:          targetDate,
-    culture:       article.kultura,
-    country:       article.kraj,
-    language:      "polski",
-    headline:      article.naglowek,
-    subline:       article.podtytul,
-    hook:          article.hook,
-    paragraphs:    article.akapity,
-    fact:          article.ciekawostka,
-    bridge:        article.most,
-    word:          article.slowo,
-    word_phonetic: article.slowo_fonetyka,
-    word_meaning:  article.slowo_znaczenie,
-    word_example:  article.slowo_przyklad,
-    quiz:          article.quiz,
-    tags:          article.tagi,
-    difficulty:    article.poziom_trudnosci,
-    for_children:  article.czy_dla_dzieci,
-    date_related:  article.powiazanie_z_data,
-    date_relation: article.opis_powiazania ?? null,
-    hero_color:    getHeroColor(String(article.kraj ?? "")),
+  var pWrap = document.getElementById('kk-paragraphs');
+  pWrap.innerHTML = '';
+  (d.paragraphs || []).forEach(function(p) {
+    var el = document.createElement('p');
+    el.textContent = p;
+    el.style.cssText = 'font-size:15px;line-height:1.75;color:var(--navy);margin-bottom:14px';
+    pWrap.appendChild(el);
   });
 
-  if (insertError) {
-    return new Response(
-      JSON.stringify({ error: "DB insert failed", detail: insertError.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+  var tagsWrap = document.getElementById('kk-tags-wrap');
+  tagsWrap.innerHTML = '';
+  (d.tags || []).forEach(function(t) {
+    var span = document.createElement('span');
+    span.textContent = t;
+    span.style.cssText = 'padding:3px 10px;background:var(--paper2);border:1px solid var(--border);border-radius:100px;font-size:11px;color:var(--dim2)';
+    tagsWrap.appendChild(span);
+  });
+
+  kkUpdateStreak(d.date);
+}
+
+function kkUpdateStreak(todayDate) {
+  try {
+    var last  = localStorage.getItem('kk_last_read');
+    var count = parseInt(localStorage.getItem('kk_streak') || '0', 10);
+    var yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    if (last === todayDate) {
+      // już czytał dziś
+    } else if (last === yesterday) {
+      count += 1;
+    } else {
+      count = 1;
+    }
+
+    localStorage.setItem('kk_last_read', todayDate);
+    localStorage.setItem('kk_streak', String(count));
+
+    document.getElementById('kk-streak-num').textContent = count + (count === 1 ? ' dzień' : ' dni');
+    document.getElementById('kk-streak-badge').textContent = '🔥 ' + count + 'd';
+
+    if (count >= 7) {
+      document.getElementById('kk-streak-sub').textContent = '🏆 Odznaka "Kulturoznawca tygodnia" odblokowana!';
+    } else {
+      var left = 7 - count;
+      document.getElementById('kk-streak-sub').textContent = 'Jeszcze ' + left + ' ' + (left === 1 ? 'dzień' : 'dni') + ' do odznaki tygodnia';
+    }
+  } catch(e) {}
+}
+
+async function kkLoadArchive(todayDate) {
+  try {
+    var { data } = await db
+      .from('culture_articles')
+      .select('date, culture, country, headline, hero_color')
+      .neq('date', todayDate)
+      .order('date', { ascending: false })
+      .limit(5);
+
+    var wrap = document.getElementById('kk-archive');
+    if (!data || data.length === 0) {
+      wrap.innerHTML = '<div style="font-size:13px;color:var(--dim2)">To pierwszy artykuł — jutro pojawi się historia.</div>';
+      return;
+    }
+
+    data.forEach(function(a) {
+      var d = document.createElement('div');
+      d.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 14px;background:#fff;border:1px solid var(--border);border-radius:12px;cursor:pointer;transition:.15s';
+      d.onmouseover = function(){ this.style.background = 'var(--paper2)'; };
+      d.onmouseout  = function(){ this.style.background = '#fff'; };
+      d.onclick = function(){ kkLoadByDate(a.date); };
+
+      var dot = document.createElement('div');
+      dot.style.cssText = 'width:36px;height:36px;border-radius:10px;background:' + (a.hero_color||'#1a2340') + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px';
+      dot.textContent = '🌍';
+
+      var info = document.createElement('div');
+      var dateLabel = new Date(a.date + 'T12:00:00').toLocaleDateString('pl-PL', { day:'numeric', month:'short' });
+      info.innerHTML = '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + a.culture + ' · ' + dateLabel + '</div>'
+        + '<div style="font-size:12px;color:var(--dim2);margin-top:2px">' + a.headline.slice(0,60) + '…</div>';
+
+      d.appendChild(dot);
+      d.appendChild(info);
+      wrap.appendChild(d);
+    });
+  } catch(e) {}
+}
+
+async function kkLoadByDate(date) {
+  document.getElementById('kk-article').style.display = 'none';
+  document.getElementById('kk-loading').style.display = 'block';
+
+  var { data } = await db
+    .from('culture_articles')
+    .select('*')
+    .eq('date', date)
+    .single();
+
+  if (data) {
+    _kkArticle = data;
+    _kkQuiz    = data.quiz || [];
+    kkRenderArticle(data);
+    document.getElementById('kk-root').scrollIntoView({ behavior:'smooth' });
   }
+}
 
-  // Zapisz do historii
-  await db.from("culture_history").insert({ date: targetDate, culture: article.kultura });
+function kkShowArticle() {
+  document.getElementById('kk-quiz').style.display  = 'none';
+  document.getElementById('kk-score').style.display = 'none';
+  document.getElementById('kk-article').style.display = 'block';
+}
 
-  console.log(`[KalendarzKultur] Gotowe: ${article.kultura} na ${targetDate}`);
+function kkStartQuiz() {
+  _kkQIdx     = 0;
+  _kkScore    = 0;
+  _kkAnswered = false;
+  document.getElementById('kk-article').style.display = 'none';
+  document.getElementById('kk-quiz').style.display    = 'block';
+  document.getElementById('kk-score').style.display   = 'none';
+  kkRenderQ();
+}
 
-  return new Response(
-    JSON.stringify({ status: "created", date: targetDate, culture: article.kultura }),
-    { headers: { "Content-Type": "application/json" } }
-  );
-});
+function kkRenderQ() {
+  _kkAnswered = false;
+  var q = _kkQuiz[_kkQIdx];
+  if (!q) { kkShowScore(); return; }
+
+  var prog = document.getElementById('kk-quiz-progress');
+  prog.innerHTML = _kkQuiz.map(function(_, i) {
+    var bg = i < _kkQIdx ? 'var(--navy)' : i === _kkQIdx ? 'var(--orange)' : 'var(--border)';
+    return '<div style="flex:1;height:3px;border-radius:2px;background:' + bg + '"></div>';
+  }).join('');
+
+  var body = document.getElementById('kk-quiz-body');
+  body.innerHTML = '<div style="font-size:12px;color:var(--dim2);margin-bottom:4px">Pytanie ' + (_kkQIdx+1) + ' z ' + _kkQuiz.length + ' · ' + (q.trudnosc||'') + '</div>'
+    + '<div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:14px;line-height:1.4">' + q.pytanie + '</div>'
+    + '<div id="kk-answers-wrap">'
+    + (q.odpowiedzi||[]).map(function(a, i) {
+        return '<div class="kk-ans-opt" onclick="kkSelectAns(' + i + ')" data-idx="' + i + '" style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:14px;color:var(--navy);margin-bottom:8px;transition:.15s;background:#fff">'
+          + '<span style="width:22px;height:22px;border-radius:50%;background:var(--paper2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--dim2);flex-shrink:0">' + ['A','B','C','D'][i] + '</span>'
+          + '<span>' + a + '</span></div>';
+      }).join('')
+    + '</div>'
+    + '<div id="kk-explanation" style="display:none;margin-top:10px;padding:10px 12px;background:var(--paper);border-radius:10px;font-size:13px;color:var(--dim);line-height:1.6">' + (q.wyjasnienie||'') + '</div>';
+
+  document.getElementById('kk-next-btn').style.display = 'none';
+}
+
+function kkSelectAns(idx) {
+  if (_kkAnswered) return;
+  _kkAnswered = true;
+  var q = _kkQuiz[_kkQIdx];
+  var opts = document.querySelectorAll('.kk-ans-opt');
+  opts.forEach(function(el, i) {
+    el.style.cursor = 'default';
+    if (i === q.poprawna) {
+      el.style.background = '#eaf3de';
+      el.style.borderColor = '#639922';
+      el.style.color = '#3b6d11';
+    } else if (i === idx && i !== q.poprawna) {
+      el.style.background = '#fcebeb';
+      el.style.borderColor = '#e24b4a';
+      el.style.color = '#a32d2d';
+    }
+  });
+  if (idx === q.poprawna) _kkScore++;
+  document.getElementById('kk-explanation').style.display = 'block';
+  var nb = document.getElementById('kk-next-btn');
+  nb.style.display = 'inline-block';
+  nb.textContent = _kkQIdx < _kkQuiz.length - 1 ? 'Dalej →' : 'Zobacz wynik';
+}
+
+function kkNextQ() {
+  _kkQIdx++;
+  if (_kkQIdx >= _kkQuiz.length) { kkShowScore(); return; }
+  kkRenderQ();
+}
+
+function kkShowScore() {
+  document.getElementById('kk-quiz').style.display  = 'none';
+  document.getElementById('kk-score').style.display = 'block';
+  document.getElementById('kk-score-num').textContent = _kkScore + '/' + _kkQuiz.length;
+  var labels = [
+    'Spróbuj jeszcze raz — artykuł czeka!',
+    'Dobry wynik — trochę zostało do odkrycia.',
+    'Świetna robota — kulturoznawca w akcji!'
+  ];
+  document.getElementById('kk-score-lbl').textContent = labels[_kkScore - 1] || labels[0];
+}
+
+function kkSpeakWord() {
+  if (!_kkArticle || !_kkArticle.word) return;
+  if (!window.speechSynthesis) return;
+  var utt = new SpeechSynthesisUtterance(_kkArticle.word);
+  utt.rate = 0.85;
+  window.speechSynthesis.speak(utt);
+  var btn = document.getElementById('kk-speak-btn');
+  if (btn) { btn.textContent = '🔊 Odtwarzanie...'; utt.onend = function(){ btn.textContent = '🔊 Posłuchaj wymowy'; }; }
+}
+
+function kkAddFlashcard() {
+  if (!_kkArticle) return;
+  var word = _kkArticle.word;
+  if (typeof showToast === 'function') {
+    showToast('Słowo "' + word + '" dodane do fiszek!', 'success');
+  }
+}
+</script>
