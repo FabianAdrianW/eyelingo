@@ -1755,6 +1755,7 @@ async function loadRanking(){
     }
   });
 }
+})();
 </script>
 
 <!-- ═══ COMMUNITY PAGE ═══ -->
@@ -7262,51 +7263,79 @@ function kkAddFlashcardOdkryj(){
 }
 
 async function kkRenderMonthCalendar(todayStr){
-  var wrap=document.getElementById('kk-month-cal');
-  if(!wrap)return;
-  var today=new Date(todayStr+'T12:00:00');
-  var year=today.getFullYear(),month=today.getMonth();
-  var firstDay=new Date(year,month,1);
-  var daysInMonth=new Date(year,month+1,0).getDate();
-  var monthName=today.toLocaleDateString('pl-PL',{month:'long',year:'numeric'});
-  var dayNames=['Pn','Wt','Śr','Cz','Pt','So','Nd'];
-  // fetch all articles this month
-  var from=year+'-'+String(month+1).padStart(2,'0')+'-01';
-  var to=year+'-'+String(month+1).padStart(2,'0')+'-'+String(daysInMonth).padStart(2,'0');
-  var articles={};
+  var wrap = document.getElementById('kk-month-cal');
+  if(!wrap) return;
+  var today = new Date(todayStr+'T12:00:00');
+  var year = today.getFullYear(), month = today.getMonth();
+  var daysInMonth = new Date(year,month+1,0).getDate();
+  var monthName = today.toLocaleDateString('pl-PL',{month:'long',year:'numeric'});
+  var from = year+'-'+String(month+1).padStart(2,'0')+'-01';
+  var to   = year+'-'+String(month+1).padStart(2,'0')+'-'+String(daysInMonth).padStart(2,'0');
+  var articles = {};
   try{
-    var {data}=await db.from('culture_articles').select('date,culture,country').gte('date',from).lte('date',to);
-    if(data)data.forEach(function(a){articles[a.date]={culture:a.culture,country:a.country};});
+    var r = await db.from('culture_articles').select('date,culture,country').gte('date',from).lte('date',to);
+    if(r.data) r.data.forEach(function(a){ articles[a.date]={culture:a.culture,country:a.country}; });
   }catch(e){}
 
-  var startDow=(firstDay.getDay()+6)%7; // Mon=0
-  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-    +'<div style="font-size:13px;font-weight:600;color:var(--navy);text-transform:capitalize">'+monthName+'</div>'
-    +'<div style="font-size:11px;color:var(--dim2)">Kliknij dzień aby zobaczyć kulturę</div></div>'
-    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px">'
-    +dayNames.map(function(d){return'<div style="text-align:center;font-size:10px;font-weight:600;color:var(--dim2);padding:4px 0">'+d+'</div>';}).join('')
-    +'</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">'
-    +Array(startDow).fill('<div></div>').join('');
+  wrap.innerHTML = '';
+
+  // Header
+  var header = document.createElement('div');
+  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px';
+  header.innerHTML = '<div style="font-size:13px;font-weight:600;color:var(--navy);text-transform:capitalize">'+monthName+'</div>'
+    +'<div style="font-size:10px;color:var(--dim2)">Kliknij dzień z kulturą</div>';
+  wrap.appendChild(header);
+
+  // Day names
+  var dayRow = document.createElement('div');
+  dayRow.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:3px';
+  ['Pn','Wt','Śr','Cz','Pt','So','Nd'].forEach(function(d){
+    var el = document.createElement('div');
+    el.style.cssText = 'text-align:center;font-size:10px;font-weight:600;color:var(--dim2);padding:3px 0';
+    el.textContent = d;
+    dayRow.appendChild(el);
+  });
+  wrap.appendChild(dayRow);
+
+  // Calendar grid
+  var grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);gap:2px';
+
+  var startDow = (new Date(year,month,1).getDay()+6)%7;
+  for(var e=0;e<startDow;e++){
+    grid.appendChild(document.createElement('div'));
+  }
 
   for(var day=1;day<=daysInMonth;day++){
-    var dateStr2=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
-    var isToday=dateStr2===todayStr;
-    var art=articles[dateStr2];
-    var color=art?getCultureColor(art.culture||'',art.country||''):'transparent';
-    var hasCulture=!!art;
-    html+='<div onclick="'+(hasCulture?'kkLoadArchiveDayOdkryj(''+dateStr2+'')':'')+'" '
-      +'style="border-radius:8px;padding:4px 2px;text-align:center;cursor:'+(hasCulture?'pointer':'default')+';'
-      +'background:'+(hasCulture?color:'var(--paper2)')+';'
-      +'border:2px solid '+(isToday?'var(--orange)':'transparent')+';'
-      +'transition:.15s;" '
-      +(hasCulture?'title="'+( art.culture)+'"':'')+'>'
-      +'<div style="font-size:12px;font-weight:'+(isToday?'700':'400')+';color:'+(hasCulture?'rgba(255,255,255,0.9)':isToday?'var(--orange)':'var(--dim2)')+'">'+day+'</div>'
-      +(hasCulture?'<div style="font-size:9px;color:rgba(255,255,255,0.6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 2px">'+( art.culture.slice(0,8))+'</div>':'')
-      +'</div>';
+    var ds = year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+    var isToday = ds===todayStr;
+    var art = articles[ds];
+    var bg = art ? getCultureColor(art.culture||'',art.country||'') : 'var(--paper2)';
+
+    var cell = document.createElement('div');
+    cell.style.cssText = 'border-radius:7px;padding:4px 2px;text-align:center;min-height:34px;'
+      +'background:'+bg+';border:'+(isToday?'2px solid var(--orange)':'2px solid transparent')+';'
+      +'cursor:'+(art?'pointer':'default')+';transition:opacity .15s';
+
+    var num = document.createElement('div');
+    num.style.cssText = 'font-size:12px;font-weight:'+(isToday?'700':'400')+';'
+      +'color:'+(art?'rgba(255,255,255,0.9)':(isToday?'var(--orange)':'var(--dim2)'));
+    num.textContent = day;
+    cell.appendChild(num);
+
+    if(art){
+      var name = document.createElement('div');
+      name.style.cssText = 'font-size:9px;color:rgba(255,255,255,0.65);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 2px';
+      name.textContent = art.culture.slice(0,8);
+      cell.appendChild(name);
+      cell.title = art.culture;
+      (function(d){ cell.onclick=function(){kkLoadArchiveDayOdkryj(d);}; })(ds);
+      cell.onmouseover=function(){this.style.opacity='0.8';};
+      cell.onmouseout=function(){this.style.opacity='1';};
+    }
+    grid.appendChild(cell);
   }
-  html+='</div>';
-  wrap.innerHTML=html;
+  wrap.appendChild(grid);
 }
 
 function odkryjLoadLyrics(){
