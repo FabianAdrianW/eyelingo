@@ -2,8 +2,13 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Eyelingo – See The Progress</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="apple-touch-icon" href="/favicon.ico">
+<meta name="theme-color" content="#1a2340">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet">
@@ -327,6 +332,187 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
   .dstats{grid-template-columns:1fr 1fr}
   .drow{grid-template-columns:1fr}
 }
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE — MOBILE FIRST
+   Breakpoints: 600px (phone), 768px (tablet), 900px (existing)
+   Safe area for iOS notch/home indicator
+   ═══════════════════════════════════════════════ */
+
+/* iOS safe area support */
+nav { padding-bottom: env(safe-area-inset-bottom, 0); }
+.page { padding-bottom: max(80px, calc(80px + env(safe-area-inset-bottom, 0))); }
+
+/* ── 768px: Tablet ── */
+@media(max-width:768px){
+  /* Nav tabs - scrollable, smaller */
+  .nav-tabs { padding: 0 12px; gap: 0; }
+  .nav-tab  { padding: 9px 10px; font-size: 11px; white-space: nowrap; }
+
+  /* All pages - reduce side padding */
+  #page-community,#page-tutors,#page-ranking,#page-tofix,
+  #page-strefa,#page-odkryj,#page-daily,#page-teacher,#page-lyrics {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  /* Flashcard layout */
+  .fc-wrap { flex-direction: column; }
+
+  /* Strefa / Odkryj / Daily hub tiles */
+  #odkryj-selector,
+  .strefa-tiles-grid,
+  #daily-tiles-grid { grid-template-columns: 1fr 1fr !important; }
+
+  /* Teacher page - stack sidebar */
+  #chat-grid-layout { grid-template-columns: 1fr !important; }
+
+  /* Tutor cards */
+  #tutors-grid { grid-template-columns: 1fr 1fr !important; }
+
+  /* Modal full-width */
+  #tutor-view-modal > div { width: 100% !important; height: 100vh !important; border-radius: 0 !important; }
+
+  /* Ranking table */
+  .rank-table { font-size: 12px; }
+
+  /* Daily progress bar area */
+  .daily-header-row { flex-direction: column; align-items: flex-start !important; gap: 8px !important; }
+
+  /* Odkryj article modal */
+  .article-modal-inner { padding: 20px 16px !important; }
+}
+
+/* ── 600px: Phone ── */
+@media(max-width:600px){
+  /* Nav */
+  .nav-top { padding: 8px 14px !important; }
+  nav { padding: 0 !important; }
+  .nav-tabs { padding: 0 8px !important; }
+  .nav-tab { padding: 8px 8px !important; font-size: 10px !important; }
+
+  /* All pages - minimal padding */
+  #page-community,#page-tutors,#page-ranking,#page-tofix,
+  #page-strefa,#page-odkryj,#page-daily,#page-teacher,#page-lyrics,
+  #page-home,#page-dash,#page-auth { 
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-top: 100px !important;
+  }
+
+  /* Hub page headers */
+  #page-strefa h2, #page-odkryj h2, #page-daily h2,
+  #page-teacher h2, #page-tutors h2, #page-community h2 {
+    font-size: 26px !important;
+  }
+
+  /* Hub tiles - single column on very small screens */
+  #odkryj-selector { grid-template-columns: 1fr !important; }
+
+  /* Daily tiles */
+  #daily-tiles-grid { grid-template-columns: 1fr 1fr !important; }
+
+  /* Strefa tiles */
+  #strefa-tiles-grid { grid-template-columns: 1fr 1fr !important; }
+  [onclick="strefaShowTab('strefa')"],[onclick="strefaShowTab('tryb')"] {
+    padding: 14px !important;
+  }
+
+  /* Teacher - hide sidebar labels, stack */
+  #chat-grid-layout { grid-template-columns: 1fr !important; }
+  #chat-grid-layout > div:first-child { display: none; }
+
+  /* Flash cards */
+  .fc-card { min-height: 180px !important; }
+  .fc-word { font-size: 26px !important; }
+
+  /* Tryb nauki */
+  #tryb-q-side { padding: 0 !important; }
+  #tryb-card-word { font-size: 28px !important; }
+
+  /* Lyrics - single column */
+  .lyrics-layout { grid-template-columns: 1fr !important; }
+  #lyrics-detail { display: none; }
+
+  /* Modals full screen */
+  .modal-box, [id$="-modal"] > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    border-radius: 0 !important;
+    padding: 20px 16px !important;
+  }
+
+  /* Tutor cards - single column */
+  #tutors-grid { grid-template-columns: 1fr !important; }
+
+  /* Dashboard stats */
+  .dstats { grid-template-columns: 1fr 1fr !important; }
+
+  /* Odkryj Kalendarz Kultur - calendar grid smaller */
+  #kk-month-cal { padding: 10px !important; }
+  #kk-month-cal [style*="grid-template-columns:repeat(7"] {
+    gap: 1px !important;
+  }
+
+  /* KK word - smaller on mobile */
+  #kk-word-hero [style*="font-size:32px"],
+  #kk-word-hero > div:first-child + div { 
+    font-size: 24px !important; 
+  }
+
+  /* Ranking */
+  .rank-row { font-size: 12px; padding: 8px 10px !important; }
+
+  /* Bottom safe area for iOS home indicator */
+  .page, #page-daily, #page-strefa, #page-odkryj, #page-teacher {
+    padding-bottom: max(80px, calc(60px + env(safe-area-inset-bottom, 0))) !important;
+  }
+
+  /* Overflow fixes */
+  .nav-tabs { -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+  .nav-tab { scroll-snap-align: start; }
+}
+
+/* ── iOS Safari specific fixes ── */
+@supports (-webkit-touch-callout: none) {
+  /* iOS safe areas */
+  nav.sticky { padding-top: env(safe-area-inset-top, 0); }
+  
+  /* Prevent zoom on input focus */
+  input, select, textarea { font-size: 16px !important; }
+  
+  /* Fix 100vh bug in iOS Safari */
+  .page { min-height: -webkit-fill-available; }
+  
+  /* Smooth scrolling */
+  .nav-tabs, #chat-messages, #teacher-messages, 
+  #lyrics-lines, #strefa-card-view {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ── Touch improvements ── */
+@media(hover: none) and (pointer: coarse) {
+  /* Larger tap targets */
+  .nav-tab { min-height: 44px; display: flex; align-items: center; justify-content: center; }
+  .btn { min-height: 44px; }
+  .kk-ans-opt, [onclick*="quiz"], [onclick*="Answer"] { min-height: 44px; }
+
+  /* Remove hover effects that feel wrong on touch */
+  .odkryj-card:hover { transform: none !important; box-shadow: none !important; }
+  .nav-tab:hover { color: rgba(255,255,255,.5); }
+}
+
+/* ── Print / reduced motion ── */
+@media(prefers-reduced-motion: reduce) {
+  *, *::before, *::after { 
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -2182,7 +2368,7 @@ async function initToFixPage(){
   <div style="max-width:900px;margin:0 auto">
     <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Strefa Nauki</h2>
     <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Wybierz tryb nauki</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px" id="strefa-tiles-grid">
       <button onclick="strefaShowTab('strefa')" id="strefa-btn-strefa" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
         <span style="font-size:24px">🧠</span>
         <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Strefa Nauki</span>
@@ -2448,7 +2634,7 @@ async function initToFixPage(){
   <div style="margin-bottom:20px">
     <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Porcja dnia</h2>
     <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Codzienna dawka nauki i rywalizacji</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px" id="daily-tiles-grid">
       <button onclick="dailyShowTab('daily')" id="daily-btn-daily" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
         <span style="font-size:24px">✨</span>
         <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Porcja dnia</span>
@@ -2696,7 +2882,7 @@ async function initToFixPage(){
   </div>
 
   <div id="teacher-panel-chat">
-    <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start" id="chat-grid-layout">
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start;min-width:0" id="chat-grid-layout">
 
       <!-- Sidebar -->
       <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
