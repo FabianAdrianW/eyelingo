@@ -354,16 +354,11 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
   <div class="nav-tabs" id="nav-tabs">
     <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Materiały</button>
     <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)">Porcja dnia ✨</button>
-    <button class="nav-tab" id="ntab-challenge" onclick="switchTab('challenge',this)">Wyzwanie</button>
-    <button class="nav-tab" id="ntab-chat" onclick="switchTab('chat',this)">AI Partner</button>
-    <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">👨‍🏫 Nauczyciel <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
-    <button class="nav-tab" id="ntab-lyrics" onclick="switchTab('lyrics',this)">Analiza tekstu</button>
-    <button class="nav-tab" id="ntab-tryb" onclick="switchTab('tryb',this)">📚 Tryb Nauki</button>
     <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
     <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
-    <button class="nav-tab" id="ntab-kultura" onclick="switchTab('kultura',this)">🌍 Kultury</button>
+    <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">Nauczyciel AI <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
+    <div style="flex:1;min-width:8px"></div>
     <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
-
   </div>
 </nav>
 
@@ -1140,7 +1135,11 @@ function showPage(name){
   if(name==='teacher') initTeacher();
   if(name==='lyrics') initLyrics();
   if(name==='tutors') initTutors();
-  if(name==='kultura') initKultura();
+  if(name==='kultura'){odkryjShowTab('kultura');switchTab('odkryj',document.getElementById('ntab-odkryj'));return false;}
+  if(name==='challenge'){dailyShowTab('challenge');switchTab('daily',document.getElementById('ntab-daily'));return false;}
+  if(name==='chat'){teacherShowTab('chat');switchTab('teacher',document.getElementById('ntab-teacher'));return false;}
+  if(name==='lyrics'){odkryjShowTab('lyrics');switchTab('odkryj',document.getElementById('ntab-odkryj'));return false;}
+  if(name==='tryb'){strefaShowTab('tryb');switchTab('strefa',document.getElementById('ntab-strefa'));return false;}
   loadNotifications();
   setActiveTab(name);
   return false;
@@ -1762,7 +1761,7 @@ async function loadRanking(){
 </script>
 
 <!-- ═══ COMMUNITY PAGE ═══ -->
-<div id="page-community" class="page" style="min-height:100vh;padding:160px 20px 80px">
+<div id="page-community" class="page" style="min-height:100vh;padding:120px 20px 80px">
   <div style="max-width:1000px;margin:0 auto">
 
     <!-- Nagłówek -->
@@ -1817,7 +1816,7 @@ async function loadRanking(){
 </div>
 
 <!-- ═══ RANKING PAGE ═══ -->
-<div id="page-tutors" class="page" style="min-height:100vh;padding:110px 20px 80px;background:var(--paper)">
+<div id="page-tutors" class="page" style="min-height:100vh;padding:120px 20px 80px;background:var(--paper)">
 <div style="max-width:1000px;margin:0 auto">
 
   <!-- Nagłówek -->
@@ -2181,10 +2180,25 @@ async function initToFixPage(){
 }
 </script>
 <!-- ═══ STREFA NAUKI ═══ -->
-<div id="page-strefa" class="page" style="min-height:100vh;padding:160px 20px 80px">
+<div id="page-strefa" class="page" style="min-height:100vh;padding:120px 20px 80px">
   <div style="max-width:900px;margin:0 auto">
-    <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Strefa Nauki</h2>
-    <p style="color:var(--dim2);margin-bottom:32px">Słówka w kontekście — zdania, tłumaczenia i wideo</p>
+    <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Strefa Nauki</h2>
+    <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Wybierz tryb nauki</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:28px">
+      <button onclick="strefaShowTab('strefa')" id="strefa-btn-strefa" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
+        <span style="font-size:24px">🧠</span>
+        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Strefa Nauki</span>
+        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Słówka w kontekście — zdania, tłumaczenia i wideo</span>
+      </button>
+      <button onclick="strefaShowTab('tryb')" id="strefa-btn-tryb" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
+        <span style="font-size:24px">📚</span>
+        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Tryb Nauki</span>
+        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Spaced repetition i active recall z Twoich zestawów</span>
+      </button>
+    </div>
+    <!-- Panel: Strefa Nauki właściwa -->
+    <div id="strefa-panel-strefa">
+    <p style="color:var(--dim2);margin-bottom:32px;display:none">Słówka w kontekście — zdania, tłumaczenia i wideo</p>
 
     <div id="strefa-access-msg" style="display:none;text-align:center;padding:60px 20px">
       <div style="font-size:48px;margin-bottom:16px">🔒</div>
@@ -2605,14 +2619,54 @@ function strefaBack(){
 }
 </script>
 
+    </div><!-- end strefa-panel-strefa -->
+
+    <!-- Panel: Tryb Nauki embedded -->
+    <div id="strefa-panel-tryb" style="display:none">
+      <div id="strefa-tryb-embed" style="min-height:400px">
+        <div style="text-align:center;padding:40px 20px">
+          <div style="font-size:40px;margin-bottom:12px">📚</div>
+          <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Uruchamianie Trybu Nauki...</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end max-width strefa -->
+</div><!-- end page-strefa -->
+
 <!-- ═══ ODKRYJ PAGE ═══ -->
-<div id="page-odkryj" class="page" style="min-height:100vh;padding:140px 20px 80px">
+<div id="page-odkryj" class="page" style="min-height:100vh;padding:120px 20px 80px">
 <div style="max-width:960px;margin:0 auto">
 
+  <!-- Selector kafelków -->
+  <div style="margin-bottom:28px">
+    <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Odkryj</h2>
+    <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Wybierz co chcesz dziś eksplorować</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px" id="odkryj-selector">
+      <button onclick="odkryjShowTab('articles')" id="odkryj-btn-articles" class="odkryj-tile odkryj-tile-active" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
+        <span style="font-size:24px">🌐</span>
+        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Odkryj świat</span>
+        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Artykuły i słownictwo dopasowane do zainteresowań</span>
+      </button>
+      <button onclick="odkryjShowTab('kultura')" id="odkryj-btn-kultura" class="odkryj-tile" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
+        <span style="font-size:24px">🌍</span>
+        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Kalendarz Kultur</span>
+        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Codzienny artykuł o kulturach świata ze słowem dnia</span>
+      </button>
+      <button onclick="odkryjShowTab('lyrics')" id="odkryj-btn-lyrics" class="odkryj-tile" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
+        <span style="font-size:24px">🎵</span>
+        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Analiza tekstu</span>
+        <span style="font-size:12px;color:var(--dim2);line-height:1.4">AI wyjaśni slang, kontekst i gry słowne z piosenek</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Panel: Odkryj świat -->
+  <div id="odkryj-panel-articles">
   <!-- Hero z globem 3D -->
   <div style="display:flex;align-items:center;gap:32px;margin-bottom:32px;flex-wrap:wrap">
     <div style="flex:1;min-width:200px">
-      <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:8px">Odkryj świat</h2>
+      <h3 style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--navy);margin-bottom:8px">Odkryj świat</h3>
       <p style="color:var(--dim2);font-size:15px;line-height:1.6">Artykuły, filmy i słownictwo dopasowane do Twojego poziomu i zainteresowań. Ucz się przez treści które kochasz.</p>
     </div>
     <div style="flex-shrink:0">
@@ -3182,12 +3236,54 @@ async function addVocabToFlashcards(words, topic, lang){
 })();
 </script>
 
+  </div><!-- end odkryj-panel-articles -->
+
+  <!-- Panel: Kalendarz Kultur (embedded) -->
+  <div id="odkryj-panel-kultura" style="display:none">
+    <div id="odkryj-kk-root">
+      <div id="odkryj-kk-loading" style="text-align:center;padding:60px 20px">
+        <div style="font-size:32px;margin-bottom:12px">🌍</div>
+        <div style="font-size:15px;color:var(--dim2)">Ładuję artykuł dnia...</div>
+      </div>
+      <div id="odkryj-kk-content" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- Panel: Analiza tekstu (embedded) -->
+  <div id="odkryj-panel-lyrics" style="display:none">
+    <div id="odkryj-lyrics-embed"></div>
+  </div>
+
+</div><!-- end max-width -->
+</div><!-- end page-odkryj -->
+
 <!-- ═══ DZISIEJSZA PORCJA ═══ -->
-<div id="page-daily" class="page" style="min-height:100vh;padding:140px 20px 80px">
+<div id="page-daily" class="page" style="min-height:100vh;padding:120px 20px 80px">
 <div style="max-width:860px;margin:0 auto">
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;padding-top:8px">
+
+  <!-- Selector kafelków -->
+  <div style="margin-bottom:24px">
+    <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Porcja dnia</h2>
+    <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Codzienna dawka nauki i rywalizacji</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+      <button onclick="dailyShowTab('daily')" id="daily-btn-daily" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
+        <span style="font-size:24px">✨</span>
+        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Porcja dnia</span>
+        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Codzienne słówka i ćwiczenia dopasowane do Ciebie</span>
+      </button>
+      <button onclick="dailyShowTab('challenge')" id="daily-btn-challenge" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
+        <span style="font-size:24px">🏆</span>
+        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Wyzwanie tygodnia</span>
+        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Rywalizuj ze społecznością. Nagrody dla najlepszych.</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Panel: Porcja dnia -->
+  <div id="daily-panel-daily">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px">
   <div>
-    <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:4px">Porcja dnia</h2>
+    <h3 style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--navy);margin-bottom:4px">Porcja dnia</h3>
     <p id="daily-date" style="color:var(--dim2);font-size:14px"></p>
   </div>
   <div style="display:flex;align-items:center;gap:10px">
@@ -3303,12 +3399,12 @@ async function addVocabToFlashcards(words, topic, lang){
 </div>
 </div>
 </div>
+  </div><!-- end daily-panel-daily -->
 
-<!-- ═══ WYZWANIE TYGODNIA ═══ -->
-<div id="page-challenge" class="page" style="min-height:100vh;padding:140px 20px 80px">
-<div style="max-width:860px;margin:0 auto">
-  <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Wyzwanie tygodnia</h2>
-  <p style="color:var(--dim2);margin-bottom:28px">Rywalizuj ze społecznością. Nagrody dla najlepszych.</p>
+  <!-- Panel: Wyzwanie (embedded w Porcja dnia) -->
+  <div id="daily-panel-challenge" style="display:none">
+    <h3 style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--navy);margin-bottom:6px">Wyzwanie tygodnia</h3>
+    <p style="color:var(--dim2);margin-bottom:28px">Rywalizuj ze społecznością. Nagrody dla najlepszych.</p>
 
   <!-- Banner aktualnego wyzwania -->
   <div id="challenge-banner" style="background:var(--navy);border-radius:20px;padding:28px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden">
@@ -3385,12 +3481,15 @@ async function addVocabToFlashcards(words, topic, lang){
   </div>
 </div>
 </div>
+  </div><!-- end daily-panel-challenge -->
 
-<!-- ═══ AI CONVERSATION PARTNER ═══ -->
-<div id="page-chat" class="page" style="min-height:100vh;padding:140px 20px 80px">
-<div style="max-width:900px;margin:0 auto">
-  <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">AI Partner</h2>
-  <p style="color:var(--dim2);margin-bottom:24px">Rozmawiaj z native speakerem który zna Twoje słabe punkty.</p>
+</div><!-- end max-width daily -->
+</div><!-- end page-daily -->
+
+<!-- ═══ AI NAUCZYCIEL (chat embedded) ═══ -->
+<div id="page-chat" class="page" style="display:none"><!-- stara strona ukryta, logika przeniesiona do teacher --></div>
+
+<div id="page-teacher-wrapper" style="display:none"><!-- placeholder --></div>
 
   <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start">
 
@@ -3495,7 +3594,7 @@ async function addVocabToFlashcards(words, topic, lang){
 </div>
 
 <!-- ═══ ANALIZA LYRICS ═══ -->
-<div id="page-lyrics" class="page" style="min-height:100vh;padding:140px 20px 80px">
+<div id="page-lyrics" class="page" style="min-height:100vh;padding:120px 20px 80px">
 <div style="max-width:900px;margin:0 auto">
   <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Analiza tekstu</h2>
   <p style="color:var(--dim2);margin-bottom:24px">Wklej tekst piosenki — AI wyjaśni każdą linijkę: slang, kontekst kulturowy, gry słowne.</p>
@@ -6683,7 +6782,7 @@ async function awardGoldBonus(amount){
   if(document.getElementById('page-tryb'))return;
   var div=document.createElement('div');
   div.id='page-tryb';div.className='page';
-  div.style.cssText='min-height:100vh;background:var(--paper);padding:100px 20px 60px';
+  div.style.cssText='min-height:100vh;background:var(--paper);padding:120px 20px 80px';
   div.innerHTML='<div style="max-width:860px;margin:0 auto">'
     +'<div id="tryb-lobby">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;padding-top:8px">'
@@ -7486,10 +7585,27 @@ async function uploadUserAvatar(file){
   if(document.getElementById('page-teacher')) return;
   var div=document.createElement('div');
   div.id='page-teacher';div.className='page';
-  div.style.cssText='min-height:100vh;padding:110px 20px 80px;background:var(--paper)';
+  div.style.cssText='min-height:100vh;padding:120px 20px 80px;background:var(--paper)';
   div.innerHTML='<div style="max-width:900px;margin:0 auto">'
-    +'<h2 style="font-family:Syne,sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">👨‍🏫 Nauczyciel PRO</h2>'
-    +'<p style="color:var(--dim2);margin-bottom:28px">Konwersacja z AI w wybranym języku</p>'
+    +'<h2 style="font-family:Syne,sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Nauczyciel AI</h2>'
+    +'<p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Wybierz tryb rozmowy z AI</p>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:28px">'
+    +'<button onclick="teacherShowTab(\'chat\')" id="teacher-btn-chat" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">'
+    +'<span style="font-size:24px">💬</span>'
+    +'<span style="font-family:Syne,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">AI Partner</span>'
+    +'<span style="font-size:12px;color:var(--dim2);line-height:1.4">Swobodna rozmowa z AI który zna Twoje słabe punkty</span>'
+    +'</button>'
+    +'<button onclick="teacherShowTab(\'teacher\')" id="teacher-btn-teacher" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">'
+    +'<span style="font-size:24px">👨‍🏫</span>'
+    +'<span style="font-family:Syne,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Nauczyciel PRO</span>'
+    +'<span style="font-size:12px;color:var(--dim2);line-height:1.4">Ustrukturyzowane lekcje z AI nauczycielem</span>'
+    +'</button>'
+    +'</div>'
+    +'<div id="teacher-panel-chat">'
+    +'<div id="teacher-ui-chat" style="background:#fff;border:1.5px solid var(--border);border-radius:20px;overflow:hidden;min-height:400px">'
+    +'<div style="padding:20px;color:var(--dim2);font-size:14px;text-align:center;padding-top:60px">Ładowanie...</div>'
+    +'</div></div>'
+    +'<div id="teacher-panel-teacher" style="display:none">'
     +'<div id="teacher-ui" style="background:#fff;border:2px solid var(--border);border-radius:20px;overflow:hidden">'
     +'<div id="teacher-messages" style="min-height:400px;max-height:60vh;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:12px">'
     +'<div style="text-align:center;color:var(--dim2);font-size:14px;padding:40px">Wybierz nauczyciela i zacznij rozmowę</div>'
@@ -7497,7 +7613,7 @@ async function uploadUserAvatar(file){
     +'<div style="border-top:1px solid var(--border);padding:16px;display:flex;gap:10px">'
     +'<input id="teacher-input" type="text" placeholder="Napisz wiadomość..." style="flex:1;padding:10px 16px;border-radius:100px;border:1.5px solid var(--border);font-size:14px;font-family:\'DM Sans\',sans-serif;outline:none" onkeydown="if(event.key===\'Enter\')sendTeacherMsg()">'
     +'<button onclick="sendTeacherMsg()" class="btn btn-orange" style="padding:10px 20px;font-size:14px">Wyślij</button>'
-    +'</div></div></div>';
+    +'</div></div></div></div>';
   document.body.appendChild(div);
 })();
 
@@ -7563,415 +7679,131 @@ function addVoiceRecordingBtn(word, sentence, lang){
   if(!el)return;
   el.innerHTML='<button style="background:var(--navy);color:#fff;border:none;border-radius:100px;padding:8px 16px;font-size:12px;cursor:pointer" onclick="startVoiceRecord()">🎙️ Nagraj wymowę</button>';
 }
-</script>
 
+// ═══════════════════════════════════════════════
+// TILE SELECTORS — obsługa kafelków sekcji
+// ═══════════════════════════════════════════════
 
-<!-- ═══ PAGE: KALENDARZ KULTUR ═══ -->
-<div id="page-kultura" class="page" style="min-height:100vh;padding:110px 20px 80px;background:var(--paper)">
-<div style="max-width:720px;margin:0 auto" id="kk-root">
+function tileActivate(btnId, allPrefix){
+  document.querySelectorAll('[id^="'+allPrefix+'"]').forEach(function(b){
+    b.style.borderColor='var(--border)';
+  });
+  var btn=document.getElementById(btnId);
+  if(btn) btn.style.borderColor='var(--orange)';
+}
 
-  <!-- LOADING -->
-  <div id="kk-loading" style="text-align:center;padding:80px 20px">
-    <div style="font-size:32px;margin-bottom:12px">🌍</div>
-    <div style="font-size:15px;color:var(--dim2)">Ładuję artykuł dnia...</div>
-  </div>
+// ── ODKRYJ ──
+function odkryjShowTab(tab){
+  document.getElementById('odkryj-panel-articles').style.display = tab==='articles' ? '' : 'none';
+  document.getElementById('odkryj-panel-kultura').style.display  = tab==='kultura'  ? '' : 'none';
+  document.getElementById('odkryj-panel-lyrics').style.display   = tab==='lyrics'   ? '' : 'none';
+  tileActivate('odkryj-btn-'+tab, 'odkryj-btn-');
+  if(tab==='kultura') odkryjLoadKultura();
+  if(tab==='lyrics')  odkryjLoadLyrics();
+}
 
-  <!-- ERROR -->
-  <div id="kk-error" style="display:none;text-align:center;padding:80px 20px">
-    <div style="font-size:32px;margin-bottom:12px">😔</div>
-    <div style="font-size:15px;color:var(--dim2)" id="kk-error-msg">Artykuł na dziś jeszcze nie jest gotowy.</div>
-    <div style="font-size:13px;color:var(--dim2);margin-top:8px">Sprawdź ponownie za chwilę lub jutro.</div>
-  </div>
+function odkryjLoadKultura(){
+  var wrap=document.getElementById('odkryj-kk-content');
+  var loading=document.getElementById('odkryj-kk-loading');
+  if(!wrap||wrap.dataset.loaded==='1') return;
+  wrap.dataset.loaded='1';
+  // Pobierz artykuł z Supabase i wyrenderuj
+  (async function(){
+    try{
+      var today=new Date().toISOString().split('T')[0];
+      var {data}=await db.from('culture_articles').select('*').eq('date',today).single();
+      if(!data){loading.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--dim2)">Artykuł na dziś jeszcze nie jest gotowy.</div>';return;}
+      loading.style.display='none';
+      wrap.style.display='block';
+      // Render uproszczony
+      wrap.innerHTML='<div style="background:'+data.hero_color+';border-radius:16px;padding:24px;margin-bottom:16px">'
+        +'<div style="font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Kultura dnia</div>'
+        +'<h3 style="font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:#fff;line-height:1.2;margin-bottom:6px">'+data.headline+'</h3>'
+        +'<div style="font-size:13px;color:rgba(255,255,255,0.6);font-style:italic">'+data.subline+'</div></div>'
+        +'<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">'
+        +'<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">⚡ Intro</div>'
+        +'<p style="font-size:15px;line-height:1.75;color:var(--navy);border-left:3px solid var(--orange);padding-left:12px;margin:0">'+data.hook+'</p></div>'
+        +(data.paragraphs||[]).map(function(p){return'<p style="font-size:15px;line-height:1.75;color:var(--navy);margin-bottom:12px">'+p+'</p>';}).join('')
+        +'<div style="background:'+data.hero_color+';border-radius:12px;padding:16px;margin-top:8px">'
+        +'<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:6px">🔤 Słowo dnia</div>'
+        +'<div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#fff">'+data.word+'</div>'
+        +'<div style="font-size:13px;color:rgba(255,255,255,0.6)">'+data.word_phonetic+'</div>'
+        +'<div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:6px">'+data.word_meaning+'</div></div>';
+    }catch(e){loading.innerHTML='<div style="color:var(--dim2);padding:20px">Błąd: '+e.message+'</div>';}
+  })();
+}
 
-  <!-- ARTICLE -->
-  <div id="kk-article" style="display:none">
+function odkryjLoadLyrics(){
+  var embed=document.getElementById('odkryj-lyrics-embed');
+  if(!embed||embed.dataset.loaded==='1') return;
+  embed.dataset.loaded='1';
+  // Skopiuj zawartość page-lyrics do embedu
+  var src=document.getElementById('page-lyrics');
+  if(src) embed.innerHTML=src.innerHTML;
+}
 
-    <!-- HERO -->
-    <div id="kk-hero" style="border-radius:20px;padding:32px 28px 24px;position:relative;overflow:hidden;margin-bottom:20px">
-      <div style="position:absolute;top:-50px;right:-50px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,0.04);pointer-events:none"></div>
-      <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.12);border:0.5px solid rgba(255,255,255,0.2);border-radius:100px;padding:4px 12px;font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:16px">
-        <span style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block"></span>
-        <span id="kk-date-badge">Dziś</span>
-      </div>
-      <div style="font-size:12px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Kultura dnia</div>
-      <h2 id="kk-headline" style="font-family:'Syne',sans-serif;font-size:clamp(18px,3vw,26px);font-weight:800;color:#fff;line-height:1.2;margin-bottom:8px"></h2>
-      <div id="kk-subline" style="font-size:14px;color:rgba(255,255,255,0.55);font-style:italic;line-height:1.5"></div>
-      <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:16px">
-        <span style="font-size:12px;color:rgba(255,255,255,0.4)">⏱ 4 min czytania</span>
-        <span id="kk-country-badge" style="font-size:12px;color:rgba(255,255,255,0.4)"></span>
-        <span id="kk-streak-badge" style="font-size:12px;color:rgba(255,255,255,0.4)"></span>
-      </div>
-    </div>
+// ── STREFA NAUKI ──
+function strefaShowTab(tab){
+  var panelS=document.getElementById('strefa-panel-strefa');
+  var panelT=document.getElementById('strefa-panel-tryb');
+  if(panelS) panelS.style.display = tab==='strefa' ? '' : 'none';
+  if(panelT) panelT.style.display = tab==='tryb'   ? '' : 'none';
+  tileActivate('strefa-btn-'+tab,'strefa-btn-');
+  if(tab==='tryb') strefaLoadTryb();
+}
 
-    <!-- STREAK -->
-    <div id="kk-streak-bar" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:16px">
-      <span style="font-size:20px;color:var(--orange)">🔥</span>
-      <div>
-        <div style="font-size:13px;color:var(--dim)">Twoja seria: <strong id="kk-streak-num" style="color:var(--navy)">1 dzień</strong></div>
-        <div style="font-size:11px;color:var(--dim2)" id="kk-streak-sub"></div>
-      </div>
-    </div>
-
-    <!-- HOOK -->
-    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">⚡ Intro</div>
-      <div id="kk-hook" style="font-size:16px;line-height:1.75;color:var(--navy);border-left:3px solid var(--orange);padding-left:14px"></div>
-    </div>
-
-    <!-- KONTEKST -->
-    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">🌐 Kontekst kulturowy</div>
-      <div id="kk-paragraphs"></div>
-    </div>
-
-    <!-- CIEKAWOSTKA -->
-    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">💡 Tego nie wiesz</div>
-      <div style="background:var(--paper);border-radius:10px;padding:14px">
-        <p id="kk-fact" style="font-size:14px;line-height:1.7;color:var(--navy);margin:0"></p>
-      </div>
-    </div>
-
-    <!-- MOST -->
-    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">🤝 Bliżej niż myślisz</div>
-      <p id="kk-bridge" style="font-size:15px;line-height:1.75;color:var(--navy);margin:0"></p>
-    </div>
-
-    <!-- SŁOWO DNIA -->
-    <div id="kk-word-hero" style="border-radius:16px;padding:20px;margin-bottom:12px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.5);margin-bottom:12px">🔤 Słowo dnia</div>
-      <div id="kk-word" style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:4px"></div>
-      <div id="kk-word-phonetic" style="font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:10px"></div>
-      <div id="kk-word-meaning" style="font-size:13px;color:rgba(255,255,255,0.8);line-height:1.6;margin-bottom:6px"></div>
-      <div id="kk-word-example" style="font-size:13px;color:rgba(255,255,255,0.5);font-style:italic"></div>
-      <button onclick="kkSpeakWord()" style="display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:rgba(255,255,255,0.12);border:0.5px solid rgba(255,255,255,0.2);border-radius:100px;padding:6px 14px;font-size:12px;color:rgba(255,255,255,0.8);cursor:pointer" id="kk-speak-btn">
-        🔊 Posłuchaj wymowy
-      </button>
-    </div>
-
-    <!-- TAGI -->
-    <div id="kk-tags-wrap" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px"></div>
-
-    <!-- PRZYCISKI -->
-    <button onclick="kkStartQuiz()" style="width:100%;padding:14px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.background='var(--navy2)'" onmouseout="this.style.background='var(--navy)'">
-      🎯 Sprawdź wiedzę — Quiz (3 pytania)
-    </button>
-    <button onclick="kkAddFlashcard()" style="width:100%;padding:12px;background:transparent;color:var(--dim);border:1.5px dashed var(--border2);border-radius:100px;font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='var(--paper2)'" onmouseout="this.style.background='transparent'">
-      ＋ Dodaj słowo dnia do fiszek Eyelingo
-    </button>
-
-    <!-- ARCHIWUM -->
-    <div style="margin-top:24px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">📅 Poprzednie artykuły</div>
-      <div id="kk-archive" style="display:flex;flex-direction:column;gap:8px"></div>
-    </div>
-  </div>
-
-  <!-- QUIZ -->
-  <div id="kk-quiz" style="display:none">
-    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:12px">🎯 Quiz kulturowy</div>
-      <div id="kk-quiz-progress" style="display:flex;gap:4px;margin-bottom:16px"></div>
-      <div id="kk-quiz-body"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">
-        <button onclick="kkShowArticle()" style="padding:8px 16px;border-radius:100px;border:1px solid var(--border2);background:transparent;color:var(--dim);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">← Wróć</button>
-        <button id="kk-next-btn" onclick="kkNextQ()" style="display:none;padding:8px 20px;border-radius:100px;border:none;background:var(--navy);color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">Dalej →</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- WYNIK -->
-  <div id="kk-score" style="display:none">
-    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:40px 20px;text-align:center">
-      <div id="kk-score-num" style="font-family:'Syne',sans-serif;font-size:56px;font-weight:800;color:var(--navy);line-height:1"></div>
-      <div id="kk-score-lbl" style="font-size:15px;color:var(--dim);margin-top:6px;margin-bottom:24px"></div>
-      <button onclick="kkShowArticle()" style="padding:12px 28px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer">Przeczytaj ponownie</button>
-    </div>
-  </div>
-
-</div>
-</div>
-<!-- ═══ END: KALENDARZ KULTUR ═══ -->
-
-<script>
-var _kkArticle = null;
-var _kkQuiz = [];
-var _kkQIdx = 0;
-var _kkScore = 0;
-var _kkAnswered = false;
-
-async function initKultura() {
-  var loading = document.getElementById('kk-loading');
-  var error   = document.getElementById('kk-error');
-  var article = document.getElementById('kk-article');
-
-  if (loading) loading.style.display = 'block';
-  if (error)   error.style.display   = 'none';
-  if (article) article.style.display = 'none';
-
-  try {
-    var sess = (await db.auth.getSession()).data.session;
-    if (!sess) { kkShowError('Zaloguj się, aby czytać artykuły.'); return; }
-
-    var today = new Date().toISOString().split('T')[0];
-
-    var { data, error: dbErr } = await db
-      .from('culture_articles')
-      .select('*')
-      .eq('date', today)
-      .single();
-
-    if (dbErr || !data) {
-      kkShowError('Artykuł na dziś jeszcze nie jest gotowy. Zajrzyj jutro!');
-      return;
-    }
-
-    _kkArticle = data;
-    _kkQuiz    = data.quiz || [];
-    kkRenderArticle(data);
-    kkLoadArchive(today);
-
-  } catch(e) {
-    kkShowError('Błąd ładowania: ' + e.message);
+function strefaLoadTryb(){
+  var embed=document.getElementById('strefa-tryb-embed');
+  if(!embed||embed.dataset.loaded==='1') return;
+  embed.dataset.loaded='1';
+  // Wywołaj initTrybNauki które samo wstrzyknie page-tryb
+  if(typeof initTrybNauki==='function'){
+    // Przenieś zawartość page-tryb do embedu po inicjalizacji
+    initTrybNauki();
+    setTimeout(function(){
+      var src=document.getElementById('page-tryb');
+      if(src) embed.innerHTML=src.innerHTML;
+    },300);
   }
 }
 
-function kkShowError(msg) {
-  document.getElementById('kk-loading').style.display = 'none';
-  document.getElementById('kk-error').style.display   = 'block';
-  document.getElementById('kk-error-msg').textContent  = msg;
+// ── PORCJA DNIA ──
+function dailyShowTab(tab){
+  var panelD=document.getElementById('daily-panel-daily');
+  var panelC=document.getElementById('daily-panel-challenge');
+  if(panelD) panelD.style.display = tab==='daily'     ? '' : 'none';
+  if(panelC) panelC.style.display = tab==='challenge' ? '' : 'none';
+  tileActivate('daily-btn-'+tab,'daily-btn-');
+  if(tab==='challenge'&&typeof initChallenge==='function') initChallenge();
 }
 
-function kkRenderArticle(d) {
-  document.getElementById('kk-loading').style.display = 'none';
-  document.getElementById('kk-article').style.display = 'block';
-
-  var hero = document.getElementById('kk-hero');
-  hero.style.background = d.hero_color || '#1a2340';
-
-  var wordHero = document.getElementById('kk-word-hero');
-  wordHero.style.background = d.hero_color || '#1a2340';
-
-  var dateStr = new Date(d.date + 'T12:00:00').toLocaleDateString('pl-PL', { weekday:'long', day:'numeric', month:'long' });
-  document.getElementById('kk-date-badge').textContent = dateStr;
-
-  document.getElementById('kk-headline').textContent      = d.headline      || '';
-  document.getElementById('kk-subline').textContent       = d.subline       || '';
-  document.getElementById('kk-country-badge').textContent = '📍 ' + (d.country || '');
-  document.getElementById('kk-hook').textContent          = d.hook          || '';
-  document.getElementById('kk-fact').textContent          = d.fact          || '';
-  document.getElementById('kk-bridge').textContent        = d.bridge        || '';
-  document.getElementById('kk-word').textContent          = d.word          || '';
-  document.getElementById('kk-word-phonetic').textContent = d.word_phonetic || '';
-  document.getElementById('kk-word-meaning').textContent  = d.word_meaning  || '';
-  document.getElementById('kk-word-example').textContent  = d.word_example  || '';
-
-  var pWrap = document.getElementById('kk-paragraphs');
-  pWrap.innerHTML = '';
-  (d.paragraphs || []).forEach(function(p) {
-    var el = document.createElement('p');
-    el.textContent = p;
-    el.style.cssText = 'font-size:15px;line-height:1.75;color:var(--navy);margin-bottom:14px';
-    pWrap.appendChild(el);
-  });
-
-  var tagsWrap = document.getElementById('kk-tags-wrap');
-  tagsWrap.innerHTML = '';
-  (d.tags || []).forEach(function(t) {
-    var span = document.createElement('span');
-    span.textContent = t;
-    span.style.cssText = 'padding:3px 10px;background:var(--paper2);border:1px solid var(--border);border-radius:100px;font-size:11px;color:var(--dim2)';
-    tagsWrap.appendChild(span);
-  });
-
-  kkUpdateStreak(d.date);
+// ── NAUCZYCIEL AI ──
+function teacherShowTab(tab){
+  var panelC=document.getElementById('teacher-panel-chat');
+  var panelT=document.getElementById('teacher-panel-teacher');
+  if(panelC) panelC.style.display = tab==='chat'    ? '' : 'none';
+  if(panelT) panelT.style.display = tab==='teacher' ? '' : 'none';
+  var btnC=document.getElementById('teacher-btn-chat');
+  var btnT=document.getElementById('teacher-btn-teacher');
+  if(btnC) btnC.style.borderColor = tab==='chat'    ? 'var(--orange)' : 'var(--border)';
+  if(btnT) btnT.style.borderColor = tab==='teacher' ? 'var(--orange)' : 'var(--border)';
+  if(tab==='chat') teacherLoadChat();
+  if(tab==='teacher'&&typeof initTeacher==='function') initTeacher();
 }
 
-function kkUpdateStreak(todayDate) {
-  try {
-    var last  = localStorage.getItem('kk_last_read');
-    var count = parseInt(localStorage.getItem('kk_streak') || '0', 10);
-    var yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
-    if (last === todayDate) {
-      // już czytał dziś
-    } else if (last === yesterday) {
-      count += 1;
-    } else {
-      count = 1;
-    }
-
-    localStorage.setItem('kk_last_read', todayDate);
-    localStorage.setItem('kk_streak', String(count));
-
-    document.getElementById('kk-streak-num').textContent = count + (count === 1 ? ' dzień' : ' dni');
-    document.getElementById('kk-streak-badge').textContent = '🔥 ' + count + 'd';
-
-    if (count >= 7) {
-      document.getElementById('kk-streak-sub').textContent = '🏆 Odznaka "Kulturoznawca tygodnia" odblokowana!';
-    } else {
-      var left = 7 - count;
-      document.getElementById('kk-streak-sub').textContent = 'Jeszcze ' + left + ' ' + (left === 1 ? 'dzień' : 'dni') + ' do odznaki tygodnia';
-    }
-  } catch(e) {}
-}
-
-async function kkLoadArchive(todayDate) {
-  try {
-    var { data } = await db
-      .from('culture_articles')
-      .select('date, culture, country, headline, hero_color')
-      .neq('date', todayDate)
-      .order('date', { ascending: false })
-      .limit(5);
-
-    var wrap = document.getElementById('kk-archive');
-    if (!data || data.length === 0) {
-      wrap.innerHTML = '<div style="font-size:13px;color:var(--dim2)">To pierwszy artykuł — jutro pojawi się historia.</div>';
-      return;
-    }
-
-    data.forEach(function(a) {
-      var d = document.createElement('div');
-      d.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 14px;background:#fff;border:1px solid var(--border);border-radius:12px;cursor:pointer;transition:.15s';
-      d.onmouseover = function(){ this.style.background = 'var(--paper2)'; };
-      d.onmouseout  = function(){ this.style.background = '#fff'; };
-      d.onclick = function(){ kkLoadByDate(a.date); };
-
-      var dot = document.createElement('div');
-      dot.style.cssText = 'width:36px;height:36px;border-radius:10px;background:' + (a.hero_color||'#1a2340') + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px';
-      dot.textContent = '🌍';
-
-      var info = document.createElement('div');
-      var dateLabel = new Date(a.date + 'T12:00:00').toLocaleDateString('pl-PL', { day:'numeric', month:'short' });
-      info.innerHTML = '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + a.culture + ' · ' + dateLabel + '</div>'
-        + '<div style="font-size:12px;color:var(--dim2);margin-top:2px">' + a.headline.slice(0,60) + '…</div>';
-
-      d.appendChild(dot);
-      d.appendChild(info);
-      wrap.appendChild(d);
-    });
-  } catch(e) {}
-}
-
-async function kkLoadByDate(date) {
-  document.getElementById('kk-article').style.display = 'none';
-  document.getElementById('kk-loading').style.display = 'block';
-
-  var { data } = await db
-    .from('culture_articles')
-    .select('*')
-    .eq('date', date)
-    .single();
-
-  if (data) {
-    _kkArticle = data;
-    _kkQuiz    = data.quiz || [];
-    kkRenderArticle(data);
-    document.getElementById('kk-root').scrollIntoView({ behavior:'smooth' });
+function teacherLoadChat(){
+  var embed=document.getElementById('teacher-ui-chat');
+  if(!embed||embed.dataset.loaded==='1') return;
+  embed.dataset.loaded='1';
+  var src=document.getElementById('page-chat');
+  if(src) embed.innerHTML=src.innerHTML;
+  else {
+    embed.innerHTML='<div style="padding:24px">'
+      +'<div id="chat-messages" style="min-height:300px;max-height:50vh;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">'
+      +'<div style="text-align:center;color:var(--dim2);font-size:14px;padding:40px">Załaduj czat...</div>'
+      +'</div></div>';
+    if(typeof initChat==='function') setTimeout(initChat,100);
   }
 }
 
-function kkShowArticle() {
-  document.getElementById('kk-quiz').style.display  = 'none';
-  document.getElementById('kk-score').style.display = 'none';
-  document.getElementById('kk-article').style.display = 'block';
-}
-
-function kkStartQuiz() {
-  _kkQIdx     = 0;
-  _kkScore    = 0;
-  _kkAnswered = false;
-  document.getElementById('kk-article').style.display = 'none';
-  document.getElementById('kk-quiz').style.display    = 'block';
-  document.getElementById('kk-score').style.display   = 'none';
-  kkRenderQ();
-}
-
-function kkRenderQ() {
-  _kkAnswered = false;
-  var q = _kkQuiz[_kkQIdx];
-  if (!q) { kkShowScore(); return; }
-
-  var prog = document.getElementById('kk-quiz-progress');
-  prog.innerHTML = _kkQuiz.map(function(_, i) {
-    var bg = i < _kkQIdx ? 'var(--navy)' : i === _kkQIdx ? 'var(--orange)' : 'var(--border)';
-    return '<div style="flex:1;height:3px;border-radius:2px;background:' + bg + '"></div>';
-  }).join('');
-
-  var body = document.getElementById('kk-quiz-body');
-  body.innerHTML = '<div style="font-size:12px;color:var(--dim2);margin-bottom:4px">Pytanie ' + (_kkQIdx+1) + ' z ' + _kkQuiz.length + ' · ' + (q.trudnosc||'') + '</div>'
-    + '<div style="font-size:15px;font-weight:600;color:var(--navy);margin-bottom:14px;line-height:1.4">' + q.pytanie + '</div>'
-    + '<div id="kk-answers-wrap">'
-    + (q.odpowiedzi||[]).map(function(a, i) {
-        return '<div class="kk-ans-opt" onclick="kkSelectAns(' + i + ')" data-idx="' + i + '" style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:14px;color:var(--navy);margin-bottom:8px;transition:.15s;background:#fff">'
-          + '<span style="width:22px;height:22px;border-radius:50%;background:var(--paper2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--dim2);flex-shrink:0">' + ['A','B','C','D'][i] + '</span>'
-          + '<span>' + a + '</span></div>';
-      }).join('')
-    + '</div>'
-    + '<div id="kk-explanation" style="display:none;margin-top:10px;padding:10px 12px;background:var(--paper);border-radius:10px;font-size:13px;color:var(--dim);line-height:1.6">' + (q.wyjasnienie||'') + '</div>';
-
-  document.getElementById('kk-next-btn').style.display = 'none';
-}
-
-function kkSelectAns(idx) {
-  if (_kkAnswered) return;
-  _kkAnswered = true;
-  var q = _kkQuiz[_kkQIdx];
-  var opts = document.querySelectorAll('.kk-ans-opt');
-  opts.forEach(function(el, i) {
-    el.style.cursor = 'default';
-    if (i === q.poprawna) {
-      el.style.background = '#eaf3de';
-      el.style.borderColor = '#639922';
-      el.style.color = '#3b6d11';
-    } else if (i === idx && i !== q.poprawna) {
-      el.style.background = '#fcebeb';
-      el.style.borderColor = '#e24b4a';
-      el.style.color = '#a32d2d';
-    }
-  });
-  if (idx === q.poprawna) _kkScore++;
-  document.getElementById('kk-explanation').style.display = 'block';
-  var nb = document.getElementById('kk-next-btn');
-  nb.style.display = 'inline-block';
-  nb.textContent = _kkQIdx < _kkQuiz.length - 1 ? 'Dalej →' : 'Zobacz wynik';
-}
-
-function kkNextQ() {
-  _kkQIdx++;
-  if (_kkQIdx >= _kkQuiz.length) { kkShowScore(); return; }
-  kkRenderQ();
-}
-
-function kkShowScore() {
-  document.getElementById('kk-quiz').style.display  = 'none';
-  document.getElementById('kk-score').style.display = 'block';
-  document.getElementById('kk-score-num').textContent = _kkScore + '/' + _kkQuiz.length;
-  var labels = [
-    'Spróbuj jeszcze raz — artykuł czeka!',
-    'Dobry wynik — trochę zostało do odkrycia.',
-    'Świetna robota — kulturoznawca w akcji!'
-  ];
-  document.getElementById('kk-score-lbl').textContent = labels[_kkScore - 1] || labels[0];
-}
-
-function kkSpeakWord() {
-  if (!_kkArticle || !_kkArticle.word) return;
-  if (!window.speechSynthesis) return;
-  var utt = new SpeechSynthesisUtterance(_kkArticle.word);
-  utt.rate = 0.85;
-  window.speechSynthesis.speak(utt);
-  var btn = document.getElementById('kk-speak-btn');
-  if (btn) { btn.textContent = '🔊 Odtwarzanie...'; utt.onend = function(){ btn.textContent = '🔊 Posłuchaj wymowy'; }; }
-}
-
-function kkAddFlashcard() {
-  if (!_kkArticle) return;
-  var word = _kkArticle.word;
-  if (typeof showToast === 'function') {
-    showToast('Słowo "' + word + '" dodane do fiszek!', 'success');
-  }
-}
 </script>
