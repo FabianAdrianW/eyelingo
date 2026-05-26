@@ -10150,10 +10150,34 @@ function lexMakeWordsClickable(){
   var el = document.getElementById('lex-card-text');
   if(!el || !el.textContent.trim()) return;
 
-  // Wrap each word in a span
-  var html = el.innerHTML;
-  // Only wrap text nodes, not existing HTML
-  el.innerHTML = html.replace(/(\b[a-zA-ZÀ-ÿ''-]{2,}\b)/g, '<span class="lex-word" onclick="lexTranslateWord(this)" style="cursor:pointer;border-bottom:1px dotted var(--dim2)">$1</span>');
+  // Walk only TEXT nodes to avoid breaking HTML structure
+  var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+  var textNodes = [];
+  var node;
+  while(node = walker.nextNode()){ textNodes.push(node); }
+
+  textNodes.forEach(function(textNode){
+    var text = textNode.nodeValue;
+    if(!text || !text.trim()) return;
+    // Skip if parent is already a lex-word span
+    if(textNode.parentNode && textNode.parentNode.classList && textNode.parentNode.classList.contains('lex-word')) return;
+
+    var frag = document.createDocumentFragment();
+    var parts = text.split(/([a-zA-ZÀ-ÿÀ-ž]{2,})/);
+    parts.forEach(function(part){
+      if(/^[a-zA-ZÀ-ÿÀ-ž]{2,}$/.test(part)){
+        var span = document.createElement('span');
+        span.className = 'lex-word';
+        span.style.cssText = 'cursor:pointer;border-bottom:1px dotted var(--dim2)';
+        span.textContent = part;
+        span.onclick = function(){ lexTranslateWord(this); };
+        frag.appendChild(span);
+      } else {
+        frag.appendChild(document.createTextNode(part));
+      }
+    });
+    textNode.parentNode.replaceChild(frag, textNode);
+  });
 }
 
 var _lexTranslateCache = {};
@@ -10345,9 +10369,9 @@ function lexFormatCardText(text){
     .replace(/<[^>]+>/g, '') // strip any remaining HTML tags
     // Remove ALL exercise/marker blocks
     .replace(/\[MC\]([\s\S]*?)\[\/MC\]/g, function(match, block){
-      // Show the question text from MC block in card
+      // Show the question text from MC block - as plain text with newline
       var qLine = block.split('\n').find(function(l){ return l.trim().startsWith('Q:'); });
-      return qLine ? '<br><strong>' + qLine.replace('Q:','').trim() + '</strong>' : '';
+      return qLine ? '\n\n' + qLine.replace('Q:','').trim() : '';
     })
     .replace(/\[FIG\][\s\S]*?\[\/FIG\]/g, '')
     .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g, '')
