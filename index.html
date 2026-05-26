@@ -2887,8 +2887,8 @@ async function initToFixPage(){
 <!-- ═══ AI NAUCZYCIEL (chat embedded) ═══ -->
 <div id="page-chat" class="page" style="display:none"><!-- stara strona ukryta, logika przeniesiona do teacher --></div>
 
-<div id="page-teacher" class="page" style="min-height:100vh;padding:120px 20px 80px;background:var(--paper)">
-<div style="max-width:960px;margin:0 auto">
+<div id="page-teacher" class="page" style="min-height:100vh;padding:110px 0 80px;background:var(--paper)">
+<div style="width:100%;padding:0 24px;box-sizing:border-box">
 
   <div style="margin-bottom:20px">
     <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Nauczyciel AI <span style="font-size:13px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif">PRO</span></h2>
@@ -3244,6 +3244,49 @@ async function initToFixPage(){
 .word-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;background:var(--paper2);border:1px solid var(--border);cursor:pointer;transition:.15s;color:var(--navy)}
 .word-badge:hover{border-color:var(--orange);color:var(--orange)}
 .word-badge.added{background:#e1f5ee;border-color:#9fe1cb;color:#085041}
+
+/* Lex animations */
+@keyframes lexFadeIn {
+  from { opacity:0; transform:translateY(6px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+@keyframes lexPulse {
+  0%,100% { opacity:.4; }
+  50%      { opacity:1; }
+}
+.lex-typing-dot {
+  display:inline-block;
+  width:6px;height:6px;
+  border-radius:50%;
+  background:var(--dim2);
+  margin:0 2px;
+  animation:lexPulse 1.2s infinite;
+}
+.lex-typing-dot:nth-child(2){ animation-delay:.2s; }
+.lex-typing-dot:nth-child(3){ animation-delay:.4s; }
+
+/* Lex choice buttons */
+.lex-choice-btn {
+  display:block;width:100%;text-align:left;
+  padding:12px 16px;margin-top:8px;
+  background:var(--paper);
+  border:1.5px solid var(--border2);
+  border-radius:12px;
+  font-size:14px;color:var(--navy);
+  font-family:DM Sans,sans-serif;
+  cursor:pointer;transition:all .15s;
+  line-height:1.4;
+}
+.lex-choice-btn:hover {
+  border-color:var(--orange);
+  background:#fff;
+  transform:translateX(3px);
+}
+.lex-choice-btn.selected {
+  border-color:var(--orange);
+  background:var(--orange);
+  color:#fff;
+}
 </style>
 
 
@@ -3287,11 +3330,7 @@ async function loadLangLevelsFromProfile(){
   try {
     var sess = (await db.auth.getSession()).data.session;
     if(!sess) return;
-    var {data} = await db.from('profiles').select('lang_levels').eq('id', sess.user.id).single();
-    if(data?.lang_levels) {
-      LANG_LEVELS = data.lang_levels;
-      localStorage.setItem('eyelingo_lang_levels', JSON.stringify(LANG_LEVELS));
-    }
+// lang_levels not in profiles table - using localStorage only
   } catch(e){}
   syncLevelSelector();
 }
@@ -8811,23 +8850,32 @@ async function lexLoadFlashcardSets(){
   try{
     var sess = (await db.auth.getSession()).data.session;
     if(!sess) return [];
-    var {data} = await db.from('user_sets')
-      .select('id,name,updated_at,user_set_cards(word,translation)')
+    // First get sets
+    var {data: sets} = await db.from('user_sets')
+      .select('id,name,updated_at')
       .eq('user_id', sess.user.id)
       .order('updated_at', {ascending: false})
       .limit(5);
-    if(!data) return [];
-    // Format dla Lexa
-    return data.map(function(s){
-      return {
+    if(!sets || !sets.length) return [];
+
+    // Then get cards for each set
+    var result = [];
+    for(var i=0; i<Math.min(sets.length, 3); i++){
+      var s = sets[i];
+      var {data: cards} = await db.from('user_set_cards')
+        .select('word,translation')
+        .eq('set_id', s.id)
+        .limit(20);
+      result.push({
         set_id: s.id,
         set_name: s.name,
         last_used: s.updated_at ? s.updated_at.slice(0,10) : null,
-        words: (s.user_set_cards || []).slice(0,20).map(function(c){
+        words: (cards||[]).map(function(c){
           return {word: c.word, translation: c.translation, known: false};
         })
-      };
-    });
+      });
+    }
+    return result;
   }catch(e){ return []; }
 }
 
@@ -8934,8 +8982,7 @@ async function lexCallAI(systemPrompt, userMessage, isOpening){
         model: LEX_MODEL,
         max_tokens: maxTok,
         stream: true,
-        system: systemPrompt,
-        messages: apiMessages
+        messages: [{role:'system', content: systemPrompt}].concat(apiMessages)
       })
     });
 
@@ -9464,8 +9511,7 @@ async function lexSendAuto(msg){
         model: LEX_MODEL,
         max_tokens: maxTok,
         stream: true,
-        system: systemPrompt,
-        messages: _lexMessages
+        messages: [{role:'system', content: systemPrompt}].concat(_lexMessages)
       })
     });
 
@@ -9526,36 +9572,41 @@ function lexGetCurrentSystemPrompt(){
 function lexAppendMessage(role, text){
   var container = document.getElementById('lex-messages');
   if(!container) return null;
-
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;gap:8px;align-items:flex-start;' + (role === 'user' ? 'flex-direction:row-reverse;' : '');
 
   if(role === 'lex'){
+    wrap.style.cssText = 'display:flex;gap:10px;align-items:flex-start;margin-bottom:4px';
     var avatar = document.createElement('div');
-    avatar.style.cssText = 'width:28px;height:28px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;margin-top:2px';
+    avatar.style.cssText = 'width:32px;height:32px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;margin-top:2px;box-shadow:0 2px 8px rgba(26,35,64,.2)';
     avatar.textContent = '👨‍🏫';
     wrap.appendChild(avatar);
+    var card = document.createElement('div');
+    card.style.cssText = 'flex:1;background:#fff;border:1px solid var(--border);border-radius:4px 18px 18px 18px;padding:14px 18px;font-size:14px;line-height:1.75;color:var(--navy);box-shadow:0 2px 12px rgba(26,35,64,.06)';
+    card.innerHTML = lexFormatMessage(text);
+    wrap.appendChild(card);
+    container.appendChild(wrap);
+    container.scrollTop = container.scrollHeight;
+    if(_lexMessages.length <= 2 && text && text.length > 10) lexUpdateTopicCard(text);
+    return card;
+  } else {
+    wrap.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:4px';
+    var bubble = document.createElement('div');
+    bubble.style.cssText = 'background:var(--navy);border-radius:18px 4px 18px 18px;padding:10px 16px;max-width:75%;font-size:14px;line-height:1.6;color:#fff;box-shadow:0 2px 8px rgba(26,35,64,.2)';
+    bubble.innerHTML = lexFormatMessage(text);
+    wrap.appendChild(bubble);
+    container.appendChild(wrap);
+    container.scrollTop = container.scrollHeight;
+    return bubble;
   }
-
-  var bubble = document.createElement('div');
-  bubble.style.cssText = role === 'lex'
-    ? 'background:#fff;border:1px solid var(--border);border-radius:16px 16px 16px 4px;padding:12px 16px;max-width:85%;font-size:14px;line-height:1.65;color:var(--navy)'
-    : 'background:var(--navy);border-radius:16px 16px 4px 16px;padding:10px 14px;max-width:75%;font-size:14px;line-height:1.6;color:#fff';
-
-  bubble.innerHTML = lexFormatMessage(text);
-  wrap.appendChild(bubble);
-  container.appendChild(wrap);
-  container.scrollTop = container.scrollHeight;
-  // Update topic card from first Lex message
-  if(role === 'lex' && _lexMessages.length <= 2 && text && text.length > 10){
-    lexUpdateTopicCard(text);
-  }
-  return bubble;
 }
 
 function lexUpdateMessage(el, text){
   if(!el) return;
-  el.innerHTML = lexFormatMessage(text);
+  if(!text || text.length < 3){
+    el.innerHTML = '<span class="lex-typing-dot"></span><span class="lex-typing-dot"></span><span class="lex-typing-dot"></span>';
+  } else {
+    el.innerHTML = lexFormatMessage(text);
+  }
   var container = document.getElementById('lex-messages');
   if(container) container.scrollTop = container.scrollHeight;
 }
