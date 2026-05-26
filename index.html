@@ -6587,6 +6587,122 @@ function renderTrybBadges(){
   el.innerHTML=defs.map(function(d){var earned=s.badges&&s.badges[d.id];return'<div class="tryb-badge'+(earned?' earned':'')+'" title="'+d.desc+'"><div class="tryb-badge-icon">'+(earned?d.icon:'🔒')+'</div><div class="tryb-badge-name">'+d.name+'</div></div>';}).join('');
 }
 
+async function showTrybEyelingoSets(){
+  var picker = document.getElementById('tryb-set-picker');
+  var list = document.getElementById('tryb-set-list');
+  if(!picker) return;
+  picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+  if(picker.style.display === 'none') return;
+  if(list) list.innerHTML = '<div style="color:var(--dim2);font-size:13px">Ładowanie...</div>';
+
+  try{
+    // Load languages
+    var {data: langs} = await db.from('languages').select('id,code,label,flag').order('id');
+    if(!langs || !langs.length){
+      if(list) list.innerHTML = '<div style="color:var(--dim2);font-size:13px">Brak języków</div>';
+      return;
+    }
+
+    if(list) list.innerHTML = '';
+
+    // For each language, show as expandable section
+    langs.forEach(function(lang){
+      var langBtn = document.createElement('button');
+      langBtn.style.cssText = 'width:100%;padding:12px 14px;border:1.5px solid var(--border2);border-radius:12px;background:var(--paper);font-size:14px;font-weight:700;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:8px;display:flex;align-items:center;gap:8px;font-family:DM Sans,sans-serif';
+      langBtn.innerHTML = '<span style="font-size:20px">' + (lang.flag||'🌐') + '</span>' + lang.label + '<span style="margin-left:auto;font-size:11px;color:var(--dim2)">▶</span>';
+      langBtn.dataset.langId = lang.id;
+      langBtn.dataset.langLabel = lang.label;
+      langBtn.dataset.expanded = '0';
+
+      var catContainer = document.createElement('div');
+      catContainer.style.cssText = 'display:none;padding:0 0 8px 12px';
+      catContainer.dataset.langCats = lang.id;
+
+      langBtn.onclick = async function(){
+        var expanded = langBtn.dataset.expanded === '1';
+        if(expanded){
+          catContainer.style.display = 'none';
+          langBtn.dataset.expanded = '0';
+          langBtn.querySelector('span:last-child').textContent = '▶';
+          return;
+        }
+        langBtn.dataset.expanded = '1';
+        langBtn.querySelector('span:last-child').textContent = '▼';
+        catContainer.style.display = 'block';
+        if(catContainer.dataset.loaded) return;
+        catContainer.dataset.loaded = '1';
+        catContainer.innerHTML = '<div style="font-size:12px;color:var(--dim2);padding:8px 0">Ładowanie kategorii...</div>';
+
+        try{
+          // Get categories for this language
+          var {data: cats} = await db.from('categories')
+            .select('id,name')
+            .eq('language_id', lang.id)
+            .order('name');
+
+          if(!cats || !cats.length){
+            // No categories - load all flashcards for language directly
+            var {data: cards} = await db.from('flashcards')
+              .select('word,translation')
+              .eq('language_id', lang.id)
+              .limit(100);
+
+            catContainer.innerHTML = '';
+            if(cards && cards.length){
+              var allBtn = document.createElement('button');
+              allBtn.style.cssText = 'width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;font-size:13px;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:6px;font-family:DM Sans,sans-serif';
+              allBtn.textContent = '📚 Wszystkie ' + lang.label + ' (' + cards.length + ' fiszek)';
+              allBtn.onclick = function(){
+                _trybExternalCards = cards;
+                _trybExternalName = lang.label;
+                picker.style.display = 'none';
+                startSession('set_external');
+              };
+              catContainer.appendChild(allBtn);
+            }
+            return;
+          }
+
+          catContainer.innerHTML = '';
+          cats.forEach(function(cat){
+            var catBtn = document.createElement('button');
+            catBtn.style.cssText = 'width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;font-size:13px;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:6px;font-family:DM Sans,sans-serif;transition:.15s';
+            catBtn.textContent = '📂 ' + cat.name;
+            catBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+            catBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+            catBtn.onclick = async function(){
+              // Load flashcards for this category
+              var {data: cards} = await db.from('flashcards')
+                .select('word,translation')
+                .eq('category_id', cat.id)
+                .limit(100);
+              if(cards && cards.length){
+                _trybExternalCards = cards;
+                _trybExternalName = lang.label + ' · ' + cat.name;
+                picker.style.display = 'none';
+                startSession('set_external');
+              } else {
+                catBtn.textContent = '📂 ' + cat.name + ' (brak fiszek)';
+                catBtn.disabled = true;
+              }
+            };
+            catContainer.appendChild(catBtn);
+          });
+        }catch(e){
+          catContainer.innerHTML = '<div style="color:#c33;font-size:12px">Błąd: ' + e.message + '</div>';
+        }
+      };
+
+      if(list){
+        list.appendChild(langBtn);
+        list.appendChild(catContainer);
+      }
+    });
+  }catch(e){
+    if(list) list.innerHTML = '<div style="color:#c33;font-size:13px">Błąd: ' + e.message + '</div>';
+  }
+}
+
 async function showTrybSetPicker(){
   var picker=document.getElementById('tryb-set-picker');var list=document.getElementById('tryb-set-list');
   if(!picker)return;
@@ -6691,13 +6807,16 @@ function injectTrybPage(){
     +'<div class="dstat"><div class="dstat-l">📚 Nowe</div><div class="dstat-v" id="tryb-new-count">—</div><div class="dstat-s">do nauki</div></div>'
     +'</div>'
     // Mode selection
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:24px">'
     +'<div onclick="startSession(\'due\')" style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
     +'<div style="font-size:32px;margin-bottom:10px">🔁</div><div style="font-weight:700;font-size:16px;color:var(--navy);margin-bottom:6px">Powtórki na dziś</div>'
     +'<div style="font-size:13px;color:var(--dim2)">Algorytm SM-2 wybrał słowa dla Ciebie</div></div>'
     +'<div onclick="showTrybSetPicker()" style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
     +'<div style="font-size:32px;margin-bottom:10px">📋</div><div style="font-weight:700;font-size:16px;color:var(--navy);margin-bottom:6px">Wybierz zestaw</div>'
     +'<div style="font-size:13px;color:var(--dim2)">Ucz się z wybranego zestawu</div></div>'
+    +'<div onclick="showTrybEyelingoSets()" style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
+    +'<div style="font-size:32px;margin-bottom:10px">🌍</div><div style="font-weight:700;font-size:16px;color:var(--navy);margin-bottom:6px">Zestawy Eyelingo</div>'
+    +'<div style="font-size:13px;color:var(--dim2)">Fiszki z programu językowego</div></div>'
     +'</div>'
     // Challenge toggle
     +'<div style="background:var(--navy);border-radius:16px;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">'
@@ -9196,7 +9315,7 @@ function lexBuildSystemPrompt(flashcardSets){
     + '[FIG]\\nSentence: zdanie z ___ PO ' + _lexLangNative + '\\nAnswer: słowo\\nHint: po polsku\\n[/FIG]\\n'
     + '[CONV]\\nTask: po polsku: co student ma napisać po ' + _lexLangName + '\\n[/CONV]\\n'
     + '[INFO]\\n(brak ćwiczenia)\\n[/INFO]\\n'
-    + 'KRYTYCZNE: NIE używaj markdown headers (#, ##). NIE używaj bloków kodu (```). NIE pisz tagów HTML. Pisz czysty tekst.\\n'
+    + 'KRYTYCZNE: NIE używaj markdown headers (#, ##). NIE używaj bloków kodu (```). NIE pisz tagów HTML (<br>, <p> itp). NIE pisz \\n dosłownie. Używaj zwykłych enterów. Pisz czysty tekst.\\n'
     + 'KRYTYCZNE: Ćwiczenia i pytania MC ZAWSZE po ' + _lexLangNative + '. Student odpowiada ZAWSZE po ' + _lexLangNative + '.\\n'
     + 'VOCAB: [WORD]słowo_po_' + _lexLangNative + '|tłumaczenie_PL|przykład[/WORD]\\n'
     + 'GAP: [GAP]temat[/GAP] gdy wykryjesz błąd\\n'
@@ -9671,8 +9790,15 @@ function lexUpdateVocabPanel(){
 function lexFormatCardText(text){
   if(!text) return '';
   var clean = text
+    // First: remove literal <br> tags that the model outputs as text
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(p|div|h[1-6])[^>]*>/gi, '\n')
     // Remove ALL exercise/marker blocks
-    .replace(/\[MC\][\s\S]*?\[\/MC\]/g, '')
+    .replace(/\[MC\]([\s\S]*?)\[\/MC\]/g, function(match, block){
+      // Show the question text from MC block in card
+      var qLine = block.split('\n').find(function(l){ return l.trim().startsWith('Q:'); });
+      return qLine ? '<br><strong>' + qLine.replace('Q:','').trim() + '</strong>' : '';
+    })
     .replace(/\[FIG\][\s\S]*?\[\/FIG\]/g, '')
     .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g, '')
     .replace(/\[INFO\][\s\S]*?\[\/INFO\]/g, '')
