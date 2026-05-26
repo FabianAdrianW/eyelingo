@@ -3614,7 +3614,7 @@ async function loadDailyWord(){
       .select('*')
       .eq('date', today)
       .eq('language', lang)
-      .single();
+      .maybeSingle();
 
     if(cached && cached.words){
       renderDailyWords(cached.words, lang);
@@ -4113,7 +4113,7 @@ async function loadDailyQuiz(){
       .select('*')
       .eq('date', today)
       .eq('language', lang)
-      .single();
+      .maybeSingle();
 
     if(cached && cached.question){
       renderDailyQuiz(cached);
@@ -7604,7 +7604,7 @@ function odkryjLoadKultura(){
   (async function(){
     try{
       var today = new Date().toISOString().split('T')[0];
-      var {data} = await db.from('culture_articles').select('*').eq('date', today).single();
+      var {data} = await db.from('culture_articles').select('*').eq('date', today).maybeSingle();
       if(!data){
         loading.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:32px;margin-bottom:12px">🌍</div>Artykuł na dziś jeszcze nie jest gotowy.</div>';
         return;
@@ -7754,7 +7754,7 @@ async function kkLoadArchiveDayOdkryj(date){
   var loading=document.getElementById('odkryj-kk-loading');
   if(!wrap)return;
   loading.style.display='block';wrap.style.display='none';
-  var {data}=await db.from('culture_articles').select('*').eq('date',date).single();
+  var {data}=await db.from('culture_articles').select('*').eq('date',date).maybeSingle();
   if(data){
     _kkCurrentArticle=data;_kkQuizData=data.quiz||[];
     var color=getCultureColor(data.culture||'',data.country||'');
@@ -8884,7 +8884,7 @@ async function lexInit(){
   try{
     var sess = (await db.auth.getSession()).data.session;
     if(!sess) return;
-    var {data: prof} = await db.from('lex_profiles').select('*').eq('user_id', sess.user.id).single();
+    var {data: prof} = await db.from('lex_profiles').select('*').eq('user_id', sess.user.id).maybeSingle();
     _lexProfile = prof;
   }catch(e){ _lexProfile = null; }
 
@@ -8967,7 +8967,7 @@ async function lexStartFromOnboarding(){
       updated_at: new Date().toISOString()
     };
     var existing = null;
-    try{ var r = await db.from('lex_profiles').select('id').eq('user_id', sess.user.id).single(); existing = r.data; }catch(e){ existing = null; }
+    try{ var r = await db.from('lex_profiles').select('id').eq('user_id', sess.user.id).maybeSingle(); existing = r.data; }catch(e){ existing = null; }
     if(existing){ await db.from('lex_profiles').update(profileData).eq('user_id', sess.user.id); }
     else { await db.from('lex_profiles').insert(profileData); }
     _lexProfile = profileData;
@@ -9900,7 +9900,7 @@ async function lexInit(){
     var sess = (await db.auth.getSession()).data.session;
     if(!sess) return;
     var prof = null;
-    try{ var rp = await db.from('lex_profiles').select('*').eq('user_id', sess.user.id).single(); prof = rp.data; }catch(e){ prof = null; }
+    try{ var rp = await db.from('lex_profiles').select('*').eq('user_id', sess.user.id).maybeSingle(); prof = rp.data; }catch(e){ prof = null; }
     _lexProfile = prof || null;
   }catch(e){ _lexProfile = null; }
   lexShowScreen('lex-lang-select');
