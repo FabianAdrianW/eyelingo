@@ -3135,16 +3135,24 @@ async function initToFixPage(){
       <div id="lex-card-main" style="flex:1;display:flex;flex-direction:column;gap:12px;overflow:hidden">
 
         <!-- Karta Lexa -->
-        <div id="lex-card-lex" style="background:#fff;border-radius:20px;padding:28px;box-shadow:0 4px 24px rgba(26,35,64,.08);position:relative;cursor:pointer" onclick="lexSkipTyping()" title="Kliknij aby przejść do końca">
+        <div id="lex-card-lex" style="background:#fff;border-radius:20px;padding:28px;box-shadow:0 4px 24px rgba(26,35,64,.08);position:relative" title="Kliknij zdanie aby je przetłumaczyć">
           <div style="display:flex;align-items:flex-start;gap:12px">
             <div style="width:36px;height:36px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;margin-top:2px">👨‍🏫</div>
-            <div style="flex:1">
+            <div style="flex:1;min-width:0">
               <div id="lex-card-text" style="font-size:16px;line-height:1.8;color:var(--navy);min-height:48px"></div>
-              <div id="lex-translate-hint" style="font-size:11px;color:var(--dim2);margin-top:8px;display:none">💡 Kliknij w słowo aby je przetłumaczyć</div>
+              <div id="lex-translate-hint" style="font-size:11px;color:var(--dim2);margin-top:8px;display:none">💡 Kliknij słowo = tłumaczenie · Kliknij zdanie = tłumaczenie zdania</div>
             </div>
           </div>
-          <!-- Skip hint -->
-          <div style="position:absolute;bottom:10px;right:14px;font-size:10px;color:var(--dim2);opacity:.5">kliknij = pomiń</div>
+          <!-- Audio replay button -->
+          <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+            <button onclick="lexReplayAudio()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border2)'">🔊 Odtwórz</button>
+            <button onclick="lexSkipTyping()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">⏭ Pomiń</button>
+          </div>
+          <!-- Sentence translation panel -->
+          <div id="lex-sentence-tr" style="display:none;margin-top:10px;padding:10px 14px;background:var(--paper);border-radius:10px;border-left:3px solid var(--orange);font-size:13px;color:var(--dim);line-height:1.6">
+            <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">🇵🇱 Tłumaczenie zdania</div>
+            <div id="lex-sentence-tr-text"></div>
+          </div>
         </div>
 
         <!-- Tooltip tłumaczenia -->
@@ -6534,6 +6542,24 @@ function startTrybMode(mode){
   var picker = document.getElementById('tryb-mode-picker');
   if(picker) picker.remove();
 
+  // Add "Back to modes" button to session header
+  var sessionHdr = document.getElementById('tryb-session');
+  var existingBack = document.getElementById('tryb-back-to-modes');
+  if(existingBack) existingBack.remove();
+  if(sessionHdr && mode !== 'write'){
+    var backBtn = document.createElement('button');
+    backBtn.id = 'tryb-back-to-modes';
+    backBtn.style.cssText = 'position:absolute;top:16px;left:16px;z-index:10;padding:7px 14px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:4px';
+    backBtn.innerHTML = '← Zmień tryb';
+    backBtn.onclick = function(){
+      backBtn.remove();
+      if(window.speechSynthesis) window.speechSynthesis.cancel();
+      showTrybModePicker();
+    };
+    sessionHdr.style.position = 'relative';
+    sessionHdr.appendChild(backBtn);
+  }
+
   if(mode === 'flip'){
     loadTrybFlipCard();
   } else if(mode === 'mc'){
@@ -7302,44 +7328,43 @@ function injectTrybPage(){
   div.style.cssText='min-height:100vh;background:var(--paper);padding:120px 20px 80px';
   div.innerHTML='<div style="max-width:860px;margin:0 auto">'
     +'<div id="tryb-lobby">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px;padding-top:8px">'
-    +'<div><h2 style="font-family:Syne,sans-serif;font-size:32px;font-weight:800;color:var(--navy);margin-bottom:4px">📚 Tryb Nauki</h2>'
-    +'<p style="color:var(--dim2);font-size:14px">Spaced repetition · Active recall · SM-2</p></div>'
-    +'<div style="display:flex;gap:10px;align-items:center">'
-    +'<div style="background:var(--paper2);border:1px solid var(--border);border-radius:100px;padding:6px 16px;display:flex;align-items:center;gap:10px;min-width:180px">'
-    +'<span style="font-size:12px;font-weight:700;color:var(--orange)" id="tryb-level-badge">Lv.1</span>'
-    +'<div style="flex:1;height:6px;background:rgba(26,35,64,.1);border-radius:3px;overflow:hidden"><div id="tryb-xp-fill" style="height:100%;background:linear-gradient(90deg,var(--orange),var(--gold));border-radius:3px;transition:width .5s;width:0%"></div></div>'
-    +'<span style="font-size:11px;color:var(--dim2)" id="tryb-xp-label">0 XP</span></div>'
-    +'<div id="tryb-streak-badge" style="background:var(--navy);color:#fff;border-radius:100px;padding:6px 14px;font-size:13px;font-weight:700">🔥 0</div>'
-    +'</div></div>'
-    // Stats
-    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">'
-    +'<div class="dstat"><div class="dstat-l">📅 Do powtórki</div><div class="dstat-v gold" id="tryb-due-count">—</div><div class="dstat-s">słów dziś</div></div>'
-    +'<div class="dstat"><div class="dstat-l">✅ Sesja</div><div class="dstat-v green" id="tryb-session-done">0</div><div class="dstat-s">ukończonych</div></div>'
-    +'<div class="dstat"><div class="dstat-l">🏆 XP dziś</div><div class="dstat-v" id="tryb-xp-today">0</div><div class="dstat-s">punktów</div></div>'
-    +'<div class="dstat"><div class="dstat-l">📚 Nowe</div><div class="dstat-v" id="tryb-new-count">—</div><div class="dstat-s">do nauki</div></div>'
-    +'</div>'
+    +'<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">'
+    +'<div style="flex:1;min-width:260px">'
+    +'<div style="margin-bottom:20px">'
+    +'<h2 style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:var(--navy);margin-bottom:4px">📚 Tryb Nauki</h2>'
+    +'<p style="color:var(--dim2);font-size:13px">Spaced repetition · Active recall · SM-2</p></div>'
     // Mode selection
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:24px">'
-    +'<div onclick="startSession(\'due\')" style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
-    +'<div style="font-size:32px;margin-bottom:10px">🔁</div><div style="font-weight:700;font-size:16px;color:var(--navy);margin-bottom:6px">Powtórki na dziś</div>'
-    +'<div style="font-size:13px;color:var(--dim2)">Algorytm SM-2 wybrał słowa dla Ciebie</div></div>'
-    +'<div onclick="showTrybSetPicker()" style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
-    +'<div style="font-size:32px;margin-bottom:10px">📋</div><div style="font-weight:700;font-size:16px;color:var(--navy);margin-bottom:6px">Wybierz zestaw</div>'
-    +'<div style="font-size:13px;color:var(--dim2)">Ucz się z wybranego zestawu</div></div>'
-    +'<div onclick="showTrybEyelingoSets()" style="background:#fff;border:2px solid var(--border);border-radius:20px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
-    +'<div style="font-size:32px;margin-bottom:10px">🌍</div><div style="font-weight:700;font-size:16px;color:var(--navy);margin-bottom:6px">Zestawy Eyelingo</div>'
-    +'<div style="font-size:13px;color:var(--dim2)">Fiszki z programu językowego</div></div>'
+    +'<div onclick="startSession(\'due\')" style="background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center" onmouseover="this.style.borderColor=\'var(--orange)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'none\'">'
+    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--navy);margin-bottom:6px">Powtórki na dziś</div>'
+    +'<div style="font-size:12px;color:var(--dim2);line-height:1.4">Algorytm SM-2<br>wybrał słowa dla Ciebie</div></div>'
+    +'<div onclick="showTrybSetPicker()" style="background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center" onmouseover="this.style.borderColor=\'var(--orange)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'none\'">'
+    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--navy);margin-bottom:6px">Moje zestawy</div>'
+    +'<div style="font-size:12px;color:var(--dim2);line-height:1.4">Ucz się ze<br>swoich zestawów</div></div>'
+    +'<div onclick="showTrybEyelingoSets()" style="background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center" onmouseover="this.style.borderColor=\'var(--orange)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'none\'">'
+    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--navy);margin-bottom:6px">Zestawy Eyelingo</div>'
+    +'<div style="font-size:12px;color:var(--dim2);line-height:1.4">Fiszki z<br>programu językowego</div></div>'
     +'</div>'
-    // Challenge toggle
-    +'<div style="background:var(--navy);border-radius:16px;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">'
-    +'<div><div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">🔀 Tryb Wyzwania</div>'
-    +'<div style="font-size:12px;color:rgba(255,255,255,.5)">Trudniejsze słowa 2× częściej · +25% XP</div></div>'
-    +'<label style="position:relative;display:inline-block;width:48px;height:26px;cursor:pointer">'
-    +'<input type="checkbox" id="tryb-challenge-toggle" style="opacity:0;width:0;height:0" onchange="updateChallengeMode(this.checked)">'
-    +'<span id="tryb-toggle-slider" style="position:absolute;inset:0;background:rgba(255,255,255,.2);border-radius:26px;transition:.3s">'
-    +'<span id="tryb-toggle-knob" style="position:absolute;left:3px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.3s"></span>'
-    +'</span></label></div>'
+    +'</div>'
+    +'<div style="width:180px;flex-shrink:0;display:flex;flex-direction:column;gap:10px">'
+    +'<div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:16px;text-align:center">'
+    +'<div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📅 Do powtórki</div>'
+    +'<div style="font-family:Syne,sans-serif;font-size:32px;font-weight:800;color:var(--orange)" id="tryb-due-count">—</div>'
+    +'<div style="font-size:11px;color:var(--dim2);margin-top:2px">słów dziś</div></div>'
+    +'<div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:16px;text-align:center">'
+    +'<div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">✅ Sesja</div>'
+    +'<div style="font-family:Syne,sans-serif;font-size:32px;font-weight:800;color:#639922" id="tryb-session-done">0</div>'
+    +'<div style="font-size:11px;color:var(--dim2);margin-top:2px">ukończonych</div></div>'
+    +'<div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:16px;text-align:center">'
+    +'<div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">🏆 XP dziś</div>'
+    +'<div style="font-family:Syne,sans-serif;font-size:32px;font-weight:800;color:var(--navy)" id="tryb-xp-today">0</div>'
+    +'<div style="font-size:11px;color:var(--dim2);margin-top:2px">punktów</div></div>'
+    +'<div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:16px;text-align:center">'
+    +'<div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📚 Nowe</div>'
+    +'<div style="font-family:Syne,sans-serif;font-size:32px;font-weight:800;color:var(--navy)" id="tryb-new-count">—</div>'
+    +'<div style="font-size:11px;color:var(--dim2);margin-top:2px">do nauki</div></div>'
+    +'</div>'
+    +'</div>'
     // Set picker
     +'<div id="tryb-set-picker" style="display:none;background:#fff;border:1.5px solid var(--border);border-radius:20px;padding:20px;margin-bottom:24px">'
     +'<div style="font-weight:700;font-size:15px;color:var(--navy);margin-bottom:14px">Wybierz zestaw:</div>'
@@ -7361,8 +7386,8 @@ function injectTrybPage(){
     // Card
     +'<div id="tryb-card" style="background:#fff;border:2px solid var(--border);border-radius:24px;padding:40px;text-align:center;margin-bottom:20px;min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 8px 40px rgba(26,35,64,.08)">'
     +'<div id="tryb-q-side" style="display:flex;flex-direction:column;align-items:center">'
-    +'<div id="tryb-card-emoji" style="font-size:48px;margin-bottom:12px"></div>'
-    +'<div id="tryb-card-word" style="font-family:Syne,sans-serif;font-size:42px;font-weight:800;color:var(--navy);letter-spacing:-1px;margin-bottom:10px"></div>'
+    +'<div id="tryb-card-emoji" style="display:none"></div>'
+    +'<div id="tryb-card-word" style="font-family:Syne,sans-serif;font-size:48px;font-weight:800;color:var(--navy);letter-spacing:-1px;margin-bottom:10px;text-align:center;line-height:1.1"></div>'
     +'<div id="tryb-card-example" style="font-size:13px;color:var(--dim2);font-style:italic;max-width:400px;line-height:1.6;margin-bottom:20px"></div>'
     +'<div style="display:flex;gap:8px;width:100%;max-width:380px">'
     +'<input id="tryb-answer-input" type="text" class="fi" placeholder="Wpisz tłumaczenie..." style="flex:1;font-size:15px;text-align:center" onkeydown="if(event.key===\'Enter\')checkAnswer()">'
@@ -9747,15 +9772,13 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
           })
         });
         if(!res.ok){
-          var errBody = await res.text();
-          console.error('[Lex] OpenRouter error:', res.status, errBody.slice(0,200));
+          await res.text();
           res = null;
         }
-      }catch(e){ console.error('[Lex] OpenRouter fetch failed:', e.message); res = null; }
+      }catch(e){ res = null; }
     }
 
     if(res){
-      console.log('[Lex] Using OpenRouter Claude Sonnet');
       // Stream response
       var reader = res.body.getReader();
       var decoder = new TextDecoder();
@@ -9996,11 +10019,13 @@ function lexTypewriterUpdate(text){
 
 var _lexSpeechEnabled = true;
 var _lexSpeechUtterance = null;
+var _lexLastSpokenText = '';
 
 function lexSpeak(text){
   if(!_lexSpeechEnabled || !window.speechSynthesis || !text) return;
   // Cancel any ongoing speech
   window.speechSynthesis.cancel();
+  _lexLastSpokenText = text;
   // Clean text - remove markers and HTML
   var clean = text
     .replace(/\[MC\][\s\S]*?\[\/MC\]/g,'')
@@ -10022,6 +10047,10 @@ function lexSpeak(text){
   utt.pitch = 1.0;
   _lexSpeechUtterance = utt;
   window.speechSynthesis.speak(utt);
+}
+
+function lexReplayAudio(){
+  if(_lexLastSpokenText) lexSpeak(_lexLastSpokenText);
 }
 
 function lexToggleSpeech(){
@@ -10168,9 +10197,11 @@ function lexMakeWordsClickable(){
       if(/^[a-zA-ZÀ-ÿÀ-ž]{2,}$/.test(part)){
         var span = document.createElement('span');
         span.className = 'lex-word';
-        span.style.cssText = 'cursor:pointer;border-bottom:1px dotted var(--dim2)';
+        span.style.cssText = 'cursor:pointer;border-bottom:1px dotted var(--dim2);transition:color .15s';
         span.textContent = part;
-        span.onclick = function(){ lexTranslateWord(this); };
+        span.onmouseover = function(){ this.style.color='var(--orange)'; };
+        span.onmouseout = function(){ if(!this.dataset.translated) this.style.color=''; };
+        span.onclick = function(e){ e.stopPropagation(); lexTranslateWord(this); };
         frag.appendChild(span);
       } else {
         frag.appendChild(document.createTextNode(part));
@@ -10180,7 +10211,49 @@ function lexMakeWordsClickable(){
   });
 }
 
+// Make card text clickable for sentence translation
+(function(){
+  var cardText = document.getElementById('lex-card-text');
+  if(cardText && !cardText.dataset.sentenceClick){
+    cardText.dataset.sentenceClick = '1';
+    cardText.addEventListener('click', function(e){
+      if(e.target.classList && e.target.classList.contains('lex-word')) return;
+      var sel = window.getSelection ? window.getSelection().toString().trim() : '';
+      var sentence = sel || cardText.textContent.trim().slice(0,200);
+      if(sentence && sentence.length > 3) lexTranslateSentence(sentence);
+    });
+  }
+})();
+
+
 var _lexTranslateCache = {};
+
+async function lexTranslateSentence(sentence){
+  var panel = document.getElementById('lex-sentence-tr');
+  var textEl = document.getElementById('lex-sentence-tr-text');
+  if(!panel || !textEl) return;
+  panel.style.display = 'block';
+  textEl.textContent = '⏳ Tłumaczę...';
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    var tok = sess ? sess.access_token : '';
+    var res = await fetch(AI_PROXY_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body: JSON.stringify({
+        messages:[{role:'user', content:'Przetłumacz na polski: "' + sentence.replace(/"/g,"'").slice(0,200) + '". Odpowiedz TYLKO tłumaczeniem.'}],
+        max_tokens: 150
+      })
+    });
+    var d = await res.json();
+    var tr = d && d.candidates && d.candidates[0] && d.candidates[0].content
+      && d.candidates[0].content.parts && d.candidates[0].content.parts[0]
+      && d.candidates[0].content.parts[0].text || '';
+    textEl.textContent = tr.trim() || 'Brak tłumaczenia';
+  }catch(e){
+    textEl.textContent = 'Błąd tłumaczenia';
+  }
+}
 
 async function lexTranslateWord(el){
   var word = el.textContent.trim();
@@ -10594,10 +10667,8 @@ async function lexLoadKey(){
           'Content-Type': 'application/json'
         }
       });
-      console.log('[Lex] get-openrouter-key status:', r.status);
-      if(r.ok){
+        if(r.ok){
         var d = await r.json();
-        console.log('[Lex] key received:', d.key ? 'YES (' + d.key.slice(0,8) + '...)' : 'NO', 'error:', d.error);
         if(d.key){ window.OPENROUTER_KEY_VALUE = d.key; window._lexKeyLoaded = true; }
       } else {
         var errText = await r.text();
@@ -10606,7 +10677,6 @@ async function lexLoadKey(){
     }
   }catch(e){ console.warn('[Lex] Key fetch failed:', e.message); }
   window._lexKeyLoading = false;
-  console.log('[Lex] Key loaded:', window._lexKeyLoaded, '| Key value set:', !!window.OPENROUTER_KEY_VALUE);
 }
 
 async function lexInit(){
