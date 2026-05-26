@@ -6505,9 +6505,8 @@ function showTrybModePicker(){
   dirRow.appendChild(dirBtn);
   picker.appendChild(dirRow);
 
-  // Insert before q-side
-  var qside = document.getElementById('tryb-q-side');
-  session.insertBefore(picker, qside);
+  // Append to session
+  session.appendChild(picker);
 }
 
 function trybModeCard(mode, icon, title, desc, color){
@@ -7085,18 +7084,38 @@ async function showTrybEyelingoSets(){
           catContainer.innerHTML = '<div style="font-size:12px;color:var(--dim2);padding:6px 0">Ładowanie kategorii...</div>';
 
           try{
-            // Use RPC like the Python app
-            var {data: cats, error} = await db.rpc('get_categories_for_lang_level', {
-              p_lang: lang.code,
-              p_level: lvl
-            });
+            // Get language id
+            var {data: langData} = await db.from('languages').select('id').eq('code', lang.code).single();
+            var langId = langData ? langData.id : null;
 
-            if(error || !cats || !cats.length){
-              // Fallback: direct query
-              var {data: cats2} = await db.from('categories')
-                .select('id,code,label,icon')
-                .order('id');
-              cats = cats2 || [];
+            // Get level id
+            var {data: lvlData} = await db.from('levels').select('id').eq('code', lvl).maybeSingle();
+            var lvlId = lvlData ? lvlData.id : null;
+
+            var cats = [];
+
+            // Try RPC first
+            try{
+              var {data: rpcCats} = await db.rpc('get_categories_for_lang_level', {p_lang: lang.code, p_level: lvl});
+              if(rpcCats && rpcCats.length) cats = rpcCats;
+            }catch(e3){}
+
+            if(!cats.length && langId){
+              // Get category ids that have flashcards for this language+level
+              var flashQ = db.from('flashcards').select('category_id').eq('language_id', langId).limit(1000);
+              if(lvlId) flashQ = flashQ.eq('level_id', lvlId);
+              var {data: flashRows} = await flashQ;
+              if(flashRows && flashRows.length){
+                var catIds = [...new Set(flashRows.map(function(r){ return r.category_id; }).filter(Boolean))];
+                var {data: catData} = await db.from('categories').select('id,code,label,icon').in('id', catIds).order('label');
+                cats = catData || [];
+              }
+            }
+
+            if(!cats.length){
+              // Last fallback: all categories
+              var {data: allCats} = await db.from('categories').select('id,code,label,icon').order('label').limit(50);
+              cats = allCats || [];
             }
 
             catContainer.innerHTML = '';
@@ -7116,7 +7135,7 @@ async function showTrybEyelingoSets(){
                 try{
                   var sess = (await db.auth.getSession()).data.session;
                   if(!sess) return;
-                  var catId = catObj.id || catObj.code;
+                  var catId = catObj.id; // always use integer id
                   var {data: catCards} = await db.from('flashcards').select('id').eq('category_id', catId).limit(500);
                   if(!catCards || catCards.length < 3) return;
                   var catIdSet = catCards.map(function(c){ return c.id; });
@@ -7137,20 +7156,33 @@ async function showTrybEyelingoSets(){
                 catBtn.textContent = '⏳ Ładowanie...';
                 catBtn.disabled = true;
                 try{
-                  var {data: cards} = await db.rpc('get_flashcards', {
-                    p_lang: lang.code,
-                    p_level: lvl,
-                    p_cat: cat.code || cat.id
-                  });
-                  if(!cards || !cards.length){
-                    // Fallback: direct flashcards query
-                    var {data: cards2} = await db.from('flashcards')
-                      .select('word,translation')
-                      .eq('language_id', lang.code)
-                      .eq('level_id', lvl)
-                      .eq('category_id', cat.id || cat.code)
-                      .limit(200);
+                  // Get language_id and level_id from languages/levels tables
+                  var {data: langRow} = await db.from('languages').select('id').eq('code', lang.code).single();
+                  var {data: lvlRow} = await db.from('levels').select('id').eq('code', lvl).maybeSingle();
+                  var langId = langRow ? langRow.id : null;
+                  var lvlId = lvlRow ? lvlRow.id : null;
+
+                  var cards = [];
+                  // Try RPC first
+                  try{
+                    var {data: rpcCards} = await db.rpc('get_flashcards', {
+                      p_lang: lang.code, p_level: lvl, p_cat: cat.code
+                    });
+                    if(rpcCards && rpcCards.length) cards = rpcCards;
+                  }catch(e2){}
+
+                  if(!cards.length){
+                    // Direct query using integer ids
+                    var q = db.from('flashcards').select('word,translation').eq('category_id', cat.id).limit(200);
+                    if(langId) q = q.eq('language_id', langId);
+                    if(lvlId) q = q.eq('level_id', lvlId);
+                    var {data: cards2} = await q;
                     cards = cards2 || [];
+                  }
+                  if(!cards.length){
+                    // Fallback: just category, ignore language/level filter
+                    var {data: cards3} = await db.from('flashcards').select('word,translation').eq('category_id', cat.id).limit(200);
+                    cards = cards3 || [];
                   }
                   if(cards && cards.length){
                     _trybExternalCards = cards.map(function(c){ return {word: c.word, translation: c.translation}; });
@@ -9759,6 +9791,13 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
       });
       var d = await proxyRes.json();
       fullResponse = d && d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts && d.candidates[0].content.parts[0] && d.candidates[0].content.parts[0].text || 'Let us continue the lesson.';
+      // Strip HTML that Gemini outputs as literal text
+      fullResponse = fullResponse
+        .replace(/<br[^>]*>/gi, '\n')
+        .replace(/<\/(strong|b|em|i)>/gi, '')
+        .replace(/<(strong|b)>/gi, '')
+        .replace(/<(em|i)>/gi, '')
+        .replace(/<[^>]+>/g, '');
       document.getElementById('lex-card-text').innerHTML = '';
       lexTypewriterStart(fullResponse);
     }
