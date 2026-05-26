@@ -3467,6 +3467,20 @@ var _dailyLoadedDate = '';
 var _dailyDone = {word:false, read:false, quiz:false};
 var _dailyXP = 0;
 var _quizAnswered = false;
+var _challengeTimer = null;
+
+function updateDailyProgress(){
+  try{
+    var done = (_dailyDone.word?1:0) + (_dailyDone.read?1:0) + (_dailyDone.quiz?1:0);
+    var total = 3;
+    var label = document.getElementById('daily-progress-label');
+    var bar = document.getElementById('daily-progress-bar');
+    var xpEl = document.getElementById('daily-xp');
+    if(label) label.textContent = done + ' z ' + total + ' aktywności ukończone';
+    if(bar) bar.style.width = Math.round((done/total)*100) + '%';
+    if(xpEl) xpEl.textContent = _dailyXP + ' XP';
+  }catch(e){}
+}
 
 function getQuizDoneToday(){
   try{return localStorage.getItem('quiz_done_'+new Date().toISOString().slice(0,10))||'';}catch(e){return '';}
