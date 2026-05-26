@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Eyelingo – See The Progress</title>
-<link rel="icon" type="image/x-icon" href="/favicon.ico">
-<link rel="apple-touch-icon" href="/favicon.ico">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="favicon.ico">
 <meta name="theme-color" content="#1a2340">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -3028,46 +3028,90 @@ async function initToFixPage(){
       </div>
     </div>
 
-    <!-- LESSON SCREEN -->
+    <!-- LESSON SCREEN — 3-zone cognitive layout -->
     <div id="lex-lesson" style="display:none">
-      <!-- Header lekcji -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+
+      <!-- Top bar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:36px;height:36px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;font-size:18px">👨‍🏫</div>
+          <div style="width:34px;height:34px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">👨‍🏫</div>
           <div>
-            <div style="font-size:13px;font-weight:600;color:var(--navy)">Lex</div>
-            <div id="lex-status-dot" style="font-size:11px;color:#16a34a;display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:#16a34a;display:inline-block"></span>Online</div>
+            <div style="font-size:13px;font-weight:700;color:var(--navy)">Lex</div>
+            <div style="font-size:11px;color:#16a34a;display:flex;align-items:center;gap:4px">
+              <span style="width:5px;height:5px;border-radius:50%;background:#16a34a;display:inline-block"></span>Uczy Cię teraz
+            </div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <div id="lex-lesson-badge" style="font-size:11px;padding:4px 10px;background:var(--paper);border:1px solid var(--border);border-radius:100px;color:var(--dim2)">Lekcja 25 min</div>
           <div id="lex-score-badge" style="font-size:11px;padding:4px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:100px;color:#92400e;display:none">⭐ 0 pkt</div>
-          <button onclick="lexEndLesson()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer">Zakończ lekcję</button>
+          <button onclick="lexEndLesson()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">Zakończ</button>
         </div>
       </div>
 
-      <!-- Pasek postępu lekcji -->
-      <div style="background:var(--paper);border-radius:100px;height:4px;margin-bottom:16px;overflow:hidden">
+      <!-- Pasek postępu -->
+      <div style="background:var(--paper);border-radius:100px;height:3px;margin-bottom:14px;overflow:hidden">
         <div id="lex-progress-bar" style="height:100%;background:var(--orange);border-radius:100px;width:0%;transition:width .5s"></div>
       </div>
 
-      <!-- Okno czatu -->
-      <div id="lex-messages" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;min-height:420px;max-height:55vh;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth">
-        <!-- wiadomości renderowane przez JS -->
-      </div>
+      <!-- 3-zone layout -->
+      <div id="lex-3col" style="display:grid;grid-template-columns:1fr 2fr 220px;gap:12px;align-items:start">
 
-      <!-- Obszar ćwiczeń interaktywnych -->
-      <div id="lex-exercise-area" style="display:none;margin-top:12px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;padding:20px">
-        <div id="lex-exercise-content"></div>
-      </div>
+        <!-- STREFA LEWA: Ćwiczenie aktywne -->
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2)">📝 Ćwiczenie</div>
+          <div id="lex-exercise-area" style="background:#fff;border:2px solid var(--orange);border-radius:14px;padding:16px;min-height:120px">
+            <div id="lex-exercise-content" style="font-size:13px;color:var(--dim2)">Ćwiczenia pojawią się tutaj</div>
+          </div>
 
-      <!-- Input użytkownika -->
-      <div id="lex-input-area" style="margin-top:12px;display:flex;gap:8px;align-items:flex-end">
-        <textarea id="lex-input" rows="1" placeholder="Napisz odpowiedź..." style="flex:1;resize:none;padding:10px 14px;border-radius:14px;border:1.5px solid var(--border2);font-size:14px;font-family:DM Sans,sans-serif;line-height:1.5;max-height:120px;overflow-y:auto" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();lexSend();}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
-        <button onclick="lexSend()" id="lex-send-btn" style="width:44px;height:44px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s" onmouseover="this.style.background='var(--navy2)'" onmouseout="this.style.background='var(--navy)'">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-        </button>
-      </div>
+          <!-- Kontekst / temat lekcji -->
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-top:4px">🎯 Temat</div>
+          <div id="lex-topic-card" style="background:var(--paper);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:12px;color:var(--dim);line-height:1.5">
+            Lex dostosuje temat do Twojego poziomu
+          </div>
+        </div>
+
+        <!-- STREFA ŚRODKOWA: Rozmowa z Lexem -->
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2)">💬 Lex mówi</div>
+          <div id="lex-messages" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;height:340px;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth"></div>
+          <!-- Input -->
+          <div style="display:flex;gap:8px;align-items:flex-end">
+            <textarea id="lex-input" rows="1" placeholder="Twoja odpowiedź..." style="flex:1;resize:none;padding:9px 13px;border-radius:12px;border:1.5px solid var(--border2);font-size:13px;font-family:DM Sans,sans-serif;line-height:1.5;max-height:100px;overflow-y:auto" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();lexSend();}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+            <button onclick="lexSend()" id="lex-send-btn" style="width:40px;height:40px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- STREFA PRAWA: Słówka i postęp -->
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2)">📖 Słówka lekcji</div>
+          <div id="lex-vocab-panel" style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px;min-height:120px;max-height:200px;overflow-y:auto">
+            <div style="font-size:12px;color:var(--dim2);text-align:center;padding:16px 0">Pojawią się tu nowe słowa</div>
+          </div>
+
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2)">🔍 Wykryte luki</div>
+          <div id="lex-gaps-panel" style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px;min-height:60px;font-size:12px;color:var(--dim2)">
+            <div style="text-align:center;padding:8px 0">Lex obserwuje błędy cicho</div>
+          </div>
+
+          <!-- Wynik sesji -->
+          <div style="background:var(--navy);border-radius:12px;padding:12px;text-align:center">
+            <div id="lex-score-display" style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#fff;line-height:1">0</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:2px">punktów</div>
+          </div>
+        </div>
+
+      </div><!-- /3col -->
+
+      <!-- Mobile: collapse to single column -->
+      <style>
+        @media(max-width:768px){
+          #lex-3col { grid-template-columns: 1fr !important; }
+          #lex-messages { height: 260px !important; }
+        }
+      </style>
     </div>
 
     <!-- LESSON SUMMARY SCREEN -->
@@ -8689,8 +8733,8 @@ async function lexStartOnboarding(){
     // Get username from existing profile
     var userName = sess.user.email?.split('@')[0] || 'Użytkowniku';
     try{
-      var {data: existingProfile} = await db.from('profiles').select('username,display_name,full_name').eq('id', sess.user.id).single();
-      if(existingProfile) userName = existingProfile.display_name || existingProfile.username || existingProfile.full_name || userName;
+      var {data: existingProfile} = await db.from('profiles').select('username').eq('user_id', sess.user.id).single();
+      if(existingProfile) userName = existingProfile.username || userName;
     }catch(e){}
 
     var profileData = {
@@ -8795,7 +8839,7 @@ function lexBuildSystemPrompt(flashcardSets){
   var gapsJson = JSON.stringify(gaps);
 
   return [
-    'Jesteś Lexem — nauczycielem języka angielskiego z prawdziwą osobowością.',
+    'Jesteś Lexem — nauczycielem języków OBCYCH. Uczysz TYLKO języków obcych: angielskiego, hiszpańskiego, niderlandzkiego, japońskiego.',
     'Nie jesteś botem. Jesteś kimś, kto naprawdę cieszy się z postępów swoich uczniów, zauważa ich wysiłek i pamięta, nad czym razem pracowaliście.',
     'Mówisz po polsku do wyjaśnień i tłumaczeń. Angielski to język lekcji.',
     'Nigdy nie brzmisz jak instrukcja obsługi. Brzmisz jak człowiek.',
@@ -8825,7 +8869,8 @@ function lexBuildSystemPrompt(flashcardSets){
     'SŁÓWKA — gdy wprowadzasz nowe słowo, oznacz: [WORD]słowo|tłumaczenie|przykład[/WORD]',
     'LUKA — gdy wykryjesz błąd do śledzenia: [GAP]temat luki[/GAP]',
     '',
-    'WAŻNE: NIE kończ lekcji przed upływem całego czasu (' + dur + ' min). Prowadź pełną lekcję według modelu HPPP z wieloma ćwiczeniami.',
+    'WAŻNE: Jesteś WYŁĄCZNIE nauczycielem języków obcych. Nigdy nie pytaj o inne tematy niż języki. Jeśli user spyta o coś innego, wróć do nauki języka.',
+    'NIE kończ lekcji przed upływem całego czasu (' + dur + ' min). Prowadź pełną lekcję według modelu HPPP z wieloma ćwiczeniami.',
     'Dopiero na samym końcu lekcji (po co najmniej 15-20 wymianach wiadomości) użyj znacznika [SUMMARY].',
     'Zakończ lekcję podsumowaniem [SUMMARY] z tym co poszło dobrze i zapowiedzią następnej lekcji.',
     '',
@@ -8969,6 +9014,7 @@ function lexParseResponse(text){
   for(var m of wordMatches){
     _lexVocab.push({word: m[1].trim(), translation: m[2].trim(), example: m[3].trim()});
   }
+  lexUpdateVocabPanel();
 
   // Zbieraj luki
   var gapMatches = text.matchAll(/\[GAP\]([^\[]+)\[\/GAP\]/g);
@@ -8976,6 +9022,11 @@ function lexParseResponse(text){
     var gap = g[1].trim();
     if(!_lexGaps.includes(gap)) _lexGaps.push(gap);
   }
+  lexUpdateGapsPanel();
+
+  // Aktualizuj wynik
+  var scoreEl = document.getElementById('lex-score-display');
+  if(scoreEl) scoreEl.textContent = _lexScore;
 
   // Ćwiczenia
   if(text.includes('[MC]')) lexRenderMC(text);
@@ -8986,25 +9037,55 @@ function lexParseResponse(text){
   // Podsumowanie — tylko po min. 8 wymianach
   if(text.includes('[SUMMARY]') && _lexMessages.length >= 8) lexShowSummary();
 
-  // Aktualizuj wynik
-  if(text.includes('[MC]') || text.includes('[FIG]') || text.includes('[TR]')){
-    _lexScore += 10;
-    var badge = document.getElementById('lex-score-badge');
-    if(badge){ badge.style.display = 'block'; badge.textContent = '⭐ ' + _lexScore + ' pkt'; }
-  }
+  // Score badge (top bar)
+  var badge = document.getElementById('lex-score-badge');
+  if(badge && _lexScore > 0){ badge.style.display = 'block'; badge.textContent = '⭐ ' + _lexScore + ' pkt'; }
 }
 
 // ── Renderowanie ćwiczeń ───────────────────────────────────
+function lexUpdateVocabPanel(){
+  var panel = document.getElementById('lex-vocab-panel');
+  if(!panel) return;
+  if(_lexVocab.length === 0) return;
+  panel.innerHTML = _lexVocab.map(function(w){
+    return '<div style="padding:5px 0;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:1px">'
+      + '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + w.word + '</div>'
+      + '<div style="font-size:11px;color:var(--orange)">' + w.translation + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function lexUpdateGapsPanel(){
+  var panel = document.getElementById('lex-gaps-panel');
+  if(!panel || _lexGaps.length === 0) return;
+  panel.innerHTML = _lexGaps.map(function(g,i){
+    return '<div style="display:flex;gap:5px;align-items:flex-start;padding:3px 0;font-size:11px;color:var(--dim)">'
+      + '<span style="color:var(--orange);font-weight:700;flex-shrink:0">' + (i+1) + '.</span>'
+      + g + '</div>';
+  }).join('');
+}
+
+function lexUpdateTopicCard(text){
+  var card = document.getElementById('lex-topic-card');
+  if(!card) return;
+  // Extract topic hint from first few words of first Lex message
+  var clean = text.replace(/<[^>]+>/g,'').slice(0,120);
+  if(clean.length > 80) clean = clean.slice(0,80) + '...';
+  card.textContent = clean;
+}
+
 function lexShowExercise(html){
   var area = document.getElementById('lex-exercise-area');
-  var content = document.getElementById('lex-exercise-content');
-  area.style.display = 'block';
-  content.innerHTML = html;
-  area.scrollIntoView({behavior:'smooth', block:'nearest'});
+  var cont = document.getElementById('lex-exercise-content');
+  if(area) area.style.border = '2px solid var(--orange)';
+  if(cont) cont.innerHTML = html;
 }
 
 function lexHideExercise(){
-  document.getElementById('lex-exercise-area').style.display = 'none';
+  var area = document.getElementById('lex-exercise-area');
+  var cont = document.getElementById('lex-exercise-content');
+  if(cont) cont.innerHTML = '<div style="font-size:12px;color:var(--dim2);text-align:center;padding:16px">Czekam na następne ćwiczenie...</div>';
+  if(area) area.style.border = '1.5px solid var(--border)';
 }
 
 function lexRenderMC(text){
@@ -9465,6 +9546,10 @@ function lexAppendMessage(role, text){
   wrap.appendChild(bubble);
   container.appendChild(wrap);
   container.scrollTop = container.scrollHeight;
+  // Update topic card from first Lex message
+  if(role === 'lex' && _lexMessages.length <= 2 && text && text.length > 10){
+    lexUpdateTopicCard(text);
+  }
   return bubble;
 }
 
