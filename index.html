@@ -2983,8 +2983,9 @@ async function initToFixPage(){
 
     </div><!-- /chat-grid-layout -->
   </div><!-- /teacher-panel-chat -->
+  </div><!-- /padded wrapper -->
 
-  <!-- ═══ LEX AI TEACHER — KARTA PO KARCIE ═══ -->
+  <!-- ═══ LEX AI TEACHER — FULL WIDTH — KARTA PO KARCIE ═══ -->
   <div id="teacher-panel-teacher" style="display:none">
 
     <!-- ── LANGUAGE SELECT SCREEN ── -->
@@ -3050,7 +3051,7 @@ async function initToFixPage(){
     </div>
 
     <!-- ── CARD ENGINE — główny ekran lekcji ── -->
-    <div id="lex-card-engine" style="display:none;min-height:calc(100vh - 180px);flex-direction:column;padding:0 24px">
+    <div id="lex-card-engine" style="display:none;min-height:calc(100vh - 180px);flex-direction:column;padding:0 32px">
 
       <!-- Top bar -->
       <div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 14px 0;flex-wrap:wrap;gap:8px">
@@ -3064,6 +3065,7 @@ async function initToFixPage(){
         <div style="display:flex;align-items:center;gap:8px">
           <div id="lex-card-num" style="font-size:11px;color:var(--dim2)">Karta 1</div>
           <div id="lex-score-badge" style="font-size:11px;padding:3px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:100px;color:#92400e;display:none">⭐ 0</div>
+          <button id="lex-speech-toggle" onclick="lexToggleSpeech()" style="font-size:16px;padding:4px 8px;background:transparent;border:1px solid var(--border2);border-radius:100px;cursor:pointer" title="Włącz/wyłącz czytanie">🔊</button>
           <button onclick="lexShowHistory()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">📜 Historia</button>
           <button onclick="lexEndLesson()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">Zakończ</button>
         </div>
@@ -3492,25 +3494,31 @@ function initDaily(){
 }
 
 function reloadDailyContent(){
-  // Clear cache flags so AI regenerates for new language
+  // Clear all caches for new language
   window._dailyWordsData = null;
+  window._dailyQuizExpl = null;
   try{var sel=document.getElementById('daily-lang-select');if(sel)localStorage.setItem('daily_lang',sel.value);}catch(e){}
-  _dailyLoaded=true;
-  _dailyLoadedDate=''; // force reload
-  // Reset
+  _dailyLoaded=false;
+  _dailyLoadedDate='';
+  // Reset state
   _dailyDone={word:false,read:false,quiz:false};
   _dailyXP=0;
-  document.getElementById('daily-xp').textContent='0 XP';
-  // Reset wszystkich kart
-  ['dc-word-done','dc-read-done','dc-quiz-done'].forEach(function(id){
-    var el=document.getElementById(id);if(el)el.style.display='none';
-  });
-  ['dc-word-content','dc-read-content','dc-quiz-content'].forEach(function(id){
-    var el=document.getElementById(id);if(el)el.style.display='none';
-  });
-  ['dc-word-loading','dc-read-loading','dc-quiz-loading'].forEach(function(id){
-    var el=document.getElementById(id);if(el){el.style.display='block';el.textContent='Ładowanie...';}
-  });
+  var xpEl=document.getElementById('daily-xp');if(xpEl)xpEl.textContent='0 XP';
+  // Reset word section
+  var wLoad=document.getElementById('dc-word-loading');if(wLoad){wLoad.style.display='block';wLoad.textContent='Ładowanie...';}
+  var wCont=document.getElementById('dc-word-content');if(wCont)wCont.style.display='none';
+  var wDone=document.getElementById('dc-word-done');if(wDone)wDone.style.display='none';
+  // Reset read section
+  var rLoad=document.getElementById('dc-read-loading');if(rLoad){rLoad.style.display='block';rLoad.textContent='Ładowanie...';}
+  var rCont=document.getElementById('dc-read-content');if(rCont)rCont.style.display='none';
+  // Reset quiz section
+  var qBody=document.getElementById('dc-quiz-inline-body');
+  if(qBody){
+    var qQ=document.getElementById('dc-quiz-q');if(qQ)qQ.innerHTML='';
+    var qOpts=document.getElementById('dc-quiz-opts');
+    if(qOpts)qOpts.innerHTML='<div style="grid-column:1/-1;color:var(--dim2);font-size:13px">⏳ Generuję quiz...</div>';
+    var qExpl=document.getElementById('dc-quiz-expl');if(qExpl){qExpl.style.display='none';qExpl.textContent='';}
+  }
   updateDailyProgress();
   loadDailyContent();
 }
@@ -8820,6 +8828,9 @@ async function lexInit(){
   }
 }
 
+// Load speech preference on init
+try{ var sp = localStorage.getItem('lex_speech'); if(sp === '0') _lexSpeechEnabled = false; }catch(e){}
+
 function lexShowScreen(id){
   ['lex-lang-select','lex-onboarding','lex-card-engine','lex-summary'].forEach(function(s){
     var el = document.getElementById(s);
@@ -9227,7 +9238,11 @@ function lexTypewriterStart(text){
     _lexTypewriterPos += 1; // 1 char at a time for natural reading
     var visible = _lexTypewriterFull.slice(0, _lexTypewriterPos);
     var el = document.getElementById('lex-card-text');
-    if(el) el.innerHTML = lexFormatCardText(visible);
+    if(el){
+      // Use innerHTML but strip incomplete HTML tags at end to avoid broken tags
+      var formatted = lexFormatCardText(visible);
+      el.innerHTML = formatted;
+    }
   }, _lexTypewriterSpeed);
 }
 
@@ -9240,6 +9255,44 @@ function lexTypewriterUpdate(text){
   if(el && el.querySelector('.lex-typing-dot')) {
     // Keep showing dots while streaming
   }
+}
+
+var _lexSpeechEnabled = true;
+var _lexSpeechUtterance = null;
+
+function lexSpeak(text){
+  if(!_lexSpeechEnabled || !window.speechSynthesis || !text) return;
+  // Cancel any ongoing speech
+  window.speechSynthesis.cancel();
+  // Clean text - remove markers and HTML
+  var clean = text
+    .replace(/\[MC\][\s\S]*?\[\/MC\]/g,'')
+    .replace(/\[FIG\][\s\S]*?\[\/FIG\]/g,'')
+    .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g,'')
+    .replace(/\[[A-Z\/]+\][^\[]*/g,'')
+    .replace(/<[^>]+>/g,'')
+    .replace(/\*\*/g,'').replace(/\*/g,'')
+    .replace(/---/g,'')
+    .trim()
+    .slice(0, 300); // max 300 chars for TTS
+
+  if(!clean) return;
+  var utt = new SpeechSynthesisUtterance(clean);
+  // Set language based on selected learning language
+  var langMap = {en:'en-US', es:'es-ES', nl:'nl-NL', jp:'ja-JP'};
+  utt.lang = langMap[_lexLang] || 'en-US';
+  utt.rate = 0.85;
+  utt.pitch = 1.0;
+  _lexSpeechUtterance = utt;
+  window.speechSynthesis.speak(utt);
+}
+
+function lexToggleSpeech(){
+  _lexSpeechEnabled = !_lexSpeechEnabled;
+  var btn = document.getElementById('lex-speech-toggle');
+  if(btn) btn.textContent = _lexSpeechEnabled ? '🔊' : '🔇';
+  if(!_lexSpeechEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+  try{ localStorage.setItem('lex_speech', _lexSpeechEnabled ? '1' : '0'); }catch(e){}
 }
 
 function lexSkipTyping(){
@@ -9264,6 +9317,8 @@ function lexAfterTyping(){
 
   // Add translate whole card button
   lexAddTranslateCardBtn();
+  // Lex reads the card aloud
+  lexSpeak(_lexCurrentCard ? _lexCurrentCard.raw : '');
 
   // Show appropriate answer zone
   var card = _lexCurrentCard;
@@ -9510,6 +9565,13 @@ function lexNextCard(){
 }
 
 function lexNextCardWithAnswer(answer, isCorrect){
+  // Stop speech when moving to next card
+  if(window.speechSynthesis) window.speechSynthesis.cancel();
+  // Remove translate button and translation
+  var trBtn = document.getElementById('lex-translate-card-btn');
+  if(trBtn) trBtn.remove();
+  var trDiv = document.getElementById('lex-card-translation');
+  if(trDiv) trDiv.remove();
   lexRequestNextCard(answer, []);
 }
 
@@ -9547,14 +9609,15 @@ function lexFormatCardText(text){
     .replace(/\[WORD\]([^|]+)\|([^|]+)\|[^\[]+\[\/WORD\]/g,
       '<strong style="color:var(--orange);border-bottom:2px solid var(--orange)">$1</strong><sup style="font-size:10px;color:var(--dim2);margin-left:2px">$2</sup>')
     // Markdown
-    .replace(/---+/g, '<hr style="border:none;border-top:1px solid var(--border);margin:10px 0">')
+    .replace(/^#+\s*/gm, '')
+    .replace(/---+/g, '<br>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code style="background:var(--paper);padding:1px 5px;border-radius:4px;font-size:13px">$1</code>')
     // Newlines — convert AFTER all other replacements
-    .replace(/\n\n/g, '</p><p style="margin:8px 0 0 0">')
+    .replace(/\n\n/g, '<br><br>')
     .replace(/\n/g, '<br>');
-  return '<p style="margin:0">' + clean.trim() + '</p>';
+  return clean.trim();
 }
 
 // ── History ───────────────────────────────────────────────
