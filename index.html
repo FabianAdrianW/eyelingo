@@ -9196,6 +9196,7 @@ function lexBuildSystemPrompt(flashcardSets){
     + '[FIG]\\nSentence: zdanie z ___ PO ' + _lexLangNative + '\\nAnswer: słowo\\nHint: po polsku\\n[/FIG]\\n'
     + '[CONV]\\nTask: po polsku: co student ma napisać po ' + _lexLangName + '\\n[/CONV]\\n'
     + '[INFO]\\n(brak ćwiczenia)\\n[/INFO]\\n'
+    + 'KRYTYCZNE: NIE używaj markdown headers (#, ##). NIE używaj bloków kodu (```). NIE pisz tagów HTML. Pisz czysty tekst.\\n'
     + 'KRYTYCZNE: Ćwiczenia i pytania MC ZAWSZE po ' + _lexLangNative + '. Student odpowiada ZAWSZE po ' + _lexLangNative + '.\\n'
     + 'VOCAB: [WORD]słowo_po_' + _lexLangNative + '|tłumaczenie_PL|przykład[/WORD]\\n'
     + 'GAP: [GAP]temat[/GAP] gdy wykryjesz błąd\\n'
@@ -9292,6 +9293,8 @@ function lexTypewriterStart(text){
   _lexTypewriterPos = 0;
   _lexTypewriterDone = false;
   clearInterval(_lexTypewriterTimer);
+  // Start speaking immediately as typewriter begins
+  lexSpeak(text);
   // Pre-format the full text once
   var formatted = lexFormatCardText(text);
   // Build char array from formatted HTML — but type raw text, show formatted at word boundaries
@@ -9389,8 +9392,6 @@ function lexAfterTyping(){
 
   // Add translate whole card button
   lexAddTranslateCardBtn();
-  // Lex reads the card aloud
-  lexSpeak(_lexCurrentCard ? _lexCurrentCard.raw : '');
 
   // Show appropriate answer zone
   var card = _lexCurrentCard;
@@ -9670,23 +9671,26 @@ function lexUpdateVocabPanel(){
 function lexFormatCardText(text){
   if(!text) return '';
   var clean = text
-    // Remove exercise blocks from visible text
+    // Remove ALL exercise/marker blocks
     .replace(/\[MC\][\s\S]*?\[\/MC\]/g, '')
     .replace(/\[FIG\][\s\S]*?\[\/FIG\]/g, '')
     .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g, '')
     .replace(/\[INFO\][\s\S]*?\[\/INFO\]/g, '')
     .replace(/\[GAP\][^\[]+\[\/GAP\]/g, '')
     .replace(/\[END\]/g, '')
-    // Highlight vocab words
     .replace(/\[WORD\]([^|]+)\|([^|]+)\|[^\[]+\[\/WORD\]/g,
-      '<strong style="color:var(--orange);border-bottom:2px solid var(--orange)">$1</strong><sup style="font-size:10px;color:var(--dim2);margin-left:2px">$2</sup>')
-    // Markdown
-    .replace(/^#+\s*/gm, '')
-    .replace(/---+/g, '<br>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code style="background:var(--paper);padding:1px 5px;border-radius:4px;font-size:13px">$1</code>')
-    // Newlines — convert AFTER all other replacements
+      '<strong style="color:var(--orange)">$1</strong> <sup style="font-size:10px;color:var(--dim2)">$2</sup>')
+    // Strip code blocks entirely
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]+`/g, function(m){ return '<code style="background:var(--paper);padding:1px 5px;border-radius:4px;font-size:13px">' + m.slice(1,-1) + '</code>'; })
+    // Strip markdown headers
+    .replace(/^#{1,6}\s+/gm, '')
+    // Horizontal rules
+    .replace(/^[-*_]{3,}$/gm, '<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">')
+    // Bold and italic
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    // Newlines
     .replace(/\n\n/g, '<br><br>')
     .replace(/\n/g, '<br>');
   return clean.trim();
