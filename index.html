@@ -9746,11 +9746,16 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
             messages: [{role:'system', content: systemPrompt}].concat(history)
           })
         });
-        if(!res.ok) res = null;
-      }catch(e){ res = null; }
+        if(!res.ok){
+          var errBody = await res.text();
+          console.error('[Lex] OpenRouter error:', res.status, errBody.slice(0,200));
+          res = null;
+        }
+      }catch(e){ console.error('[Lex] OpenRouter fetch failed:', e.message); res = null; }
     }
 
     if(res){
+      console.log('[Lex] Using OpenRouter Claude Sonnet');
       // Stream response
       var reader = res.body.getReader();
       var decoder = new TextDecoder();
