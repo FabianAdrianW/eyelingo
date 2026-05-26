@@ -8,6 +8,7 @@
 <link rel="apple-touch-icon" href="/favicon.ico">
 <meta name="theme-color" content="#1a2340">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1333,7 +1334,7 @@ function showPage(name){
   if(name==='community') loadCommunity();
   if(name==='ranking') loadRanking();
   if(name==='tofix') initToFixPage();
-  if(name==='strefa'){ initStrefa(); }
+  if(name==='strefa'){ initStrefa(); strefaShowTab('tryb'); }
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
   if(name==='daily'){ initDaily(); dailyShowTab('daily'); }
   if(name==='teacher'){ teacherShowTab('chat'); }
@@ -2390,15 +2391,15 @@ async function initToFixPage(){
     <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Strefa Nauki</h2>
     <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Wybierz tryb nauki</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px" id="strefa-tiles-grid">
-      <button onclick="strefaShowTab('strefa')" id="strefa-btn-strefa" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
-        <span style="font-size:24px">🧠</span>
-        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Strefa Nauki</span>
-        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Słówka w kontekście — zdania, tłumaczenia i wideo</span>
-      </button>
-      <button onclick="strefaShowTab('tryb')" id="strefa-btn-tryb" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
+      <button onclick="strefaShowTab('tryb')" id="strefa-btn-tryb" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:2px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
         <span style="font-size:24px">📚</span>
         <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Tryb Nauki</span>
-        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Spaced repetition i active recall z Twoich zestawów</span>
+        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Spaced repetition i active recall. Algorytm SM-2 dobiera karty które musisz powtórzyć.</span>
+      </button>
+      <button onclick="strefaShowTab('strefa')" id="strefa-btn-strefa" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
+        <span style="font-size:24px">🧠</span>
+        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Kontekstowa Nauka</span>
+        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Słówka w kontekście — zdania, tłumaczenia i wideo</span>
       </button>
     </div>
     <!-- Panel: Strefa Nauki właściwa -->
@@ -2992,10 +2993,7 @@ async function initToFixPage(){
         <p style="font-size:15px;color:var(--dim);margin-bottom:32px;line-height:1.6">Twój nauczyciel angielskiego. Zanim zaczniemy, powiedz mi kilka rzeczy o sobie — zajmie to minutę.</p>
 
         <div style="text-align:left;display:flex;flex-direction:column;gap:16px">
-          <div>
-            <label style="font-size:12px;font-weight:600;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Jak mam się do Ciebie zwracać?</label>
-            <input id="lex-ob-name" type="text" placeholder="Twoje imię" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--border2);font-size:14px;font-family:DM Sans,sans-serif;box-sizing:border-box">
-          </div>
+
           <div>
             <label style="font-size:12px;font-weight:600;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Jaki masz cel?</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="lex-goal-grid">
@@ -8611,7 +8609,7 @@ var _lexExercisePending = null;
 var _lexStreaming = false;
 
 // Modele
-var LEX_MODEL = 'anthropic/claude-sonnet-4-5';
+var LEX_MODEL = 'anthropic/claude-sonnet-4.6';
 var LEX_MAX_TOKENS = {10: 2048, 25: 4096, 40: 6144};
 var OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -8678,9 +8676,6 @@ function lexSelectDur(btn, val){
 }
 
 async function lexStartOnboarding(){
-  var name = (document.getElementById('lex-ob-name').value || '').trim();
-  if(!name){ document.getElementById('lex-ob-name').focus(); return; }
-
   var goal = window._lexObGoal || 'ogólny';
   var style = window._lexObStyle || 'mieszany';
   var dur = window._lexObDur || 25;
@@ -8691,9 +8686,16 @@ async function lexStartOnboarding(){
 
     var {data: existing} = await db.from('lex_profiles').select('id').eq('user_id', sess.user.id).single();
 
+    // Get username from existing profile
+    var userName = sess.user.email?.split('@')[0] || 'Użytkowniku';
+    try{
+      var {data: existingProfile} = await db.from('profiles').select('username,display_name,full_name').eq('id', sess.user.id).single();
+      if(existingProfile) userName = existingProfile.display_name || existingProfile.username || existingProfile.full_name || userName;
+    }catch(e){}
+
     var profileData = {
       user_id: sess.user.id,
-      user_name: name,
+      user_name: userName,
       user_level: 'unknown',
       user_goal: goal,
       learning_style: style,
@@ -8823,6 +8825,8 @@ function lexBuildSystemPrompt(flashcardSets){
     'SŁÓWKA — gdy wprowadzasz nowe słowo, oznacz: [WORD]słowo|tłumaczenie|przykład[/WORD]',
     'LUKA — gdy wykryjesz błąd do śledzenia: [GAP]temat luki[/GAP]',
     '',
+    'WAŻNE: NIE kończ lekcji przed upływem całego czasu (' + dur + ' min). Prowadź pełną lekcję według modelu HPPP z wieloma ćwiczeniami.',
+    'Dopiero na samym końcu lekcji (po co najmniej 15-20 wymianach wiadomości) użyj znacznika [SUMMARY].',
     'Zakończ lekcję podsumowaniem [SUMMARY] z tym co poszło dobrze i zapowiedzią następnej lekcji.',
     '',
     '━━━ PERSONA ━━━',
@@ -8892,16 +8896,26 @@ async function lexCallAI(systemPrompt, userMessage, isOpening){
 
     if(!res.ok){
       // Fallback: use AI_PROXY_URL
-      var proxyRes = await fetch(AI_PROXY_URL, {
+      // Fallback: build conversation context for proxy
+    var proxyMessages = [{
+      role: 'user',
+      content: systemPrompt + '\n\n--- HISTORIA ROZMOWY ---\n'
+        + _lexMessages.map(function(m){ return m.role.toUpperCase() + ': ' + m.content; }).join('\n')
+        + '\n\nKontynuuj lekcję jako Lex.'
+    }];
+    var proxyRes = await fetch(AI_PROXY_URL, {
         method: 'POST',
         headers: {'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
         body: JSON.stringify({
-          messages: [{role:'user', content: systemPrompt + '\n\n' + (userMessage || 'Zacznij lekcję.')}],
+          messages: proxyMessages,
           max_tokens: Math.min(maxTok, 2000)
         })
       });
       var d = await proxyRes.json();
-      fullResponse = d?.candidates?.[0]?.content?.parts?.[0]?.text || 'Przepraszam, spróbuj jeszcze raz.';
+      // AI proxy returns Gemini format: candidates[0].content.parts[0].text
+      fullResponse = d?.candidates?.[0]?.content?.parts?.[0]?.text
+        || d?.choices?.[0]?.message?.content
+        || 'Przepraszam, spróbuj jeszcze raz.';
       lexUpdateMessage(placeholderEl, fullResponse);
     } else {
       // Streaming
@@ -8969,8 +8983,8 @@ function lexParseResponse(text){
   else if(text.includes('[DD]')) lexRenderDD(text);
   else if(text.includes('[TR]')) lexRenderTR(text);
 
-  // Podsumowanie
-  if(text.includes('[SUMMARY]')) lexShowSummary();
+  // Podsumowanie — tylko po min. 8 wymianach
+  if(text.includes('[SUMMARY]') && _lexMessages.length >= 8) lexShowSummary();
 
   // Aktualizuj wynik
   if(text.includes('[MC]') || text.includes('[FIG]') || text.includes('[TR]')){
@@ -9384,7 +9398,9 @@ async function lexSendAuto(msg){
         })
       });
       var d = await proxyRes.json();
-      fullResponse = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      fullResponse = d?.candidates?.[0]?.content?.parts?.[0]?.text
+        || d?.choices?.[0]?.message?.content
+        || '';
       lexUpdateMessage(placeholderEl, fullResponse);
     } else {
       var reader = res.body.getReader();
