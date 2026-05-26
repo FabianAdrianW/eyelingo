@@ -6380,6 +6380,10 @@ function sm2Local(card,quality){
 }
 
 var _trybCards=[],_trybIdx=0,_trybHintLevel=0,_trybHintPenalty=0;
+var _trybMode = 'write'; // write | flip | mc | memorize
+var _trybFlipRevealed = false;
+var _trybMcOptions = [];
+var _trybCardDirection = 'foreign'; // foreign→pl or pl→foreign
 var _trybSessionStats={correct:0,total:0,xpGained:0,startTime:0};
 var _trybChallengeMode=false,_trybSessionXPToday=0,_trybPerfectStreak=0;
 var _trybExternalCards=null,_trybExternalName='',_trybSetCards=[];
@@ -6433,7 +6437,8 @@ async function startSession(mode){
   if(_trybChallengeMode){var hard=_trybCards.filter(function(c){return(c.ease_factor||2.5)<1.8;});_trybCards=shuffleArr(_trybCards.concat(hard));}
   if(!_trybCards.length){showTrybView('lobby');if(typeof showToast==='function')showToast('Brak słów do nauki — wybierz zestaw!','success');return;}
   var tot=document.getElementById('tryb-card-total');if(tot)tot.textContent=_trybCards.length;
-  loadTrybCard();
+  // Show mode picker
+  showTrybModePicker();
 }
 
 function shuffleArr(arr){for(var i=arr.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=arr[i];arr[i]=arr[j];arr[j]=t;}return arr;}
@@ -6445,6 +6450,390 @@ async function loadDueCardsForTryb(){
     if(!data||!data.length)return[];
     return data.map(function(d){return{id:d.flashcard_id||d.id,word:d.word||d.front||'',translation:d.translation||d.back||'',emoji:d.emoji||'',example:d.example_sentence||d.example||'',etymology:d.etymology||'',ease_factor:d.ease_factor||2.5,repetitions:d.repetitions||0,interval_days:d.interval_days||1};});
   }catch(e){return[];}
+}
+
+// ── TRYB NAUKI — MODE PICKER ──────────────────────────
+function showTrybModePicker(){
+  showTrybView('session');
+  var qs = document.getElementById('tryb-q-side');
+  var as = document.getElementById('tryb-a-side');
+  if(qs) qs.style.display = 'none';
+  if(as) as.style.display = 'none';
+
+  // Inject mode picker into session view
+  var session = document.getElementById('tryb-session');
+  if(!session) return;
+
+  var existing = document.getElementById('tryb-mode-picker');
+  if(existing) existing.remove();
+
+  var picker = document.createElement('div');
+  picker.id = 'tryb-mode-picker';
+  picker.style.cssText = 'padding:20px 0;animation:lexFadeIn .3s ease';
+
+  var count = _trybCards.length;
+  var setName = _trybExternalName || 'Sesja nauki';
+
+  // Header
+  var hdr = document.createElement('div');
+  hdr.style.cssText = 'text-align:center;margin-bottom:24px';
+  hdr.innerHTML = '<div style="font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:var(--navy);margin-bottom:4px">' + setName + '</div>'
+    + '<div style="font-size:14px;color:var(--dim2)">' + count + ' fiszek · Wybierz tryb nauki</div>';
+  picker.appendChild(hdr);
+
+  // Mode grid
+  var grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px';
+  grid.appendChild(trybModeCard('flip', '🔄', 'Przeglądanie', 'Odwracaj fiszki — poznaj słowa wizualnie', 'var(--navy)'));
+  grid.appendChild(trybModeCard('mc', '🎯', 'Multiwybór', 'Wybierz poprawne tłumaczenie spośród 4 opcji', '#0891b2'));
+  grid.appendChild(trybModeCard('write', '✍️', 'Wpisywanie', 'Przetłumacz słowo — aktywne przypominanie', '#7c3aed'));
+  grid.appendChild(trybModeCard('memorize', '🧠', 'Zapamiętywanie', 'Multiwybór + wpisywanie — pełna nauka', '#be185d'));
+  picker.appendChild(grid);
+
+  // Direction toggle
+  var dirRow = document.createElement('div');
+  dirRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:16px;padding:12px 14px;background:var(--paper);border-radius:12px';
+  var dirLabel = document.createElement('span');
+  dirLabel.style.cssText = 'font-size:13px;color:var(--dim2)';
+  dirLabel.textContent = 'Kierunek:';
+  var dirBtn = document.createElement('button');
+  dirBtn.id = 'tryb-dir-btn';
+  dirBtn.style.cssText = 'padding:5px 12px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:12px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif';
+  dirBtn.textContent = '🌍 Obcy → 🇵🇱 Polski';
+  dirBtn.onclick = trybToggleDirection;
+  dirRow.appendChild(dirLabel);
+  dirRow.appendChild(dirBtn);
+  picker.appendChild(dirRow);
+
+  // Insert before q-side
+  var qside = document.getElementById('tryb-q-side');
+  session.insertBefore(picker, qside);
+}
+
+function trybModeCard(mode, icon, title, desc, color){
+  var div = document.createElement('div');
+  div.style.cssText = 'background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px;cursor:pointer;transition:all .2s;text-align:center';
+  div.innerHTML = '<div style="font-size:32px;margin-bottom:8px">' + icon + '</div>'
+    + '<div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px">' + title + '</div>'
+    + '<div style="font-size:12px;color:var(--dim2);line-height:1.4">' + desc + '</div>';
+  div.onmouseover = function(){ this.style.borderColor=color; this.style.transform='translateY(-2px)'; };
+  div.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; };
+  div.onclick = function(){ startTrybMode(mode); };
+  return div;
+}
+
+function trybToggleDirection(){
+  _trybCardDirection = _trybCardDirection === 'foreign' ? 'pl' : 'foreign';
+  var btn = document.getElementById('tryb-dir-btn');
+  if(btn) btn.textContent = _trybCardDirection === 'foreign' ? '🌍 Obcy → 🇵🇱 Polski' : '🇵🇱 Polski → 🌍 Obcy';
+}
+
+function startTrybMode(mode){
+  _trybMode = mode;
+  _trybIdx = 0;
+  _trybFlipRevealed = false;
+  var picker = document.getElementById('tryb-mode-picker');
+  if(picker) picker.remove();
+
+  if(mode === 'flip'){
+    loadTrybFlipCard();
+  } else if(mode === 'mc'){
+    loadTrybMCCard();
+  } else if(mode === 'memorize'){
+    loadTrybMemorizeCard();
+  } else {
+    loadTrybCard(); // existing write mode
+  }
+}
+
+// ── TRYB: PRZEGLĄDANIE (flip cards) ──────────────────
+function loadTrybFlipCard(){
+  var card = _trybCards[_trybIdx];
+  if(!card){ showTrybSessionSummary(); return; }
+  _trybFlipRevealed = false;
+
+  var qs = document.getElementById('tryb-q-side');
+  var as = document.getElementById('tryb-a-side');
+  if(qs) qs.style.display = 'flex';
+  if(as) as.style.display = 'none';
+
+  // Show front (foreign or pl depending on direction)
+  var frontText = _trybCardDirection === 'foreign' ? (card.word||'') : (card.translation||'');
+  var backText  = _trybCardDirection === 'foreign' ? (card.translation||'') : (card.word||'');
+
+  var emoji = document.getElementById('tryb-card-emoji');
+  var word  = document.getElementById('tryb-card-word');
+  var example = document.getElementById('tryb-card-example');
+  if(emoji) emoji.textContent = card.emoji || '📚';
+  if(word)  word.textContent = frontText;
+  if(example) example.textContent = '';
+
+  // Replace input area with flip card controls
+  var inp = document.getElementById('tryb-answer-input');
+  if(inp) inp.style.display = 'none';
+
+  var hintRow = document.getElementById('tryb-hint-row');
+  if(hintRow) hintRow.style.display = 'none';
+
+  // Inject flip controls
+  var qside = document.getElementById('tryb-q-side');
+  var existing = document.getElementById('tryb-flip-controls');
+  if(existing) existing.remove();
+
+  if(qside){
+    var ctrl = document.createElement('div');
+    ctrl.id = 'tryb-flip-controls';
+    ctrl.style.cssText = 'margin-top:20px;display:flex;flex-direction:column;align-items:center;gap:10px;width:100%';
+    var flipBtn = document.createElement('button');
+    flipBtn.style.cssText = 'padding:12px 28px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif';
+    flipBtn.textContent = 'Odwróć kartę 🔄';
+    (function(bt){ bt.onclick = function(){ trybFlipReveal(backText); }; })(flipBtn);
+    var spaceHint = document.createElement('div');
+    spaceHint.style.cssText = 'font-size:11px;color:var(--dim2)';
+    spaceHint.textContent = 'lub naciśnij Spację';
+    ctrl.appendChild(flipBtn);
+    ctrl.appendChild(spaceHint);
+    qside.appendChild(ctrl);
+  }
+
+  // Keyboard: Space = flip, ArrowLeft/Right = prev/next
+  document.onkeydown = function(e){
+    if(e.code === 'Space'){ e.preventDefault(); if(!_trybFlipRevealed) trybFlipReveal(backText); }
+    if(e.code === 'ArrowRight' && _trybFlipRevealed) trybFlipNext(true);
+    if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard(); }
+  };
+
+  // Progress
+  var num = document.getElementById('tryb-card-num');
+  var prog = document.getElementById('tryb-progress-bar');
+  var done = document.getElementById('tryb-session-done');
+  if(num) num.textContent = _trybIdx+1;
+  if(prog) prog.style.width = Math.round(_trybIdx/_trybCards.length*100) + '%';
+  if(done) done.textContent = _trybIdx;
+}
+
+function trybFlipReveal(backText){
+  _trybFlipRevealed = true;
+  var qs = document.getElementById('tryb-q-side');
+  var as = document.getElementById('tryb-a-side');
+  if(qs) qs.style.display = 'none';
+  if(as){ as.style.display = 'flex'; as.style.flexDirection='column'; as.style.alignItems='center'; }
+
+  var wordAns = document.getElementById('tryb-card-word-ans');
+  var cardAns = document.getElementById('tryb-card-answer');
+  var resIcon = document.getElementById('tryb-result-icon');
+  var userWrote = document.getElementById('tryb-user-wrote');
+  if(wordAns) wordAns.textContent = _trybCards[_trybIdx] ? (_trybCardDirection==='foreign' ? _trybCards[_trybIdx].word : _trybCards[_trybIdx].translation) : '';
+  if(cardAns) cardAns.textContent = backText;
+  if(resIcon) resIcon.textContent = '';
+  if(userWrote) userWrote.textContent = '';
+
+  // Replace rating with simple nav buttons
+  var rateRow = document.querySelector('.tryb-rate-row');
+  var existing = document.getElementById('tryb-flip-nav');
+  if(existing) existing.remove();
+
+  var answerSide = document.getElementById('tryb-a-side');
+  if(answerSide){
+    var nav = document.createElement('div');
+    nav.id = 'tryb-flip-nav';
+    nav.style.cssText = 'display:flex;gap:10px;margin-top:16px';
+    nav.innerHTML = (_trybIdx > 0 ? '<button onclick="trybFlipPrev()" style="padding:10px 20px;border:1.5px solid var(--border2);border-radius:100px;background:#fff;font-size:13px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif">← Poprzednia</button>' : '')
+      + '<button onclick="trybFlipNext(true)" style="padding:10px 24px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:13px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">'
+      + (_trybIdx >= _trybCards.length-1 ? 'Zakończ ✓' : 'Następna →') + '</button>';
+    answerSide.appendChild(nav);
+  }
+}
+
+function trybFlipNext(known){
+  _trybIdx++;
+  if(_trybIdx >= _trybCards.length){ showTrybSessionSummary(); return; }
+  loadTrybFlipCard();
+}
+function trybFlipPrev(){
+  _trybIdx = Math.max(0, _trybIdx-1);
+  loadTrybFlipCard();
+}
+
+// ── TRYB: MULTIWYBÓR ─────────────────────────────────
+function loadTrybMCCard(){
+  var card = _trybCards[_trybIdx];
+  if(!card){ showTrybSessionSummary(); return; }
+
+  var qs = document.getElementById('tryb-q-side');
+  var as = document.getElementById('tryb-a-side');
+  if(qs){ qs.style.display='flex'; qs.style.flexDirection='column'; qs.style.alignItems='center'; }
+  if(as) as.style.display = 'none';
+
+  var frontText = _trybCardDirection === 'foreign' ? (card.word||'') : (card.translation||'');
+  var correctAnswer = _trybCardDirection === 'foreign' ? (card.translation||'') : (card.word||'');
+
+  var emoji = document.getElementById('tryb-card-emoji');
+  var word  = document.getElementById('tryb-card-word');
+  var example = document.getElementById('tryb-card-example');
+  if(emoji) emoji.textContent = card.emoji || '🎯';
+  if(word)  word.textContent = frontText;
+  if(example) example.textContent = '';
+
+  // Generate 3 wrong options from other cards
+  var otherCards = _trybCards.filter(function(c,i){ return i !== _trybIdx; });
+  var shuffled = otherCards.sort(function(){ return Math.random()-.5; }).slice(0,3);
+  var options = shuffled.map(function(c){ return _trybCardDirection==='foreign' ? (c.translation||'') : (c.word||''); });
+  options.push(correctAnswer);
+  options = options.sort(function(){ return Math.random()-.5; });
+
+  // Inject MC options
+  var inp = document.getElementById('tryb-answer-input');
+  if(inp) inp.style.display = 'none';
+  var hintRow = document.getElementById('tryb-hint-row');
+  if(hintRow) hintRow.style.display = 'none';
+
+  var existing = document.getElementById('tryb-mc-options');
+  if(existing) existing.remove();
+
+  var qside = document.getElementById('tryb-q-side');
+  if(qside){
+    var grid = document.createElement('div');
+    grid.id = 'tryb-mc-options';
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%';
+
+    options.forEach(function(opt){
+      var btn = document.createElement('button');
+      btn.style.cssText = 'padding:12px 14px;border:2px solid var(--border2);border-radius:12px;background:#fff;font-size:14px;color:var(--navy);cursor:pointer;text-align:center;font-family:DM Sans,sans-serif;transition:all .15s;line-height:1.3';
+      btn.textContent = opt;
+      btn.onmouseover = function(){ if(!btn.dataset.answered) btn.style.borderColor='var(--orange)'; };
+      btn.onmouseout = function(){ if(!btn.dataset.answered) btn.style.borderColor='var(--border2)'; };
+      btn.onclick = function(){
+        if(btn.dataset.answered) return;
+        var isCorrect = opt === correctAnswer;
+        grid.querySelectorAll('button').forEach(function(b){ b.dataset.answered='1'; b.disabled=true; b.onmouseover=null; });
+        if(isCorrect){
+          btn.style.background='#eaf3de'; btn.style.borderColor='#639922'; btn.style.color='#3b6d11';
+          _trybSessionStats.correct++; _trybSessionStats.xpGained+=7;
+        } else {
+          btn.style.background='#fcebeb'; btn.style.borderColor='#e24b4a'; btn.style.color='#a32d2d';
+          grid.querySelectorAll('button').forEach(function(b){
+            if(b.textContent === correctAnswer){ b.style.background='#eaf3de'; b.style.borderColor='#639922'; b.style.color='#3b6d11'; }
+          });
+        }
+        _trybSessionStats.total++;
+        setTimeout(function(){ _trybIdx++; loadTrybMCCard(); }, 900);
+      };
+      grid.appendChild(btn);
+    });
+    qside.appendChild(grid);
+  }
+
+  // Progress
+  var num = document.getElementById('tryb-card-num');
+  var prog = document.getElementById('tryb-progress-bar');
+  if(num) num.textContent = _trybIdx+1;
+  if(prog) prog.style.width = Math.round(_trybIdx/_trybCards.length*100) + '%';
+  document.onkeydown = null;
+}
+
+// ── TRYB: ZAPAMIĘTYWANIE (MC + write) ────────────────
+var _trybMemPhase = 'mc'; // 'mc' or 'write'
+
+function loadTrybMemorizeCard(){
+  _trybMemPhase = 'mc';
+  loadTrybMemorizeMCPhase();
+}
+
+function loadTrybMemorizeMCPhase(){
+  var card = _trybCards[_trybIdx];
+  if(!card){ showTrybSessionSummary(); return; }
+
+  var qs = document.getElementById('tryb-q-side');
+  var as = document.getElementById('tryb-a-side');
+  if(qs){ qs.style.display='flex'; qs.style.flexDirection='column'; qs.style.alignItems='center'; }
+  if(as) as.style.display = 'none';
+
+  var frontText = _trybCardDirection==='foreign' ? (card.word||'') : (card.translation||'');
+  var correctAnswer = _trybCardDirection==='foreign' ? (card.translation||'') : (card.word||'');
+
+  var emoji = document.getElementById('tryb-card-emoji');
+  var word  = document.getElementById('tryb-card-word');
+  var example = document.getElementById('tryb-card-example');
+  if(emoji) emoji.textContent = card.emoji || '🧠';
+  if(word)  word.textContent = frontText;
+  if(example) example.textContent = '1/2 · Wybierz odpowiedź';
+
+  var inp = document.getElementById('tryb-answer-input');
+  if(inp) inp.style.display = 'none';
+  var hintRow = document.getElementById('tryb-hint-row');
+  if(hintRow) hintRow.style.display = 'none';
+
+  var existing = document.getElementById('tryb-mc-options');
+  if(existing) existing.remove();
+
+  var otherCards = _trybCards.filter(function(c,i){ return i !== _trybIdx; });
+  var shuffled = otherCards.sort(function(){ return Math.random()-.5; }).slice(0,3);
+  var options = shuffled.map(function(c){ return _trybCardDirection==='foreign' ? (c.translation||'') : (c.word||''); });
+  options.push(correctAnswer);
+  options = options.sort(function(){ return Math.random()-.5; });
+
+  var qside = document.getElementById('tryb-q-side');
+  if(qside){
+    var grid = document.createElement('div');
+    grid.id = 'tryb-mc-options';
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%';
+    options.forEach(function(opt){
+      var btn = document.createElement('button');
+      btn.style.cssText = 'padding:12px 14px;border:2px solid var(--border2);border-radius:12px;background:#fff;font-size:14px;color:var(--navy);cursor:pointer;text-align:center;font-family:DM Sans,sans-serif;transition:all .15s;line-height:1.3';
+      btn.textContent = opt;
+      btn.onmouseover = function(){ if(!btn.dataset.answered) btn.style.borderColor='var(--orange)'; };
+      btn.onmouseout = function(){ if(!btn.dataset.answered) btn.style.borderColor='var(--border2)'; };
+      btn.onclick = function(){
+        if(btn.dataset.answered) return;
+        var isCorrect = opt === correctAnswer;
+        grid.querySelectorAll('button').forEach(function(b){ b.dataset.answered='1'; b.disabled=true; b.onmouseover=null; });
+        if(isCorrect){
+          btn.style.background='#eaf3de'; btn.style.borderColor='#639922'; btn.style.color='#3b6d11';
+          setTimeout(function(){
+            var ex = document.getElementById('tryb-card-example');
+            if(ex) ex.textContent = '2/2 · Teraz wpisz tłumaczenie';
+            grid.remove();
+            loadTrybMemorizeWritePhase(card, correctAnswer, frontText);
+          }, 600);
+        } else {
+          btn.style.background='#fcebeb'; btn.style.borderColor='#e24b4a'; btn.style.color='#a32d2d';
+          grid.querySelectorAll('button').forEach(function(b){
+            if(b.textContent === correctAnswer){ b.style.background='#eaf3de'; b.style.borderColor='#639922'; b.style.color='#3b6d11'; }
+          });
+          setTimeout(function(){ _trybIdx++; loadTrybMemorizeCard(); }, 900);
+        }
+      };
+      grid.appendChild(btn);
+    });
+    qside.appendChild(grid);
+  }
+
+  var num = document.getElementById('tryb-card-num');
+  var prog = document.getElementById('tryb-progress-bar');
+  if(num) num.textContent = _trybIdx+1;
+  if(prog) prog.style.width = Math.round(_trybIdx/_trybCards.length*100) + '%';
+}
+
+function loadTrybMemorizeWritePhase(card, correctAnswer, frontText){
+  // Show input for writing
+  var inp = document.getElementById('tryb-answer-input');
+  if(inp){ inp.style.display='block'; inp.value=''; inp.placeholder='Wpisz: ' + correctAnswer.slice(0,1) + '...'; inp.focus(); }
+
+  var hintRow = document.getElementById('tryb-hint-row');
+  if(hintRow) hintRow.style.display = 'flex';
+
+  // Override checkAnswer to go to next memorize card
+  document.onkeydown = function(e){
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      var val = (inp ? inp.value : '').trim().toLowerCase();
+      var correct = correctAnswer.toLowerCase();
+      var ok = val === correct || correct.includes(val) || val.includes(correct) || levenshteinDist(val,correct) <= 2;
+      revealTrybAnswer(val, ok, levenshteinDist(val,correct)<=2&&val!==correct);
+      setTimeout(function(){ _trybIdx++; loadTrybMemorizeCard(); }, 1200);
+    }
+  };
 }
 
 function loadTrybCard(){
@@ -6719,9 +7108,31 @@ async function showTrybEyelingoSets(){
             cats.forEach(function(cat){
               var catBtn = document.createElement('button');
               catBtn.style.cssText = 'width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:9px;background:#fff;font-size:13px;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:4px;font-family:DM Sans,sans-serif;transition:.15s';
-              catBtn.textContent = (cat.icon||'📂') + ' ' + (cat.label||cat.code||cat.name);
-              catBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
-              catBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+              catBtn.innerHTML = (cat.icon||'📂') + ' ' + (cat.label||cat.code||cat.name||'');
+              catBtn.onmouseover = function(){ if(!this.dataset.done) this.style.borderColor='var(--orange)'; };
+              catBtn.onmouseout = function(){ if(!this.dataset.done) this.style.borderColor='var(--border)'; };
+              // Check 80% completion async
+              (async function(btn, catObj){
+                try{
+                  var sess = (await db.auth.getSession()).data.session;
+                  if(!sess) return;
+                  var catId = catObj.id || catObj.code;
+                  var {data: catCards} = await db.from('flashcards').select('id').eq('category_id', catId).limit(500);
+                  if(!catCards || catCards.length < 3) return;
+                  var catIdSet = catCards.map(function(c){ return c.id; });
+                  var {data: progData} = await db.from('word_progress')
+                    .select('flashcard_id').eq('user_id', sess.user.id)
+                    .gte('repetitions', 2).in('flashcard_id', catIdSet);
+                  var pct = (progData||[]).length / catCards.length;
+                  if(pct >= 0.8){
+                    btn.style.background = '#eaf3de';
+                    btn.style.borderColor = '#639922';
+                    btn.style.color = '#3b6d11';
+                    btn.dataset.done = '1';
+                    btn.innerHTML += ' <span style="font-size:10px;background:#639922;color:#fff;padding:1px 6px;border-radius:100px;margin-left:4px">✓ ' + Math.round(pct*100) + '%</span>';
+                  }
+                }catch(e){}
+              })(catBtn, cat);
               catBtn.onclick = async function(){
                 catBtn.textContent = '⏳ Ładowanie...';
                 catBtn.disabled = true;
@@ -9875,9 +10286,16 @@ function lexUpdateVocabPanel(){
 function lexFormatCardText(text){
   if(!text) return '';
   var clean = text
-    // First: remove literal <br> tags that the model outputs as text
+    // First: strip ALL HTML tags that model outputs as literal text
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/?(p|div|h[1-6])[^>]*>/gi, '\n')
+    .replace(/<\/?(p|div|h[1-6]|strong|em|b|i|u|span)[^>]*>/gi, function(m){
+      // strong/em/b/i get converted to markers, others stripped
+      var tag = m.replace(/<\/?|>/g,'').split(' ')[0].toLowerCase().replace('/','');
+      if(tag==='strong'||tag==='b') return m.startsWith('</') ? '**' : '**';
+      if(tag==='em'||tag==='i') return m.startsWith('</') ? '*' : '*';
+      return '';
+    })
+    .replace(/<[^>]+>/g, '') // strip any remaining HTML tags
     // Remove ALL exercise/marker blocks
     .replace(/\[MC\]([\s\S]*?)\[\/MC\]/g, function(match, block){
       // Show the question text from MC block in card
