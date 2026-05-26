@@ -538,6 +538,23 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 </style>
 </head>
 <body>
+<script>
+// ═══ GLOBAL STUBS — loaded first, before all other scripts ═══
+// Version: 2026-05-26-v4
+window._dailyDone = window._dailyDone || {word:false, read:false, quiz:false};
+window._dailyXP = window._dailyXP || 0;
+window._challengeTimer = window._challengeTimer || null;
+window.updateDailyProgress = function(){
+  try{
+    var d = window._dailyDone || {};
+    var done = (d.word?1:0)+(d.read?1:0)+(d.quiz?1:0);
+    var el;
+    el=document.getElementById('daily-progress-label'); if(el) el.textContent=done+' z 3 aktywności ukończone';
+    el=document.getElementById('daily-progress-bar'); if(el) el.style.width=Math.round((done/3)*100)+'%';
+    el=document.getElementById('daily-xp'); if(el) el.textContent=(window._dailyXP||0)+' XP';
+  }catch(e){}
+};
+</script>
 
 <!-- NAV -->
 <nav>
