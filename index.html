@@ -6566,18 +6566,56 @@ async function showTrybSetPicker(){
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){if(list)list.innerHTML='<div style="color:var(--dim2);font-size:13px">Zaloguj się</div>';return;}
     var {data}=await db.from('user_sets').select('id,name,user_set_cards(word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(30);
-    if(!data||!data.length){if(list)list.innerHTML='<div style="color:var(--dim2);font-size:13px">Brak zestawów</div>';return;}
     if(list)list.innerHTML='';
-    data.forEach(function(s){
-      var btn=document.createElement('button');
-      btn.style.cssText='background:var(--paper2);border:1.5px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;text-align:left;font-size:14px;font-weight:600;color:var(--navy);width:100%;margin-bottom:6px;transition:.2s';
-      btn.onmouseover=function(){this.style.borderColor='var(--orange)';};
-      btn.onmouseout=function(){this.style.borderColor='var(--border)';};
-      var cards=s.user_set_cards||[];
-      btn.innerHTML=(window.escH?escH(s.name):s.name)+' <span style="font-size:12px;color:var(--dim2);font-weight:400">· '+cards.length+' fiszek</span>';
-      btn.onclick=function(){_trybExternalCards=cards;_trybExternalName=s.name;picker.style.display='none';startSession('set_external');};
-      if(list)list.appendChild(btn);
-    });
+
+    // Section header: Moje zestawy
+    if(data&&data.length){
+      var myHeader=document.createElement('div');
+      myHeader.style.cssText='font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;padding:4px 0 8px;margin-top:4px';
+      myHeader.textContent='📚 Moje zestawy';
+      list.appendChild(myHeader);
+      data.forEach(function(s){
+        var btn=document.createElement('button');
+        btn.style.cssText='background:var(--paper2);border:1.5px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;text-align:left;font-size:14px;font-weight:600;color:var(--navy);width:100%;margin-bottom:6px;transition:.2s';
+        btn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+        btn.onmouseout=function(){this.style.borderColor='var(--border)';};
+        var cards=s.user_set_cards||[];
+        btn.innerHTML=(window.escH?escH(s.name):s.name)+' <span style="font-size:12px;color:var(--dim2);font-weight:400">· '+cards.length+' fiszek</span>';
+        btn.onclick=function(){_trybExternalCards=cards;_trybExternalName=s.name;picker.style.display='none';startSession('set_external');};
+        list.appendChild(btn);
+      });
+    } else {
+      var noSets=document.createElement('div');
+      noSets.style.cssText='color:var(--dim2);font-size:13px;padding:8px 0';
+      noSets.textContent='Brak własnych zestawów';
+      list.appendChild(noSets);
+    }
+
+    // Section: Zestawy Eyelingo (public sets)
+    try{
+      var {data:pubData}=await db.from('user_sets')
+        .select('id,name,user_set_cards(word,translation)')
+        .eq('is_public',true)
+        .order('likes_count',{ascending:false})
+        .limit(10);
+      if(pubData&&pubData.length){
+        var pubHeader=document.createElement('div');
+        pubHeader.style.cssText='font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;padding:4px 0 8px;margin-top:12px;border-top:1px solid var(--border);padding-top:12px';
+        pubHeader.textContent='🌍 Zestawy Eyelingo';
+        list.appendChild(pubHeader);
+        pubData.forEach(function(s){
+          var btn=document.createElement('button');
+          btn.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;text-align:left;font-size:14px;font-weight:600;color:var(--navy);width:100%;margin-bottom:6px;transition:.2s';
+          btn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+          btn.onmouseout=function(){this.style.borderColor='var(--border)';};
+          var cards=s.user_set_cards||[];
+          btn.innerHTML='🌍 '+(window.escH?escH(s.name):s.name)+' <span style="font-size:12px;color:var(--dim2);font-weight:400">· '+cards.length+' fiszek</span>';
+          btn.onclick=function(){_trybExternalCards=cards;_trybExternalName=s.name;picker.style.display='none';startSession('set_external');};
+          list.appendChild(btn);
+        });
+      }
+    }catch(e2){}
+
   }catch(e){if(list)list.innerHTML='<div style="color:#c33;font-size:13px">Błąd: '+e.message+'</div>';}
 }
 
@@ -8956,9 +8994,9 @@ async function lexLoadFlashcardSets(){
     var sets = [];
     try{
       var sr = await db.from('user_sets')
-        .select('id,name,updated_at')
+        .select('id,name,created_at')
         .eq('user_id', sess.user.id)
-        .order('updated_at', {ascending: false})
+        .order('created_at', {ascending: false})
         .limit(3);
       sets = sr.data || [];
     }catch(e){ return []; }
@@ -9122,25 +9160,20 @@ function lexBuildSystemPrompt(flashcardSets){
     + '4. If level is "unknown" — run a THOROUGH placement test: minimum 10-12 questions, A1 to C1 difficulty range. Do NOT conclude level after fewer than 10 questions. Be skeptical of guesses.\n'
     + '5. After each student answer, give brief encouraging feedback (1 sentence), then move to next step.\n'
     + '\n'
-    + 'EXERCISE FORMATS (always use one of these at end of response):\n'
-    + '[MC]\nQ: <question>\nA: <correct answer>\nB: <wrong>\nC: <wrong>\nD: <wrong>\nANS: A\n[/MC]\n'
-    + '[FIG]\nSentence: She ___ every morning.\nAnswer: exercises\nHint: verb, present simple\n[/FIG]\n'
-    + '[CONV]\nTask: Respond to this in ' + _lexLangNative + ': "How was your weekend?"\n[/CONV]\n'
-    + '[INFO]\n(no exercise — just information, student clicks Next)\n[/INFO]\n'
-    + '\n'
-    + 'VOCAB: When introducing a new word: [WORD]word|translation|example[/WORD]\n'
-    + 'GAP: When you detect a knowledge gap: [GAP]topic[/GAP]\n'
-    + 'END: When lesson is complete (after ~' + Math.round(dur * 1.5) + ' exchanges): [END]\n'
-    + '\n'
-    + 'Flashcard sets: ' + JSON.stringify(flashcardSets.map(function(s){ return {name: s.set_name, words: s.words.slice(0,5)}; })) + '\n'
-    + 'Known gaps: ' + JSON.stringify(gaps) + '\n'
-    + '\n'
-    + 'LESSON FLOW for ' + dur + ' min:\n'
-    + (level === 'unknown' ? '→ Start: greet student briefly, then ask first placement question\n' : '→ Start: brief warm greeting, jump into lesson\n')
-    + '→ Follow HPPP: Hook (engage) → Present (teach) → Practice (exercises) → Produce (use it)\n'
-    + '→ End with [END] tag and summary\n'
-    + '\n'
-    + 'Be warm, direct, never verbose. One idea per card. Always end with exercise or [INFO] tag.';
+    + 'EXERCISE FORMATS — end EVERY response with ONE:\\n'
+    + '[MC]\\nQ: pytanie PO ' + _lexLangNative + '\\nA: poprawna\\nB: błędna\\nC: błędna\\nD: błędna\\nANS: A\\n[/MC]\\n'
+    + '[FIG]\\nSentence: zdanie z ___ PO ' + _lexLangNative + '\\nAnswer: słowo\\nHint: po polsku\\n[/FIG]\\n'
+    + '[CONV]\\nTask: po polsku: co student ma napisać po ' + _lexLangName + '\\n[/CONV]\\n'
+    + '[INFO]\\n(brak ćwiczenia)\\n[/INFO]\\n'
+    + 'KRYTYCZNE: Ćwiczenia i pytania MC ZAWSZE po ' + _lexLangNative + '. Student odpowiada ZAWSZE po ' + _lexLangNative + '.\\n'
+    + 'VOCAB: [WORD]słowo_po_' + _lexLangNative + '|tłumaczenie_PL|przykład[/WORD]\\n'
+    + 'GAP: [GAP]temat[/GAP] gdy wykryjesz błąd\\n'
+    + 'END: [END] po ~' + Math.round(dur * 1.5) + ' wymianach\\n'
+    + 'LESSON FLOW ' + dur + ' min:\\n'
+    + (level === 'unknown' ? '→ Przywitaj po ' + _lexLangNative + ', test poziomujący min 10 pytań MC A1→C1\\n' : '→ Krótkie powitanie po ' + _lexLangNative + '\\n')
+    + '→ HPPP: Hook → Present → Practice → Produce\\n'
+    + '→ Zakończ [END]\\n'
+    + 'Jedna myśl na kartę. Zawsze kończ ćwiczeniem lub [INFO].';
 }
 
 // ── Parse card response ───────────────────────────────────
@@ -9228,21 +9261,29 @@ function lexTypewriterStart(text){
   _lexTypewriterPos = 0;
   _lexTypewriterDone = false;
   clearInterval(_lexTypewriterTimer);
+  // Pre-format the full text once
+  var formatted = lexFormatCardText(text);
+  // Build char array from formatted HTML — but type raw text, show formatted at word boundaries
   _lexTypewriterTimer = setInterval(function(){
-    if(_lexTypewriterPos >= _lexTypewriterFull.length){
+    if(_lexTypewriterPos >= text.length){
       clearInterval(_lexTypewriterTimer);
       _lexTypewriterDone = true;
+      var el = document.getElementById('lex-card-text');
+      if(el) el.innerHTML = lexFormatCardText(text);
       lexAfterTyping();
       return;
     }
-    _lexTypewriterPos += 1; // 1 char at a time for natural reading
-    var visible = _lexTypewriterFull.slice(0, _lexTypewriterPos);
-    var el = document.getElementById('lex-card-text');
-    if(el){
-      // Use innerHTML but strip incomplete HTML tags at end to avoid broken tags
-      var formatted = lexFormatCardText(visible);
-      el.innerHTML = formatted;
+    _lexTypewriterPos += 2; // 2 chars at a time
+    // Only update display at word/sentence boundaries to avoid broken HTML
+    var visible = text.slice(0, _lexTypewriterPos);
+    // Find last safe boundary (space, newline, punctuation)
+    var boundary = _lexTypewriterPos;
+    var boundaryChars = ' \n,.!?:;)]}';
+    for(var b = _lexTypewriterPos; b > Math.max(0, _lexTypewriterPos-5); b--){
+      if(boundaryChars.indexOf(text[b]) >= 0){ boundary = b+1; break; }
     }
+    var el = document.getElementById('lex-card-text');
+    if(el) el.innerHTML = lexFormatCardText(text.slice(0, boundary));
   }, _lexTypewriterSpeed);
 }
 
