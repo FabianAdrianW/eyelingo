@@ -541,8 +541,24 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 <script>
 // ═══ GLOBAL STUBS — loaded first, before all other scripts ═══
 // Version: 2026-05-26-v4
-window._dailyDone = window._dailyDone || {word:false, read:false, quiz:false};
-window._dailyXP = window._dailyXP || 0;
+// Restore today's progress from localStorage
+(function(){
+  try{
+    var today = new Date().toISOString().slice(0,10);
+    var saved = localStorage.getItem('daily_progress_'+today);
+    if(saved){
+      var p = JSON.parse(saved);
+      window._dailyDone = p.done || {word:false, read:false, quiz:false};
+      window._dailyXP = p.xp || 0;
+    } else {
+      window._dailyDone = {word:false, read:false, quiz:false};
+      window._dailyXP = 0;
+    }
+  }catch(e){
+    window._dailyDone = {word:false, read:false, quiz:false};
+    window._dailyXP = 0;
+  }
+})();
 window._challengeTimer = window._challengeTimer || null;
 window.updateDailyProgress = function(){
   try{
@@ -552,6 +568,27 @@ window.updateDailyProgress = function(){
     el=document.getElementById('daily-progress-label'); if(el) el.textContent=done+' z 3 aktywności ukończone';
     el=document.getElementById('daily-progress-bar'); if(el) el.style.width=Math.round((done/3)*100)+'%';
     el=document.getElementById('daily-xp'); if(el) el.textContent=(window._dailyXP||0)+' XP';
+    try{ var today=new Date().toISOString().slice(0,10); localStorage.setItem('daily_progress_'+today, JSON.stringify({done:window._dailyDone,xp:window._dailyXP||0})); }catch(e2){}
+  }catch(e){}
+};
+window.dailyWordDone = function(){
+  try{
+    if(window._dailyDone) window._dailyDone.word = true;
+    window._dailyXP = (window._dailyXP||0) + 20;
+    var doneEl=document.getElementById('dc-word-done'); if(doneEl) doneEl.style.display='inline-flex';
+    var btn=document.getElementById('dc-word-btn'); if(btn) btn.style.display='none';
+    window.updateDailyProgress();
+    if(typeof showToast==='function') showToast('Słówka dnia zaliczone! +20 XP 🎉','success');
+  }catch(e){}
+};
+window.dailyReadDone = function(){
+  try{
+    if(window._dailyDone) window._dailyDone.read = true;
+    window._dailyXP = (window._dailyXP||0) + 30;
+    var doneEl=document.getElementById('dc-read-done'); if(doneEl) doneEl.style.display='inline-flex';
+    var btn=document.getElementById('dc-read-btn'); if(btn) btn.style.display='none';
+    window.updateDailyProgress();
+    if(typeof showToast==='function') showToast('Czytanka zaliczona! +30 XP 📖','success');
   }catch(e){}
 };
 </script>
@@ -3081,6 +3118,7 @@ async function initToFixPage(){
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div id="lex-card-num" style="font-size:11px;color:var(--dim2)">Karta 1</div>
+          <div id="lex-eval-badge" style="display:none;font-size:11px;padding:3px 10px;background:#e0f2fe;border:1px solid #0ea5e9;border-radius:100px;color:#0369a1">🎯 Ocena poziomu</div>
           <div id="lex-score-badge" style="font-size:11px;padding:3px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:100px;color:#92400e;display:none">⭐ 0</div>
           <button id="lex-speech-toggle" onclick="lexToggleSpeech()" style="font-size:16px;padding:4px 8px;background:transparent;border:1px solid var(--border2);border-radius:100px;cursor:pointer" title="Włącz/wyłącz czytanie">🔊</button>
           <button onclick="lexShowHistory()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">📜 Historia</button>
@@ -6593,115 +6631,147 @@ async function showTrybEyelingoSets(){
   if(!picker) return;
   picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
   if(picker.style.display === 'none') return;
-  if(list) list.innerHTML = '<div style="color:var(--dim2);font-size:13px">Ładowanie...</div>';
+  if(list) list.innerHTML = '<div style="color:var(--dim2);font-size:13px;padding:8px">Ładowanie...</div>';
 
-  try{
-    // Load languages
-    var {data: langs} = await db.from('languages').select('id,code,label,flag').order('id');
-    if(!langs || !langs.length){
-      if(list) list.innerHTML = '<div style="color:var(--dim2);font-size:13px">Brak języków</div>';
-      return;
-    }
+  // Languages available in the app
+  var LANGS = [
+    {code:'en', label:'Angielski', flag:'🇬🇧'},
+    {code:'es', label:'Hiszpański', flag:'🇪🇸'},
+    {code:'jp', label:'Japoński', flag:'🇯🇵'},
+    {code:'nl', label:'Niderlandzki', flag:'🇳🇱'}
+  ];
+  var LEVELS = ['A1','A2','B1','B2','C1','C2'];
 
-    if(list) list.innerHTML = '';
+  if(!list) return;
+  list.innerHTML = '';
 
-    // For each language, show as expandable section
-    langs.forEach(function(lang){
-      var langBtn = document.createElement('button');
-      langBtn.style.cssText = 'width:100%;padding:12px 14px;border:1.5px solid var(--border2);border-radius:12px;background:var(--paper);font-size:14px;font-weight:700;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:8px;display:flex;align-items:center;gap:8px;font-family:DM Sans,sans-serif';
-      langBtn.innerHTML = '<span style="font-size:20px">' + (lang.flag||'🌐') + '</span>' + lang.label + '<span style="margin-left:auto;font-size:11px;color:var(--dim2)">▶</span>';
-      langBtn.dataset.langId = lang.id;
-      langBtn.dataset.langLabel = lang.label;
-      langBtn.dataset.expanded = '0';
+  LANGS.forEach(function(lang){
+    // Language header button
+    var langBtn = document.createElement('button');
+    langBtn.style.cssText = 'width:100%;padding:12px 14px;border:1.5px solid var(--border2);border-radius:12px;background:var(--paper);font-size:14px;font-weight:700;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;font-family:DM Sans,sans-serif;transition:.15s';
+    langBtn.innerHTML = '<span style="font-size:20px">' + lang.flag + '</span>' + lang.label + '<span style="margin-left:auto;font-size:12px;color:var(--dim2)">▶</span>';
+    langBtn.dataset.expanded = '0';
 
-      var catContainer = document.createElement('div');
-      catContainer.style.cssText = 'display:none;padding:0 0 8px 12px';
-      catContainer.dataset.langCats = lang.id;
+    var levelContainer = document.createElement('div');
+    levelContainer.style.cssText = 'display:none;padding:0 0 6px 14px';
 
-      langBtn.onclick = async function(){
-        var expanded = langBtn.dataset.expanded === '1';
-        if(expanded){
-          catContainer.style.display = 'none';
-          langBtn.dataset.expanded = '0';
-          langBtn.querySelector('span:last-child').textContent = '▶';
-          return;
-        }
-        langBtn.dataset.expanded = '1';
-        langBtn.querySelector('span:last-child').textContent = '▼';
-        catContainer.style.display = 'block';
-        if(catContainer.dataset.loaded) return;
-        catContainer.dataset.loaded = '1';
-        catContainer.innerHTML = '<div style="font-size:12px;color:var(--dim2);padding:8px 0">Ładowanie kategorii...</div>';
+    langBtn.onclick = function(){
+      if(langBtn.dataset.expanded === '1'){
+        levelContainer.style.display = 'none';
+        langBtn.dataset.expanded = '0';
+        langBtn.querySelector('span:last-child').textContent = '▶';
+        return;
+      }
+      langBtn.dataset.expanded = '1';
+      langBtn.querySelector('span:last-child').textContent = '▼';
+      levelContainer.style.display = 'block';
+      if(levelContainer.dataset.loaded) return;
+      levelContainer.dataset.loaded = '1';
 
-        try{
-          // Get categories for this language
-          var {data: cats} = await db.from('categories')
-            .select('id,name')
-            .eq('language_id', lang.id)
-            .order('name');
+      // Show level buttons
+      levelContainer.innerHTML = '';
+      LEVELS.forEach(function(lvl){
+        var lvlBtn = document.createElement('button');
+        lvlBtn.style.cssText = 'width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:5px;display:flex;align-items:center;gap:6px;font-family:DM Sans,sans-serif;transition:.15s';
+        lvlBtn.innerHTML = '<span style="background:var(--navy);color:#fff;border-radius:6px;padding:2px 7px;font-size:11px">' + lvl + '</span> ' + lvl + ' <span style="margin-left:auto;font-size:11px;color:var(--dim2)">▶</span>';
+        lvlBtn.dataset.expanded = '0';
+        lvlBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+        lvlBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
 
-          if(!cats || !cats.length){
-            // No categories - load all flashcards for language directly
-            var {data: cards} = await db.from('flashcards')
-              .select('word,translation')
-              .eq('language_id', lang.id)
-              .limit(100);
+        var catContainer = document.createElement('div');
+        catContainer.style.cssText = 'display:none;padding:0 0 4px 14px';
 
-            catContainer.innerHTML = '';
-            if(cards && cards.length){
-              var allBtn = document.createElement('button');
-              allBtn.style.cssText = 'width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;font-size:13px;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:6px;font-family:DM Sans,sans-serif';
-              allBtn.textContent = '📚 Wszystkie ' + lang.label + ' (' + cards.length + ' fiszek)';
-              allBtn.onclick = function(){
-                _trybExternalCards = cards;
-                _trybExternalName = lang.label;
-                picker.style.display = 'none';
-                startSession('set_external');
-              };
-              catContainer.appendChild(allBtn);
-            }
+        lvlBtn.onclick = async function(){
+          if(lvlBtn.dataset.expanded === '1'){
+            catContainer.style.display = 'none';
+            lvlBtn.dataset.expanded = '0';
+            lvlBtn.querySelector('span:last-child').textContent = '▶';
             return;
           }
+          lvlBtn.dataset.expanded = '1';
+          lvlBtn.querySelector('span:last-child').textContent = '▼';
+          catContainer.style.display = 'block';
+          if(catContainer.dataset.loaded) return;
+          catContainer.dataset.loaded = '1';
+          catContainer.innerHTML = '<div style="font-size:12px;color:var(--dim2);padding:6px 0">Ładowanie kategorii...</div>';
 
-          catContainer.innerHTML = '';
-          cats.forEach(function(cat){
-            var catBtn = document.createElement('button');
-            catBtn.style.cssText = 'width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:#fff;font-size:13px;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:6px;font-family:DM Sans,sans-serif;transition:.15s';
-            catBtn.textContent = '📂 ' + cat.name;
-            catBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
-            catBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
-            catBtn.onclick = async function(){
-              // Load flashcards for this category
-              var {data: cards} = await db.from('flashcards')
-                .select('word,translation')
-                .eq('category_id', cat.id)
-                .limit(100);
-              if(cards && cards.length){
-                _trybExternalCards = cards;
-                _trybExternalName = lang.label + ' · ' + cat.name;
-                picker.style.display = 'none';
-                startSession('set_external');
-              } else {
-                catBtn.textContent = '📂 ' + cat.name + ' (brak fiszek)';
+          try{
+            // Use RPC like the Python app
+            var {data: cats, error} = await db.rpc('get_categories_for_lang_level', {
+              p_lang: lang.code,
+              p_level: lvl
+            });
+
+            if(error || !cats || !cats.length){
+              // Fallback: direct query
+              var {data: cats2} = await db.from('categories')
+                .select('id,code,label,icon')
+                .order('id');
+              cats = cats2 || [];
+            }
+
+            catContainer.innerHTML = '';
+            if(!cats.length){
+              catContainer.innerHTML = '<div style="font-size:12px;color:var(--dim2);padding:4px 0">Brak kategorii</div>';
+              return;
+            }
+
+            cats.forEach(function(cat){
+              var catBtn = document.createElement('button');
+              catBtn.style.cssText = 'width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:9px;background:#fff;font-size:13px;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:4px;font-family:DM Sans,sans-serif;transition:.15s';
+              catBtn.textContent = (cat.icon||'📂') + ' ' + (cat.label||cat.code||cat.name);
+              catBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+              catBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+              catBtn.onclick = async function(){
+                catBtn.textContent = '⏳ Ładowanie...';
                 catBtn.disabled = true;
-              }
-            };
-            catContainer.appendChild(catBtn);
-          });
-        }catch(e){
-          catContainer.innerHTML = '<div style="color:#c33;font-size:12px">Błąd: ' + e.message + '</div>';
-        }
-      };
+                try{
+                  var {data: cards} = await db.rpc('get_flashcards', {
+                    p_lang: lang.code,
+                    p_level: lvl,
+                    p_cat: cat.code || cat.id
+                  });
+                  if(!cards || !cards.length){
+                    // Fallback: direct flashcards query
+                    var {data: cards2} = await db.from('flashcards')
+                      .select('word,translation')
+                      .eq('language_id', lang.code)
+                      .eq('level_id', lvl)
+                      .eq('category_id', cat.id || cat.code)
+                      .limit(200);
+                    cards = cards2 || [];
+                  }
+                  if(cards && cards.length){
+                    _trybExternalCards = cards.map(function(c){ return {word: c.word, translation: c.translation}; });
+                    _trybExternalName = lang.flag + ' ' + lang.label + ' ' + lvl + ' · ' + (cat.label||cat.code);
+                    picker.style.display = 'none';
+                    showTrybView('lobby');
+                    startSession('set_external');
+                  } else {
+                    catBtn.textContent = (cat.icon||'📂') + ' ' + (cat.label||cat.code) + ' (brak fiszek)';
+                    catBtn.disabled = true;
+                  }
+                }catch(e){
+                  catBtn.textContent = '❌ Błąd: ' + e.message;
+                }
+              };
+              catContainer.appendChild(catBtn);
+            });
+          }catch(e){
+            catContainer.innerHTML = '<div style="font-size:12px;color:#c33">Błąd: ' + e.message + '</div>';
+          }
+        };
 
-      if(list){
-        list.appendChild(langBtn);
-        list.appendChild(catContainer);
-      }
-    });
-  }catch(e){
-    if(list) list.innerHTML = '<div style="color:#c33;font-size:13px">Błąd: ' + e.message + '</div>';
-  }
+        levelContainer.appendChild(lvlBtn);
+        levelContainer.appendChild(catContainer);
+      });
+    };
+
+    list.appendChild(langBtn);
+    list.appendChild(levelContainer);
+  });
 }
+
 
 async function showTrybSetPicker(){
   var picker=document.getElementById('tryb-set-picker');var list=document.getElementById('tryb-set-list');
@@ -9176,6 +9246,21 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
   lexSetAnswerType('loading');
   var cardNumEl = document.getElementById('lex-card-num');
   if(cardNumEl) cardNumEl.textContent = 'Karta ' + _lexCardNum;
+  // Show eval badge if profile level is unknown (placement test)
+  var evalBadge = document.getElementById('lex-eval-badge');
+  if(evalBadge){
+    var isEval = !_lexProfile || _lexProfile.user_level === 'unknown';
+    evalBadge.style.display = isEval ? 'block' : 'none';
+    if(isEval && _lexCardNum <= 12){
+      evalBadge.textContent = '🎯 Ocena poziomu · pytanie ' + _lexCardNum + '/12';
+    }
+  }
+  // Update progress bar based on expected lesson length
+  var dur2 = (_lexProfile && _lexProfile.lesson_duration) || _lexObDur || 25;
+  var expected2 = dur2 === 10 ? 8 : dur2 === 25 ? 20 : 35;
+  var pct2 = Math.min(95, Math.round((_lexCardNum / expected2) * 100));
+  var bar2 = document.getElementById('lex-progress-bar');
+  if(bar2) bar2.style.width = pct2 + '%';
 
   // Build conversation history
   var history = _lexHistory.map(function(h){ return h.msg; });
