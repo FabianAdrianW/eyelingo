@@ -8886,7 +8886,8 @@ async function lexStartFromOnboarding(){
       known_gaps: [], total_lessons: 0,
       updated_at: new Date().toISOString()
     };
-    var {data: existing} = await db.from('lex_profiles').select('id').eq('user_id', sess.user.id).single().catch(function(){ return {data: null}; });
+    var existing = null;
+    try{ var r = await db.from('lex_profiles').select('id').eq('user_id', sess.user.id).single(); existing = r.data; }catch(e){ existing = null; }
     if(existing){ await db.from('lex_profiles').update(profileData).eq('user_id', sess.user.id); }
     else { await db.from('lex_profiles').insert(profileData); }
     _lexProfile = profileData;
@@ -8941,12 +8942,16 @@ async function lexLoadFlashcardSets(){
   try{
     var sess = (await db.auth.getSession()).data.session;
     if(!sess) return [];
-    var {data: sets} = await db.from('user_sets')
-      .select('id,name,updated_at')
-      .eq('user_id', sess.user.id)
-      .order('updated_at', {ascending: false})
-      .limit(3);
-    if(!sets || !sets.length) return [];
+    var sets = [];
+    try{
+      var sr = await db.from('user_sets')
+        .select('id,name,updated_at')
+        .eq('user_id', sess.user.id)
+        .order('updated_at', {ascending: false})
+        .limit(3);
+      sets = sr.data || [];
+    }catch(e){ return []; }
+    if(!sets.length) return [];
     var result = [];
     for(var i = 0; i < sets.length; i++){
       var s = sets[i];
@@ -9077,10 +9082,11 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
 
   // Parse response for exercise type, vocab, gaps
   _lexCurrentCard = lexParseCard(fullResponse);
-
-  // After typing finishes, show answer zone
   _lexStreaming = false;
-  lexAfterTyping();
+
+  // Start typewriter — lexAfterTyping called only when typing completes
+  _lexTypewriterDone = false;
+  lexTypewriterStart(fullResponse);
 
   // Update progress
   var expected = dur * 1.5;
@@ -9102,7 +9108,7 @@ function lexBuildSystemPrompt(flashcardSets){
     + '1. ALWAYS communicate IN ' + _lexLangNative + '. Use Polish ONLY for brief translations or when student needs help.\n'
     + '2. Each response = ONE card = ONE clear thought or exercise. Be concise.\n'
     + '3. Student: ' + (name || 'learner') + ', level: ' + level + ', goal: ' + goal + ', lesson: ' + dur + ' min\n'
-    + '4. If level is "unknown" — start with 3-5 adaptive test questions (easy to hard) before teaching.\n'
+    + '4. If level is "unknown" — run a THOROUGH placement test: minimum 10-12 questions, A1 to C1 difficulty range. Do NOT conclude level after fewer than 10 questions. Be skeptical of guesses.\n'
     + '5. After each student answer, give brief encouraging feedback (1 sentence), then move to next step.\n'
     + '\n'
     + 'EXERCISE FORMATS (always use one of these at end of response):\n'
@@ -9200,7 +9206,7 @@ function lexParseCard(text){
 }
 
 // ── Typewriter effect ─────────────────────────────────────
-var _lexTypewriterSpeed = 18; // ms per char
+var _lexTypewriterSpeed = 35; // ms per char — comfortable reading pace
 var _lexTypewriterFull = '';
 var _lexTypewriterPos = 0;
 var _lexTypewriterTimer = null;
@@ -9218,7 +9224,7 @@ function lexTypewriterStart(text){
       lexAfterTyping();
       return;
     }
-    _lexTypewriterPos += 3; // 3 chars at a time for speed
+    _lexTypewriterPos += 1; // 1 char at a time for natural reading
     var visible = _lexTypewriterFull.slice(0, _lexTypewriterPos);
     var el = document.getElementById('lex-card-text');
     if(el) el.innerHTML = lexFormatCardText(visible);
@@ -9226,11 +9232,14 @@ function lexTypewriterStart(text){
 }
 
 function lexTypewriterUpdate(text){
-  // Called during streaming - show text as it arrives
+  // During streaming - don't show yet, just accumulate
+  // (typewriter will display after streaming completes)
   _lexTypewriterFull = text;
-  _lexTypewriterPos = text.length;
+  // Show typing indicator while streaming
   var el = document.getElementById('lex-card-text');
-  if(el) el.innerHTML = lexFormatCardText(text);
+  if(el && el.querySelector('.lex-typing-dot')) {
+    // Keep showing dots while streaming
+  }
 }
 
 function lexSkipTyping(){
@@ -9244,11 +9253,6 @@ function lexSkipTyping(){
 
 function lexAfterTyping(){
   if(_lexStreaming) return;
-  if(!_lexTypewriterDone && _lexTypewriterFull){
-    // Streaming just finished but typewriter not done - show full text
-    lexTypewriterStart(_lexTypewriterFull);
-    return;
-  }
   if(!_lexCurrentCard) return;
 
   // Show translate hint
@@ -9257,6 +9261,9 @@ function lexAfterTyping(){
 
   // Make words clickable for translation
   lexMakeWordsClickable();
+
+  // Add translate whole card button
+  lexAddTranslateCardBtn();
 
   // Show appropriate answer zone
   var card = _lexCurrentCard;
@@ -9270,7 +9277,81 @@ function lexAfterTyping(){
   } else if(card.type === 'conv'){
     lexShowCONV(card);
   } else {
+    // INFO card — show Next button with clear instruction
     lexSetAnswerType('feedback');
+    var nextBtn = document.getElementById('lex-next-btn');
+    if(nextBtn) nextBtn.textContent = 'Rozumiem, dalej →';
+  }
+}
+
+function lexAddTranslateCardBtn(){
+  // Add "Translate this card" button below card text
+  var existing = document.getElementById('lex-translate-card-btn');
+  if(existing) existing.remove();
+
+  var cardEl = document.getElementById('lex-card-lex');
+  if(!cardEl) return;
+
+  var btn = document.createElement('button');
+  btn.id = 'lex-translate-card-btn';
+  btn.style.cssText = 'display:inline-flex;align-items:center;gap:5px;margin-top:10px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s';
+  btn.innerHTML = '🌐 Przetłumacz całą kartę';
+  btn.onclick = lexTranslateWholeCard;
+  cardEl.appendChild(btn);
+}
+
+var _lexCardTranslation = null;
+
+async function lexTranslateWholeCard(){
+  var btn = document.getElementById('lex-translate-card-btn');
+  if(!btn) return;
+
+  // If already translated, toggle
+  var existing = document.getElementById('lex-card-translation');
+  if(existing){
+    existing.style.display = existing.style.display === 'none' ? 'block' : 'none';
+    btn.innerHTML = existing.style.display === 'none' ? '🌐 Przetłumacz całą kartę' : '🙈 Ukryj tłumaczenie';
+    return;
+  }
+
+  btn.innerHTML = '⏳ Tłumaczę...';
+  btn.disabled = true;
+
+  var rawText = _lexCurrentCard && _lexCurrentCard.raw ? _lexCurrentCard.raw : '';
+  // Strip markers
+  var clean = rawText.replace(/\[MC\][\s\S]*?\[\/MC\]/g,'').replace(/\[FIG\][\s\S]*?\[\/FIG\]/g,'')
+    .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g,'').replace(/\[[A-Z/]+\]/g,'').trim();
+
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    var tok = sess ? sess.access_token : '';
+    var res = await fetch(AI_PROXY_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body: JSON.stringify({
+        messages:[{role:'user', content:'Przetłumacz poniższy tekst na polski. Zwróć TYLKO tłumaczenie, bez komentarzy:\n\n' + clean}],
+        max_tokens: 400
+      })
+    });
+    var d = await res.json();
+    var translation = d && d.candidates && d.candidates[0] && d.candidates[0].content
+      && d.candidates[0].content.parts && d.candidates[0].content.parts[0]
+      && d.candidates[0].content.parts[0].text || '';
+
+    var cardEl = document.getElementById('lex-card-lex');
+    if(cardEl && translation){
+      var trDiv = document.createElement('div');
+      trDiv.id = 'lex-card-translation';
+      trDiv.style.cssText = 'margin-top:12px;padding:12px 14px;background:var(--paper);border-radius:10px;font-size:13px;color:var(--dim);line-height:1.6;border-left:3px solid var(--orange)';
+      var trContent = translation.replace(/\n/g,'<br>');
+      trDiv.innerHTML = '<div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🇵🇱 Tłumaczenie</div>' + trContent;
+      cardEl.insertBefore(trDiv, btn);
+    }
+    btn.innerHTML = '🙈 Ukryj tłumaczenie';
+    btn.disabled = false;
+  }catch(e){
+    btn.innerHTML = '🌐 Przetłumacz całą kartę';
+    btn.disabled = false;
   }
 }
 
@@ -9453,21 +9534,27 @@ function lexUpdateVocabPanel(){
 
 // ── Format card text ──────────────────────────────────────
 function lexFormatCardText(text){
-  // Remove exercise markers from visible text
+  if(!text) return '';
   var clean = text
+    // Remove exercise blocks from visible text
     .replace(/\[MC\][\s\S]*?\[\/MC\]/g, '')
     .replace(/\[FIG\][\s\S]*?\[\/FIG\]/g, '')
     .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g, '')
     .replace(/\[INFO\][\s\S]*?\[\/INFO\]/g, '')
-    .replace(/\[WORD\]([^|]+)\|([^|]+)\|[^\[]+\[\/WORD\]/g, '<strong style="color:var(--orange)">$1</strong> <em style="font-size:12px;color:var(--dim2)">($2)</em>')
     .replace(/\[GAP\][^\[]+\[\/GAP\]/g, '')
     .replace(/\[END\]/g, '')
+    // Highlight vocab words
+    .replace(/\[WORD\]([^|]+)\|([^|]+)\|[^\[]+\[\/WORD\]/g,
+      '<strong style="color:var(--orange);border-bottom:2px solid var(--orange)">$1</strong><sup style="font-size:10px;color:var(--dim2);margin-left:2px">$2</sup>')
+    // Markdown
+    .replace(/---+/g, '<hr style="border:none;border-top:1px solid var(--border);margin:10px 0">')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code style="background:var(--paper);padding:1px 5px;border-radius:4px;font-size:13px">$1</code>')
-    .replace(/\n\n/g, '<br><br>')
+    // Newlines — convert AFTER all other replacements
+    .replace(/\n\n/g, '</p><p style="margin:8px 0 0 0">')
     .replace(/\n/g, '<br>');
-  return clean.trim();
+  return '<p style="margin:0">' + clean.trim() + '</p>';
 }
 
 // ── History ───────────────────────────────────────────────
@@ -9677,7 +9764,8 @@ async function lexInit(){
   try{
     var sess = (await db.auth.getSession()).data.session;
     if(!sess) return;
-    var {data: prof} = await db.from('lex_profiles').select('*').eq('user_id', sess.user.id).single().catch(function(){ return {data: null}; });
+    var prof = null;
+    try{ var rp = await db.from('lex_profiles').select('*').eq('user_id', sess.user.id).single(); prof = rp.data; }catch(e){ prof = null; }
     _lexProfile = prof || null;
   }catch(e){ _lexProfile = null; }
   lexShowScreen('lex-lang-select');
