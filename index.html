@@ -10555,15 +10555,26 @@ async function lexLoadKey(){
     var sess = (await db.auth.getSession()).data.session;
     if(sess){
       var r = await fetch('https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/get-openrouter-key', {
+        method: 'GET',
         headers: {
           'Authorization': 'Bearer ' + sess.access_token,
-          'apikey': 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'
+          'apikey': 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8',
+          'Content-Type': 'application/json'
         }
       });
-      if(r.ok){ var d = await r.json(); if(d.key){ window.OPENROUTER_KEY_VALUE = d.key; window._lexKeyLoaded = true; } }
+      console.log('[Lex] get-openrouter-key status:', r.status);
+      if(r.ok){
+        var d = await r.json();
+        console.log('[Lex] key received:', d.key ? 'YES (' + d.key.slice(0,8) + '...)' : 'NO', 'error:', d.error);
+        if(d.key){ window.OPENROUTER_KEY_VALUE = d.key; window._lexKeyLoaded = true; }
+      } else {
+        var errText = await r.text();
+        console.warn('[Lex] get-openrouter-key error:', r.status, errText);
+      }
     }
-  }catch(e){ console.warn('Lex: OpenRouter key unavailable, using proxy fallback'); }
+  }catch(e){ console.warn('[Lex] Key fetch failed:', e.message); }
   window._lexKeyLoading = false;
+  console.log('[Lex] Key loaded:', window._lexKeyLoaded, '| Key value set:', !!window.OPENROUTER_KEY_VALUE);
 }
 
 async function lexInit(){
