@@ -6519,12 +6519,12 @@ function showTrybModePicker(){
 
 function trybModeCard(mode, icon, title, desc, color){
   var div = document.createElement('div');
-  div.style.cssText = 'background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px;cursor:pointer;transition:all .2s;text-align:center';
-  div.innerHTML = '<div style="font-size:32px;margin-bottom:8px">' + icon + '</div>'
-    + '<div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700;color:var(--navy);margin-bottom:4px">' + title + '</div>'
+  div.style.cssText = 'background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center';
+  div.innerHTML = '<div style="font-size:36px;margin-bottom:10px">' + icon + '</div>'
+    + '<div style="font-family:Syne,sans-serif;font-size:16px;font-weight:800;color:var(--navy);margin-bottom:6px">' + title + '</div>'
     + '<div style="font-size:12px;color:var(--dim2);line-height:1.4">' + desc + '</div>';
-  div.onmouseover = function(){ this.style.borderColor=color; this.style.transform='translateY(-2px)'; };
-  div.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; };
+  div.onmouseover = function(){ this.style.borderColor=color; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(26,35,64,.1)'; };
+  div.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; this.style.boxShadow='none'; };
   div.onclick = function(){ startTrybMode(mode); };
   return div;
 }
@@ -6549,15 +6549,30 @@ function startTrybMode(mode){
   if(sessionHdr && mode !== 'write'){
     var backBtn = document.createElement('button');
     backBtn.id = 'tryb-back-to-modes';
-    backBtn.style.cssText = 'position:absolute;top:16px;left:16px;z-index:10;padding:7px 14px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:4px';
+    backBtn.style.cssText = 'padding:7px 14px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:4px';
     backBtn.innerHTML = '← Zmień tryb';
     backBtn.onclick = function(){
       backBtn.remove();
       if(window.speechSynthesis) window.speechSynthesis.cancel();
+      // Clear card content so no blank card shows
+      var qs = document.getElementById('tryb-q-side');
+      var as = document.getElementById('tryb-a-side');
+      var card = document.getElementById('tryb-card');
+      if(qs) qs.style.display = 'none';
+      if(as) as.style.display = 'none';
+      // Remove any injected controls
+      ['tryb-flip-controls','tryb-mc-options','tryb-mode-picker','tryb-flip-nav'].forEach(function(id){
+        var el = document.getElementById(id); if(el) el.remove();
+      });
       showTrybModePicker();
     };
-    sessionHdr.style.position = 'relative';
-    sessionHdr.appendChild(backBtn);
+    // Insert back button into the header bar (before first button)
+    var endBtn = sessionHdr.querySelector('button');
+    if(endBtn && endBtn.parentNode){
+      endBtn.parentNode.insertBefore(backBtn, endBtn.nextSibling);
+    } else {
+      sessionHdr.appendChild(backBtn);
+    }
   }
 
   if(mode === 'flip'){
@@ -6585,6 +6600,9 @@ function loadTrybFlipCard(){
   // Show front (foreign or pl depending on direction)
   var frontText = _trybCardDirection === 'foreign' ? (card.word||'') : (card.translation||'');
   var backText  = _trybCardDirection === 'foreign' ? (card.translation||'') : (card.word||'');
+  // Store backText for card click handler
+  var ansData = document.getElementById('tryb-card-answer-data');
+  if(ansData) ansData.textContent = backText;
 
   var emoji = document.getElementById('tryb-card-emoji');
   var word  = document.getElementById('tryb-card-word');
@@ -6609,14 +6627,9 @@ function loadTrybFlipCard(){
     var ctrl = document.createElement('div');
     ctrl.id = 'tryb-flip-controls';
     ctrl.style.cssText = 'margin-top:20px;display:flex;flex-direction:column;align-items:center;gap:10px;width:100%';
-    var flipBtn = document.createElement('button');
-    flipBtn.style.cssText = 'padding:12px 28px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif';
-    flipBtn.textContent = 'Odwróć kartę 🔄';
-    (function(bt){ bt.onclick = function(){ trybFlipReveal(backText); }; })(flipBtn);
     var spaceHint = document.createElement('div');
-    spaceHint.style.cssText = 'font-size:11px;color:var(--dim2)';
-    spaceHint.textContent = 'lub naciśnij Spację';
-    ctrl.appendChild(flipBtn);
+    spaceHint.style.cssText = 'font-size:12px;color:rgba(255,255,255,.5);margin-top:8px';
+    spaceHint.textContent = 'Kliknij kartę lub naciśnij Spację';
     ctrl.appendChild(spaceHint);
     qside.appendChild(ctrl);
   }
@@ -6928,7 +6941,7 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
   var card=_trybCards[_trybIdx];
   _trybSessionStats.total++;if(isCorrect)_trybSessionStats.correct++;
   var fb=document.getElementById('tryb-feedback');
-  if(fb){fb.textContent=isCorrect?(isTypo?'⚠️':'✅'):'❌';fb.style.animation='none';fb.offsetHeight;fb.style.animation='feedbackPop .6s ease forwards';}
+  // feedback animation removed
   var qs=document.getElementById('tryb-q-side');var as=document.getElementById('tryb-a-side');
   if(qs)qs.style.display='none';
   if(as){as.style.display='flex';as.style.flexDirection='column';as.style.alignItems='center';}
@@ -6993,8 +7006,27 @@ function saveTrybMnemonic(){
 function showTrybMiniStory(){
   var box=document.getElementById('tryb-story-box');if(!box)return;
   if(box.style.display==='block'){box.style.display='none';return;}
-  var words=_trybSetCards.slice(0,5).map(function(c){return'<strong style="color:var(--gold)">'+(c.word||'')+'</strong>';});
-  box.innerHTML='📖 <em>Krótka historia łącząca słowa: '+words.join(', ')+'.<br>Użyj ich wszystkich w rozmowie!</em>';
+  // Show current word used in a sentence context
+  var card = _trybCards[_trybIdx];
+  if(!card){ box.style.display='none'; return; }
+  var word = card.word || '';
+  var translation = card.translation || '';
+  // Build example from card data if available, or show word in sentence template
+  var example = card.example || card.sentence || '';
+  if(example){
+    // Highlight the word in the example
+    var highlighted = example.replace(new RegExp('\\b' + word.replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\$&') + '\\b','i'),
+      '<strong style="color:var(--gold)">'+word+'</strong>');
+    box.innerHTML = '📖 <em>' + highlighted + '</em><br><span style="font-size:11px;color:rgba(255,255,255,.5)">= ' + translation + '</span>';
+  } else {
+    // Show nearby words from set as context
+    var nearby = _trybCards.slice(Math.max(0,_trybIdx-2), _trybIdx+3)
+      .filter(function(c){ return c !== card; }).slice(0,4)
+      .map(function(c){ return '<strong style="color:var(--gold)">'+(c.word||'')+'</strong>'; });
+    box.innerHTML = '📖 Słowa z tej kategorii: ' + nearby.join(', ')
+      + (nearby.length ? '.<br>' : '')
+      + '<em>Spróbuj użyć ich wszystkich w jednym zdaniu!</em>';
+  }
   box.style.display='block';
 }
 
@@ -7384,16 +7416,17 @@ function injectTrybPage(){
     +'<div style="width:100px;height:6px;background:var(--paper2);border-radius:3px;overflow:hidden"><div id="tryb-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--orange),var(--gold));border-radius:3px;transition:width .4s;width:0%"></div></div>'
     +'</div></div>'
     // Card
-    +'<div id="tryb-card" style="background:#fff;border:2px solid var(--border);border-radius:24px;padding:40px;text-align:center;margin-bottom:20px;min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 8px 40px rgba(26,35,64,.08)">'
+    +'<div id="tryb-card" style="background:var(--navy);border:2px solid var(--navy);border-radius:24px;padding:40px;text-align:center;margin-bottom:20px;min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 8px 40px rgba(26,35,64,.25);cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor=\'rgba(255,255,255,.3)\';this.style.boxShadow=\'0 12px 48px rgba(26,35,64,.4)\'" onmouseout="this.style.borderColor=\'var(--navy)\';this.style.boxShadow=\'0 8px 40px rgba(26,35,64,.25)\'" onclick="if(_trybMode===\'flip\')trybFlipReveal(document.getElementById(\'tryb-card-answer-data\')?document.getElementById(\'tryb-card-answer-data\').textContent:\'\')" title="Kliknij lub naciśnij Spację">'
+    +'<div id="tryb-card-answer-data" style="display:none"></div>'
     +'<div id="tryb-q-side" style="display:flex;flex-direction:column;align-items:center">'
     +'<div id="tryb-card-emoji" style="display:none"></div>'
-    +'<div id="tryb-card-word" style="font-family:Syne,sans-serif;font-size:48px;font-weight:800;color:var(--navy);letter-spacing:-1px;margin-bottom:10px;text-align:center;line-height:1.1"></div>'
-    +'<div id="tryb-card-example" style="font-size:13px;color:var(--dim2);font-style:italic;max-width:400px;line-height:1.6;margin-bottom:20px"></div>'
+    +'<div id="tryb-card-word" style="font-family:Syne,sans-serif;font-size:48px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:10px;text-align:center;line-height:1.1"></div>'
+    +'<div id="tryb-card-example" style="font-size:13px;color:rgba(255,255,255,.6);font-style:italic;max-width:400px;line-height:1.6;margin-bottom:20px"></div>'
     +'<div style="display:flex;gap:8px;width:100%;max-width:380px">'
-    +'<input id="tryb-answer-input" type="text" class="fi" placeholder="Wpisz tłumaczenie..." style="flex:1;font-size:15px;text-align:center" onkeydown="if(event.key===\'Enter\')checkAnswer()">'
-    +'<button onclick="checkAnswer()" class="btn btn-orange" style="padding:10px 18px">✓</button></div>'
+    +'<input id="tryb-answer-input" type="text" class="fi" placeholder="Wpisz tłumaczenie..." style="flex:1;font-size:15px;text-align:center;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.25);color:#fff" onkeydown="if(event.key===\'Enter\')checkAnswer()">'
+    +'<button onclick="checkAnswer()" class="btn btn-orange" style="padding:10px 18px">→</button></div>'
     +'<div style="display:flex;gap:8px;margin-top:12px;justify-content:center">'
-    +'<button id="tryb-hint-btn" onclick="showTrybHint()" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:5px 14px;font-size:12px;color:var(--dim2);cursor:pointer">💡 Podpowiedź (<span id="tryb-hint-level">3</span>)</button>'
+    +'<button id="tryb-hint-btn" onclick="showTrybHint()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:5px 14px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer">💡 Podpowiedź (<span id="tryb-hint-level">3</span>)</button>'
     +'<button onclick="dontKnow()" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:5px 14px;font-size:12px;color:var(--dim2);cursor:pointer">🚫 Nie pamiętam</button></div>'
     +'<div id="tryb-hint-text" style="margin-top:10px;font-size:14px;color:var(--orange);font-weight:600;min-height:20px"></div>'
     +'</div>'
@@ -7406,7 +7439,9 @@ function injectTrybPage(){
     +'<div id="tryb-etymology-wrap" style="background:var(--paper2);border-radius:12px;padding:12px 16px;margin-bottom:16px;text-align:left;width:100%;max-width:440px;display:none">'
     +'<button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'" style="background:none;border:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--dim2);width:100%;text-align:left">🔍 Dlaczego tak?</button>'
     +'<div id="tryb-etymology-text" style="display:none;font-size:13px;color:var(--dim);line-height:1.6;margin-top:8px"></div></div>'
-    +'<div style="width:100%;max-width:440px;margin-bottom:16px"><input id="tryb-mnemonic-input" type="text" class="fi" placeholder="💭 Twoja mnemotechnika..." style="font-size:13px;width:100%" oninput="saveTrybMnemonic()"></div>'
+    +'<div style="width:100%;max-width:440px;margin-bottom:16px">'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:5px;display:flex;align-items:center;gap:4px">💭 Twoje skojarzenie <span title="Wymyśl śmieszne lub dziwne skojarzenie ze słowem — to pomaga zapamiętać! Np. \'apagar\'? \'A, płacić za prąd!\' 🔌" style="cursor:help;background:rgba(255,255,255,.15);border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:9px">?</span></div>'
+    +'<input id="tryb-mnemonic-input" type="text" class="fi" placeholder="Wymyśl skojarzenie, które Ci pomoże zapamiętać..." style="font-size:13px;width:100%;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" oninput="saveTrybMnemonic()"></div>'
     +'<div style="font-size:13px;color:var(--dim2);margin-bottom:10px;font-weight:600">Jak poszło?</div>'
     +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:440px">'
     +'<button onclick="rateCard(1)" class="tryb-rate-btn" data-q="1" style="background:#fee2e2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700"><div style="font-size:18px">😔</div>Nie wiedziałem</button>'
@@ -7414,10 +7449,10 @@ function injectTrybPage(){
     +'<button onclick="rateCard(3)" class="tryb-rate-btn" data-q="3" style="background:#dcfce7;border:1.5px solid #86efac;color:#166534;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700"><div style="font-size:18px">😊</div>Wiedziałem</button>'
     +'<button onclick="rateCard(4)" class="tryb-rate-btn" data-q="4" style="background:#dbeafe;border:1.5px solid #93c5fd;color:#1e40af;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700"><div style="font-size:18px">🚀</div>Bardzo łatwe</button>'
     +'</div></div>'
-    +'<div id="tryb-feedback" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:80px;pointer-events:none;opacity:0"></div>'
+    +'<div id="tryb-feedback" style="display:none"></div>'
     +'</div>'
-    +'<div style="text-align:center;margin-bottom:16px"><button id="tryb-story-btn" onclick="showTrybMiniStory()" style="display:none;background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:8px 20px;font-size:13px;color:var(--dim);cursor:pointer">📖 Minihistoryjka</button></div>'
-    +'<div id="tryb-story-box" style="display:none;background:var(--navy);color:#fff;border-radius:16px;padding:20px;font-size:14px;line-height:1.7"></div>'
+    +'<div style="text-align:center;margin-bottom:16px"><button id="tryb-story-btn" onclick="showTrybMiniStory()" style="display:none;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);border-radius:100px;padding:7px 18px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer">📖 Przykład w zdaniu</button></div>'
+    +'<div id="tryb-story-box" style="display:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.85);border-radius:12px;padding:14px 18px;font-size:13px;line-height:1.7;border:1px solid rgba(255,255,255,.15)"></div>'
     +'</div>'
     // Summary
     +'<div id="tryb-summary" style="display:none;text-align:center">'
