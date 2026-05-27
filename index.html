@@ -538,8 +538,9 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 
 /* ═══ FISZKA 3D FLIP ═══ */
 .tryb-card-scene{perspective:900px;width:100%}
-.tryb-card-flipper{position:relative;width:100%;min-height:300px;transition:transform .6s cubic-bezier(0.34,1.56,0.64,1);transform-style:preserve-3d;will-change:transform}
+.tryb-card-flipper{position:relative;width:100%;min-height:300px;transform-style:preserve-3d;will-change:transform;transition:none}
 .tryb-card-flipper.flipped{transform:rotateY(-180deg)}
+.tryb-card-scene{perspective:1200px;width:100%;cursor:pointer}
 .tryb-card-front,.tryb-card-back{position:absolute;width:100%;min-height:300px;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;box-sizing:border-box;text-align:center;will-change:transform}
 .tryb-card-front{background:var(--navy);color:#fff;cursor:pointer;box-shadow:0 16px 48px rgba(26,35,64,.3),0 4px 12px rgba(26,35,64,.15);transition:box-shadow .2s}
 .tryb-card-back{background:#fff;color:var(--navy);transform:rotateY(180deg);border:2px solid var(--border);box-shadow:0 16px 48px rgba(26,35,64,.1)}
@@ -1556,7 +1557,7 @@ window.loadCommunity = async function loadCommunity(){
 
     renderMat();
   }catch(e){
-    showMatError('Błąd: '+e.message);
+    console.error('mat error:','Błąd: '+e.message);
     console.error('[loadCommunity]',e);
   }
 }
@@ -1574,7 +1575,7 @@ window.loadMySets = async function loadMySets(){
     .select('id,name,likes_count,is_public,created_at,user_set_cards(id,word,translation)')
     .eq('user_id',_matMyUid)
     .order('created_at',{ascending:false});
-  if(error){showMatError(error.message);return;}
+  if(error){console.error('mat error:',error.message);return;}
   const{data:profile}=await db.from('profiles').select('username').eq('user_id',_matMyUid).maybeSingle();
   const username=profile?.username||'Ty';
   // Filter out sets that belong to any collection (if mine tab)
@@ -1610,6 +1611,7 @@ window.renderMat = function(query=''){
 
 window.filterMat = function(q){renderMat(q)}
 
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function setCard(s){
   const isOwn = s.user_id === _matMyUid;
   const isMineTab = _matTab === 'mine';
@@ -1644,7 +1646,7 @@ function setCard(s){
   <div style="display:flex;gap:0;align-items:flex-start;width:100%">
 
     <!-- LEFT SIDEBAR: Katalogi (sliding) -->
-    <div id="mat-sidebar" style="width:300px;flex-shrink:0;min-height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12);transition:width .3s ease,opacity .3s ease;position:relative">
+    <div id="mat-sidebar" style="width:300px;flex-shrink:0;min-height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12);transition:width .3s ease;position:sticky;top:0;align-self:flex-start;overflow:visible">
       <!-- Toggle button -->
       <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:200;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
       <div id="mat-sidebar-inner" style="padding:110px 0 80px 20px">
@@ -1660,7 +1662,7 @@ function setCard(s){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px;max-width:calc(100% - 600px)">
+    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -2083,7 +2085,7 @@ async function initToFixPage(){
 </script>
 <!-- ═══ STREFA NAUKI ═══ -->
 <div id="page-strefa" class="page" style="min-height:100vh;padding:0;background:var(--paper)">
-  <div style="display:flex;width:100%;align-items:stretch;min-height:100vh">
+  <div style="display:flex;width:100%;align-items:stretch;min-height:100vh;position:relative">
 
     <!-- LEFT SIDEBAR -->
     <div id="strefa-sidebar" style="width:300px;flex-shrink:0;padding:110px 0 80px 20px;min-height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12)">
@@ -2134,32 +2136,7 @@ async function initToFixPage(){
 
         </div><!-- /strefa-main-col -->
 
-    <!-- RIGHT SIDEBAR: Stats -->
-    <div id="strefa-stats-sidebar" style="width:200px;flex-shrink:0;padding:28px 20px 28px 0;position:sticky;top:110px;background:transparent">
-      <div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:800;color:var(--navy);margin-bottom:14px">Statystyki</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center">
-          <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">📅 Powtórki</div>
-          <div style="font-family:DM Sans,sans-serif;font-size:28px;font-weight:800;color:var(--orange)" id="tryb-due-count">—</div>
-          <div style="font-size:11px;color:var(--dim2)">dziś</div>
-        </div>
-        <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center">
-          <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">✅ Sesja</div>
-          <div style="font-family:DM Sans,sans-serif;font-size:28px;font-weight:800;color:#639922" id="tryb-session-done">0</div>
-          <div style="font-size:11px;color:var(--dim2)">ukończonych</div>
-        </div>
-        <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center">
-          <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🏆 XP dziś</div>
-          <div style="font-family:DM Sans,sans-serif;font-size:28px;font-weight:800;color:var(--navy)" id="tryb-xp-today">0</div>
-          <div style="font-size:11px;color:var(--dim2)">punktów</div>
-        </div>
-        <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center">
-          <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">📚 Nowe</div>
-          <div style="font-family:DM Sans,sans-serif;font-size:28px;font-weight:800;color:var(--navy)" id="tryb-new-count">—</div>
-          <div style="font-size:11px;color:var(--dim2)">do nauki</div>
-        </div>
-      </div>
-    </div>
+    
 
   </div><!-- /3-col flex -->
 </div><!-- end page-strefa -->
@@ -6226,17 +6203,25 @@ function loadTrybFlipCard(direction){
   if(!card){ showTrybSessionSummary(); return; }
   _trybFlipRevealed = false;
 
-  // Slide animation
+  // Page turn: smooth flip back to front
+  var flipper = document.getElementById('tryb-card-flipper');
+  if(flipper && flipper.classList.contains('flipped')){
+    flipper.style.transition = 'transform .35s cubic-bezier(0.4,0,0.2,1)';
+    flipper.classList.remove('flipped');
+    setTimeout(function(){
+      if(flipper) flipper.style.transition = 'none';
+    }, 360);
+  } else {
+    if(flipper) flipper.classList.remove('flipped');
+  }
+
+  // Slide animation (book page direction)
   var scene = document.getElementById('tryb-card-scene');
   if(scene){
     scene.classList.remove('card-slide-next','card-slide-prev');
-    void scene.offsetWidth; // reflow
+    void scene.offsetWidth;
     scene.classList.add(direction==='prev' ? 'card-slide-prev' : 'card-slide-next');
   }
-
-  // 3D flip: reset to front
-  var flipper = document.getElementById('tryb-card-flipper');
-  if(flipper){ flipper.classList.remove('flipped'); }
 
   // CRITICAL: clear any injected nav from previous card
   var oldNav = document.getElementById('tryb-flip-nav');
@@ -6287,7 +6272,11 @@ function loadTrybFlipCard(direction){
 function trybFlipReveal(backText){
   _trybFlipRevealed = true;
   var flipper = document.getElementById('tryb-card-flipper');
-  if(flipper) flipper.classList.add('flipped');
+  if(flipper){
+    flipper.style.transition = 'transform .5s cubic-bezier(0.4,0,0.2,1)';
+    flipper.classList.add('flipped');
+    setTimeout(function(){ if(flipper) flipper.style.transition='none'; }, 520);
+  }
 
   var card = _trybCards[_trybIdx];
   var frontText = _trybCardDirection === 'foreign' ? (card&&card.word||'') : (card&&card.translation||'');
@@ -6706,21 +6695,23 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
 
 async function rateCard(btnRating){
   var card=_trybCards[_trybIdx];if(!card)return;
-  // Visual feedback on clicked button
-  document.querySelectorAll('.tryb-rate-btn,[data-q]').forEach(function(b){
-    if(parseInt(b.dataset&&b.dataset.q)===btnRating){
-      b.style.transform='scale(0.92)';
-      b.style.boxShadow='0 0 0 3px rgba(26,35,64,.3)';
-      b.style.opacity='1';
-      setTimeout(function(){ b.style.transform='scale(1)'; b.style.boxShadow='none'; },200);
+  // Highlight selected button with checkmark overlay
+  document.querySelectorAll('[data-q]').forEach(function(b){
+    if(parseInt(b.dataset.q)===btnRating){
+      var origBg = b.style.background;
+      b.style.transform='scale(1.08)';
+      b.style.boxShadow='0 0 0 3px rgba(26,35,64,.25)';
+      b.style.outline='2.5px solid rgba(26,35,64,.5)';
+      setTimeout(function(){
+        b.style.transform='scale(1)';
+        b.style.boxShadow='none';
+        b.style.outline='none';
+      }, 400);
     } else {
-      b.style.opacity='0.3';
+      b.style.opacity='0.35';
+      setTimeout(function(){ b.style.opacity='1'; }, 400);
     }
   });
-  // Brief highlight confirmation - no XP toast, just visual glow
-  setTimeout(function(){
-    document.querySelectorAll('.tryb-rate-btn,[data-q]').forEach(function(b){ b.style.opacity='1'; });
-  }, 350);
   var isTypo=document.getElementById('tryb-result-icon')&&document.getElementById('tryb-result-icon').textContent.includes('⚠️');
   var eff=isTypo?Math.min(btnRating,3):btnRating;
   var qMap={1:0,2:2,3:4,4:5};
@@ -6885,8 +6876,16 @@ window.loadCollections = async function loadCollections(){
       countDiv.style.cssText = 'font-size:12px;color:var(--dim2)';
       btn.appendChild(nameDiv);
       btn.appendChild(countDiv);
-      btn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-1px)'; };
-      btn.onmouseout = function(){ if(!this.dataset.active){ this.style.borderColor='var(--border)'; this.style.transform='none'; } };
+      // Delete button (×) top right
+      var delBtn = document.createElement('span');
+      delBtn.textContent = '×';
+      delBtn.title = 'Usuń katalog';
+      delBtn.style.cssText = 'position:absolute;top:6px;right:8px;font-size:14px;color:var(--dim2);cursor:pointer;opacity:0;transition:opacity .2s;font-weight:700;line-height:1';
+      delBtn.onclick = (function(ci){ return function(e){ e.stopPropagation(); deleteCollection(ci); }; })(cidx);
+      btn.style.position = 'relative';
+      btn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-1px)'; delBtn.style.opacity='1'; };
+      btn.onmouseout = function(){ if(!this.dataset.active){ this.style.borderColor='var(--border)'; this.style.transform='none'; } delBtn.style.opacity='0'; };
+      btn.appendChild(delBtn);
       btn.onclick = function(){
         document.querySelectorAll('#mat-sidebar-collections button').forEach(function(b){ b.style.background='transparent'; b.style.fontWeight='normal'; delete b.dataset.active; });
         this.style.background='rgba(229,106,28,.12)'; this.style.fontWeight='700'; this.dataset.active='1';
@@ -7045,18 +7044,16 @@ function toggleMatSidebar(){
   var sb = document.getElementById('mat-sidebar');
   var inner = document.getElementById('mat-sidebar-inner');
   var btn = document.getElementById('mat-sidebar-toggle');
-  var main = document.getElementById('mat-main-content');
   if(_matSidebarOpen){
     sb.style.width = '300px';
     if(inner){ inner.style.opacity = '1'; inner.style.pointerEvents = ''; }
     if(btn){ btn.textContent = '‹'; btn.style.left = '300px'; }
-    if(main) main.style.maxWidth = 'calc(100% - 600px)';
   } else {
     sb.style.width = '0px';
     if(inner){ inner.style.opacity = '0'; inner.style.pointerEvents = 'none'; }
     if(btn){ btn.textContent = '›'; btn.style.left = '0px'; }
-    if(main) main.style.maxWidth = '';
   }
+  // Content stays in place - no shift
 }
 
 function openCreateCollection(){
@@ -7301,92 +7298,106 @@ async function startStrefaKontekstowaCards(langCode, langLabel, flag, lvl, catCo
 function renderStrefaKontekstowaCard(word, langCode, lvl, idx, total, catLabel, langLabel, flag, level, catCode){
   var center=document.getElementById('strefa-center-content');
   if(!center) return;
-  // Build card UI
   var wrap=document.createElement('div');
-  wrap.style.cssText='max-width:700px';
-  // Header
+  wrap.style.cssText='width:100%';
+  // Progress header
   var hdr=document.createElement('div');
   hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:20px';
-  hdr.innerHTML='<div style="font-size:14px;color:var(--dim2)">'+flag+' '+catLabel+' · <strong style="color:var(--navy)">'+word.word+'</strong></div>'
-    +'<div style="font-size:13px;color:var(--dim2)">'+(idx+1)+' / '+total+'</div>';
+  hdr.innerHTML='<div style="font-size:14px;color:var(--dim2)">'+flag+' <strong style="color:var(--navy)">'+catLabel+'</strong></div>'
+    +'<div style="font-size:13px;color:var(--dim2);background:var(--paper);border-radius:100px;padding:4px 12px">'+(idx+1)+' / '+total+'</div>';
   wrap.appendChild(hdr);
-  // Word card
+  // 2-column layout
+  var cols=document.createElement('div');
+  cols.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px';
+
+  // LEFT: word card + sentence
+  var left=document.createElement('div');
+  left.style.cssText='display:flex;flex-direction:column;gap:12px';
   var wordCard=document.createElement('div');
-  wordCard.style.cssText='background:var(--navy);border-radius:20px;padding:28px;margin-bottom:16px;text-align:center';
-  wordCard.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:40px;font-weight:700;color:#fff;margin-bottom:8px">'+word.word+'</div>'
-    +'<div style="font-size:18px;color:var(--orange);font-weight:600">'+word.translation+'</div>';
-  wrap.appendChild(wordCard);
-  // AI sentence area
+  wordCard.style.cssText='background:var(--navy);border-radius:16px;padding:24px;text-align:center';
+  wordCard.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:38px;font-weight:700;color:#fff;margin-bottom:8px">'+word.word+'</div>'
+    +'<div style="font-size:16px;color:var(--orange);font-weight:600">'+word.translation+'</div>'
+    +'<button onclick="playSentenceAudio()" style="margin-top:12px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:100px;padding:5px 14px;font-size:12px;cursor:pointer;color:#fff">🔊 Wymowa</button>';
+  left.appendChild(wordCard);
   var sentBox=document.createElement('div');
-  sentBox.id='kontekstowa-sent-box';
-  sentBox.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;min-height:80px';
-  sentBox.innerHTML='<div style="font-size:12px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📖 Zdanie kontekstowe</div>'
-    +'<div id="kontekstowa-sent-text" style="font-size:16px;color:var(--navy);line-height:1.7">⏳ Generuję zdanie...</div>'
-    +'<div id="kontekstowa-sent-tr" style="font-size:13px;color:var(--dim2);margin-top:8px;font-style:italic"></div>'
-    +'<button onclick="playSentenceAudio()" style="margin-top:10px;background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:5px 14px;font-size:12px;cursor:pointer;color:var(--dim)">🔊 Wymowa</button>';
-  wrap.appendChild(sentBox);
-  // Playphrase embed
-  var vidBox=document.createElement('div');
-  vidBox.id='kontekstowa-vid-box';
-  vidBox.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px';
-  var langYG={en:'english',es:'spanish',nl:'dutch',jp:'japanese'}[langCode]||'english';
-  vidBox.innerHTML='<div style="font-size:12px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;padding:14px 16px 0">🎬 Użycie w filmach — YouGlish</div>'
-    +'<div id="kontekstowa-playphrase" style="padding:14px 16px">'
-    +'<div id="kontekstowa-yg-widget"></div>'
-    +'</div>';
-  // Load YouGlish widget
-  setTimeout(function(){
-    var container=document.getElementById('kontekstowa-yg-widget');
-    if(!container) return;
-    // Use YouGlish embed API
-    var script=document.createElement('script');
-    script.src='https://youglish.com/public/emb/widget.js';
-    script.onload=function(){
-      if(window.YG&&window.YG.Widget){
-        window._ygWidget=new YG.Widget('kontekstowa-yg-widget',{
-          width:600,height:350,components:9,bkg:1,
-          language:langYG,captions:'',accent:'',speed:'',autostart:1
-        });
-        window._ygWidget.pronounce(word.word);
-      }
-    };
-    // Fallback if YouGlish script fails
-    script.onerror=function(){
-      if(container) container.innerHTML='<div style="padding:20px;text-align:center"><a href="https://youglish.com/pronounce/'+encodeURIComponent(word.word)+'/'+langYG+'" target="_blank" style="color:var(--navy);font-weight:600">🎬 Otwórz YouGlish: '+word.word+'</a></div>';
-    };
-    document.head.appendChild(script);
-  },100);
-  wrap.appendChild(vidBox);
+  sentBox.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:18px;flex:1';
+  sentBox.innerHTML='<div style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📖 Zdanie kontekstowe</div>'
+    +'<div id="kontekstowa-sent-text" style="font-size:15px;color:var(--navy);line-height:1.7">⏳ Generuję...</div>'
+    +'<div id="kontekstowa-sent-tr" style="font-size:13px;color:var(--dim2);margin-top:8px;font-style:italic"></div>';
+  left.appendChild(sentBox);
+  cols.appendChild(left);
+
+  // RIGHT: YouGlish widget
+  var right=document.createElement('div');
+  right.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;overflow:hidden;min-height:320px';
+  right.innerHTML='<div style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;padding:14px 16px 10px">🎬 YouGlish · użycie w filmach</div>'
+    +'<div id="kontekstowa-yg-widget" style="padding:0 10px 10px"></div>';
+  cols.appendChild(right);
+  wrap.appendChild(cols);
+
   // Nav buttons
   var navRow=document.createElement('div');
-  navRow.style.cssText='display:flex;gap:10px;justify-content:space-between';
+  navRow.style.cssText='display:flex;gap:10px;justify-content:space-between;align-items:center';
   if(idx>0){
     var prevBtn=document.createElement('button');
     prevBtn.style.cssText='padding:10px 20px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;font-size:13px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
     prevBtn.textContent='← Poprzednie';
-    prevBtn.onclick=function(){
-      window._strefaIdx--;
-      renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode);
-    };
+    prevBtn.onclick=function(){ window._strefaIdx--; renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode); };
     navRow.appendChild(prevBtn);
   }
+  // Word dots progress
+  var dots=document.createElement('div');
+  dots.style.cssText='display:flex;gap:5px';
+  for(var d=0;d<Math.min(total,10);d++){
+    var dot=document.createElement('div');
+    dot.style.cssText='width:8px;height:8px;border-radius:50%;background:'+(d===idx?'var(--navy)':'var(--border)');
+    dots.appendChild(dot);
+  }
+  navRow.appendChild(dots);
   var nextBtn=document.createElement('button');
-  nextBtn.style.cssText='padding:10px 24px;border-radius:100px;background:var(--navy);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;margin-left:auto';
+  nextBtn.style.cssText='padding:10px 24px;border-radius:100px;background:var(--navy);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif';
   nextBtn.textContent=idx>=total-1?'Zakończ ✓':'Następne →';
   nextBtn.onclick=function(){
-    if(idx>=total-1){
-      strefaKontekstowaCategories(langCode,langLabel,flag,level);
-    } else {
-      window._strefaIdx++;
-      renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode);
-    }
+    if(idx>=total-1){ strefaKontekstowaCategories(langCode,langLabel,flag,level); }
+    else { window._strefaIdx++; renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode); }
   };
   navRow.appendChild(nextBtn);
   wrap.appendChild(navRow);
-  center.innerHTML='';center.appendChild(wrap);
-  // Load AI sentence
+  center.innerHTML=''; center.appendChild(wrap);
+  // Load AI sentence + YouGlish
+  var langYG={en:'english',es:'spanish',nl:'dutch',jp:'japanese'}[langCode]||'english';
   loadKontekstowaSentence(word.word, word.translation, langCode, lvl);
+  // YouGlish
+  (function(w,ly){
+    setTimeout(function(){
+      var c=document.getElementById('kontekstowa-yg-widget');
+      if(!c) return;
+      if(window.YG&&window.YG.Widget){
+        c.innerHTML='<div id="yg-inner-div"></div>';
+        try{ new YG.Widget('yg-inner-div',{width:'100%',height:300,components:9,bkg:1,language:ly,word:w}); }
+        catch(e){
+          c.innerHTML='<div style="padding:16px;text-align:center"><a href="https://youglish.com/pronounce/'+encodeURIComponent(w)+'/'+ly+'" target="_blank" style="color:var(--navy);font-weight:600;font-size:14px">🎬 Otwórz YouGlish: '+w+'</a></div>';
+        }
+      } else {
+        // Load YouGlish script
+        if(!document.querySelector('script[src*="youglish"]')){
+          var s=document.createElement('script'); s.src='https://youglish.com/public/emb/widget.js';
+          s.onload=function(){
+            if(window.YG&&window.YG.Widget){
+              c.innerHTML='<div id="yg-inner-div2"></div>';
+              try{ new YG.Widget('yg-inner-div2',{width:'100%',height:300,components:9,bkg:1,language:ly,word:w}); }
+              catch(e2){ c.innerHTML='<div style="padding:16px;text-align:center"><a href="https://youglish.com/pronounce/'+encodeURIComponent(w)+'/'+ly+'" target="_blank" style="color:var(--navy)">🎬 Otwórz YouGlish: '+w+'</a></div>'; }
+            }
+          };
+          document.head.appendChild(s);
+        } else {
+          c.innerHTML='<div style="padding:16px;text-align:center"><a href="https://youglish.com/pronounce/'+encodeURIComponent(w)+'/'+ly+'" target="_blank" style="color:var(--navy)">🎬 Otwórz YouGlish: '+w+'</a></div>';
+        }
+      }
+    }, 300);
+  })(word.word, langYG);
 }
+
 
 async function loadKontekstowaSentence(word, translation, lang, level){
   var textEl=document.getElementById('kontekstowa-sent-text');
