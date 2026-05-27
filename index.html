@@ -2073,7 +2073,7 @@ async function loadRanking(){
   <div style="display:flex;gap:0;align-items:flex-start;width:100%">
 
     <!-- LEFT SIDEBAR: Katalogi -->
-    <div id="mat-sidebar" style="width:300px;flex-shrink:0;padding:28px 0 28px 20px;align-self:stretch;overflow-y:auto;scrollbar-width:none;background:linear-gradient(to right, transparent 0%, rgba(26,35,64,.08) 45%, rgba(26,35,64,.22) 100%)">
+    <div id="mat-sidebar" style="width:300px;flex-shrink:0;padding:28px 0 28px 20px;align-self:stretch;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12)">
       <!-- Katalogi -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:800;color:var(--navy)">Katalogi</div>
@@ -2507,7 +2507,7 @@ async function initToFixPage(){
   <div style="display:flex;width:100%;align-items:stretch;min-height:calc(100vh - 110px)">
 
     <!-- LEFT SIDEBAR -->
-    <div id="strefa-sidebar" style="width:300px;flex-shrink:0;padding:28px 0 28px 20px;align-self:stretch;overflow-y:auto;scrollbar-width:none;background:linear-gradient(to right, transparent 0%, rgba(26,35,64,.08) 45%, rgba(26,35,64,.22) 100%)">
+    <div id="strefa-sidebar" style="width:300px;flex-shrink:0;padding:28px 0 28px 20px;align-self:stretch;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12)">
 
       <!-- Mode switcher header -->
       <div style="display:flex;gap:4px;margin-bottom:20px;background:rgba(26,35,64,.07);border-radius:12px;padding:4px">
@@ -3787,17 +3787,25 @@ async function loadDailyRead(){
     var cont=document.getElementById('dc-read-content');
     cont.style.display='flex';
 
-    // Strip ```json wrapping if AI returned raw JSON
     var cleanBody = body||'';
+    // Aggressively strip JSON/markdown wrappers
     var bt='`';
-    cleanBody = cleanBody.replace(new RegExp(bt+bt+bt+'json','g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
-    // If it looks like JSON object, try to parse content field
+    cleanBody = cleanBody.replace(new RegExp(bt+bt+bt+'json[\\s\\S]*?'+bt+bt+bt,'g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
+    // Try multiple levels of JSON unwrapping
+    for(var _ji=0; _ji<3; _ji++){
+      if(cleanBody.startsWith('{') || cleanBody.startsWith('"')){
+        try{
+          var _parsed=JSON.parse(cleanBody);
+          var _next = _parsed.content||_parsed.text||_parsed.body||_parsed.article||'';
+          if(_next){ cleanBody=_next; if(_parsed.title) title=_parsed.title; }
+          else { break; }
+        }catch(e){ break; }
+      } else { break; }
+    }
+    // Final cleanup: remove any remaining JSON-like prefix
     if(cleanBody.startsWith('{')){
-      try{
-        var parsed=JSON.parse(cleanBody);
-        cleanBody=parsed.content||parsed.text||parsed.body||title||'';
-        if(parsed.title&&parsed.title!==title) title=parsed.title;
-      }catch(e){}
+      var _bodyMatch = cleanBody.match(/"(?:content|text|body|article)"\s*:\s*"([\s\S]+?)(?:",\s*"|"\s*})/);
+      if(_bodyMatch) cleanBody = _bodyMatch[1].replace(/\\n/g,'\n').replace(/\\"/g,'"');
     }
 
     document.getElementById('dc-read-title').textContent=title;
@@ -3810,7 +3818,16 @@ async function loadDailyRead(){
   // 1. Sprawdź localStorage cache
   try{
     var lsCached=localStorage.getItem(lsKey);
-    if(lsCached){var a=JSON.parse(lsCached);displayArticle(a.title,a.body);return;}
+    if(lsCached){
+      var a=JSON.parse(lsCached);
+      // Re-check: if body looks like JSON, clear cache and re-fetch
+      var testBody = a.body||'';
+      if(testBody.trim().startsWith('{')||testBody.trim().startsWith('"')){
+        localStorage.removeItem(lsKey); // clear bad cache
+      } else {
+        displayArticle(a.title,a.body);return;
+      }
+    }
   }catch(e){}
 
   // 2. Sprawdź Supabase cache (permanentny dla wszystkich)
@@ -6634,6 +6651,19 @@ function loadTrybFlipCard(){
   var flipper = document.getElementById('tryb-card-flipper');
   if(flipper){ flipper.classList.remove('flipped'); }
 
+  // CRITICAL: clear any injected nav from previous card
+  var oldNav = document.getElementById('tryb-flip-nav');
+  if(oldNav) oldNav.remove();
+  // Also restore back face to initial state
+  var backWordAns = document.getElementById('tryb-card-word-ans');
+  var backAnswer = document.getElementById('tryb-card-answer');
+  var backIcon = document.getElementById('tryb-result-icon');
+  var backWrote = document.getElementById('tryb-user-wrote');
+  if(backWordAns) backWordAns.textContent='';
+  if(backAnswer) backAnswer.textContent='';
+  if(backIcon) backIcon.textContent='';
+  if(backWrote) backWrote.textContent='';
+
   // Show flip hint, hide write zone
   var writeZone = document.getElementById('tryb-write-zone');
   if(writeZone) writeZone.style.display = 'none';
@@ -9061,6 +9091,26 @@ function odkryjLoadLyrics(){
 // ─── STREFA NAUKI SIDEBAR ────────────────────────────
 var _strefaSidebarMode = 'tryb';
 
+async function strefaLoadSidebarLangs(){
+  var container = document.getElementById('sb-strefa-langs');
+  if(!container) return;
+  var LANGS = [{code:'en',label:'Angielski',flag:'🇬🇧'},{code:'es',label:'Hiszpański',flag:'🇪🇸'},{code:'jp',label:'Japoński',flag:'🇯🇵'},{code:'nl',label:'Niderlandzki',flag:'🇳🇱'}];
+  container.innerHTML = '';
+  LANGS.forEach(function(l){
+    var btn = document.createElement('button');
+    btn.style.cssText = 'width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px;margin-bottom:6px';
+    btn.innerHTML = '<span style="font-size:18px">'+l.flag+'</span><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:700;color:var(--navy)">'+l.label+'</div>';
+    btn.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+    btn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+    btn.onclick = (function(lc,ll,lf){ return function(){
+      setBreadcrumb('Kontekstowa Nauka → '+lf+' '+ll);
+      strefaShowEyelingoLevels(lc,ll,lf);
+    }; })(l.code,l.label,l.flag);
+    container.appendChild(btn);
+  });
+  strefaShowCenter('<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">🧠</div><div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px">Kontekstowa Nauka</div><div style="font-size:14px">Wybierz język po lewej</div></div>');
+}
+
 function strefaSidebarMode(mode){
   _strefaSidebarMode = mode;
   // Toggle header buttons
@@ -9537,8 +9587,10 @@ async function initStrefa(){
 
 function showStrefaLangs(isPremium){
   _strefaState='langs';
-  document.getElementById('strefa-card-view').style.display='none';
-  document.getElementById('strefa-selector').style.display='block';
+  var cardView=document.getElementById('strefa-card-view');
+  var selector=document.getElementById('strefa-selector');
+  if(cardView) cardView.style.display='none';
+  if(selector) selector.style.display='block';
   const langs=['en','es','jp','nl'];
   document.getElementById('strefa-langs').innerHTML=langs.map(l=>{
     const hasAny=isPremium||_strefaLevels.some(lv=>lv.startsWith(l+'_'));
