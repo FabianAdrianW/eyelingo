@@ -535,6 +535,19 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
   }
 }
 
+
+/* ═══ FISZKA 3D FLIP ═══ */
+.tryb-card-scene{perspective:900px;width:100%}
+.tryb-card-flipper{position:relative;width:100%;min-height:300px;transition:transform .55s cubic-bezier(.4,0,.2,1);transform-style:preserve-3d}
+.tryb-card-flipper.flipped{transform:rotateY(180deg)}
+.tryb-card-front,.tryb-card-back{position:absolute;width:100%;min-height:300px;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;box-sizing:border-box;text-align:center}
+.tryb-card-front{background:var(--navy);color:#fff;cursor:pointer;box-shadow:0 16px 48px rgba(26,35,64,.3),0 4px 12px rgba(26,35,64,.15);transition:box-shadow .2s}
+.tryb-card-back{background:#fff;color:var(--navy);transform:rotateY(180deg);border:2px solid var(--border);box-shadow:0 16px 48px rgba(26,35,64,.1)}
+.tryb-card-front:hover{box-shadow:0 20px 60px rgba(26,35,64,.4)}
+.tryb-mode-tile{background:#fff;border:2px solid var(--border);border-radius:16px;padding:18px 12px;cursor:pointer;transition:all .2s;text-align:center}
+.tryb-mode-tile:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(26,35,64,.12);border-color:var(--orange)}
+.collection-card{background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;cursor:pointer;transition:all .2s}
+.collection-card:hover{border-color:var(--orange);transform:translateY(-2px);box-shadow:0 6px 20px rgba(26,35,64,.08)}
 </style>
 </head>
 <body>
@@ -1908,6 +1921,14 @@ async function switchMatTab(tab){
   if(search) search.value='';
   const grid=document.getElementById('mat-grid');
   const voicesPanel=document.getElementById('mat-voices');
+  const collectionsPanel=document.getElementById('mat-collections');
+  if(collectionsPanel) collectionsPanel.style.display='none';
+  if(tab==='collections'){
+    if(grid) grid.style.display='none';
+    if(voicesPanel) voicesPanel.style.display='none';
+    if(collectionsPanel){ collectionsPanel.style.display='block'; loadCollections(); }
+    return;
+  }
   if(tab==='voices'){
     if(grid) grid.style.display='none';
     if(voicesPanel) voicesPanel.style.display='block';
@@ -2038,6 +2059,7 @@ async function loadRanking(){
       <div class="mat-tabs">
         <button class="mat-tab active" data-tab="community" onclick="switchMatTab('community')">🌐 Społeczność</button>
         <button class="mat-tab" data-tab="mine" onclick="switchMatTab('mine')">📂 Moje zestawy</button>
+        <button class="mat-tab" data-tab="collections" onclick="switchMatTab('collections')">🗂️ Katalogi</button>
         <button class="mat-tab" data-tab="voices" onclick="switchMatTab('voices')">🎙️ Głosówki</button>
       </div>
       <div style="position:relative">
@@ -2054,6 +2076,17 @@ async function loadRanking(){
     <div id="mat-grid" class="mat-grid">
       <div class="mat-empty">Ładowanie...</div>
     </div>
+    <!-- Katalogi -->
+    <div id="mat-collections" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div style="font-size:14px;color:var(--dim2)">Organizuj swoje zestawy w katalogi</div>
+        <button onclick="openCreateCollection()" class="btn btn-navy" style="font-size:13px;padding:8px 16px">+ Nowy katalog</button>
+      </div>
+      <div id="mat-collections-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">
+        <div class="mat-empty">Ładowanie katalogów...</div>
+      </div>
+    </div>
+
     <!-- Głosówki społeczności -->
     <div id="mat-voices" style="display:none">
       <div style="background:var(--paper2);border-radius:12px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--dim2)">
@@ -6498,9 +6531,9 @@ function showTrybModePicker(){
   grid.appendChild(trybModeCard('memorize', '🧠', 'Zapamiętywanie', 'Multiwybór + wpisywanie — pełna nauka', '#be185d'));
   picker.appendChild(grid);
 
-  // Direction toggle
+  // Direction + SRS row
   var dirRow = document.createElement('div');
-  dirRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:16px;padding:12px 14px;background:var(--paper);border-radius:12px';
+  dirRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:16px;padding:12px 14px;background:var(--paper);border-radius:12px;flex-wrap:wrap';
   var dirLabel = document.createElement('span');
   dirLabel.style.cssText = 'font-size:13px;color:var(--dim2)';
   dirLabel.textContent = 'Kierunek:';
@@ -6511,6 +6544,25 @@ function showTrybModePicker(){
   dirBtn.onclick = trybToggleDirection;
   dirRow.appendChild(dirLabel);
   dirRow.appendChild(dirBtn);
+
+  // SRS toggle
+  var srsSep = document.createElement('div');
+  srsSep.style.cssText = 'flex:1';
+  var srsLabel = document.createElement('label');
+  srsLabel.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim2);cursor:pointer';
+  var srsCheck = document.createElement('input');
+  srsCheck.type = 'checkbox';
+  srsCheck.id = 'tryb-srs-toggle';
+  srsCheck.checked = true;
+  srsCheck.style.cssText = 'width:14px;height:14px;accent-color:var(--orange)';
+  srsCheck.onchange = function(){ window._trybSRSEnabled = this.checked; };
+  window._trybSRSEnabled = true;
+  var srsText = document.createElement('span');
+  srsText.textContent = 'Zapisuj do powtórek (SRS)';
+  srsLabel.appendChild(srsCheck);
+  srsLabel.appendChild(srsText);
+  dirRow.appendChild(srsSep);
+  dirRow.appendChild(srsLabel);
   picker.appendChild(dirRow);
 
   // Append to session
@@ -6592,118 +6644,71 @@ function loadTrybFlipCard(){
   if(!card){ showTrybSessionSummary(); return; }
   _trybFlipRevealed = false;
 
-  var qs = document.getElementById('tryb-q-side');
-  var as = document.getElementById('tryb-a-side');
-  if(qs) qs.style.display = 'flex';
-  if(as) as.style.display = 'none';
+  // 3D flip: reset to front
+  var flipper = document.getElementById('tryb-card-flipper');
+  if(flipper){ flipper.classList.remove('flipped'); }
 
-  // Show front (foreign or pl depending on direction)
+  // Show flip hint, hide write zone
+  var writeZone = document.getElementById('tryb-write-zone');
+  if(writeZone) writeZone.style.display = 'none';
+  var flipHint = document.getElementById('tryb-flip-hint');
+  if(flipHint) flipHint.style.display = 'block';
+
   var frontText = _trybCardDirection === 'foreign' ? (card.word||'') : (card.translation||'');
   var backText  = _trybCardDirection === 'foreign' ? (card.translation||'') : (card.word||'');
-  // Store backText for card click handler
+
+  var word = document.getElementById('tryb-card-word');
+  var ex = document.getElementById('tryb-card-example');
+  if(word) word.textContent = frontText;
+  if(ex) ex.textContent = '';
+
+  // Store backText
   var ansData = document.getElementById('tryb-card-answer-data');
   if(ansData) ansData.textContent = backText;
-
-  var emoji = document.getElementById('tryb-card-emoji');
-  var word  = document.getElementById('tryb-card-word');
-  var example = document.getElementById('tryb-card-example');
-  if(emoji) emoji.textContent = card.emoji || '📚';
-  if(word)  word.textContent = frontText;
-  if(example) example.textContent = '';
-
-  // Replace input area with flip card controls
-  var inp = document.getElementById('tryb-answer-input');
-  if(inp) inp.style.display = 'none';
-
-  var hintRow = document.getElementById('tryb-hint-row');
-  if(hintRow) hintRow.style.display = 'none';
-
-  // Inject flip controls
-  var qside = document.getElementById('tryb-q-side');
-  var existing = document.getElementById('tryb-flip-controls');
-  if(existing) existing.remove();
-
-  if(qside){
-    var ctrl = document.createElement('div');
-    ctrl.id = 'tryb-flip-controls';
-    ctrl.style.cssText = 'margin-top:20px;display:flex;flex-direction:column;align-items:center;gap:10px;width:100%';
-    var spaceHint = document.createElement('div');
-    spaceHint.style.cssText = 'font-size:12px;color:rgba(255,255,255,.5);margin-top:8px';
-    spaceHint.textContent = 'Kliknij kartę lub naciśnij Spację';
-    ctrl.appendChild(spaceHint);
-    qside.appendChild(ctrl);
-  }
-
-  // Keyboard: Space = flip, ArrowLeft/Right = prev/next
-  document.onkeydown = function(e){
-    if(e.code === 'Space'){ e.preventDefault(); if(!_trybFlipRevealed) trybFlipReveal(backText); }
-    if(e.code === 'ArrowRight' && _trybFlipRevealed) trybFlipNext(true);
-    if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard(); }
-  };
 
   // Progress
   var num = document.getElementById('tryb-card-num');
   var prog = document.getElementById('tryb-progress-bar');
-  var done = document.getElementById('tryb-session-done');
   if(num) num.textContent = _trybIdx+1;
   if(prog) prog.style.width = Math.round(_trybIdx/_trybCards.length*100) + '%';
-  if(done) done.textContent = _trybIdx;
+
+  // Keyboard handlers
+  document.onkeydown = function(e){
+    if(e.code === 'Space'){ e.preventDefault(); if(!_trybFlipRevealed) trybFlipReveal(backText); }
+    if(e.code === 'ArrowRight' && _trybFlipRevealed) _trybIdx++;
+    if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard(); }
+  };
 }
+
 
 function trybFlipReveal(backText){
   _trybFlipRevealed = true;
-  var qs = document.getElementById('tryb-q-side');
-  var as = document.getElementById('tryb-a-side');
-  if(qs) qs.style.display = 'none';
-  if(as){ as.style.display = 'flex'; as.style.flexDirection='column'; as.style.alignItems='center'; }
 
+  // 3D flip animation
+  var flipper = document.getElementById('tryb-card-flipper');
+  if(flipper) flipper.classList.add('flipped');
+
+  // Update back face content
+  var card = _trybCards[_trybIdx];
+  var frontText = _trybCardDirection === 'foreign' ? (card && card.word||'') : (card && card.translation||'');
   var wordAns = document.getElementById('tryb-card-word-ans');
   var cardAns = document.getElementById('tryb-card-answer');
   var resIcon = document.getElementById('tryb-result-icon');
   var userWrote = document.getElementById('tryb-user-wrote');
-  if(wordAns) wordAns.textContent = _trybCards[_trybIdx] ? (_trybCardDirection==='foreign' ? _trybCards[_trybIdx].word : _trybCards[_trybIdx].translation) : '';
-  if(cardAns) cardAns.textContent = backText;
+  if(wordAns) wordAns.textContent = frontText;
+  if(cardAns) cardAns.textContent = backText || (card && (_trybCardDirection==='foreign' ? card.translation : card.word) || '');
   if(resIcon) resIcon.textContent = '';
   if(userWrote) userWrote.textContent = '';
 
-  // Replace rating with simple nav buttons
-  var rateRow = document.querySelector('.tryb-rate-row');
-  var existing = document.getElementById('tryb-flip-nav');
-  if(existing) existing.remove();
+  // Show SRS rate row, hide flip hint
+  var flipHint = document.getElementById('tryb-flip-hint');
+  if(flipHint) flipHint.style.display = 'none';
 
-  var answerSide = document.getElementById('tryb-a-side');
-  if(answerSide){
-    // Show SRS rating buttons
-    var rateWrap = document.createElement('div');
-    rateWrap.id = 'tryb-flip-nav';
-    rateWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:16px;width:100%';
-    var rateLabel = document.createElement('div');
-    rateLabel.style.cssText = 'font-size:11px;color:var(--dim2)';
-    rateLabel.textContent = 'Jak dobrze znałeś to słowo?';
-    rateWrap.appendChild(rateLabel);
-    var btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
-    [{q:1,l:'Nie wiedziałem',bg:'#fcebeb',c:'#a32d2d'},{q:2,l:'Prawie',bg:'#fef3c7',c:'#92400e'},{q:3,l:'Wiedziałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Bardzo łatwe',bg:'#e0f2fe',c:'#0369a1'}].forEach(function(opt){
-      var b = document.createElement('button');
-      b.style.cssText = 'padding:8px 14px;border-radius:10px;border:none;background:'+opt.bg+';color:'+opt.c+';font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif';
-      b.textContent = opt.l;
-      b.onclick = function(){
-        rateCard(opt.q);
-        var nav2 = document.getElementById('tryb-flip-nav'); if(nav2) nav2.remove();
-      };
-      btnRow.appendChild(b);
-    });
-    rateWrap.appendChild(btnRow);
-    if(_trybIdx > 0){
-      var prevBtn = document.createElement('button');
-      prevBtn.style.cssText = 'padding:6px 14px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif';
-      prevBtn.textContent = '← Poprzednia';
-      prevBtn.onclick = trybFlipPrev;
-      rateWrap.appendChild(prevBtn);
-    }
-    answerSide.appendChild(rateWrap);
-  }
+  // Remove old nav if exists
+  var oldNav = document.getElementById('tryb-flip-nav');
+  if(oldNav) oldNav.remove();
 }
+
 
 function trybFlipNext(known){
   _trybIdx++;
@@ -6902,7 +6907,15 @@ function loadTrybMemorizeWritePhase(card, correctAnswer, frontText){
 }
 
 function loadTrybCard(){
-  var card=_trybCards[_trybIdx];
+  // Show write zone, hide flip hint
+  var wz = document.getElementById('tryb-write-zone');
+  if(wz) wz.style.display = 'block';
+  var fh = document.getElementById('tryb-flip-hint');
+  if(fh) fh.style.display = 'none';
+  // Reset 3D flip to front
+  var flipper = document.getElementById('tryb-card-flipper');
+  if(flipper) flipper.classList.remove('flipped');
+    var card=_trybCards[_trybIdx];
   if(!card){showTrybSessionSummary();return;}
   _trybHintLevel=0;_trybHintPenalty=0;
   var qs=document.getElementById('tryb-q-side');
@@ -7000,10 +7013,15 @@ async function rateCard(btnRating){
   RewardSystem._state.perfectStreak=Math.max(RewardSystem._state.perfectStreak,_trybPerfectStreak);
   var xpTodayEl=document.getElementById('tryb-xp-today');
   if(xpTodayEl)xpTodayEl.textContent=_trybSessionXPToday;
-  _trybIdx++;loadTrybCard();
+  _trybIdx++;
+  if(_trybMode === 'flip') loadTrybFlipCard();
+  else if(_trybMode === 'mc') loadTrybMCCard();
+  else if(_trybMode === 'memorize') loadTrybMemorizeCard();
+  else loadTrybCard();
 }
 
 async function saveTrybSRS(card,newSRS){
+  if(window._trybSRSEnabled === false) return; // SRS disabled by user
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess||!card.id)return;
@@ -7090,6 +7108,117 @@ function updateXPBar(){
   if(fill)fill.style.width=(s.xp%100)+'%';if(lbl)lbl.textContent=s.xp+' XP';if(lvl)lvl.textContent='Lv.'+s.level;
 }
 function updateStreakBadge(){RewardSystem.load();var el=document.getElementById('tryb-streak-badge');if(el)el.textContent='🔥 '+(RewardSystem._state.streak||0);}
+
+// ═══ KATALOGI (Collections) ═══
+var _collections = [];
+
+async function loadCollections(){
+  var grid = document.getElementById('mat-collections-grid');
+  if(!grid) return;
+  grid.innerHTML = '<div class="mat-empty">Ładowanie...</div>';
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    if(!sess){ grid.innerHTML = '<div class="mat-empty">Zaloguj się</div>'; return; }
+    var stored = localStorage.getItem('eyelingo_collections_' + sess.user.id);
+    _collections = stored ? JSON.parse(stored) : [];
+    if(!_collections.length){
+      grid.innerHTML = '<div style="text-align:center;padding:40px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">🗂️</div><div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px">Brak katalogów</div><div style="font-size:13px">Stwórz katalog aby organizować zestawy</div></div>';
+      return;
+    }
+    grid.innerHTML = '';
+    _collections.forEach(function(col, cidx){
+      var card = document.createElement('div');
+      card.className = 'collection-card';
+      card.innerHTML = '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px"><div style="font-size:32px">' + (col.icon||'📁') + '</div>'
+        + '<button onclick="deleteCollection(' + cidx + ')" style="background:none;border:none;color:var(--dim2);cursor:pointer;font-size:18px">×</button></div>'
+        + '<div style="font-family:Syne,sans-serif;font-size:16px;font-weight:800;color:var(--navy);margin-bottom:4px">' + col.name + '</div>'
+        + '<div style="font-size:12px;color:var(--dim2);margin-bottom:14px">' + (col.sets||[]).length + ' zestawów</div>'
+        + '<button onclick="openCollection(' + cidx + ')" style="width:100%;padding:8px;border-radius:10px;background:var(--navy);color:#fff;border:none;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Otwórz →</button>';
+      grid.appendChild(card);
+    });
+  }catch(e){ if(grid) grid.innerHTML = '<div class="mat-empty">Błąd</div>'; }
+}
+
+function saveCollections(uid){ try{ localStorage.setItem('eyelingo_collections_' + uid, JSON.stringify(_collections)); }catch(e){} }
+
+async function openCreateCollection(){
+  var name = prompt('Nazwa katalogu:');
+  if(!name||!name.trim()) return;
+  var icons = ['📁','📚','🎯','🌍','💼','✈️','🎓','🔬','🎨','🎵'];
+  var sess = (await db.auth.getSession()).data.session;
+  if(!sess) return;
+  _collections.push({name:name.trim(), icon:icons[Math.floor(Math.random()*icons.length)], sets:[], created:Date.now()});
+  saveCollections(sess.user.id);
+  loadCollections();
+  if(typeof showToast==='function') showToast('Katalog "' + name.trim() + '" utworzony!','success');
+}
+
+async function deleteCollection(idx){
+  if(!confirm('Usuń katalog?')) return;
+  var sess = (await db.auth.getSession()).data.session;
+  if(!sess) return;
+  _collections.splice(idx,1);
+  saveCollections(sess.user.id);
+  loadCollections();
+}
+
+function openCollection(idx){
+  var col = _collections[idx]; if(!col) return;
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:flex-end;justify-content:center';
+  var sheet = document.createElement('div');
+  sheet.style.cssText = 'background:#fff;border-radius:20px 20px 0 0;padding:28px 24px;width:100%;max-width:600px;max-height:80vh;overflow-y:auto';
+  var btnClose = document.createElement('button');
+  btnClose.style.cssText = 'background:none;border:none;font-size:24px;cursor:pointer;color:var(--dim2)';
+  btnClose.textContent = '×';
+  btnClose.onclick = function(){ modal.remove(); };
+  var hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:20px';
+  hdr.innerHTML = '<div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--navy)">' + (col.icon||'📁') + ' ' + col.name + '</div>';
+  hdr.appendChild(btnClose);
+  sheet.appendChild(hdr);
+  var addBtn = document.createElement('button');
+  addBtn.style.cssText = 'width:100%;padding:10px;border:2px dashed var(--border2);border-radius:12px;background:transparent;font-size:13px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;margin-bottom:12px';
+  addBtn.textContent = '+ Dodaj zestaw';
+  addBtn.onclick = function(){ addSetToCollection(idx, modal); };
+  sheet.appendChild(addBtn);
+  var list = document.createElement('div');
+  (col.sets||[]).forEach(function(s,si){
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)';
+    row.innerHTML = '<span style="font-size:14px;color:var(--navy)">📚 ' + s.name + '</span>';
+    var rm = document.createElement('button');
+    rm.style.cssText = 'background:none;border:none;color:var(--dim2);cursor:pointer;font-size:14px';
+    rm.textContent = '×';
+    rm.onclick = async function(){ var sess2=(await db.auth.getSession()).data.session; if(!sess2)return; _collections[idx].sets.splice(si,1); saveCollections(sess2.user.id); modal.remove(); openCollection(idx); };
+    row.appendChild(rm);
+    list.appendChild(row);
+  });
+  if(!(col.sets&&col.sets.length)){ list.innerHTML = '<div style="color:var(--dim2);font-size:13px;padding:12px 0">Katalog jest pusty</div>'; }
+  sheet.appendChild(list);
+  modal.appendChild(sheet);
+  modal.onclick = function(e){ if(e.target===modal) modal.remove(); };
+  document.body.appendChild(modal);
+}
+
+async function addSetToCollection(colIdx, modalEl){
+  var sess = (await db.auth.getSession()).data.session; if(!sess) return;
+  var {data:sets} = await db.from('user_sets').select('id,name').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(20);
+  if(!sets||!sets.length){ alert('Brak zestawów do dodania'); return; }
+  var names = sets.map(function(s,i){ return (i+1)+'. '+s.name; }).join(', ');
+
+  var pick = prompt('Wybierz numer zestawu: ' + names);
+
+  var chosen = sets[parseInt(pick)-1];
+  if(!chosen) return;
+  if(!_collections[colIdx].sets) _collections[colIdx].sets = [];
+  _collections[colIdx].sets.push({id:chosen.id, name:chosen.name});
+  saveCollections(sess.user.id);
+  modalEl.remove();
+  openCollection(colIdx);
+  if(typeof showToast==='function') showToast(chosen.name+' dodany!','success');
+}
+
 function updateChallengeMode(on){var sl=document.getElementById('tryb-toggle-slider');var kn=document.getElementById('tryb-toggle-knob');if(sl)sl.style.background=on?'var(--orange)':'rgba(255,255,255,.2)';if(kn)kn.style.left=on?'25px':'3px';}
 
 function renderTrybBadges(){
@@ -7447,40 +7576,41 @@ function injectTrybPage(){
     +'<div style="width:100px;height:6px;background:var(--paper2);border-radius:3px;overflow:hidden"><div id="tryb-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--orange),var(--gold));border-radius:3px;transition:width .4s;width:0%"></div></div>'
     +'</div></div>'
     // Card
-    +'<div id="tryb-card" style="background:var(--navy);border:2px solid var(--navy);border-radius:24px;padding:40px;text-align:center;margin-bottom:20px;min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 8px 40px rgba(26,35,64,.25);cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor=\'rgba(255,255,255,.3)\';this.style.boxShadow=\'0 12px 48px rgba(26,35,64,.4)\'" onmouseout="this.style.borderColor=\'var(--navy)\';this.style.boxShadow=\'0 8px 40px rgba(26,35,64,.25)\'" onclick="if(_trybMode===\'flip\')trybFlipReveal(document.getElementById(\'tryb-card-answer-data\')?document.getElementById(\'tryb-card-answer-data\').textContent:\'\')" title="Kliknij lub naciśnij Spację">'
     +'<div id="tryb-card-answer-data" style="display:none"></div>'
-    +'<div id="tryb-q-side" style="display:flex;flex-direction:column;align-items:center">'
-    +'<div id="tryb-card-emoji" style="display:none"></div>'
-    +'<div id="tryb-card-word" style="font-family:Syne,sans-serif;font-size:48px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:10px;text-align:center;line-height:1.1"></div>'
-    +'<div id="tryb-card-example" style="font-size:13px;color:rgba(255,255,255,.6);font-style:italic;max-width:400px;line-height:1.6;margin-bottom:20px"></div>'
-    +'<div style="display:flex;gap:8px;width:100%;max-width:380px">'
-    +'<input id="tryb-answer-input" type="text" class="fi" placeholder="Wpisz tłumaczenie..." style="flex:1;font-size:15px;text-align:center;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.25);color:#fff" onkeydown="if(event.key===\'Enter\')checkAnswer()">'
-    +'<button onclick="checkAnswer()" style="width:44px;height:44px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0">→</button></div>'
-    +'<div style="display:flex;gap:8px;margin-top:12px;justify-content:center">'
-    +'<button id="tryb-hint-btn" onclick="showTrybHint()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:5px 14px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer">💡 Podpowiedź (<span id="tryb-hint-level">3</span>)</button>'
-    +'<button onclick="dontKnow()" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:5px 14px;font-size:12px;color:var(--dim2);cursor:pointer">🚫 Nie pamiętam</button></div>'
-    +'<div id="tryb-hint-text" style="margin-top:10px;font-size:14px;color:var(--orange);font-weight:600;min-height:20px"></div>'
-    +'</div>'
-    // Answer side
-    +'<div id="tryb-a-side" style="display:none;width:100%">'
-    +'<div id="tryb-result-icon" style="font-size:48px;margin-bottom:8px"></div>'
-    +'<div id="tryb-card-word-ans" style="font-family:Syne,sans-serif;font-size:32px;font-weight:800;color:var(--navy);margin-bottom:6px"></div>'
-    +'<div id="tryb-card-answer" style="font-size:22px;color:var(--orange);font-weight:700;margin-bottom:10px"></div>'
-    +'<div id="tryb-user-wrote" style="font-size:13px;color:var(--dim2);margin-bottom:16px"></div>'
-    +'<div id="tryb-etymology-wrap" style="background:var(--paper2);border-radius:12px;padding:12px 16px;margin-bottom:16px;text-align:left;width:100%;max-width:440px;display:none">'
-    +'<button onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'" style="background:none;border:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--dim2);width:100%;text-align:left">🔍 Dlaczego tak?</button>'
-    +'<div id="tryb-etymology-text" style="display:none;font-size:13px;color:var(--dim);line-height:1.6;margin-top:8px"></div></div>'
-    +'<div style="width:100%;max-width:440px;margin-bottom:16px">'
-    +'<div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:5px;display:flex;align-items:center;gap:4px">💭 Twoje skojarzenie <span title="Wymyśl śmieszne lub dziwne skojarzenie ze słowem — to pomaga zapamiętać! Np. \'apagar\'? \'A, płacić za prąd!\' 🔌" style="cursor:help;background:rgba(255,255,255,.15);border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:9px">?</span></div>'
-    +'<input id="tryb-mnemonic-input" type="text" class="fi" placeholder="Wymyśl skojarzenie, które Ci pomoże zapamiętać..." style="font-size:13px;width:100%;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" oninput="saveTrybMnemonic()"></div>'
-    +'<div style="font-size:13px;color:var(--dim2);margin-bottom:10px;font-weight:600">Jak poszło?</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;max-width:440px">'
-    +'<button onclick="rateCard(1)" class="tryb-rate-btn" data-q="1" style="background:#fee2e2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700"><div style="font-size:18px">😔</div>Nie wiedziałem</button>'
-    +'<button onclick="rateCard(2)" class="tryb-rate-btn" data-q="2" style="background:#ffedd5;border:1.5px solid #fed7aa;color:#9a3412;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700"><div style="font-size:18px">😅</div>Prawie</button>'
-    +'<button onclick="rateCard(3)" class="tryb-rate-btn" data-q="3" style="background:#dcfce7;border:1.5px solid #86efac;color:#166534;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700"><div style="font-size:18px">😊</div>Wiedziałem</button>'
-    +'<button onclick="rateCard(4)" class="tryb-rate-btn" data-q="4" style="background:#dbeafe;border:1.5px solid #93c5fd;color:#1e40af;border-radius:12px;padding:10px 4px;cursor:pointer;font-size:12px;font-weight:700"><div style="font-size:18px">🚀</div>Bardzo łatwe</button>'
-    +'</div></div>'
+    +'<div class="tryb-card-scene" id="tryb-card-scene">'
+    +'<div class="tryb-card-flipper" id="tryb-card-flipper">'
+    +'<div class="tryb-card-front" id="tryb-card" onclick="if(_trybMode===\'flip\'&&!document.getElementById(\'tryb-card-flipper\').classList.contains(\'flipped\'))trybFlipReveal(document.getElementById(\'tryb-card-answer-data\').textContent)">'
     +'<div id="tryb-feedback" style="display:none"></div>'
+    +'<div id="tryb-q-side" style="width:100%;display:flex;flex-direction:column;align-items:center">'
+    +'<div id="tryb-card-emoji" style="display:none"></div>'
+    +'<div id="tryb-card-word" style="font-family:DM Sans,sans-serif;font-size:46px;font-weight:700;color:#fff;margin-bottom:10px;text-align:center;line-height:1.15"></div>'
+    +'<div id="tryb-card-example" style="font-size:13px;color:rgba(255,255,255,.55);font-style:italic;max-width:400px;line-height:1.6;margin-bottom:16px"></div>'
+    +'<div id="tryb-write-zone" style="width:100%;max-width:380px">'
+    +'<div style="display:flex;gap:8px">'
+    +'<input id="tryb-answer-input" type="text" class="fi" placeholder="Wpisz tłumaczenie..." style="flex:1;font-size:15px;text-align:center;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.25);color:#fff" onkeydown="if(event.key===\'Enter\')checkAnswer()">'
+    +'<button onclick="checkAnswer()" style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.3);cursor:pointer;color:#fff;font-size:18px;flex-shrink:0">→</button></div>'
+    +'<div id="tryb-hint-row" style="display:flex;gap:8px;margin-top:10px;justify-content:center">'
+    +'<button id="tryb-hint-btn" onclick="showTrybHint()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:5px 14px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer">💡 Podpowiedź (<span id="tryb-hint-level">3</span>)</button>'
+    +'<button onclick="dontKnow()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:5px 14px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer">🚫 Nie pamiętam</button></div>'
+    +'</div>'
+    +'<div id="tryb-flip-hint" style="display:none;font-size:11px;color:rgba(255,255,255,.4);margin-top:12px">Kliknij kartę lub naciśnij Spację aby odwrócić</div>'
+    +'</div>'
+    +'</div>'
+    +'<div class="tryb-card-back" id="tryb-a-side">'
+    +'<div id="tryb-card-word-ans" style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:var(--navy);margin-bottom:6px"></div>'
+    +'<div id="tryb-card-answer" style="font-size:20px;color:var(--orange);font-weight:600;margin-bottom:10px"></div>'
+    +'<div id="tryb-result-icon" style="font-size:20px;margin-bottom:4px"></div>'
+    +'<div id="tryb-user-wrote" style="font-size:12px;color:var(--dim2);margin-bottom:12px"></div>'
+    +'<div id="tryb-rate-row" class="tryb-rate-row" style="display:flex;flex-direction:column;align-items:center;gap:10px;width:100%">'
+    +'<div style="font-size:11px;color:var(--dim2);font-weight:600">Jak dobrze znałeś to słowo?</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;width:100%">'
+    +'<button onclick="rateCard(1)" class="tryb-rate-btn" data-q="1" style="padding:10px 6px;border-radius:10px;border:none;background:#fcebeb;color:#a32d2d;font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif"><div style="font-size:16px">😞</div>Nie wiedziałem</button>'
+    +'<button onclick="rateCard(2)" class="tryb-rate-btn" data-q="2" style="padding:10px 6px;border-radius:10px;border:none;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif"><div style="font-size:16px">🤔</div>Prawie</button>'
+    +'<button onclick="rateCard(3)" class="tryb-rate-btn" data-q="3" style="padding:10px 6px;border-radius:10px;border:none;background:#eaf3de;color:#3b6d11;font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif"><div style="font-size:16px">😊</div>Wiedziałem</button>'
+    +'<button onclick="rateCard(4)" class="tryb-rate-btn" data-q="4" style="padding:10px 6px;border-radius:10px;border:none;background:#e0f2fe;color:#0369a1;font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif"><div style="font-size:16px">🚀</div>Bardzo łatwe</button>'
+    +'</div></div>'
+    +'</div>'
+    +'</div>'
     +'</div>'
     +'<div style="text-align:center;margin-bottom:16px"><button id="tryb-story-btn" onclick="showTrybMiniStory()" style="display:none;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);border-radius:100px;padding:7px 18px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer">📖 Przykład w zdaniu</button></div>'
     +'<div id="tryb-story-box" style="display:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.85);border-radius:12px;padding:14px 18px;font-size:13px;line-height:1.7;border:1px solid rgba(255,255,255,.15)"></div>'
@@ -10715,6 +10845,30 @@ async function lexSaveToExistingSet(setId, setName){
 function lexStartNewLesson(){ lexInit(); }
 
 // ── OpenRouter key ────────────────────────────────────────
+// ── SWIPE SUPPORT for flip mode ──
+(function(){
+  var startX = 0;
+  document.addEventListener('touchstart', function(e){
+    startX = e.touches[0].clientX;
+  }, {passive:true});
+  document.addEventListener('touchend', function(e){
+    if(_trybMode !== 'flip') return;
+    var dx = e.changedTouches[0].clientX - startX;
+    if(Math.abs(dx) < 50) return;
+    if(dx > 0){ // swipe right = knew it
+      if(!_trybFlipRevealed) return;
+      rateCard(3);
+    } else { // swipe left = didn't know
+      if(!_trybFlipRevealed){
+        var ansData = document.getElementById('tryb-card-answer-data');
+        trybFlipReveal(ansData ? ansData.textContent : '');
+      } else {
+        rateCard(1);
+      }
+    }
+  }, {passive:true});
+})();
+
 window.OPENROUTER_KEY_VALUE = '';
 window._lexKeyLoaded = false;
 window._lexKeyLoading = false;
