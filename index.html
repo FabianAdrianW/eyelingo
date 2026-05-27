@@ -1455,11 +1455,15 @@ let _likedSets = new Set();
 let _addedSets = new Set();
 let _matSets = [];
 let _matMyUid = null;
-let _matTab = 'community';
+let _matTab = 'mine';
 let _matModal = null;
 let _matEditMode = false;
 
 async function loadCommunity(){
+  // Load sidebar collections always
+  loadCollections();
+  // Default to mine tab
+  if(_matTab === 'community' && !_matTabExplicitlySet) { switchMatTab('mine'); return; }
   document.getElementById('mat-grid').innerHTML='<div class="mat-empty">Ładowanie...</div>';
   try{
     const{data:{session}}=await db.auth.getSession();
@@ -1522,7 +1526,12 @@ async function loadMySets(){
   if(error){showMatError(error.message);return;}
   const{data:profile}=await db.from('profiles').select('username').eq('user_id',_matMyUid).maybeSingle();
   const username=profile?.username||'Ty';
-  _matSets=(data||[]).map(s=>({...s,username,user_id:_matMyUid}));
+  // Filter out sets that belong to any collection (if mine tab)
+    var assignedIds = new Set();
+    if(_matTab === 'mine'){
+      (_collections||[]).forEach(function(col){ (col.sets||[]).forEach(function(s){ assignedIds.add(s.id); }); });
+    }
+    _matSets=(data||[]).filter(s => _matTab !== 'mine' || !assignedIds.has(s.id)).map(s=>({...s,username,user_id:_matMyUid}));
   renderMat();
 }
 
@@ -1583,6 +1592,7 @@ function setCard(s){
         </button>
         <div class="mat-card-actions">
           <button class="mat-btn-edit" onclick="event.stopPropagation();openEditSet(${s.id})">✏️ Edytuj</button>
+          <button data-sid="${s.id}" onclick="event.stopPropagation();promptMoveSet(parseInt(this.dataset.sid))" style="background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif">📁 Przenieś</button>
           <button class="mat-btn-del" onclick="event.stopPropagation();deleteSet(${s.id})">🗑️ Usuń</button>
         </div>
       </div>`;
@@ -1914,32 +1924,44 @@ function closeMatModal(){document.getElementById('mat-modal').style.display='non
 
 async function switchMatTab(tab){
   _matTab=tab;
-  document.querySelectorAll('.mat-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  const createBtn=document.getElementById('mat-create-btn');
-  if(createBtn) createBtn.style.display=(tab==='mine'&&_matMyUid)?'block':'none';
-  const search=document.getElementById('mat-search');
+  window._matTabExplicitlySet = true;
+  document.querySelectorAll('.mat-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===tab); });
+
+  var createBtn=document.getElementById('mat-create-btn');
+  var title=document.getElementById('mat-main-title');
+  var sub=document.getElementById('mat-main-sub');
+  var grid=document.getElementById('mat-grid');
+  var voices=document.getElementById('mat-voices');
+  var colView=document.getElementById('mat-collection-view');
+
+  // Hide all panels
+  if(grid) grid.style.display='none';
+  if(voices) voices.style.display='none';
+  if(colView) colView.style.display='none';
+  if(createBtn) createBtn.style.display='none';
+
+  var search=document.getElementById('mat-search');
   if(search) search.value='';
-  const grid=document.getElementById('mat-grid');
-  const voicesPanel=document.getElementById('mat-voices');
-  const collectionsPanel=document.getElementById('mat-collections');
-  if(collectionsPanel) collectionsPanel.style.display='none';
-  if(tab==='collections'){
-    if(grid) grid.style.display='none';
-    if(voicesPanel) voicesPanel.style.display='none';
-    if(collectionsPanel){ collectionsPanel.style.display='block'; loadCollections(); }
-    return;
+
+  if(tab==='mine'){
+    if(title) title.textContent='Moje materiały';
+    if(sub) sub.textContent='Zestawy nieprzypisane do katalogu';
+    if(grid) grid.style.display='grid';
+    if(createBtn&&_matMyUid) createBtn.style.display='block';
+    loadMat();
+  } else if(tab==='community'){
+    if(title) title.textContent='Społeczność';
+    if(sub) sub.textContent='Zestawy innych użytkowników';
+    if(grid) grid.style.display='grid';
+    loadMat();
+  } else if(tab==='voices'){
+    if(title) title.textContent='Głosówki';
+    if(sub) sub.textContent='';
+    if(voices) voices.style.display='block';
+    loadVoices&&loadVoices();
   }
-  if(tab==='voices'){
-    if(grid) grid.style.display='none';
-    if(voicesPanel) voicesPanel.style.display='block';
-    loadVoiceRecordings();
-    return;
-  }
-  if(grid) grid.style.display='grid';
-  if(voicesPanel) voicesPanel.style.display='none';
-  grid.innerHTML='<div class="mat-empty">Ładowanie...</div>';
-  tab==='mine'?await loadMySets():await loadCommunity();
 }
+
 
 function showMatError(msg){
   const el=document.getElementById('mat-grid');
@@ -2042,58 +2064,58 @@ async function loadRanking(){
 </script>
 
 <!-- ═══ COMMUNITY PAGE ═══ -->
-<div id="page-community" class="page" style="min-height:100vh;padding:120px 20px 80px">
-  <div style="max-width:1000px;margin:0 auto">
+<div id="page-community" class="page" style="min-height:100vh;padding:110px 0 80px;background:var(--paper)">
+  <div style="max-width:1200px;margin:0 auto;display:flex;gap:0;align-items:flex-start">
 
-    <!-- Nagłówek -->
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:28px">
-      <div>
-        <h2 style="font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--navy);margin-bottom:6px">Materiały</h2>
-        <p style="color:var(--dim2);font-size:15px">Przeglądaj zestawy społeczności lub zarządzaj swoimi</p>
+    <!-- LEFT SIDEBAR: Katalogi -->
+    <div id="mat-sidebar" style="width:220px;flex-shrink:0;padding:24px 0 24px 24px;position:sticky;top:110px;max-height:calc(100vh - 130px);overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">📁 Katalogi</div>
+        <button onclick="openCreateCollection()" style="background:none;border:none;color:var(--orange);font-size:20px;cursor:pointer;line-height:1;padding:0" title="Nowy katalog">+</button>
       </div>
-      <button id="mat-create-btn" class="btn btn-orange" onclick="openCreateSet()" style="display:none">+ Stwórz zestaw</button>
+      <div id="mat-sidebar-collections" style="display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:12px;color:var(--dim2);padding:8px 0">Ładowanie...</div>
+      </div>
     </div>
 
-    <!-- Zakładki + wyszukiwarka -->
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px">
-      <div class="mat-tabs">
-        <button class="mat-tab active" data-tab="community" onclick="switchMatTab('community')">🌐 Społeczność</button>
-        <button class="mat-tab" data-tab="mine" onclick="switchMatTab('mine')">📂 Moje zestawy</button>
-        <button class="mat-tab" data-tab="collections" onclick="switchMatTab('collections')">🗂️ Katalogi</button>
+    <!-- MAIN CONTENT -->
+    <div style="flex:1;min-width:0;padding:24px">
+
+      <!-- Header -->
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+        <div>
+          <h2 id="mat-main-title" style="font-family:Syne,sans-serif;font-size:32px;font-weight:800;color:var(--navy);margin-bottom:4px">Moje materiały</h2>
+          <p id="mat-main-sub" style="color:var(--dim2);font-size:14px">Twoje zestawy fiszek</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="mat-search" class="fi" placeholder="🔍 Szukaj..." style="width:200px;font-size:13px" oninput="filterMat(this.value)">
+          <button id="mat-create-btn" class="btn btn-orange" onclick="openCreateSet()" style="display:none;white-space:nowrap">+ Nowy zestaw</button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="mat-tabs" style="margin-bottom:20px">
+        <button class="mat-tab" data-tab="mine" onclick="switchMatTab('mine')">📂 Moje materiały</button>
+        <button class="mat-tab" data-tab="community" onclick="switchMatTab('community')">🌐 Społeczność</button>
         <button class="mat-tab" data-tab="voices" onclick="switchMatTab('voices')">🎙️ Głosówki</button>
       </div>
-      <div style="position:relative">
-        <input id="mat-search" class="fi" placeholder="🔍 Szukaj zestawów..." 
-          style="width:260px;padding-left:14px;font-size:14px"
-          oninput="filterMat(this.value)">
-      </div>
-    </div>
 
-    <!-- Licznik wyników -->
-    <div id="mat-count" style="font-size:13px;color:var(--dim2);margin-bottom:16px"></div>
+      <!-- Count -->
+      <div id="mat-count" style="font-size:13px;color:var(--dim2);margin-bottom:14px"></div>
 
-    <!-- Siatka zestawów -->
-    <div id="mat-grid" class="mat-grid">
-      <div class="mat-empty">Ładowanie...</div>
-    </div>
-    <!-- Katalogi -->
-    <div id="mat-collections" style="display:none">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-        <div style="font-size:14px;color:var(--dim2)">Organizuj swoje zestawy w katalogi</div>
-        <button onclick="openCreateCollection()" class="btn btn-navy" style="font-size:13px;padding:8px 16px">+ Nowy katalog</button>
-      </div>
-      <div id="mat-collections-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">
-        <div class="mat-empty">Ładowanie katalogów...</div>
-      </div>
-    </div>
+      <!-- Content panels -->
+      <div id="mat-grid" class="mat-grid"><div class="mat-empty">Ładowanie...</div></div>
 
-    <!-- Głosówki społeczności -->
-    <div id="mat-voices" style="display:none">
-      <div style="background:var(--paper2);border-radius:12px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--dim2)">
-        🎙️ Tu pojawiają się głosówki nagrane przez społeczność w Strefie Nauki. Oceń wymowę i poprawność innych uczących się!
+      <div id="mat-voices" style="display:none">
+        <div style="background:var(--paper2);border-radius:12px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--dim2)">
+          🎙️ Tu pojawiają się głosówki nagrane przez społeczność. Oceń wymowę i poprawność!
+        </div>
+        <div id="mat-voices-list" style="display:flex;flex-direction:column;gap:14px"><div class="mat-empty">Ładowanie...</div></div>
       </div>
-      <div id="mat-voices-list" style="display:flex;flex-direction:column;gap:14px">
-        <div class="mat-empty">Ładowanie głosówek...</div>
+
+      <!-- Collection view (inside a collection) -->
+      <div id="mat-collection-view" style="display:none">
+        <div id="mat-collection-sets" class="mat-grid"><div class="mat-empty">Brak zestawów w tym katalogu</div></div>
       </div>
     </div>
   </div>
@@ -6496,44 +6518,43 @@ async function loadDueCardsForTryb(){
 // ── TRYB NAUKI — MODE PICKER ──────────────────────────
 function showTrybModePicker(){
   showTrybView('session');
-  var qs = document.getElementById('tryb-q-side');
-  var as = document.getElementById('tryb-a-side');
-  if(qs) qs.style.display = 'none';
-  if(as) as.style.display = 'none';
+  // Hide the card scene while picking mode
+  var scene = document.getElementById('tryb-card-scene');
+  if(scene) scene.style.display = 'none';
 
-  // Inject mode picker into session view
-  var session = document.getElementById('tryb-session');
-  if(!session) return;
-
+  // Remove existing picker
   var existing = document.getElementById('tryb-mode-picker');
   if(existing) existing.remove();
 
-  var picker = document.createElement('div');
-  picker.id = 'tryb-mode-picker';
-  picker.style.cssText = 'padding:20px 0;animation:lexFadeIn .3s ease';
+  var session = document.getElementById('tryb-session');
+  if(!session) return;
 
   var count = _trybCards.length;
   var setName = _trybExternalName || 'Sesja nauki';
 
+  var picker = document.createElement('div');
+  picker.id = 'tryb-mode-picker';
+  picker.style.cssText = 'padding:10px 0;animation:lexFadeIn .3s ease';
+
   // Header
   var hdr = document.createElement('div');
-  hdr.style.cssText = 'text-align:center;margin-bottom:24px';
+  hdr.style.cssText = 'text-align:center;margin-bottom:20px';
   hdr.innerHTML = '<div style="font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:var(--navy);margin-bottom:4px">' + setName + '</div>'
     + '<div style="font-size:14px;color:var(--dim2)">' + count + ' fiszek · Wybierz tryb nauki</div>';
   picker.appendChild(hdr);
 
   // Mode grid
   var grid = document.createElement('div');
-  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px';
-  grid.appendChild(trybModeCard('flip', '🔄', 'Przeglądanie', 'Odwracaj fiszki — poznaj słowa wizualnie', 'var(--navy)'));
-  grid.appendChild(trybModeCard('mc', '🎯', 'Multiwybór', 'Wybierz poprawne tłumaczenie spośród 4 opcji', '#0891b2'));
-  grid.appendChild(trybModeCard('write', '✍️', 'Wpisywanie', 'Przetłumacz słowo — aktywne przypominanie', '#7c3aed'));
-  grid.appendChild(trybModeCard('memorize', '🧠', 'Zapamiętywanie', 'Multiwybór + wpisywanie — pełna nauka', '#be185d'));
+  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px';
+  grid.appendChild(trybModeCard('flip', '🔄', 'Przeglądanie', 'Odwracaj fiszki wizualnie', 'var(--navy)'));
+  grid.appendChild(trybModeCard('mc', '🎯', 'Multiwybór', 'Wybierz spośród 4 opcji', '#0891b2'));
+  grid.appendChild(trybModeCard('write', '✍️', 'Wpisywanie', 'Aktywne przypominanie', '#7c3aed'));
+  grid.appendChild(trybModeCard('memorize', '🧠', 'Zapamiętywanie', 'Multiwybór + wpisywanie', '#be185d'));
   picker.appendChild(grid);
 
   // Direction + SRS row
   var dirRow = document.createElement('div');
-  dirRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:16px;padding:12px 14px;background:var(--paper);border-radius:12px;flex-wrap:wrap';
+  dirRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--paper);border-radius:12px;flex-wrap:wrap';
   var dirLabel = document.createElement('span');
   dirLabel.style.cssText = 'font-size:13px;color:var(--dim2)';
   dirLabel.textContent = 'Kierunek:';
@@ -6546,28 +6567,25 @@ function showTrybModePicker(){
   dirRow.appendChild(dirBtn);
 
   // SRS toggle
-  var srsSep = document.createElement('div');
-  srsSep.style.cssText = 'flex:1';
+  var srsSep = document.createElement('div'); srsSep.style.cssText = 'flex:1';
   var srsLabel = document.createElement('label');
   srsLabel.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim2);cursor:pointer';
   var srsCheck = document.createElement('input');
-  srsCheck.type = 'checkbox';
-  srsCheck.id = 'tryb-srs-toggle';
-  srsCheck.checked = true;
+  srsCheck.type = 'checkbox'; srsCheck.id = 'tryb-srs-toggle'; srsCheck.checked = true;
   srsCheck.style.cssText = 'width:14px;height:14px;accent-color:var(--orange)';
   srsCheck.onchange = function(){ window._trybSRSEnabled = this.checked; };
   window._trybSRSEnabled = true;
-  var srsText = document.createElement('span');
-  srsText.textContent = 'Zapisuj do powtórek (SRS)';
-  srsLabel.appendChild(srsCheck);
-  srsLabel.appendChild(srsText);
-  dirRow.appendChild(srsSep);
-  dirRow.appendChild(srsLabel);
+  var srsText = document.createElement('span'); srsText.textContent = 'Zapisuj do powtórek (SRS)';
+  srsLabel.appendChild(srsCheck); srsLabel.appendChild(srsText);
+  dirRow.appendChild(srsSep); dirRow.appendChild(srsLabel);
   picker.appendChild(dirRow);
 
-  // Append to session
-  session.appendChild(picker);
+  // Insert at top of session
+  var firstChild = session.firstChild;
+  if(firstChild) session.insertBefore(picker, firstChild);
+  else session.appendChild(picker);
 }
+
 
 function trybModeCard(mode, icon, title, desc, color){
   var div = document.createElement('div');
@@ -6627,6 +6645,10 @@ function startTrybMode(mode){
     }
   }
 
+  // Show card scene
+  var scene = document.getElementById('tryb-card-scene');
+  if(scene) scene.style.display = 'block';
+
   if(mode === 'flip'){
     loadTrybFlipCard();
   } else if(mode === 'mc'){
@@ -6634,7 +6656,7 @@ function startTrybMode(mode){
   } else if(mode === 'memorize'){
     loadTrybMemorizeCard();
   } else {
-    loadTrybCard(); // existing write mode
+    loadTrybCard();
   }
 }
 
@@ -6907,53 +6929,58 @@ function loadTrybMemorizeWritePhase(card, correctAnswer, frontText){
 }
 
 function loadTrybCard(){
-  // Show write zone, hide flip hint
-  var wz = document.getElementById('tryb-write-zone');
-  if(wz) wz.style.display = 'block';
-  var fh = document.getElementById('tryb-flip-hint');
-  if(fh) fh.style.display = 'none';
-  // Reset 3D flip to front
-  var flipper = document.getElementById('tryb-card-flipper');
-  if(flipper) flipper.classList.remove('flipped');
-    var card=_trybCards[_trybIdx];
+  var card=_trybCards[_trybIdx];
   if(!card){showTrybSessionSummary();return;}
   _trybHintLevel=0;_trybHintPenalty=0;
-  var qs=document.getElementById('tryb-q-side');
-  var as=document.getElementById('tryb-a-side');
+
+  // Reset 3D flip to front (never touch display on front/back faces)
+  var flipper=document.getElementById('tryb-card-flipper');
+  if(flipper) flipper.classList.remove('flipped');
+
+  // Show write zone, hide flip hint
+  var wz=document.getElementById('tryb-write-zone');
+  if(wz) wz.style.display='block';
+  var fh=document.getElementById('tryb-flip-hint');
+  if(fh) fh.style.display='none';
+
+  // Reset input
   var inp=document.getElementById('tryb-answer-input');
-  var ht=document.getElementById('tryb-hint-text');
   var hl=document.getElementById('tryb-hint-level');
-  var fb=document.getElementById('tryb-feedback');
-  if(qs){qs.style.display='flex';qs.style.flexDirection='column';qs.style.alignItems='center';}
-  if(as)as.style.display='none';
-  if(inp)inp.value='';
-  if(ht)ht.textContent='';
-  if(hl)hl.textContent='3';
-  if(fb)fb.style.opacity='0';
-  var emoji=document.getElementById('tryb-card-emoji');
+  if(inp) inp.value='';
+  if(hl) hl.textContent='3';
+
+  // Set card content
   var word=document.getElementById('tryb-card-word');
   var example=document.getElementById('tryb-card-example');
-  var etWrap=document.getElementById('tryb-etymology-wrap');
-  if(emoji)emoji.textContent=card.emoji||'📝';
-  if(word)word.textContent=card.word||'';
-  if(example)example.textContent=card.example?'"'+card.example+'"':'';
-  if(etWrap)etWrap.style.display=card.etymology?'block':'none';
+  if(word) word.textContent=_trybCardDirection==='pl' ? (card.translation||'') : (card.word||'');
+  if(example) example.textContent=card.example?'"'+card.example+'"':'';
+
+  // Store answer in hidden element
+  var ansData=document.getElementById('tryb-card-answer-data');
+  if(ansData) ansData.textContent=_trybCardDirection==='pl' ? (card.word||'') : (card.translation||'');
+
+  // Progress
   var num=document.getElementById('tryb-card-num');
   var prog=document.getElementById('tryb-progress-bar');
   var done=document.getElementById('tryb-session-done');
-  if(num)num.textContent=_trybIdx+1;
-  var pct=Math.round(_trybIdx/_trybCards.length*100);
-  if(prog)prog.style.width=pct+'%';
-  if(done)done.textContent=_trybIdx;
+  if(num) num.textContent=_trybIdx+1;
+  if(prog) prog.style.width=Math.round(_trybIdx/_trybCards.length*100)+'%';
+  if(done) done.textContent=_trybIdx;
+
+  // Mnemonic
   var mnKey='mnem_'+encodeURIComponent(card.word||'');
   var mn=document.getElementById('tryb-mnemonic-input');
-  if(mn)mn.value=localStorage.getItem(mnKey)||'';
+  if(mn) mn.value=localStorage.getItem(mnKey)||'';
+
+  // Story button
   var storyBtn=document.getElementById('tryb-story-btn');
   var storyBox=document.getElementById('tryb-story-box');
-  if(storyBtn)storyBtn.style.display=_trybSetCards.length>=5?'inline-block':'none';
-  if(storyBox)storyBox.style.display='none';
-  setTimeout(function(){var i=document.getElementById('tryb-answer-input');if(i)i.focus();},100);
+  if(storyBtn) storyBtn.style.display=_trybSetCards&&_trybSetCards.length>=5?'inline-block':'none';
+  if(storyBox) storyBox.style.display='none';
+
+  setTimeout(function(){if(inp) inp.focus();},100);
 }
+
 
 function levenshteinDist(a,b){
   var m=a.length,n=b.length,dp=[];
@@ -6980,21 +7007,28 @@ function dontKnow(){revealTrybAnswer('',false,false);}
 function revealTrybAnswer(userAns,isCorrect,isTypo){
   var card=_trybCards[_trybIdx];
   _trybSessionStats.total++;if(isCorrect)_trybSessionStats.correct++;
-  var fb=document.getElementById('tryb-feedback');
-  // feedback animation removed
-  var qs=document.getElementById('tryb-q-side');var as=document.getElementById('tryb-a-side');
-  if(qs)qs.style.display='none';
-  if(as){as.style.display='flex';as.style.flexDirection='column';as.style.alignItems='center';}
-  var wordAns=document.getElementById('tryb-card-word-ans');var cardAns=document.getElementById('tryb-card-answer');
-  var resIcon=document.getElementById('tryb-result-icon');var userWrote=document.getElementById('tryb-user-wrote');
-  var etText=document.getElementById('tryb-etymology-text');
-  if(wordAns)wordAns.textContent=card.word||'';
-  if(cardAns)cardAns.textContent=card.translation||'';
-  if(resIcon)resIcon.textContent=isCorrect?(isTypo?'⚠️ Literówka':'✅'):'❌';
-  if(userWrote)userWrote.textContent=!userAns?'Nie wpisałeś odpowiedzi':isTypo?'Twoja odpowiedź: "'+userAns+'" — literówka, ale zaliczam!':!isCorrect?'Twoja odpowiedź: "'+userAns+'"':'';
-  if(etText&&card.etymology)etText.textContent=card.etymology;
+
+  // 3D flip to reveal answer
+  var flipper=document.getElementById('tryb-card-flipper');
+  if(flipper) flipper.classList.add('flipped');
+
+  // Update back face
+  var wordAns=document.getElementById('tryb-card-word-ans');
+  var cardAns=document.getElementById('tryb-card-answer');
+  var resIcon=document.getElementById('tryb-result-icon');
+  var userWrote=document.getElementById('tryb-user-wrote');
+  if(wordAns) wordAns.textContent=card ? (card.word||'') : '';
+  if(cardAns) cardAns.textContent=card ? (card.translation||'') : '';
+  if(resIcon) resIcon.textContent=isCorrect?(isTypo?'⚠️ Literówka':'✅ Poprawnie'):'❌ Błędna odpowiedź';
+  if(userWrote) userWrote.textContent=(!userAns?'Nie wpisałeś odpowiedzi':isTypo?'Twoja odpowiedź: "'+userAns+'" — literówka':'Twoja odpowiedź: "'+userAns+'"');
+
+  // Show SRS rate row
+  var rateRow=document.getElementById('tryb-rate-row');
+  if(rateRow) rateRow.style.display='flex';
+
   if(isTypo){document.querySelectorAll('.tryb-rate-btn').forEach(function(b){if(parseInt(b.dataset.q)>3)b.style.opacity='0.5';});}
 }
+
 
 async function rateCard(btnRating){
   var card=_trybCards[_trybIdx];if(!card)return;
@@ -7113,31 +7147,177 @@ function updateStreakBadge(){RewardSystem.load();var el=document.getElementById(
 var _collections = [];
 
 async function loadCollections(){
-  var grid = document.getElementById('mat-collections-grid');
-  if(!grid) return;
-  grid.innerHTML = '<div class="mat-empty">Ładowanie...</div>';
+  var sidebar = document.getElementById('mat-sidebar-collections');
+  if(sidebar) sidebar.innerHTML = '<div style="font-size:12px;color:var(--dim2);padding:4px 0">Ładowanie...</div>';
   try{
     var sess = (await db.auth.getSession()).data.session;
-    if(!sess){ grid.innerHTML = '<div class="mat-empty">Zaloguj się</div>'; return; }
-    var stored = localStorage.getItem('eyelingo_collections_' + sess.user.id);
-    _collections = stored ? JSON.parse(stored) : [];
-    if(!_collections.length){
-      grid.innerHTML = '<div style="text-align:center;padding:40px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">🗂️</div><div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px">Brak katalogów</div><div style="font-size:13px">Stwórz katalog aby organizować zestawy</div></div>';
+    if(!sess){
+      if(sidebar) sidebar.innerHTML = '<div style="font-size:12px;color:var(--dim2)">Zaloguj się</div>';
       return;
     }
-    grid.innerHTML = '';
+    var stored = localStorage.getItem('eyelingo_collections_' + sess.user.id);
+    _collections = stored ? JSON.parse(stored) : [];
+
+    if(!sidebar) return;
+    sidebar.innerHTML = '';
+
+    // "All" link (no filter)
+    var allBtn = document.createElement('button');
+    allBtn.style.cssText = 'width:100%;text-align:left;padding:8px 10px;border-radius:10px;border:none;background:transparent;font-size:13px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s';
+    allBtn.textContent = '📂 Wszystkie (bez katalogu)';
+    allBtn.onmouseover = function(){ this.style.background='var(--paper2)'; };
+    allBtn.onmouseout = function(){ this.style.background='transparent'; };
+    allBtn.onclick = function(){
+      document.querySelectorAll('#mat-sidebar-collections button').forEach(function(b){ b.style.background='transparent'; b.style.fontWeight='normal'; });
+      this.style.background='var(--paper2)'; this.style.fontWeight='700';
+      _matActiveCollection = null;
+      switchMatTab('mine');
+    };
+    sidebar.appendChild(allBtn);
+
+    if(!_collections.length){
+      var hint = document.createElement('div');
+      hint.style.cssText = 'font-size:11px;color:var(--dim2);padding:8px 0;line-height:1.4';
+      hint.textContent = 'Brak katalogów. Kliknij + aby dodać.';
+      sidebar.appendChild(hint);
+      return;
+    }
+
     _collections.forEach(function(col, cidx){
-      var card = document.createElement('div');
-      card.className = 'collection-card';
-      card.innerHTML = '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px"><div style="font-size:32px">' + (col.icon||'📁') + '</div>'
-        + '<button onclick="deleteCollection(' + cidx + ')" style="background:none;border:none;color:var(--dim2);cursor:pointer;font-size:18px">×</button></div>'
-        + '<div style="font-family:Syne,sans-serif;font-size:16px;font-weight:800;color:var(--navy);margin-bottom:4px">' + col.name + '</div>'
-        + '<div style="font-size:12px;color:var(--dim2);margin-bottom:14px">' + (col.sets||[]).length + ' zestawów</div>'
-        + '<button onclick="openCollection(' + cidx + ')" style="width:100%;padding:8px;border-radius:10px;background:var(--navy);color:#fff;border:none;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Otwórz →</button>';
-      grid.appendChild(card);
+      var btn = document.createElement('button');
+      btn.style.cssText = 'width:100%;text-align:left;padding:8px 10px;border-radius:10px;border:none;background:transparent;font-size:13px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;display:flex;align-items:center;gap:6px;justify-content:space-between';
+      var nameSpan = document.createElement('span');
+      nameSpan.textContent = (col.icon||'📁') + ' ' + col.name;
+      nameSpan.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      var countSpan = document.createElement('span');
+      countSpan.textContent = (col.sets||[]).length;
+      countSpan.style.cssText = 'font-size:11px;background:var(--paper2);border-radius:100px;padding:1px 7px;color:var(--dim2)';
+      btn.appendChild(nameSpan);
+      btn.appendChild(countSpan);
+      btn.onmouseover = function(){ this.style.background='var(--paper2)'; };
+      btn.onmouseout = function(){ if(!this.dataset.active) this.style.background='transparent'; };
+      btn.onclick = function(){
+        document.querySelectorAll('#mat-sidebar-collections button').forEach(function(b){ b.style.background='transparent'; b.style.fontWeight='normal'; delete b.dataset.active; });
+        this.style.background='rgba(229,106,28,.12)'; this.style.fontWeight='700'; this.dataset.active='1';
+        openCollectionView(cidx);
+      };
+      sidebar.appendChild(btn);
     });
-  }catch(e){ if(grid) grid.innerHTML = '<div class="mat-empty">Błąd</div>'; }
+  }catch(e){
+    if(sidebar) sidebar.innerHTML = '<div style="font-size:12px;color:#c33">Błąd</div>';
+  }
 }
+
+var _matActiveCollection = null;
+
+function openCollectionView(colIdx){
+  var col = _collections[colIdx]; if(!col) return;
+  _matActiveCollection = colIdx;
+
+  var title = document.getElementById('mat-main-title');
+  var sub = document.getElementById('mat-main-sub');
+  var grid = document.getElementById('mat-grid');
+  var colView = document.getElementById('mat-collection-view');
+  var colSets = document.getElementById('mat-collection-sets');
+  var createBtn = document.getElementById('mat-create-btn');
+
+  if(title) title.textContent = (col.icon||'📁') + ' ' + col.name;
+  if(sub) sub.textContent = (col.sets||[]).length + ' zestawów w katalogu';
+  if(grid) grid.style.display='none';
+  if(createBtn) createBtn.style.display='none';
+  if(colView) colView.style.display='block';
+  if(!colSets) return;
+
+  if(!col.sets||!col.sets.length){
+    colSets.innerHTML = '<div class="mat-empty">Ten katalog jest pusty. Przenieś tutaj zestawy z "Moje materiały".</div>';
+    return;
+  }
+
+  colSets.innerHTML = '<div class="mat-empty">Ładowanie zestawów...</div>';
+
+  // Load the actual set data for each set id in collection
+  (async function(){
+    var setIds = (col.sets||[]).map(function(s){ return s.id; });
+    if(!setIds.length){ colSets.innerHTML = '<div class="mat-empty">Brak zestawów</div>'; return; }
+    var {data:sets} = await db.from('user_sets')
+      .select('id,name,likes_count,is_public,user_set_cards(id)')
+      .in('id', setIds);
+    colSets.innerHTML = '';
+    if(!sets||!sets.length){ colSets.innerHTML = '<div class="mat-empty">Nie znaleziono zestawów</div>'; return; }
+    sets.forEach(function(s){
+      var card = buildMatCard(s, true, colIdx);
+      colSets.appendChild(card);
+    });
+  })();
+}
+
+function buildMatCard(s, inCollection, colIdx){
+  var card = document.createElement('div');
+  card.className = 'mat-card';
+  card.innerHTML = '<div class="mat-card-name">' + (window.escH ? escH(s.name) : s.name) + '</div>'
+    + '<div class="mat-card-count">' + (s.user_set_cards ? s.user_set_cards.length : '?') + ' fiszek</div>';
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:6px;margin-top:10px;flex-wrap:wrap';
+
+  var studyBtn = document.createElement('button');
+  studyBtn.className = 'btn btn-orange'; studyBtn.style.cssText = 'font-size:12px;padding:6px 12px';
+  studyBtn.textContent = '▶ Ucz się';
+  studyBtn.onclick = function(){ window._matViewSet=s; openMatSet(s.id); };
+  btnRow.appendChild(studyBtn);
+
+  if(inCollection){
+    var removeBtn = document.createElement('button');
+    removeBtn.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
+    removeBtn.textContent = '× Usuń z katalogu';
+    removeBtn.onclick = async function(){
+      var sess=(await db.auth.getSession()).data.session; if(!sess) return;
+      _collections[colIdx].sets = _collections[colIdx].sets.filter(function(x){ return x.id !== s.id; });
+      saveCollections(sess.user.id);
+      openCollectionView(colIdx);
+      loadCollections();
+    };
+    btnRow.appendChild(removeBtn);
+  } else {
+    var moveBtn = document.createElement('button');
+    moveBtn.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
+    moveBtn.textContent = '📁 Przenieś';
+    moveBtn.onclick = async function(){ await moveSetToCollection(s.id, s.name); };
+    btnRow.appendChild(moveBtn);
+  }
+
+  card.appendChild(btnRow);
+  return card;
+}
+
+function promptMoveSet(setId){
+  // Get set name from DOM
+  var cards = document.querySelectorAll('.mat-card');
+  var setName = 'Zestaw';
+  cards.forEach(function(c){
+    var btn = c.querySelector('[data-sid="'+setId+'"]');
+    if(btn){ var nameEl = c.querySelector('.mat-card-name'); if(nameEl) setName = nameEl.textContent; }
+  });
+  moveSetToCollection(setId, setName);
+}
+
+async function moveSetToCollection(setId, setName){
+  if(!_collections.length){ alert('Najpierw stwórz katalog.'); return; }
+  var opts = _collections.map(function(c,i){ return (i+1)+'. '+(c.icon||'📁')+' '+c.name; }).join(', ');
+  var pick = prompt('Wybierz katalog (wpisz numer): ' + opts);
+  if(!pick) return;
+  var idx = parseInt(pick) - 1;
+  if(idx < 0 || idx >= _collections.length){ alert('Nieprawidłowy numer'); return; }
+  var sess = (await db.auth.getSession()).data.session; if(!sess) return;
+  if(!_collections[idx].sets) _collections[idx].sets = [];
+  // Remove from other collections first
+  _collections.forEach(function(c){ c.sets = (c.sets||[]).filter(function(s){ return s.id !== setId; }); });
+  _collections[idx].sets.push({id: setId, name: setName});
+  saveCollections(sess.user.id);
+  loadCollections();
+  loadMat(); // refresh mine tab to remove moved set
+  if(typeof showToast==='function') showToast(setName + ' przeniesiony do "' + _collections[idx].name + '"!', 'success');
+}
+
 
 function saveCollections(uid){ try{ localStorage.setItem('eyelingo_collections_' + uid, JSON.stringify(_collections)); }catch(e){} }
 
