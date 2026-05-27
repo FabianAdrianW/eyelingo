@@ -1402,6 +1402,7 @@ function showPage(name){
     loadCollections();
     switchMatTab('mine');
   }
+  if(name==='strefa') strefaSidebarMode('tryb');
   if(name==='ranking') loadRanking();
   if(name==='tofix') initToFixPage();
   if(name==='strefa'){ initStrefa(); strefaShowTab('tryb'); }
@@ -2498,11 +2499,57 @@ async function initToFixPage(){
 }
 </script>
 <!-- ═══ STREFA NAUKI ═══ -->
-<div id="page-strefa" class="page" style="min-height:100vh;padding:120px 20px 80px">
-  <div style="max-width:900px;margin:0 auto">
-    <h2 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Strefa Nauki</h2>
-    <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Wybierz tryb nauki</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px" id="strefa-tiles-grid">
+<div id="page-strefa" class="page" style="min-height:100vh;padding:110px 0 80px;background:var(--paper)">
+  <div style="display:flex;width:100%;align-items:flex-start">
+
+    <!-- LEFT SIDEBAR -->
+    <div id="strefa-sidebar" style="width:240px;flex-shrink:0;padding:28px 0 28px 20px;position:sticky;top:110px;max-height:calc(100vh-130px);overflow-y:auto;border-right:1px solid var(--border)">
+
+      <!-- Mode switcher header -->
+      <div style="display:flex;gap:6px;margin-bottom:20px;background:var(--paper2);border-radius:12px;padding:4px">
+        <button onclick="strefaSidebarMode('tryb')" id="sb-btn-tryb" style="flex:1;padding:8px 6px;border-radius:9px;border:none;background:var(--navy);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s">📚 Tryb Nauki</button>
+        <button onclick="strefaSidebarMode('strefa')" id="sb-btn-strefa" style="flex:1;padding:8px 6px;border-radius:9px;border:none;background:transparent;color:var(--dim2);font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s">🧠 Kontekstowa</button>
+      </div>
+
+      <!-- Tryb Nauki sidebar tiles -->
+      <div id="sb-tryb-content" style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="strefaSidebarSelect('due')" id="sb-tile-due" style="width:100%;text-align:left;padding:14px;border-radius:14px;border:2px solid var(--orange);background:linear-gradient(135deg,var(--orange),#e07020);cursor:pointer;transition:all .2s;color:#fff">
+          <div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;margin-bottom:3px">Powtórki na dziś</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.8)">Algorytm SM-2</div>
+        </button>
+        <button onclick="strefaSidebarSelect('mine')" id="sb-tile-mine" style="width:100%;text-align:left;padding:14px;border-radius:14px;border:2px solid var(--border);background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--navy)'" onmouseout="this.style.borderColor='var(--border)'">
+          <div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:var(--navy);margin-bottom:3px">Moje zestawy</div>
+          <div style="font-size:11px;color:var(--dim2)">Twoje fiszki</div>
+        </button>
+        <button onclick="strefaSidebarSelect('eyelingo')" id="sb-tile-eyelingo" style="width:100%;text-align:left;padding:14px;border-radius:14px;border:2px solid var(--border);background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--navy)'" onmouseout="this.style.borderColor='var(--border)'">
+          <div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:var(--navy);margin-bottom:3px">Zestawy Eyelingo</div>
+          <div style="font-size:11px;color:var(--dim2)">Program językowy</div>
+        </button>
+      </div>
+
+      <!-- Kontekstowa Nauka sidebar: languages -->
+      <div id="sb-strefa-content" style="display:none;flex-direction:column;gap:6px">
+        <div id="sb-strefa-langs" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="strefa-main-col" style="flex:1;min-width:0;padding:28px 24px">
+      <!-- Breadcrumb -->
+      <div id="strefa-breadcrumb-bar" style="font-size:12px;color:var(--dim2);margin-bottom:16px;min-height:18px"></div>
+
+      <!-- Dynamic content area -->
+      <div id="strefa-center-content">
+        <!-- Default: welcome message -->
+        <div style="text-align:center;padding:60px 20px;color:var(--dim2)">
+          <div style="font-size:48px;margin-bottom:12px">📚</div>
+          <div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--navy);margin-bottom:8px">Wybierz zestaw</div>
+          <div style="font-size:14px">Kliknij kafelek po lewej aby zacząć</div>
+        </div>
+      </div>
+
+      <!-- Hidden panels (kept for backwards compat) -->
+      <div id="strefa-tiles-grid" style="display:none">
       <button onclick="strefaShowTab('tryb')" id="strefa-btn-tryb" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:2px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
         <span style="font-size:24px">📚</span>
         <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Tryb Nauki</span>
@@ -2624,6 +2671,36 @@ async function initToFixPage(){
       </div>
     </div>
 
+    </div><!-- /strefa-main-col -->
+
+    <!-- RIGHT SIDEBAR: Stats -->
+    <div id="strefa-stats-sidebar" style="width:200px;flex-shrink:0;padding:28px 20px 28px 0;position:sticky;top:110px;border-left:1px solid var(--border)">
+      <div style="font-family:Syne,sans-serif;font-size:13px;font-weight:800;color:var(--navy);margin-bottom:14px">Statystyki</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">📅 Powtórki</div>
+          <div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:var(--orange)" id="tryb-due-count">—</div>
+          <div style="font-size:11px;color:var(--dim2)">dziś</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">✅ Sesja</div>
+          <div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#639922" id="tryb-session-done">0</div>
+          <div style="font-size:11px;color:var(--dim2)">ukończonych</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🏆 XP dziś</div>
+          <div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:var(--navy)" id="tryb-xp-today">0</div>
+          <div style="font-size:11px;color:var(--dim2)">punktów</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">📚 Nowe</div>
+          <div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:var(--navy)" id="tryb-new-count">—</div>
+          <div style="font-size:11px;color:var(--dim2)">do nauki</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /3-col flex -->
 </div><!-- end page-strefa -->
 
 <!-- ═══ ODKRYJ PAGE ═══ -->
@@ -6632,12 +6709,13 @@ function startTrybMode(mode){
       var qs = document.getElementById('tryb-q-side');
       var as = document.getElementById('tryb-a-side');
       var card = document.getElementById('tryb-card');
-      if(qs) qs.style.display = 'none';
-      if(as) as.style.display = 'none';
+      // display NOT touched - 3D structure must stay intact
+      // a-side display NOT touched
       // Remove any injected controls
       ['tryb-flip-controls','tryb-mc-options','tryb-mode-picker','tryb-flip-nav'].forEach(function(id){
         var el = document.getElementById(id); if(el) el.remove();
       });
+            var sc=document.getElementById('tryb-card-scene'); if(sc) sc.style.display='none';
       showTrybModePicker();
     };
     // Insert back button into the header bar (before first button)
@@ -6761,7 +6839,9 @@ function trybFlipReveal(backText){
     btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
     [{q:1,l:'Nie wiedziałem',bg:'#fcebeb',c:'#a32d2d'},{q:2,l:'Prawie',bg:'#fef3c7',c:'#92400e'},{q:3,l:'Wiedziałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Łatwe',bg:'#e0f2fe',c:'#0369a1'}].forEach(function(opt){
       var b = document.createElement('button');
-      b.style.cssText = 'padding:8px 12px;border-radius:10px;border:none;background:'+opt.bg+';color:'+opt.c+';font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif';
+      b.style.cssText = 'padding:12px 16px;border-radius:12px;border:none;background:'+opt.bg+';color:'+opt.c+';font-size:13px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:transform .1s,box-shadow .1s;min-width:90px';
+      b.onmousedown = function(){ this.style.transform='scale(.95)'; };
+      b.onmouseup = function(){ this.style.transform='scale(1)'; };
       b.textContent = opt.l;
       b.onclick = function(){ rateCard(opt.q); nav.remove(); };
       btnRow.appendChild(b);
@@ -7326,8 +7406,26 @@ function openCollectionView(colIdx){
     colSets.innerHTML = '';
     if(!sets||!sets.length){ colSets.innerHTML = '<div class="mat-empty">Nie znaleziono zestawów</div>'; return; }
     sets.forEach(function(s){
-      var card = buildMatCard(s, true, colIdx);
-      colSets.appendChild(card);
+      var div = document.createElement('div');
+      div.innerHTML = (typeof setCard === 'function') ? setCard(s) : '<div class="mat-card"><div class="mat-card-name">' + s.name + '</div></div>';
+      var card = div.firstElementChild;
+      // Add "Remove from collection" button
+      var actions = card ? card.querySelector('.mat-card-actions') : null;
+      if(actions){
+        var rmBtn = document.createElement('button');
+        rmBtn.style.cssText = 'background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
+        rmBtn.textContent = '× Usuń';
+        rmBtn.onclick = async function(e){
+          e.stopPropagation();
+          var sess2=(await db.auth.getSession()).data.session; if(!sess2)return;
+          _collections[colIdx].sets=(_collections[colIdx].sets||[]).filter(function(x){return x.id!==s.id;});
+          saveCollections(sess2.user.id);
+          openCollectionView(colIdx);
+          loadCollections();
+        };
+        actions.appendChild(rmBtn);
+      }
+      if(card) colSets.appendChild(card);
     });
   })();
 }
@@ -7408,7 +7506,9 @@ async function moveSetToCollection(setId, setName){
   _collections[idx].sets.push({id: setId, name: setName});
   saveCollections(sess.user.id);
   loadCollections();
-  loadMat(); // refresh mine tab to remove moved set
+  // Refresh mine tab
+  if(_matTab === 'mine') loadMySets();
+  else if(_matTab === 'community') loadCommunity();
   if(typeof showToast==='function') showToast(setName + ' przeniesiony do "' + _collections[idx].name + '"!', 'success');
 }
 
@@ -7925,8 +8025,8 @@ function injectTrybPage(){
     +'</div>'
     +'</div>'
     +'</div>'
-    +'<div style="text-align:center;margin-bottom:16px"><button id="tryb-story-btn" onclick="showTrybMiniStory()" style="display:none;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);border-radius:100px;padding:7px 18px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer">📖 Przykład w zdaniu</button></div>'
-    +'<div id="tryb-story-box" style="display:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.85);border-radius:12px;padding:14px 18px;font-size:13px;line-height:1.7;border:1px solid rgba(255,255,255,.15)"></div>'
+    +'<div style="text-align:center;margin-bottom:16px"><button id="tryb-story-btn" onclick="showTrybMiniStory()" style="display:none;background:var(--paper);border:1.5px solid var(--border);border-radius:100px;padding:7px 18px;font-size:12px;color:var(--dim2);cursor:pointer">📖 Przykład w zdaniu</button></div>'
+    +'<div id="tryb-story-box" style="display:none;background:var(--navy);color:#fff;border-radius:12px;padding:14px 18px;font-size:13px;line-height:1.7"></div>'
     +'</div>'
     // Summary
     +'<div id="tryb-summary" style="display:none;text-align:center">'
@@ -9082,7 +9182,320 @@ function odkryjLoadLyrics(){
 }
 
 // ── STREFA NAUKI ──
+// ─── STREFA NAUKI SIDEBAR ────────────────────────────
+var _strefaSidebarMode = 'tryb';
+
+function strefaSidebarMode(mode){
+  _strefaSidebarMode = mode;
+  // Toggle header buttons
+  var btnTryb = document.getElementById('sb-btn-tryb');
+  var btnStrefa = document.getElementById('sb-btn-strefa');
+  var sbTryb = document.getElementById('sb-tryb-content');
+  var sbStrefa = document.getElementById('sb-strefa-content');
+  if(btnTryb && btnStrefa){
+    if(mode === 'tryb'){
+      btnTryb.style.background='var(--navy)'; btnTryb.style.color='#fff';
+      btnStrefa.style.background='transparent'; btnStrefa.style.color='var(--dim2)';
+    } else {
+      btnStrefa.style.background='var(--navy)'; btnStrefa.style.color='#fff';
+      btnTryb.style.background='transparent'; btnTryb.style.color='var(--dim2)';
+    }
+  }
+  if(sbTryb) sbTryb.style.display = mode==='tryb' ? 'flex' : 'none';
+  if(sbStrefa) sbStrefa.style.display = mode==='strefa' ? 'flex' : 'none';
+  // Show content
+  if(mode === 'strefa'){
+    strefaLoadSidebarLangs();
+  } else {
+    strefaShowCenter('<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">📚</div><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--navy);margin-bottom:8px">Wybierz zestaw</div><div style="font-size:14px">Kliknij kafelek po lewej</div></div>');
+  }
+}
+
+function strefaShowCenter(html){
+  var el = document.getElementById('strefa-center-content');
+  if(el) el.innerHTML = html;
+}
+
+function setBreadcrumb(text){
+  var el = document.getElementById('strefa-breadcrumb-bar');
+  if(el) el.textContent = text;
+}
+
+async function strefaSidebarSelect(type){
+  // Highlight selected tile
+  ['due','mine','eyelingo'].forEach(function(t){
+    var btn = document.getElementById('sb-tile-' + t);
+    if(btn){ btn.style.borderColor = t===type ? 'var(--navy)' : 'var(--border)'; btn.style.background = t===type ? 'var(--navy)' : '#fff'; }
+    if(btn && t!=='due'){
+      var name = btn.querySelector('div');
+      if(name) name.style.color = t===type ? '#fff' : 'var(--navy)';
+    }
+  });
+  // Undo orange style on due btn if others selected
+  var dueBtn = document.getElementById('sb-tile-due');
+  if(type !== 'due' && dueBtn){ dueBtn.style.background='linear-gradient(135deg,var(--orange),#e07020)'; dueBtn.style.borderColor='var(--orange)'; }
+
+  if(type === 'due'){
+    setBreadcrumb('Powtórki na dziś');
+    // Load due cards directly into session
+    strefaShowCenter('<div style="text-align:center;padding:40px 20px;color:var(--dim2)"><div style="font-size:32px;margin-bottom:12px">⏳</div><div style="font-size:14px">Ładuję słowa do powtórki...</div></div>');
+    try{
+      var sess = (await db.auth.getSession()).data.session;
+      if(!sess){ strefaShowCenter('<div style="text-align:center;padding:40px">Zaloguj się aby zobaczyć powtórki</div>'); return; }
+      var today = new Date().toISOString().slice(0,10);
+      var {data: due} = await db.from('word_progress')
+        .select('flashcard_id, flashcards(word,translation)')
+        .eq('user_id', sess.user.id)
+        .lte('next_review', today)
+        .limit(50);
+      var cards = (due||[]).map(function(d){ return d.flashcards; }).filter(Boolean);
+      if(!cards.length){
+        strefaShowCenter('<div style="text-align:center;padding:60px 20px"><div style="font-size:48px;margin-bottom:12px">🎉</div><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--navy);margin-bottom:8px">Brak powtórek!</div><div style="font-size:14px;color:var(--dim2)">Wszystkie słowa są opanowane. Wróć jutro.</div></div>');
+        return;
+      }
+      strefaShowWordPreview(cards, 'Powtórki na dziś · ' + cards.length + ' słów', function(){
+        _trybExternalCards = cards;
+        _trybExternalName = 'Powtórki na dziś';
+        showPage('tryb');
+        setTimeout(function(){ startSession('set_external'); }, 150);
+      });
+    }catch(e){
+      strefaShowCenter('<div style="color:#c33;padding:20px">Błąd: ' + e.message + '</div>');
+    }
+  } else if(type === 'mine'){
+    setBreadcrumb('Moje zestawy');
+    strefaShowMySets();
+  } else if(type === 'eyelingo'){
+    setBreadcrumb('Zestawy Eyelingo');
+    strefaShowEyelingoLangs();
+  }
+}
+
+async function strefaShowMySets(){
+  strefaShowCenter('<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie...</div>');
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    if(!sess){ strefaShowCenter('<div style="padding:20px">Zaloguj się</div>'); return; }
+    var {data:sets} = await db.from('user_sets')
+      .select('id,name,user_set_cards(word,translation)')
+      .eq('user_id', sess.user.id)
+      .order('created_at', {ascending:false});
+    if(!sets||!sets.length){
+      strefaShowCenter('<div style="text-align:center;padding:60px 20px"><div style="font-size:48px;margin-bottom:12px">📂</div><div style="font-size:16px;font-weight:700;color:var(--navy)">Brak zestawów</div><div style="font-size:13px;color:var(--dim2)">Stwórz zestaw w Materiałach</div></div>');
+      return;
+    }
+    var grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px';
+    sets.forEach(function(s){
+      var cards = s.user_set_cards || [];
+      var setDiv = document.createElement('div');
+      setDiv.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;cursor:pointer;transition:all .2s';
+      setDiv.innerHTML = '<div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">' + s.name + '</div>'
+        + '<div style="font-size:12px;color:var(--dim2)">' + cards.length + ' fiszek</div>';
+      setDiv.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-2px)'; };
+      setDiv.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; };
+      setDiv.onclick = (function(sid, sname){ return function(){ strefaSelectUserSet(sid, encodeURIComponent(sname)); }; })(s.id, s.name);
+      grid.appendChild(setDiv);
+    });;
+    var wrapper = document.createElement('div');
+    wrapper.appendChild(grid);
+    var center = document.getElementById('strefa-center-content');
+    if(center){ center.innerHTML=''; center.appendChild(wrapper); }
+  }catch(e){ strefaShowCenter('<div style="color:#c33">Błąd</div>'); }
+}
+
+async function strefaSelectUserSet(setId, setNameEnc){
+  var setName = decodeURIComponent(setNameEnc);
+  setBreadcrumb('Moje zestawy → ' + setName);
+  try{
+    var {data:cards} = await db.from('user_set_cards').select('word,translation').eq('set_id', setId);
+    if(!cards||!cards.length){ strefaShowCenter('<div style="padding:20px;color:var(--dim2)">Brak fiszek</div>'); return; }
+    strefaShowWordPreview(cards, setName, function(){
+      _trybExternalCards = cards;
+      _trybExternalName = setName;
+      showPage('tryb');
+      setTimeout(function(){ startSession('set_external'); }, 150);
+    });
+  }catch(e){}
+}
+
+function strefaShowEyelingoLangs(){
+  var LANGS = [{code:'en',label:'Angielski',flag:'🇬🇧'},{code:'es',label:'Hiszpański',flag:'🇪🇸'},{code:'jp',label:'Japoński',flag:'🇯🇵'},{code:'nl',label:'Niderlandzki',flag:'🇳🇱'}];
+  var grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px';
+  LANGS.forEach(function(l){
+    var div = document.createElement('div');
+    div.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:20px;cursor:pointer;text-align:center;transition:all .2s';
+    div.innerHTML = '<div style="font-size:32px;margin-bottom:8px">'+l.flag+'</div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:var(--navy)">'+l.label+'</div>';
+    div.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-2px)'; };
+    div.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; };
+    div.onclick = (function(lc,ll,lf){ return function(){ strefaShowEyelingoLevels(lc,ll,lf); }; })(l.code,l.label,l.flag);
+    grid.appendChild(div);
+  });
+  var center = document.getElementById('strefa-center-content');
+  if(center){ center.innerHTML=''; center.appendChild(grid); }
+}
+
+async function strefaShowEyelingoLevels(langCode, langLabel, flag){
+  setBreadcrumb('Zestawy Eyelingo → ' + flag + ' ' + langLabel);
+  var LEVELS = ['A1','A2','B1','B2','C1','C2'];
+  var wrap = document.createElement('div');
+  var backBtn = document.createElement('button');
+  backBtn.style.cssText = 'background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+  backBtn.textContent = '← Języki';
+  backBtn.onclick = strefaShowEyelingoLangs;
+  wrap.appendChild(backBtn);
+  var grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px';
+  LEVELS.forEach(function(lvl){
+    var div = document.createElement('div');
+    div.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;text-align:center;transition:all .2s';
+    div.innerHTML = '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--navy)">'+lvl+'</div>';
+    div.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+    div.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+    div.onclick = (function(lc,ll,lf,lv){ return function(){ strefaShowEyelingoCategories(lc,ll,lf,lv); }; })(langCode,langLabel,flag,lvl);
+    grid.appendChild(div);
+  });
+  wrap.appendChild(grid);
+  var center = document.getElementById('strefa-center-content');
+  if(center){ center.innerHTML=''; center.appendChild(wrap); }
+}
+
+async function strefaShowEyelingoCategories(langCode, langLabel, flag, lvl){
+  setBreadcrumb(flag + ' ' + langLabel + ' → ' + lvl);
+  var center = document.getElementById('strefa-center-content');
+  if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie...</div>';
+  try{
+    var cats = [];
+    try{ var {data:rpcCats} = await db.rpc('get_categories_for_lang_level',{p_lang:langCode,p_level:lvl}); if(rpcCats&&rpcCats.length) cats=rpcCats; }catch(e2){}
+    if(!cats.length){
+      var {data:langRow} = await db.from('languages').select('id').eq('code',langCode).single();
+      var {data:lvlRow} = await db.from('levels').select('id').eq('code',lvl).maybeSingle();
+      if(langRow){
+        var q = db.from('flashcards').select('category_id').eq('language_id',langRow.id);
+        if(lvlRow) q = q.eq('level_id',lvlRow.id);
+        var {data:rows} = await q.limit(500);
+        if(rows&&rows.length){
+          var ids = [...new Set(rows.map(function(r){return r.category_id;}).filter(Boolean))];
+          var {data:catData} = await db.from('categories').select('id,code,label,icon').in('id',ids).order('label');
+          cats = catData || [];
+        }
+      }
+    }
+    if(!cats.length){ if(center) center.innerHTML='<div style="text-align:center;padding:40px;color:var(--dim2)">Brak kategorii</div>'; return; }
+    var wrap = document.createElement('div');
+    var backBtn = document.createElement('button');
+    backBtn.style.cssText = 'background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+    backBtn.textContent = '← ' + langLabel;
+    backBtn.onclick = (function(lc,ll,lf){ return function(){ strefaShowEyelingoLevels(lc,ll,lf); }; })(langCode,langLabel,flag);
+    wrap.appendChild(backBtn);
+    var grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px';
+    cats.forEach(function(cat){
+      var div = document.createElement('div');
+      div.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:all .2s';
+      div.dataset.catid = cat.id;
+      div.innerHTML = '<div style="font-size:18px;margin-bottom:6px">'+(cat.icon||'📂')+'</div><div style="font-family:Syne,sans-serif;font-size:13px;font-weight:700;color:var(--navy)">'+(cat.label||cat.code)+'</div>';
+      div.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+      div.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+      div.onclick = (function(lc,ll,lf,lv,cid,cn){ return function(){ strefaSelectEyelingoCategory(lc,ll,lf,lv,cid,encodeURIComponent(cn)); }; })(langCode,langLabel,flag,lvl,cat.id,cat.label||cat.code);
+      grid.appendChild(div);
+    });
+    wrap.appendChild(grid);
+    if(center){ center.innerHTML=''; center.appendChild(wrap); }
+    // Check completion in background
+    (async function(){
+      var sess=(await db.auth.getSession()).data.session; if(!sess) return;
+      cats.forEach(async function(cat){
+        try{
+          var {data:catCards}=await db.from('flashcards').select('id').eq('category_id',cat.id).limit(200);
+          if(!catCards||catCards.length<3) return;
+          var {data:prog}=await db.from('word_progress').select('flashcard_id').eq('user_id',sess.user.id).gte('repetitions',2).in('flashcard_id',catCards.map(function(c){return c.id;}));
+          var pct=(prog||[]).length/catCards.length;
+          if(pct>=0.8){
+            var el=document.querySelector('[data-catid="'+cat.id+'"]');
+            if(el){ el.style.background='#eaf3de'; el.style.borderColor='#639922'; }
+          }
+        }catch(e){}
+      });
+    })();
+  }catch(e){ if(center) center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>'; }
+}
+
+async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catId, catNameEnc){
+  var catName = decodeURIComponent(catNameEnc);
+  setBreadcrumb(flag + ' ' + langLabel + ' ' + lvl + ' → ' + catName);
+  strefaShowCenter('<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie fiszek...</div>');
+  try{
+    var cards = [];
+    try{
+      var {data:rpc} = await db.rpc('get_flashcards',{p_lang:langCode,p_level:lvl,p_cat:catId});
+      if(rpc&&rpc.length) cards = rpc;
+    }catch(e2){}
+    if(!cards.length){
+      var {data:direct} = await db.from('flashcards').select('word,translation').eq('category_id',catId).limit(200);
+      cards = direct || [];
+    }
+    if(!cards.length){ strefaShowCenter('<div style="padding:20px;color:var(--dim2)">Brak fiszek</div>'); return; }
+    var fullName = flag + ' ' + langLabel + ' ' + lvl + ' · ' + catName;
+    strefaShowWordPreview(cards, fullName, function(){
+      _trybExternalCards = cards;
+      _trybExternalName = fullName;
+      showPage('tryb');
+      setTimeout(function(){ startSession('set_external'); }, 150);
+    });
+  }catch(e){ strefaShowCenter('<div style="color:#c33;padding:20px">Błąd</div>'); }
+}
+
+function strefaShowWordPreview(cards, title, onStart){
+  var preview = cards.slice(0,8);
+  var html = '<div style="max-width:600px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:var(--navy);margin-bottom:6px">' + title + '</div>'
+    + '<div style="font-size:14px;color:var(--dim2);margin-bottom:20px">' + cards.length + ' fiszek · Podgląd pierwszych słów</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px">';
+  preview.forEach(function(c){
+    html += '<div style="background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px">'
+      + '<div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:700;color:var(--navy)">' + (c.word||'') + '</div>'
+      + '<div style="font-size:12px;color:var(--orange)">' + (c.translation||'') + '</div>'
+      + '</div>';
+  });
+  if(cards.length > 8) html += '<div style="background:var(--paper);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--dim2);display:flex;align-items:center">+' + (cards.length-8) + ' więcej</div>';
+  html += '</div>'
+    + '<button onclick="(_strefaStartFn&&_strefaStartFn())" style="padding:14px 32px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">▶ Zacznij naukę</button>'
+    + '</div>';
+  window._strefaStartFn = onStart;
+  strefaShowCenter(html);
+}
+
+async function strefaLoadSidebarLangs(){
+  var container = document.getElementById('sb-strefa-langs');
+  if(!container) return;
+  var LANGS = [{code:'en',label:'Angielski',flag:'🇬🇧'},{code:'es',label:'Hiszpański',flag:'🇪🇸'},{code:'jp',label:'Japoński',flag:'🇯🇵'},{code:'nl',label:'Niderlandzki',flag:'🇳🇱'}];
+  container.innerHTML = '';
+  LANGS.forEach(function(l){
+    var btn = document.createElement('button');
+    btn.style.cssText = 'width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px';
+    btn.innerHTML = '<span style="font-size:18px">' + l.flag + '</span>'
+      + '<div><div style="font-family:Syne,sans-serif;font-size:13px;font-weight:800;color:var(--navy)">' + l.label + '</div></div>';
+    btn.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+    btn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+    btn.onclick = function(){
+      setBreadcrumb('Kontekstowa Nauka → ' + l.flag + ' ' + l.label);
+      strefaShowEyelingoLevels(l.code, l.label, l.flag);
+    };
+    container.appendChild(btn);
+  });
+  strefaShowCenter('<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">🧠</div><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--navy);margin-bottom:8px">Kontekstowa Nauka</div><div style="font-size:14px">Wybierz język po lewej</div></div>');
+}
+
 function strefaShowTab(tab){
+  // With new sidebar layout, activate appropriate sidebar mode
+  if(tab === 'strefa'){
+    strefaSidebarMode('strefa');
+  } else {
+    strefaSidebarMode('tryb');
+  }
+  // Legacy panels (hidden)
   var panelS=document.getElementById('strefa-panel-strefa');
   var panelT=document.getElementById('strefa-panel-tryb');
   if(panelS) panelS.style.display = tab==='strefa' ? '' : 'none';
