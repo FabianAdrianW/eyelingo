@@ -552,6 +552,12 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 /* ─── Hide scrollbars everywhere ─── */
 *::-webkit-scrollbar { display: none; }
 * { scrollbar-width: none; -ms-overflow-style: none; }
+
+/* ─── Card slide animation (book-page turn) ─── */
+@keyframes slideInRight{from{transform:translateX(60px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes slideInLeft{from{transform:translateX(-60px);opacity:0}to{transform:translateX(0);opacity:1}}
+.card-slide-next{animation:slideInRight .35s cubic-bezier(.25,.46,.45,.94)}
+.card-slide-prev{animation:slideInLeft .35s cubic-bezier(.25,.46,.45,.94)}
 </style>
 </head>
 <body>
@@ -1568,512 +1574,40 @@ function setCard(s){
   const isOwn = s.user_id === _matMyUid;
   const isMineTab = _matTab === 'mine';
   const cards = s.user_set_cards || [];
-  const liked = _likedSets.has(s.id);
-  const added = _addedSets.has(s.id);
-
   const preview = cards.slice(0,3).map(c=>`
     <div class="mat-preview-row">
       <span class="mat-pf">${esc(c.word)}</span>
       <span class="mat-pb">${esc(c.translation)}</span>
     </div>`).join('');
 
-  // Lajk — zawsze widoczny, ale nie można lajkować własnych
-  const likeBtn = `
-    <div class="mat-card-likes${liked?' liked':''}" id="like-btn-${s.id}"
-      onclick="event.stopPropagation();toggleLike(${s.id})"
-      title="${isOwn?'Nie możesz lajkować własnych zestawów':liked?'Usuń lajk':'Dodaj lajk'}">
-      ${liked?'❤️':'🤍'} <span id="like-count-${s.id}">${s.likes_count||0}</span>
-    </div>`;
+  const moveBtn = isOwn && isMineTab
+    ? `<button data-sid="${s.id}" onclick="event.stopPropagation();promptMoveSet(parseInt(this.dataset.sid))" class="mat-btn-move" style="background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:4px 12px;font-size:12px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif">📁 Przenieś</button>`
+    : '';
 
-  // Stopka zależy od zakładki
-  let foot = '';
-  if(isMineTab){
-    // Moje zestawy: edytuj + usuń + publiczny/prywatny
-    foot = `
-      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-        <button class="mat-pub-toggle ${s.is_public?'pub':'priv'}"
-          onclick="event.stopPropagation();quickTogglePublic(${s.id},this)">
-          ${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}
-        </button>
-        <div class="mat-card-actions">
-          <button class="mat-btn-edit" onclick="event.stopPropagation();openEditSet(${s.id})">✏️ Edytuj</button>
-          <button data-sid="${s.id}" onclick="event.stopPropagation();promptMoveSet(parseInt(this.dataset.sid))" style="background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif">📁 Przenieś</button>
-          <button class="mat-btn-del" onclick="event.stopPropagation();deleteSet(${s.id})">🗑️ Usuń</button>
-        </div>
-      </div>`;
-  } else {
-    // Społeczność: tylko "Dodaj do moich zestawów" (nie dla własnych)
-    if(!isOwn){
-      foot = `
-        <button class="mat-btn-add${added?' added':''}" id="add-btn-${s.id}"
-          onclick="event.stopPropagation();addSetToMine(${s.id})"
-          ${added?'disabled':''}>
-          ${added?'✓ Dodano do zestawów':'+ Dodaj do zestawów'}
-        </button>`;
-    }
-  }
-
-  return `
-    <div class="mat-card" onclick="openSet(${s.id})">
-      <div class="mat-card-head">
-        <div>
-          <div class="mat-card-name">${esc(s.name)}</div>
-          <div class="mat-card-meta">
-            by ${s.username||'Nieznany'} · ${cards.length} fiszek
-          </div>
-        </div>
-        ${likeBtn}
-      </div>
-      ${preview?`<div class="mat-preview">${preview}</div>`:''}
-      ${foot?`<div class="mat-card-foot">${foot}</div>`:''}
-    </div>`;
-}
-
-async function quickTogglePublic(id, btn){
-  const s = _matSets.find(x=>x.id===id);
-  if(!s) return;
-  // Blokuj zestawy zaimportowane z wyzwań i artykułów
-  if(s.name&&(s.name.includes('(mój)')||s.name.includes('🏆'))){
-    showToast('Zaimportowane zestawy nie mogą być publiczne.','error');
-    return;
-  }
-  const newVal = !s.is_public;
-  await db.from('user_sets').update({is_public:newVal}).eq('id',id);
-  s.is_public = newVal;
-  btn.className = `mat-pub-toggle ${newVal?'pub':'priv'}`;
-  btn.textContent = newVal?'🌐 Publiczny':'🔒 Prywatny';
-}
-
-function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-
-async function openSet(id){
-  const s=_matSets.find(x=>x.id===id);
-  if(!s)return;
-  _matModal=s; _matEditMode=false;
-  showSetModal(s,false);
-}
-
-function showSetModal(s,editMode){
-  const cards=s.user_set_cards||[];
-  const isOwn=s.user_id===_matMyUid;
-  document.getElementById('mat-modal-title').textContent=editMode?'Edytuj zestaw':s.name;
-  document.getElementById('mat-modal-body').innerHTML=editMode?renderEditForm(s):renderViewCards(cards,s,isOwn);
-  document.getElementById('mat-modal').style.display='flex';
-}
-
-function renderViewCards(cards, s, isOwn){
-  const isMineTab = _matTab === 'mine';
-  const liked = _likedSets.has(s.id);
-  const added = _addedSets.has(s.id);
-  return `
-    <div class="mat-modal-meta">
-      by ${s.username||'Nieznany'} · ${cards.length} fiszek
-      <span class="mat-card-likes${liked?' liked':''}" style="display:inline-flex;margin-left:8px;cursor:pointer"
-        onclick="toggleLike(${s.id});this.textContent=(window._likedSets?.has(${s.id})?'❤️':'🤍')+' '+(${s.likes_count||0}+(window._likedSets?.has(${s.id})?1:-1))">
-        ${liked?'❤️':'🤍'} ${s.likes_count||0}
-      </span>
-    </div>
-    <div class="mat-modal-cards">
-      ${cards.map(c=>`
-        <div class="mat-modal-row">
-          <span>${esc(c.word)}</span>
-          <span class="mat-modal-tr">${esc(c.translation)}</span>
-        </div>`).join('')}
-    </div>
-    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
-      <button class="btn btn-orange" style="flex:1;min-width:140px;font-weight:700;font-size:15px" onclick="closeMatModal();startTrybNauki(${JSON.stringify(cards).replace(/"/g,'&quot;')},${JSON.stringify(s.name).replace(/"/g,'&quot;')})">📚 Ucz się</button>
-      ${isMineTab?`
-        <button class="btn btn-navy" onclick="switchToEdit()">✏️ Edytuj</button>
-        <button class="mat-btn-del" style="padding:10px 18px" onclick="deleteSet(${s.id})">🗑️ Usuń</button>
-        <button class="mat-pub-toggle ${s.is_public?'pub':'priv'}" onclick="togglePublic(${s.id})">
-          ${s.is_public?'🌐 Publiczny':'🔒 Prywatny'}
-        </button>
-      `:`
-        ${!isOwn?`<button class="btn btn-navy" style="flex:1" id="modal-add-btn"
-          onclick="addSetToMine(${s.id})" ${added?'disabled':''}>
-          ${added?'✓ Dodano do zestawów':'+ Dodaj do moich zestawów'}
-        </button>`:''}
-      `}
-    </div>`;
-}
-
-function renderEditForm(s){
-  const cards=s.user_set_cards||[];
-  return `
-    <div style="margin-bottom:12px">
-      <label style="font-size:12px;color:var(--dim2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Nazwa zestawu</label>
-      <input id="edit-name" class="fi" value="${esc(s.name)}" style="width:100%;margin-top:4px">
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">
-      <span>Słowo / pytanie</span><span>Tłumaczenie / odpowiedź</span>
-    </div>
-    <div id="edit-rows" style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto">
-      ${cards.map((c,i)=>`
-        <div class="edit-row" data-id="${c.id}">
-          <input class="fi edit-word" value="${esc(c.word)}" placeholder="słowo">
-          <input class="fi edit-translation" value="${esc(c.translation)}" placeholder="tłumaczenie">
-          <button onclick="removeEditRow(this)" style="background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;cursor:pointer;color:#c33">✕</button>
-        </div>
-      `).join('')}
-    </div>
-    <button onclick="addEditRow()" style="margin-top:8px;background:transparent;border:1px dashed var(--dim2);border-radius:8px;padding:8px;width:100%;cursor:pointer;color:var(--dim2);font-size:13px">+ Dodaj wiersz</button>
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-navy" onclick="saveEdit(${s.id})" style="flex:1">💾 Zapisz</button>
-      <button class="btn btn-ghost" onclick="switchToView()" style="flex:1">Anuluj</button>
-    </div>
-  `;
-}
-
-async function openEditSet(id){
-  let s=_matSets.find(x=>x.id===id);
-  if(!s)return;
-  if(!s.user_set_cards||!s.user_set_cards.length){
-    const{data}=await db.from('user_set_cards')
-      .select('id,word,translation,sort_order')
-      .eq('set_id',id)
-      .order('sort_order');
-    s.user_set_cards=data||[];
-  }
-  _matModal=s; _matEditMode=true;
-  document.getElementById('mat-modal-title').textContent='Edytuj zestaw';
-  document.getElementById('mat-modal-body').innerHTML=renderEditForm(s);
-  document.getElementById('mat-modal').style.display='flex';
-}
-
-function switchToEdit(){_matEditMode=true;showSetModal(_matModal,true)}
-function switchToView(){_matEditMode=false;showSetModal(_matModal,false)}
-
-function addEditRow(){
-  const row=document.createElement('div');
-  row.className='edit-row';
-  row.innerHTML=`<input class="fi edit-word" placeholder="słowo"><input class="fi edit-translation" placeholder="tłumaczenie"><button onclick="removeEditRow(this)" style="background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;cursor:pointer;color:#c33">✕</button>`;
-  document.getElementById('edit-rows').appendChild(row);
-}
-function removeEditRow(btn){btn.closest('.edit-row').remove()}
-
-async function saveEdit(setId){
-  const name=document.getElementById('edit-name').value.trim();
-  if(!name){alert('Wpisz nazwę zestawu');return}
-  const rows=[...document.querySelectorAll('.edit-row')];
-  const cards=rows.map(r=>({
-    word:r.querySelector('.edit-word').value.trim(),
-    translation:r.querySelector('.edit-translation').value.trim()
-  })).filter(c=>c.word&&c.translation);
-  if(!cards.length){alert('Dodaj co najmniej jedną fiszkę');return}
-  try{
-    await db.from('user_sets').update({name}).eq('id',setId);
-    await db.from('user_set_cards').delete().eq('set_id',setId);
-    await db.from('user_set_cards').insert(cards.map((c,i)=>({set_id:setId,word:c.word,translation:c.translation,sort_order:i})));
-    closeMatModal();
-    _matTab==='mine'?loadMySets():loadCommunity();
-  }catch(e){alert('Błąd: '+e.message)}
-}
-
-async function deleteSet(id){
-  if(!confirm('Usunąć ten zestaw? Tej operacji nie można cofnąć.'))return;
-  await db.from('user_sets').delete().eq('id',id);
-  closeMatModal();
-  _matTab==='mine'?loadMySets():loadCommunity();
-}
-
-async function togglePublic(id){
-  const s=_matSets.find(x=>x.id===id);
-  if(!s)return;
-  const newVal=!s.is_public;
-  await db.from('user_sets').update({is_public:newVal}).eq('id',id);
-  s.is_public=newVal;
-  s.user_set_cards=s.user_set_cards||[];
-  showSetModal(s,false);
-  _matTab==='mine'?loadMySets():loadCommunity();
-}
-
-async function toggleLike(setId){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){showToast('Zaloguj się aby lajkować','error');return;}
-  try{
-    const{data,error}=await db.rpc('toggle_like',{p_set_id:setId});
-    if(error)throw error;
-    if(!data)return;
-    if(data.liked){_likedSets.add(setId)}else{_likedSets.delete(setId)}
-    const s=_matSets.find(x=>x.id===setId);
-    if(s) s.likes_count=(s.likes_count||0)+(data.liked?1:-1);
-    const btn=document.getElementById(`like-btn-${setId}`);
-    if(btn){
-      btn.className='mat-card-likes'+(data.liked?' liked':'');
-      btn.innerHTML=`${data.liked?'❤️':'🤍'} <span id="like-count-${setId}">${s?.likes_count||0}</span>`;
-    }
-    if(data.reward>0) showToast(`🏺 Gratulacje! Otrzymałeś ${data.reward.toLocaleString('pl-PL')} złota!`,'success');
-  }catch(e){showToast('Błąd: '+e.message,'error')}
-}
-
-async function addSetToMine(setId){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){showToast('Zaloguj się aby dodać zestaw','error');return;}
-  if(_addedSets.has(setId))return;
-  _addedSets.add(setId);
-  const btn=document.getElementById(`add-btn-${setId}`);
-  if(btn){btn.disabled=true;btn.textContent='✓ Dodano do zestawów';btn.classList.add('added');}
-  showToast('✅ Zestaw dodany do Twoich materiałów!','success');
-}
-
-let _createIsPublic = false;
-
-function openCreateSet(){
-  _createIsPublic = false;
-  document.getElementById('mat-modal-title').textContent='Nowy zestaw';
-  document.getElementById('mat-modal-body').innerHTML=`
-    <div style="margin-bottom:10px">
-      <label style="font-size:12px;color:var(--dim2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Nazwa zestawu</label>
-      <input id="create-name" class="fi" placeholder="np. Angielski – sprawdzian" style="width:100%;margin-top:4px">
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div style="display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;flex:1;font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px">
-        <span>Słowo / pytanie</span><span>Tłumaczenie / odpowiedź</span><span></span>
+  return `<div class="mat-card" onclick="openSet(${s.id})" style="cursor:pointer">
+    <div class="mat-card-head">
+      <div>
+        <div class="mat-card-name">${esc(s.name)}</div>
+        <div class="mat-card-count">${cards.length} fiszek</div>
       </div>
     </div>
-    <div id="create-rows" style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto"></div>
-    <div style="margin-top:8px;font-size:12px;color:var(--dim2)">💡 Naciśnij <kbd style="background:rgba(0,0,0,.08);padding:1px 6px;border-radius:4px;font-family:monospace">Tab</kbd> aby szybko dodać nowy wiersz</div>
-    <button onclick="addCreateRow()" style="margin-top:8px;background:transparent;border:1px dashed var(--dim2);border-radius:8px;padding:8px;width:100%;cursor:pointer;color:var(--dim2);font-size:13px">+ Dodaj wiersz</button>
-    <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
-      <button id="create-pub-btn" onclick="toggleCreatePublic()" style="border:1px solid rgba(100,100,120,.3);background:rgba(100,100,120,.08);color:var(--dim2);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s">🔒 Prywatny</button>
-      <button class="btn btn-orange" style="flex:1" onclick="saveNewSet()">💾 Stwórz zestaw</button>
-    </div>
-    <div id="create-msg" style="margin-top:8px;font-size:13px;text-align:center;color:#c33"></div>
-  `;
-  document.getElementById('mat-modal').style.display='flex';
-  // Dodaj 5 domyślnych wierszy
-  for(let i=0;i<5;i++) addCreateRow();
-  // Focus na pierwszym polu
-  setTimeout(()=>{const f=document.querySelector('#create-rows .cr-word');if(f)f.focus()},50);
-}
-
-function addCreateRow(){
-  const row=document.createElement('div');
-  row.className='edit-row';
-  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;align-items:center';
-  const wInp=document.createElement('input');
-  wInp.className='fi cr-word';wInp.placeholder='słowo';
-  const tInp=document.createElement('input');
-  tInp.className='fi cr-tr';tInp.placeholder='tłumaczenie';
-  const del=document.createElement('button');
-  del.textContent='✕';del.style.cssText='background:rgba(200,50,50,.15);border:none;border-radius:6px;width:28px;height:28px;cursor:pointer;color:#c33;font-size:11px';
-  del.onclick=()=>row.remove();
-  // TAB z ostatniego pola tłumaczenia → nowy wiersz
-  // TAB from word input -> translation input
-  wInp.addEventListener('keydown',e=>{
-    if(e.key==='Tab'&&!e.shiftKey){
-      e.preventDefault();
-      tInp.focus();
-    }
-  });
-  // TAB from translation input -> next word input or new row
-  tInp.addEventListener('keydown',e=>{
-    if(e.key==='Tab'&&!e.shiftKey){
-      const rows=[...document.querySelectorAll('#create-rows .edit-row')];
-      if(row===rows[rows.length-1]){
-        e.preventDefault();
-        addCreateRow();
-        setTimeout(()=>{const last=document.querySelectorAll('#create-rows .cr-word');if(last.length)last[last.length-1].focus()},20);
-      } else {
-        e.preventDefault();
-        const nextRow=rows[rows.indexOf(row)+1];
-        if(nextRow){const nextWord=nextRow.querySelector('.cr-word');if(nextWord)nextWord.focus();}
-      }
-    }
-  });
-  // Prevent TAB on delete button
-  del.setAttribute('tabindex','-1');
-  row.append(wInp,tInp,del);
-  document.getElementById('create-rows').appendChild(row);
-}
-
-function toggleCreatePublic(){
-  _createIsPublic=!_createIsPublic;
-  const btn=document.getElementById('create-pub-btn');
-  if(_createIsPublic){
-    btn.textContent='🌐 Publiczny';
-    btn.style.cssText='border:1px solid rgba(22,163,74,.3);background:rgba(22,163,74,.1);color:#16a34a;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s';
-  } else {
-    btn.textContent='🔒 Prywatny';
-    btn.style.cssText='border:1px solid rgba(100,100,120,.3);background:rgba(100,100,120,.08);color:var(--dim2);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600;transition:.2s';
-  }
-}
-
-async function saveNewSet(){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){showAuth('login');return;}
-  const name=document.getElementById('create-name').value.trim();
-  if(!name){document.getElementById('create-msg').textContent='Wpisz nazwę zestawu.';return;}
-  const rows=[...document.querySelectorAll('#create-rows .edit-row')];
-  const cards=rows.map(r=>({
-    word:r.querySelector('.cr-word').value.trim(),
-    translation:r.querySelector('.cr-tr').value.trim()
-  })).filter(c=>c.word&&c.translation);
-  if(cards.length<1){document.getElementById('create-msg').textContent='Dodaj co najmniej jedną fiszkę.';return;}
-  try{
-    const{data:setData,error:se}=await db.from('user_sets').insert({
-      user_id:session.user.id,name,is_public:_createIsPublic
-    }).select().single();
-    if(se)throw se;
-    const{error:ce}=await db.from('user_set_cards').insert(
-      cards.map((c,i)=>({set_id:setData.id,word:c.word,translation:c.translation,sort_order:i}))
-    );
-    if(ce)throw ce;
-    closeMatModal();
-    showToast('✅ Zestaw został utworzony!','success');
-    switchMatTab('mine');
-  }catch(e){document.getElementById('create-msg').textContent='Błąd: '+e.message;}
-}
-
-function closeMatModal(){document.getElementById('mat-modal').style.display='none';_matModal=null}
-
-async function switchMatTab(tab){
-  _matTab=tab;
-  window._matTabExplicitlySet = true;
-  document.querySelectorAll('.mat-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===tab); });
-
-  var createBtn=document.getElementById('mat-create-btn');
-  var title=document.getElementById('mat-main-title');
-  var sub=document.getElementById('mat-main-sub');
-  var grid=document.getElementById('mat-grid');
-  var voices=document.getElementById('mat-voices');
-  var colView=document.getElementById('mat-collection-view');
-
-  // Hide all panels
-  if(grid) grid.style.display='none';
-  if(voices) voices.style.display='none';
-  if(colView) colView.style.display='none';
-  if(createBtn) createBtn.style.display='none';
-
-  var search=document.getElementById('mat-search');
-  if(search) search.value='';
-
-  if(tab==='mine'){
-    if(title) title.textContent='Moje materiały';
-    if(sub) sub.textContent='Zestawy nieprzypisane do katalogu';
-    if(grid){ grid.style.display='grid'; }
-    if(createBtn&&_matMyUid) createBtn.style.display='block';
-    loadMySets();
-  } else if(tab==='community'){
-    if(title) title.textContent='Społeczność';
-    if(sub) sub.textContent='Zestawy innych użytkowników';
-    if(grid){ grid.style.display='grid'; }
-    loadCommunity();
-  } else if(tab==='voices'){
-    if(title) title.textContent='Głosówki';
-    if(sub) sub.textContent='';
-    if(voices) voices.style.display='block';
-    if(typeof loadVoiceRecordings==='function') loadVoiceRecordings();
-  }
+    ${preview ? `<div class="mat-preview">${preview}</div>` : ''}
+    ${moveBtn ? `<div class="mat-card-actions" style="margin-top:10px">${moveBtn}</div>` : ''}
+  </div>`;
 }
 
 
-function showMatError(msg){
-  const el=document.getElementById('mat-grid');
-  if(el)el.innerHTML=`<div class="mat-empty" style="color:#f87">${msg}</div>`;
-}
-
-function showToast(msg,type='info'){
-  const t=document.createElement('div');
-  t.className=`toast toast-${type}`;t.textContent=msg;
-  document.body.appendChild(t);
-  setTimeout(()=>t.classList.add('show'),10);
-  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300)},3500);
-}
-
-async function loadRanking(){
-  // Tabele rankingu
-  for(const period of ['all','weekly']){
-    try{
-      const{data}=await db.rpc('get_ranking',{p_period:period});
-      if(!data) continue;
-      for(const cat of ['gold','streak','words']){
-        const el=document.getElementById(`rank-${period}-${cat}`);
-        if(!el||!data[cat]) continue;
-        el.innerHTML=data[cat].map((r,i)=>`
-          <div class="rank-row ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':''}">
-            <span class="rank-pos">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span>
-            <span class="rank-name">${r.username}</span>
-            <span class="rank-score">${Number(r.score).toLocaleString('pl-PL')}</span>
-          </div>
-        `).join('');
-      }
-      // Wyróżnieni z danych globalnych
-      if(period==='all'&&data.gold?.length){
-        const topGold=data.gold[0];
-        document.getElementById('feat-creator').textContent=topGold.username;
-        document.getElementById('feat-creator-meta').textContent=`🏺 ${Number(topGold.score).toLocaleString('pl-PL')} złota`;
-      }
-      if(period==='all'&&data.streak?.length){
-        const topStreak=data.streak[0];
-        document.getElementById('feat-streak').textContent=topStreak.username;
-        document.getElementById('feat-streak-meta').textContent=`🔥 ${topStreak.score} dni z rzędu`;
-      }
-    }catch(e){console.error(e);}
-  }
-  // Najlepsze zestawy
-  try{
-    const{data:sets}=await db.from('user_sets')
-      .select('id,name,likes_count,user_id')
-      .eq('is_public',true)
-      .order('likes_count',{ascending:false})
-      .limit(5);
-    const el=document.getElementById('rank-top-sets');
-    if(el&&sets?.length){
-      // Wyróżniony zestaw
-      if(sets[0]){
-        document.getElementById('feat-set').textContent=sets[0].name;
-        document.getElementById('feat-set-meta').textContent=`❤️ ${sets[0].likes_count||0} lajków · by ${sets[0].username||'Nieznany'}`;
-      }
-      el.innerHTML=sets.map((s,i)=>`
-        <div class="rank-row ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':''}">
-          <span class="rank-pos">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span>
-          <span class="rank-name">${s.name} <span style="font-size:12px;color:var(--dim2);font-weight:400">by ${s.username||'Nieznany'}</span></span>
-          <span class="rank-score">❤️ ${s.likes_count||0}</span>
-        </div>
-      `).join('');
-    }
-  }catch(e){console.error(e);}
-  // Załaduj panel admina jeśli admin
-  const{data:{session}}=await db.auth.getSession();
-  // Admin panel moved to admin.html
-}
-
-(async()=>{
-  const{data:{session}}=await db.auth.getSession();
-  if(session){await loadDashboard();showPage('dash')}
-  // Obsługa parametru ?page= i hash routing
-  const urlParams=new URLSearchParams(window.location.search);
-  const pg=urlParams.get('page');
-  const hash=window.location.hash.slice(1);
-  const validHashes=['home','dash','community','daily','challenge','chat','teacher','strefa','odkryj','tutors','ranking','tofix','lyrics'];
-
-  // Check session and redirect
-  db.auth.getSession().then(function(res){
-    var session=res.data&&res.data.session;
-    if(session){
-      loadDashboard().then(function(){
-        // Restore from hash or query param
-        var target = hash&&validHashes.includes(hash)?hash : pg==='community'?'community':pg==='ranking'?'ranking':'dash';
-        showPage(target);
-      });
-    } else {
-      // Not logged in — go to hash if valid and public, else home
-      var publicPages=['home','tutors'];
-      if(hash&&publicPages.includes(hash)) showPage(hash);
-      else if(pg==='community') showPage('community');
-    }
-  });
-}
-)();
 </script>
 
 <!-- ═══ COMMUNITY PAGE ═══ -->
 <div id="page-community" class="page" style="min-height:100vh;padding:0;background:var(--paper)">
   <div style="display:flex;gap:0;align-items:flex-start;width:100%">
 
-    <!-- LEFT SIDEBAR: Katalogi -->
-    <div id="mat-sidebar" style="width:300px;flex-shrink:0;padding:110px 0 80px 20px;min-height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12)">
+    <!-- LEFT SIDEBAR: Katalogi (sliding) -->
+    <div id="mat-sidebar" style="width:300px;flex-shrink:0;min-height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12);transition:width .3s ease,opacity .3s ease;position:relative">
+      <!-- Toggle button -->
+      <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:absolute;top:118px;right:-14px;z-index:100;width:28px;height:28px;border-radius:50%;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(26,35,64,.3)">‹</button>
+      <div id="mat-sidebar-inner" style="padding:110px 0 80px 20px">
       <!-- Katalogi -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:800;color:var(--navy)">Katalogi</div>
@@ -2082,10 +1616,11 @@ async function loadRanking(){
       <div id="mat-sidebar-collections" style="display:flex;flex-direction:column;gap:8px;padding-right:20px">
         <div style="font-size:12px;color:var(--dim2);padding:8px 0">Ładowanie...</div>
       </div>
+      </div><!-- /sidebar-inner -->
     </div>
 
     <!-- MAIN CONTENT -->
-    <div style="flex:1;min-width:0;padding:110px 32px 80px;max-width:calc(100% - 600px)">
+    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px;max-width:calc(100% - 600px)">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -6646,10 +6181,18 @@ function startTrybMode(mode){
 }
 
 // ── TRYB: PRZEGLĄDANIE (flip cards) ──────────────────
-function loadTrybFlipCard(){
+function loadTrybFlipCard(direction){
   var card = _trybCards[_trybIdx];
   if(!card){ showTrybSessionSummary(); return; }
   _trybFlipRevealed = false;
+
+  // Slide animation
+  var scene = document.getElementById('tryb-card-scene');
+  if(scene){
+    scene.classList.remove('card-slide-next','card-slide-prev');
+    void scene.offsetWidth; // reflow
+    scene.classList.add(direction==='prev' ? 'card-slide-prev' : 'card-slide-next');
+  }
 
   // 3D flip: reset to front
   var flipper = document.getElementById('tryb-card-flipper');
@@ -6696,7 +6239,7 @@ function loadTrybFlipCard(){
   document.onkeydown = function(e){
     if(e.code === 'Space'){ e.preventDefault(); if(!_trybFlipRevealed) trybFlipReveal(backText); }
     if(e.code === 'ArrowRight' && _trybFlipRevealed) _trybIdx++;
-    if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard(); }
+    if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard('prev'); }
   };
 }
 
@@ -6771,7 +6314,7 @@ function trybFlipReveal(backText){
       var prevBtn = document.createElement('button');
       prevBtn.style.cssText = 'padding:8px 16px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;font-size:13px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
       prevBtn.textContent = '← Poprzednia';
-      prevBtn.onclick = function(){ _trybIdx--; loadTrybFlipCard(); };
+      prevBtn.onclick = function(){ _trybIdx--; loadTrybFlipCard('prev'); };
       navRow.appendChild(prevBtn);
     }
     var nextBtn = document.createElement('button');
@@ -6794,7 +6337,7 @@ function trybFlipReveal(backText){
       else trybFlipReveal(document.getElementById('tryb-card-answer-data')?document.getElementById('tryb-card-answer-data').textContent:'');
     }
     if(e.code === 'ArrowRight' && _trybFlipRevealed){ if(_trybIdx >= _trybCards.length-1) showTrybSessionSummary(); else { _trybIdx++; loadTrybFlipCard(); } }
-    if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard(); }
+    if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard('prev'); }
   };
 }
 
@@ -7134,13 +6677,10 @@ async function rateCard(btnRating){
       b.style.opacity='0.3';
     }
   });
-  // Brief XP toast
-  var xpMap={1:0,2:3,3:7,4:10};
-  var xpVal=xpMap[btnRating]||0;
-  if(xpVal>0 && typeof showToast==='function'){
-    var labels={1:'',2:'+'+xpVal+' XP',3:'+'+xpVal+' XP ✓',4:'+'+xpVal+' XP ⚡'};
-    showToast(labels[btnRating],'success');
-  }
+  // Brief highlight confirmation - no XP toast, just visual glow
+  setTimeout(function(){
+    document.querySelectorAll('.tryb-rate-btn,[data-q]').forEach(function(b){ b.style.opacity='1'; });
+  }, 350);
   var isTypo=document.getElementById('tryb-result-icon')&&document.getElementById('tryb-result-icon').textContent.includes('⚠️');
   var eff=isTypo?Math.min(btnRating,3):btnRating;
   var qMap={1:0,2:2,3:4,4:5};
@@ -7157,7 +6697,7 @@ async function rateCard(btnRating){
   var xpTodayEl=document.getElementById('tryb-xp-today');
   if(xpTodayEl)xpTodayEl.textContent=_trybSessionXPToday;
   _trybIdx++;
-  if(_trybMode === 'flip') loadTrybFlipCard();
+  if(_trybMode === 'flip') loadTrybFlipCard('next');
   else if(_trybMode === 'mc') loadTrybMCCard();
   else if(_trybMode === 'memorize') loadTrybMemorizeCard();
   else loadTrybCard();
@@ -7459,6 +6999,26 @@ async function moveSetToCollection(setId, setName){
 
 function saveCollections(uid){ try{ localStorage.setItem('eyelingo_collections_' + uid, JSON.stringify(_collections)); }catch(e){} }
 
+var _matSidebarOpen = true;
+function toggleMatSidebar(){
+  _matSidebarOpen = !_matSidebarOpen;
+  var sb = document.getElementById('mat-sidebar');
+  var inner = document.getElementById('mat-sidebar-inner');
+  var btn = document.getElementById('mat-sidebar-toggle');
+  var main = document.getElementById('mat-main-content');
+  if(_matSidebarOpen){
+    sb.style.width = '300px';
+    if(inner) inner.style.opacity = '1'; inner.style.pointerEvents = '';
+    if(btn) btn.textContent = '‹';
+    if(main) main.style.maxWidth = 'calc(100% - 600px)';
+  } else {
+    sb.style.width = '0px';
+    if(inner){ inner.style.opacity = '0'; inner.style.pointerEvents = 'none'; }
+    if(btn){ btn.style.right = '-14px'; btn.textContent = '›'; }
+    if(main) main.style.maxWidth = 'calc(100% - 300px)';
+  }
+}
+
 function openCreateCollection(){
   // Eyelingo-style modal
   var existing = document.getElementById('create-col-modal');
@@ -7602,6 +7162,216 @@ function filterCollectionSets(query){
     var match = !query || name.textContent.toLowerCase().includes(query.toLowerCase());
     card.style.display = match ? '' : 'none';
   });
+}
+
+function strefaKontekstowaLevels(langCode, langLabel, flag){
+  var center = document.getElementById('strefa-center-content');
+  if(!center) return;
+  var wrap = document.createElement('div');
+  var backBtn = document.createElement('button');
+  backBtn.style.cssText = 'background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+  backBtn.textContent = '← Języki';
+  backBtn.onclick = function(){ strefaLoadSidebarLangs(); setBreadcrumb('Kontekstowa Nauka'); };
+  wrap.appendChild(backBtn);
+  var title = document.createElement('div');
+  title.style.cssText = 'font-family:DM Sans,sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:16px';
+  title.textContent = flag + ' ' + langLabel + ' — wybierz poziom';
+  wrap.appendChild(title);
+  var grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px';
+  ['A1','A2','B1','B2','C1','C2'].forEach(function(lvl){
+    var div = document.createElement('div');
+    div.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;text-align:center;transition:all .2s';
+    div.innerHTML = '<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:800;color:var(--navy)">'+lvl+'</div>';
+    div.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+    div.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+    div.onclick = (function(lc,ll,lf,lv){ return function(){ strefaKontekstowaCategories(lc,ll,lf,lv); }; })(langCode,langLabel,flag,lvl);
+    grid.appendChild(div);
+  });
+  wrap.appendChild(grid);
+  center.innerHTML = ''; center.appendChild(wrap);
+  setBreadcrumb('Kontekstowa → '+flag+' '+langLabel);
+}
+
+async function strefaKontekstowaCategories(langCode, langLabel, flag, lvl){
+  var center = document.getElementById('strefa-center-content');
+  if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie kategorii...</div>';
+  setBreadcrumb(flag+' '+langLabel+' → '+lvl);
+  try{
+    // Get lang and level IDs
+    var {data:langRow} = await db.from('languages').select('id').eq('code',langCode).single();
+    var {data:lvlRow} = await db.from('levels').select('id').eq('code',lvl).maybeSingle();
+    if(!langRow){ if(center) center.innerHTML='<div style="padding:20px;color:#c33">Nie znaleziono języka</div>'; return; }
+    var q = db.from('flashcards').select('category_id').eq('language_id',langRow.id);
+    if(lvlRow) q = q.eq('level_id',lvlRow.id);
+    var {data:rows} = await q.limit(500);
+    if(!rows||!rows.length){ if(center) center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak kategorii</div>'; return; }
+    var ids = [...new Set(rows.map(function(r){return r.category_id;}).filter(Boolean))];
+    var {data:cats} = await db.from('categories').select('id,code,label,icon').in('id',ids).order('label');
+    if(!cats||!cats.length){ if(center) center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak kategorii</div>'; return; }
+    var wrap = document.createElement('div');
+    var backBtn = document.createElement('button');
+    backBtn.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+    backBtn.textContent='← Poziomy';
+    backBtn.onclick=(function(lc,ll,lf){return function(){strefaKontekstowaLevels(lc,ll,lf);};})(langCode,langLabel,flag);
+    wrap.appendChild(backBtn);
+    var grid = document.createElement('div');
+    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px';
+    cats.forEach(function(cat){
+      var div=document.createElement('div');
+      div.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:all .2s';
+      div.innerHTML='<div style="font-size:18px;margin-bottom:6px">'+(cat.icon||'📂')+'</div><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:700;color:var(--navy)">'+(cat.label||cat.code)+'</div>';
+      div.onmouseover=function(){this.style.borderColor='var(--orange)';};
+      div.onmouseout=function(){this.style.borderColor='var(--border)';};
+      div.onclick=(function(lc,ll,lf,lv,catCode,catLabel){return function(){
+        startStrefaKontekstowaCards(lc,ll,lf,lv,catCode,catLabel);
+      };})(langCode,langLabel,flag,lvl,cat.code,cat.label||cat.code);
+      grid.appendChild(div);
+    });
+    wrap.appendChild(grid);
+    if(center){center.innerHTML='';center.appendChild(wrap);}
+  }catch(e){ if(center) center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>'; }
+}
+
+async function startStrefaKontekstowaCards(langCode, langLabel, flag, lvl, catCode, catLabel){
+  var center = document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie słów...</div>';
+  setBreadcrumb(flag+' '+langLabel+' '+lvl+' → '+catLabel);
+  // Set global strefa state for loadStrefaCard compatibility
+  window._strefaLang = langCode;
+  window._strefaLevel = lvl;
+  window._strefaCat = catCode;
+  window._strefaIdx = 0;
+  try{
+    var {data:langRow}=await db.from('languages').select('id').eq('code',langCode).single();
+    var {data:lvlRow}=await db.from('levels').select('id').eq('code',lvl).maybeSingle();
+    var {data:catArr}=await db.from('categories').select('id').eq('code',catCode).limit(1);
+    if(!langRow||!catArr||!catArr[0]){if(center)center.innerHTML='<div style="padding:20px;color:#c33">Błąd danych</div>';return;}
+    var q2=db.from('flashcards').select('word,translation').eq('language_id',langRow.id).eq('category_id',catArr[0].id);
+    if(lvlRow) q2=q2.eq('level_id',lvlRow.id);
+    var {data:words}=await q2.limit(30);
+    if(!words||!words.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak słów</div>';return;}
+    window._strefaWords=words;
+    window._strefaIdx=0;
+    // Render kontekstowa card view inside strefa-center-content
+    renderStrefaKontekstowaCard(words[0], langCode, lvl, 0, words.length, catLabel, langLabel, flag, lvl, catCode);
+  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
+function renderStrefaKontekstowaCard(word, langCode, lvl, idx, total, catLabel, langLabel, flag, level, catCode){
+  var center=document.getElementById('strefa-center-content');
+  if(!center) return;
+  // Build card UI
+  var wrap=document.createElement('div');
+  wrap.style.cssText='max-width:700px';
+  // Header
+  var hdr=document.createElement('div');
+  hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:20px';
+  hdr.innerHTML='<div style="font-size:14px;color:var(--dim2)">'+flag+' '+catLabel+' · <strong style="color:var(--navy)">'+word.word+'</strong></div>'
+    +'<div style="font-size:13px;color:var(--dim2)">'+(idx+1)+' / '+total+'</div>';
+  wrap.appendChild(hdr);
+  // Word card
+  var wordCard=document.createElement('div');
+  wordCard.style.cssText='background:var(--navy);border-radius:20px;padding:28px;margin-bottom:16px;text-align:center';
+  wordCard.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:40px;font-weight:700;color:#fff;margin-bottom:8px">'+word.word+'</div>'
+    +'<div style="font-size:18px;color:var(--orange);font-weight:600">'+word.translation+'</div>';
+  wrap.appendChild(wordCard);
+  // AI sentence area
+  var sentBox=document.createElement('div');
+  sentBox.id='kontekstowa-sent-box';
+  sentBox.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;min-height:80px';
+  sentBox.innerHTML='<div style="font-size:12px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📖 Zdanie kontekstowe</div>'
+    +'<div id="kontekstowa-sent-text" style="font-size:16px;color:var(--navy);line-height:1.7">⏳ Generuję zdanie...</div>'
+    +'<div id="kontekstowa-sent-tr" style="font-size:13px;color:var(--dim2);margin-top:8px;font-style:italic"></div>'
+    +'<button onclick="playSentenceAudio()" style="margin-top:10px;background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:5px 14px;font-size:12px;cursor:pointer;color:var(--dim)">🔊 Wymowa</button>';
+  wrap.appendChild(sentBox);
+  // Playphrase embed
+  var vidBox=document.createElement('div');
+  vidBox.id='kontekstowa-vid-box';
+  vidBox.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px';
+  vidBox.innerHTML='<div style="font-size:12px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;padding:14px 16px 0">🎬 Użycie w filmach — Playphrase.me</div>'
+    +'<div id="kontekstowa-playphrase" style="padding:14px 16px">'
+    +'<iframe id="kontekstowa-iframe" src="https://playphrase.me/phrase/'+encodeURIComponent(word.word)+'" style="width:100%;height:280px;border:none;border-radius:10px" loading="lazy"></iframe>'
+    +'</div>';
+  wrap.appendChild(vidBox);
+  // Nav buttons
+  var navRow=document.createElement('div');
+  navRow.style.cssText='display:flex;gap:10px;justify-content:space-between';
+  if(idx>0){
+    var prevBtn=document.createElement('button');
+    prevBtn.style.cssText='padding:10px 20px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;font-size:13px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
+    prevBtn.textContent='← Poprzednie';
+    prevBtn.onclick=function(){
+      window._strefaIdx--;
+      renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode);
+    };
+    navRow.appendChild(prevBtn);
+  }
+  var nextBtn=document.createElement('button');
+  nextBtn.style.cssText='padding:10px 24px;border-radius:100px;background:var(--navy);color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;margin-left:auto';
+  nextBtn.textContent=idx>=total-1?'Zakończ ✓':'Następne →';
+  nextBtn.onclick=function(){
+    if(idx>=total-1){
+      strefaKontekstowaCategories(langCode,langLabel,flag,level);
+    } else {
+      window._strefaIdx++;
+      renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode);
+    }
+  };
+  navRow.appendChild(nextBtn);
+  wrap.appendChild(navRow);
+  center.innerHTML='';center.appendChild(wrap);
+  // Load AI sentence
+  loadKontekstowaSentence(word.word, word.translation, langCode, lvl);
+}
+
+async function loadKontekstowaSentence(word, translation, lang, level){
+  var textEl=document.getElementById('kontekstowa-sent-text');
+  var trEl=document.getElementById('kontekstowa-sent-tr');
+  try{
+    // Check cache
+    var {data:cached}=await db.from('context_sentences').select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).limit(1);
+    var c=Array.isArray(cached)?cached[0]:cached;
+    if(c&&c.sentence){
+      if(textEl) textEl.innerHTML=c.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+      if(trEl) trEl.textContent=c.translation;
+      window._currentSentence=c.sentence.replace(/\*\*/g,'');
+      window._currentLang={en:'en-US',es:'es-ES',jp:'ja-JP',nl:'nl-NL'}[lang]||'en-US';
+      return;
+    }
+    // Generate via AI proxy
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
+    var res=await fetch(AI_PROXY_URL,{method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:'Write ONE simple '+langNames[lang]+' sentence (level '+level+') using the word "'+word+'" (meaning: '+translation+'). Bold the target word with **word**. Then on a new line write: PL: [Polish translation of the sentence]. Keep it short.'}],max_tokens:100})
+    });
+    var d=await res.json();
+    var raw=(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim();
+    var plMatch=raw.match(/PL:\s*(.+)/); 
+    var sentence=raw.replace(/PL:.*/,'').trim();
+    var plTr=plMatch?plMatch[1].trim():'';
+    if(textEl) textEl.innerHTML=sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+    if(trEl) trEl.textContent=plTr;
+    window._currentSentence=sentence.replace(/\*\*/g,'');
+    window._currentLang={en:'en-US',es:'es-ES',jp:'ja-JP',nl:'nl-NL'}[lang]||'en-US';
+    // Cache
+    try{await db.from('context_sentences').upsert({word,language:lang,level,sentence,translation:plTr},{onConflict:'word,language,level'});}catch(e){}
+  }catch(e){
+    if(textEl) textEl.textContent='Nie udało się wygenerować zdania.';
+  }
+}
+
+function playSentenceAudio(){
+  if(!window._currentSentence||!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  var u=new SpeechSynthesisUtterance(window._currentSentence);
+  u.lang=window._currentLang||'en-US'; u.rate=0.85;
+  var voices=speechSynthesis.getVoices();
+  var pref=voices.find(function(v){return v.lang===u.lang&&v.name.includes('Google');})||voices.find(function(v){return v.lang.startsWith(u.lang.split('-')[0]);});
+  if(pref) u.voice=pref;
+  speechSynthesis.speak(u);
 }
 
 function updateChallengeMode(on){var sl=document.getElementById('tryb-toggle-slider');var kn=document.getElementById('tryb-toggle-knob');if(sl)sl.style.background=on?'var(--orange)':'rgba(255,255,255,.2)';if(kn)kn.style.left=on?'25px':'3px';}
@@ -9162,7 +8932,12 @@ async function strefaLoadSidebarLangs(){
     btn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
     btn.onclick = (function(lc,ll,lf){ return function(){
       setBreadcrumb('Kontekstowa Nauka → '+lf+' '+ll);
-      strefaShowEyelingoLevels(lc,ll,lf);
+      // Kontekstowa uses old strefa system (AI sentences + playphrase)
+      window._strefaLang = lc;
+      var center = document.getElementById('strefa-center-content');
+      if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie poziomów...</div>';
+      // Show levels for kontekstowa
+      strefaKontekstowaLevels(lc, ll, lf);
     }; })(l.code,l.label,l.flag);
     container.appendChild(btn);
   });
