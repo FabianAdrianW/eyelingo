@@ -1415,7 +1415,7 @@ function showPage(name){
   if(name==='challenge'){showPage('daily');setTimeout(function(){dailyShowTab('challenge');},50);return false;}
   if(name==='chat'){showPage('teacher');setTimeout(function(){teacherShowTab('chat');},50);return false;}
   if(name==='lyrics'){showPage('odkryj');setTimeout(function(){odkryjShowTab('lyrics');},50);return false;}
-  if(name==='tryb'){showPage('strefa');setTimeout(function(){strefaShowTab('tryb');},50);return false;}
+  if(name==='tryb'){ /* page-tryb handles itself */ }
   loadNotifications();
   setActiveTab(name);
   return false;
@@ -7261,7 +7261,7 @@ function openCollectionView(colIdx){
   var createBtn = document.getElementById('mat-create-btn');
 
   if(title) title.textContent = col.name;
-  if(sub) sub.textContent = (col.sets&&col.sets.length ? col.sets.length : 0) + ' zestawów';
+  if(sub) sub.textContent = (col.sets&&col.sets.length||0) + ' zestawów';
   if(grid) grid.style.display = 'none';
   if(createBtn) createBtn.style.display = 'none';
   if(colView) colView.style.display = 'block';
@@ -7278,23 +7278,25 @@ function openCollectionView(colIdx){
     var setIds = (col.sets||[]).map(function(s){ return s.id; });
     if(!setIds.length){ colSets.innerHTML = '<div class="mat-empty">Brak zestawów</div>'; return; }
     var {data:sets} = await db.from('user_sets')
-      .select('id,name,likes_count,is_public,user_set_cards(id,word,translation)')
+      .select('id,name,likes_count,user_id,is_public,user_set_cards(id,word,translation)')
       .in('id', setIds);
     colSets.innerHTML = '';
     if(!sets||!sets.length){ colSets.innerHTML = '<div class="mat-empty">Nie znaleziono zestawów</div>'; return; }
+    
+    // Add to _matSets so openSet() can find them
     sets.forEach(function(s){
-      // Use same setCard render as "Moje materiały"
-      var wrapper = document.createElement('div');
-      if(typeof setCard === 'function'){
-        wrapper.innerHTML = setCard(s);
-      } else {
-        wrapper.innerHTML = '<div class="mat-card"><div class="mat-card-name">'+s.name+'</div><div class="mat-card-count">'+(s.user_set_cards?s.user_set_cards.length:0)+' fiszek</div></div>';
+      if(!_matSets.find(function(x){ return x.id===s.id; })){
+        _matSets.push(s);
       }
-      var card = wrapper.firstElementChild;
-      // Remove "Usuń z katalogu" button - user only wants Edit/Delete from setCard
-      // The card already has Edit/Delete from setCard() - that's correct
-      // Add "Ucz się" button from mat sets if not present
-      if(card) colSets.appendChild(card);
+    });
+    
+    sets.forEach(function(s){
+      if(typeof setCard === 'function'){
+        var wrapper = document.createElement('div');
+        wrapper.innerHTML = setCard(s);
+        var card = wrapper.firstElementChild;
+        if(card) colSets.appendChild(card);
+      }
     });
   })();
 }
