@@ -6673,13 +6673,35 @@ function trybFlipReveal(backText){
 
   var answerSide = document.getElementById('tryb-a-side');
   if(answerSide){
-    var nav = document.createElement('div');
-    nav.id = 'tryb-flip-nav';
-    nav.style.cssText = 'display:flex;gap:10px;margin-top:16px';
-    nav.innerHTML = (_trybIdx > 0 ? '<button onclick="trybFlipPrev()" style="padding:10px 20px;border:1.5px solid var(--border2);border-radius:100px;background:#fff;font-size:13px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif">← Poprzednia</button>' : '')
-      + '<button onclick="trybFlipNext(true)" style="padding:10px 24px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:13px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">'
-      + (_trybIdx >= _trybCards.length-1 ? 'Zakończ ✓' : 'Następna →') + '</button>';
-    answerSide.appendChild(nav);
+    // Show SRS rating buttons
+    var rateWrap = document.createElement('div');
+    rateWrap.id = 'tryb-flip-nav';
+    rateWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:16px;width:100%';
+    var rateLabel = document.createElement('div');
+    rateLabel.style.cssText = 'font-size:11px;color:var(--dim2)';
+    rateLabel.textContent = 'Jak dobrze znałeś to słowo?';
+    rateWrap.appendChild(rateLabel);
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
+    [{q:1,l:'Nie wiedziałem',bg:'#fcebeb',c:'#a32d2d'},{q:2,l:'Prawie',bg:'#fef3c7',c:'#92400e'},{q:3,l:'Wiedziałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Bardzo łatwe',bg:'#e0f2fe',c:'#0369a1'}].forEach(function(opt){
+      var b = document.createElement('button');
+      b.style.cssText = 'padding:8px 14px;border-radius:10px;border:none;background:'+opt.bg+';color:'+opt.c+';font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif';
+      b.textContent = opt.l;
+      b.onclick = function(){
+        rateCard(opt.q);
+        var nav2 = document.getElementById('tryb-flip-nav'); if(nav2) nav2.remove();
+      };
+      btnRow.appendChild(b);
+    });
+    rateWrap.appendChild(btnRow);
+    if(_trybIdx > 0){
+      var prevBtn = document.createElement('button');
+      prevBtn.style.cssText = 'padding:6px 14px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif';
+      prevBtn.textContent = '← Poprzednia';
+      prevBtn.onclick = trybFlipPrev;
+      rateWrap.appendChild(prevBtn);
+    }
+    answerSide.appendChild(rateWrap);
   }
 }
 
@@ -6754,6 +6776,11 @@ function loadTrybMCCard(){
             if(b.textContent === correctAnswer){ b.style.background='#eaf3de'; b.style.borderColor='#639922'; b.style.color='#3b6d11'; }
           });
         }
+        _trybSessionStats.total++;
+        // Re-queue wrong card at position +3
+        var wrongCard = _trybCards[_trybIdx];
+        var reinsertAt = Math.min(_trybIdx + 3, _trybCards.length);
+        _trybCards.splice(reinsertAt, 0, wrongCard);
         _trybSessionStats.total++;
         setTimeout(function(){ _trybIdx++; loadTrybMCCard(); }, 900);
       };
@@ -7193,7 +7220,8 @@ async function showTrybEyelingoSets(){
                 try{
                   var sess = (await db.auth.getSession()).data.session;
                   if(!sess) return;
-                  var catId = catObj.id; // always use integer id
+                  var catId = catObj.id || catObj.category_id;
+                  if(!catId){ return; } // skip if no valid id
                   var {data: catCards} = await db.from('flashcards').select('id').eq('category_id', catId).limit(500);
                   if(!catCards || catCards.length < 3) return;
                   var catIdSet = catCards.map(function(c){ return c.id; });
@@ -7366,17 +7394,23 @@ function injectTrybPage(){
     +'<h2 style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:var(--navy);margin-bottom:4px">📚 Tryb Nauki</h2>'
     +'<p style="color:var(--dim2);font-size:13px">Spaced repetition · Active recall · SM-2</p></div>'
     // Mode selection
-    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:24px">'
-    +'<div onclick="startSession(\'due\')" style="background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center" onmouseover="this.style.borderColor=\'var(--orange)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'none\'">'
-    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--navy);margin-bottom:6px">Powtórki na dziś</div>'
-    +'<div style="font-size:12px;color:var(--dim2);line-height:1.4">Algorytm SM-2<br>wybrał słowa dla Ciebie</div></div>'
-    +'<div onclick="showTrybSetPicker()" style="background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center" onmouseover="this.style.borderColor=\'var(--orange)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'none\'">'
-    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--navy);margin-bottom:6px">Moje zestawy</div>'
-    +'<div style="font-size:12px;color:var(--dim2);line-height:1.4">Ucz się ze<br>swoich zestawów</div></div>'
-    +'<div onclick="showTrybEyelingoSets()" style="background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px 16px;cursor:pointer;transition:all .2s;text-align:center" onmouseover="this.style.borderColor=\'var(--orange)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'none\'">'
-    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--navy);margin-bottom:6px">Zestawy Eyelingo</div>'
-    +'<div style="font-size:12px;color:var(--dim2);line-height:1.4">Fiszki z<br>programu językowego</div></div>'
+    +'<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">'
+    +'<div onclick="startSession(\'due\')" style="background:linear-gradient(135deg,var(--orange),#e07020);border-radius:14px;padding:18px 22px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.opacity=\'0.92\';this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.opacity=\'1\';this.style.transform=\'none\'">'
+    +'<div><div style="font-family:Syne,sans-serif;font-size:17px;font-weight:800;color:#fff;margin-bottom:2px">Powtórki na dziś</div>'
+    +'<div style="font-size:12px;color:rgba(255,255,255,.8)">Algorytm SM-2 wybrał słowa dla Ciebie</div></div>'
+    +'<div style="background:rgba(255,255,255,.25);border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🔁</div></div>'
+    +'<div onclick="showTrybSetPicker()" style="background:#fff;border:2px solid var(--navy);border-radius:14px;padding:14px 20px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.background=\'var(--navy)\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'#fff\';this.style.color=\'\'">'
+    +'<div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:var(--navy);margin-bottom:2px">Moje zestawy</div>'
+    +'<div style="font-size:12px;color:var(--dim2)">Ucz się ze swoich zestawów</div></div>'
+    +'<span style="font-size:18px">📋</span></div>'
+    +'<div onclick="showTrybEyelingoSets()" style="background:var(--paper);border:1.5px solid var(--border);border-radius:14px;padding:14px 20px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'" >'
+    +'<div><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:var(--navy);margin-bottom:2px">Zestawy Eyelingo</div>'
+    +'<div style="font-size:12px;color:var(--dim2)">Fiszki z programu językowego</div></div>'
+    +'<span style="font-size:18px">🌍</span></div>'
     +'</div>'
+    +'<div id="tryb-set-picker" style="display:none;background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;margin-top:16px">'
+    +'<div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:12px">Wybierz zestaw:</div>'
+    +'<div id="tryb-set-list" style="max-height:320px;overflow-y:auto"></div></div>'
     +'</div>'
     +'<div style="width:180px;flex-shrink:0;display:flex;flex-direction:column;gap:10px">'
     +'<div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:16px;text-align:center">'
@@ -7397,10 +7431,7 @@ function injectTrybPage(){
     +'<div style="font-size:11px;color:var(--dim2);margin-top:2px">do nauki</div></div>'
     +'</div>'
     +'</div>'
-    // Set picker
-    +'<div id="tryb-set-picker" style="display:none;background:#fff;border:1.5px solid var(--border);border-radius:20px;padding:20px;margin-bottom:24px">'
-    +'<div style="font-weight:700;font-size:15px;color:var(--navy);margin-bottom:14px">Wybierz zestaw:</div>'
-    +'<div id="tryb-set-list" style="max-height:280px;overflow-y:auto"></div></div>'
+
     // Badges
     +'<div style="background:#fff;border:1.5px solid var(--border);border-radius:20px;padding:20px">'
     +'<div style="font-size:13px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px">🎖️ Odznaki</div>'
@@ -7424,7 +7455,7 @@ function injectTrybPage(){
     +'<div id="tryb-card-example" style="font-size:13px;color:rgba(255,255,255,.6);font-style:italic;max-width:400px;line-height:1.6;margin-bottom:20px"></div>'
     +'<div style="display:flex;gap:8px;width:100%;max-width:380px">'
     +'<input id="tryb-answer-input" type="text" class="fi" placeholder="Wpisz tłumaczenie..." style="flex:1;font-size:15px;text-align:center;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.25);color:#fff" onkeydown="if(event.key===\'Enter\')checkAnswer()">'
-    +'<button onclick="checkAnswer()" class="btn btn-orange" style="padding:10px 18px">→</button></div>'
+    +'<button onclick="checkAnswer()" style="width:44px;height:44px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0">→</button></div>'
     +'<div style="display:flex;gap:8px;margin-top:12px;justify-content:center">'
     +'<button id="tryb-hint-btn" onclick="showTrybHint()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:100px;padding:5px 14px;font-size:12px;color:rgba(255,255,255,.7);cursor:pointer">💡 Podpowiedź (<span id="tryb-hint-level">3</span>)</button>'
     +'<button onclick="dontKnow()" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:5px 14px;font-size:12px;color:var(--dim2);cursor:pointer">🚫 Nie pamiętam</button></div>'
@@ -7470,7 +7501,7 @@ function injectTrybPage(){
     +'<div style="font-size:13px;opacity:.85" id="tryb-new-badge-desc"></div></div>'
     +'<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
     +'<button onclick="initTrybNauki()" class="btn btn-orange btn-lg">🔁 Nowa sesja</button>'
-    +'<button onclick="showPage(\'community\')" class="btn btn-navy">← Materiały</button>'
+    +'<button onclick="initTrybNauki()" class="btn btn-navy">← Strefa Nauki</button>'
     +'</div></div>'
     +'</div>';
   document.body.appendChild(div);
