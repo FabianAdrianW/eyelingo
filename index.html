@@ -7260,54 +7260,45 @@ function openCollectionView(colIdx){
   var colSets = document.getElementById('mat-collection-sets');
   var createBtn = document.getElementById('mat-create-btn');
 
-  if(title) title.textContent = (col.icon||'📁') + ' ' + col.name;
-  if(sub) sub.textContent = (col.sets&&col.sets.length ? col.sets.length + ' zestawów' : 'Pusty katalog');
-  if(grid) grid.style.display='none';
-  if(createBtn) createBtn.style.display='none';
-  if(colView) colView.style.display='block';
+  if(title) title.textContent = col.name;
+  if(sub) sub.textContent = (col.sets&&col.sets.length ? col.sets.length : 0) + ' zestawów';
+  if(grid) grid.style.display = 'none';
+  if(createBtn) createBtn.style.display = 'none';
+  if(colView) colView.style.display = 'block';
   if(!colSets) return;
 
   if(!col.sets||!col.sets.length){
-    colSets.innerHTML = '<div class="mat-empty">Ten katalog jest pusty. Przenieś tutaj zestawy z "Moje materiały".</div>';
+    colSets.innerHTML = '<div class="mat-empty">Ten katalog jest pusty.<br>Przenieś tu zestawy z "Moje materiały".</div>';
     return;
   }
 
   colSets.innerHTML = '<div class="mat-empty">Ładowanie zestawów...</div>';
 
-  // Load the actual set data for each set id in collection
   (async function(){
     var setIds = (col.sets||[]).map(function(s){ return s.id; });
     if(!setIds.length){ colSets.innerHTML = '<div class="mat-empty">Brak zestawów</div>'; return; }
     var {data:sets} = await db.from('user_sets')
-      .select('id,name,likes_count,is_public,user_set_cards(id)')
+      .select('id,name,likes_count,is_public,user_set_cards(id,word,translation)')
       .in('id', setIds);
     colSets.innerHTML = '';
     if(!sets||!sets.length){ colSets.innerHTML = '<div class="mat-empty">Nie znaleziono zestawów</div>'; return; }
     sets.forEach(function(s){
-      var div = document.createElement('div');
-      div.innerHTML = (typeof setCard === 'function') ? setCard(s) : '<div class="mat-card"><div class="mat-card-name">' + s.name + '</div></div>';
-      var card = div.firstElementChild;
-      // Add "Remove from collection" button
-      var actions = card ? card.querySelector('.mat-card-actions') : null;
-      if(actions){
-        // "Usuń z katalogu" with confirm removed per user request
-      var rmBtn = document.createElement('button');
-        rmBtn.style.cssText = 'background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
-        rmBtn.textContent = '× Usuń z katalogu';
-        rmBtn.onclick = async function(e){
-          e.stopPropagation();
-          var sess2=(await db.auth.getSession()).data.session; if(!sess2)return;
-          _collections[colIdx].sets=(_collections[colIdx].sets||[]).filter(function(x){return x.id!==s.id;});
-          saveCollections(sess2.user.id);
-          openCollectionView(colIdx);
-          loadCollections();
-        };
-        actions.appendChild(rmBtn);
+      // Use same setCard render as "Moje materiały"
+      var wrapper = document.createElement('div');
+      if(typeof setCard === 'function'){
+        wrapper.innerHTML = setCard(s);
+      } else {
+        wrapper.innerHTML = '<div class="mat-card"><div class="mat-card-name">'+s.name+'</div><div class="mat-card-count">'+(s.user_set_cards?s.user_set_cards.length:0)+' fiszek</div></div>';
       }
+      var card = wrapper.firstElementChild;
+      // Remove "Usuń z katalogu" button - user only wants Edit/Delete from setCard
+      // The card already has Edit/Delete from setCard() - that's correct
+      // Add "Ucz się" button from mat sets if not present
       if(card) colSets.appendChild(card);
     });
   })();
 }
+
 
 function buildMatCard(s, inCollection, colIdx){
   var card = document.createElement('div');
@@ -9139,8 +9130,7 @@ async function strefaSidebarSelect(type){
         showPage('tryb');
         setTimeout(function(){
           startSession('set_external');
-          setTimeout(function(){ startTrybMode('flip'); }, 400);
-        }, 200);
+        }, 300);
       });
     }catch(e){
       strefaShowCenter('<div style="color:#c33;padding:20px">Błąd: ' + e.message + '</div>');
@@ -9198,10 +9188,10 @@ async function strefaSelectUserSet(setId, setNameEnc){
       _trybExternalName = setName;
       RewardSystem.load();
       showPage('tryb');
+      // Wait for page-tryb to render then show mode picker
       setTimeout(function(){
         startSession('set_external');
-        setTimeout(function(){ startTrybMode('flip'); }, 400);
-      }, 200);
+      }, 300);
     });
   }catch(e){}
 }
@@ -9356,8 +9346,7 @@ async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catI
       showPage('tryb');
       setTimeout(function(){
         startSession('set_external');
-        setTimeout(function(){ startTrybMode('flip'); }, 400);
-      }, 200);
+      }, 300);
     });
   }catch(e){ if(center) center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>'; }
 }
@@ -9526,12 +9515,16 @@ async function initStrefa(){
   const levels=p?.levels_bought||[];
   const isPremium=p?.is_premium&&p?.premium_until&&new Date(p.premium_until)>new Date();
   if(!isPremium&&!levels.length){
-    document.getElementById('strefa-access-msg').style.display='block';
-    document.getElementById('strefa-main').style.display='none';
+    var accessMsg=document.getElementById('strefa-access-msg');
+    var mainEl=document.getElementById('strefa-main');
+    if(accessMsg) accessMsg.style.display='block';
+    if(mainEl) mainEl.style.display='none';
     return;
   }
-  document.getElementById('strefa-access-msg').style.display='none';
-  document.getElementById('strefa-main').style.display='block';
+  var accessMsg2=document.getElementById('strefa-access-msg');
+  var mainEl2=document.getElementById('strefa-main');
+  if(accessMsg2) accessMsg2.style.display='none';
+  if(mainEl2) mainEl2.style.display='block';
   _strefaLevels=levels;
   showStrefaLangs(isPremium);
 }
