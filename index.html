@@ -539,7 +539,7 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 /* ═══ FISZKA 3D FLIP ═══ */
 .tryb-card-scene{perspective:900px;width:100%}
 .tryb-card-flipper{position:relative;width:100%;min-height:300px;transition:transform .55s cubic-bezier(.4,0,.2,1);transform-style:preserve-3d}
-.tryb-card-flipper.flipped{transform:rotateY(180deg)}
+.tryb-card-flipper.flipped{transform:rotateY(-180deg)}
 .tryb-card-front,.tryb-card-back{position:absolute;width:100%;min-height:300px;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;box-sizing:border-box;text-align:center}
 .tryb-card-front{background:var(--navy);color:#fff;cursor:pointer;box-shadow:0 16px 48px rgba(26,35,64,.3),0 4px 12px rgba(26,35,64,.15);transition:box-shadow .2s}
 .tryb-card-back{background:#fff;color:var(--navy);transform:rotateY(180deg);border:2px solid var(--border);box-shadow:0 16px 48px rgba(26,35,64,.1)}
@@ -2069,11 +2069,11 @@ async function loadRanking(){
 </script>
 
 <!-- ═══ COMMUNITY PAGE ═══ -->
-<div id="page-community" class="page" style="min-height:100vh;padding:110px 0 80px;background:var(--paper)">
+<div id="page-community" class="page" style="min-height:100vh;padding:0;background:var(--paper)">
   <div style="display:flex;gap:0;align-items:flex-start;width:100%">
 
     <!-- LEFT SIDEBAR: Katalogi -->
-    <div id="mat-sidebar" style="width:300px;flex-shrink:0;padding:28px 0 28px 20px;align-self:stretch;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12)">
+    <div id="mat-sidebar" style="width:300px;flex-shrink:0;padding:110px 0 80px 20px;min-height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12)">
       <!-- Katalogi -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:800;color:var(--navy)">Katalogi</div>
@@ -2085,7 +2085,7 @@ async function loadRanking(){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div style="flex:1;min-width:0;padding:24px 32px;max-width:calc(100% - 600px)">
+    <div style="flex:1;min-width:0;padding:110px 32px 80px;max-width:calc(100% - 600px)">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -2121,6 +2121,10 @@ async function loadRanking(){
 
       <!-- Collection view (inside a collection) -->
       <div id="mat-collection-view" style="display:none">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+          <input id="mat-col-search" class="fi" placeholder="🔍 Szukaj zestawów..." style="flex:1;min-width:180px;font-size:13px" oninput="filterCollectionSets(this.value)">
+          <button onclick="openCreateSetInCollection()" class="btn btn-orange" style="font-size:13px;padding:8px 16px;white-space:nowrap">+ Nowy zestaw</button>
+        </div>
         <div id="mat-collection-sets" class="mat-grid"><div class="mat-empty">Brak zestawów w tym katalogu</div></div>
       </div>
     </div>
@@ -2503,11 +2507,11 @@ async function initToFixPage(){
 }
 </script>
 <!-- ═══ STREFA NAUKI ═══ -->
-<div id="page-strefa" class="page" style="min-height:100vh;padding:110px 0 80px;background:var(--paper)">
-  <div style="display:flex;width:100%;align-items:stretch;min-height:calc(100vh - 110px)">
+<div id="page-strefa" class="page" style="min-height:100vh;padding:0;background:var(--paper)">
+  <div style="display:flex;width:100%;align-items:stretch;min-height:100vh">
 
     <!-- LEFT SIDEBAR -->
-    <div id="strefa-sidebar" style="width:300px;flex-shrink:0;padding:28px 0 28px 20px;align-self:stretch;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12)">
+    <div id="strefa-sidebar" style="width:300px;flex-shrink:0;padding:110px 0 80px 20px;min-height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12)">
 
       <!-- Mode switcher header -->
       <div style="display:flex;gap:4px;margin-bottom:20px;background:rgba(26,35,64,.07);border-radius:12px;padding:4px">
@@ -2538,7 +2542,7 @@ async function initToFixPage(){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div id="strefa-main-col" style="flex:1;min-width:0;padding:28px 32px">
+    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px">
       <!-- Breadcrumb -->
       <div id="strefa-breadcrumb-bar" style="font-size:12px;color:var(--dim2);margin-bottom:16px;min-height:18px"></div>
 
@@ -6908,64 +6912,65 @@ function loadTrybMemorizeMCPhase(){
   var card = _trybCards[_trybIdx];
   if(!card){ showTrybSessionSummary(); return; }
 
-  var qs = document.getElementById('tryb-q-side');
-  var as = document.getElementById('tryb-a-side');
-  if(qs){ qs.style.display='flex'; qs.style.flexDirection='column'; qs.style.alignItems='center'; }
-  if(as) as.style.display = 'none';
+  // Reset to front using 3D (NEVER touch display on front/back faces)
+  var flipper = document.getElementById('tryb-card-flipper');
+  if(flipper) flipper.classList.remove('flipped');
+  var oldNav = document.getElementById('tryb-flip-nav'); if(oldNav) oldNav.remove();
+  var oldMC = document.getElementById('tryb-mc-options'); if(oldMC) oldMC.remove();
 
-  var frontText = _trybCardDirection==='foreign' ? (card.word||'') : (card.translation||'');
-  var correctAnswer = _trybCardDirection==='foreign' ? (card.translation||'') : (card.word||'');
+  var writeZone = document.getElementById('tryb-write-zone');
+  if(writeZone) writeZone.style.display='none';
+  var flipHint = document.getElementById('tryb-flip-hint');
+  if(flipHint) flipHint.style.display='none';
 
-  var emoji = document.getElementById('tryb-card-emoji');
-  var word  = document.getElementById('tryb-card-word');
-  var example = document.getElementById('tryb-card-example');
-  if(emoji) emoji.textContent = card.emoji || '🧠';
-  if(word)  word.textContent = frontText;
-  if(example) example.textContent = '1/2 · Wybierz odpowiedź';
+  var frontText = _trybCardDirection==='foreign'?(card.word||''):(card.translation||'');
+  var correctAnswer = _trybCardDirection==='foreign'?(card.translation||''):(card.word||'');
 
-  var inp = document.getElementById('tryb-answer-input');
-  if(inp) inp.style.display = 'none';
-  var hintRow = document.getElementById('tryb-hint-row');
-  if(hintRow) hintRow.style.display = 'none';
+  var word = document.getElementById('tryb-card-word');
+  if(word) word.textContent = frontText;
 
-  var existing = document.getElementById('tryb-mc-options');
-  if(existing) existing.remove();
-
-  var otherCards = _trybCards.filter(function(c,i){ return i !== _trybIdx; });
-  var shuffled = otherCards.sort(function(){ return Math.random()-.5; }).slice(0,3);
-  var options = shuffled.map(function(c){ return _trybCardDirection==='foreign' ? (c.translation||'') : (c.word||''); });
-  options.push(correctAnswer);
-  options = options.sort(function(){ return Math.random()-.5; });
-
+  // Build MC options grid and inject into q-side (front face)
   var qside = document.getElementById('tryb-q-side');
   if(qside){
     var grid = document.createElement('div');
     grid.id = 'tryb-mc-options';
-    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%';
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%;max-width:420px';
+    var others = _trybCards.filter(function(c,idx){ return idx!==_trybIdx; })
+      .sort(function(){return Math.random()-.5;}).slice(0,3);
+    var options = others.map(function(c){ return _trybCardDirection==='foreign'?(c.translation||''):(c.word||''); });
+    options.push(correctAnswer);
+    options.sort(function(){return Math.random()-.5;});
     options.forEach(function(opt){
       var btn = document.createElement('button');
-      btn.style.cssText = 'padding:12px 14px;border:2px solid var(--border2);border-radius:12px;background:#fff;font-size:14px;color:var(--navy);cursor:pointer;text-align:center;font-family:DM Sans,sans-serif;transition:all .15s;line-height:1.3';
-      btn.textContent = opt;
-      btn.onmouseover = function(){ if(!btn.dataset.answered) btn.style.borderColor='var(--orange)'; };
-      btn.onmouseout = function(){ if(!btn.dataset.answered) btn.style.borderColor='var(--border2)'; };
-      btn.onclick = function(){
-        if(btn.dataset.answered) return;
-        var isCorrect = opt === correctAnswer;
-        grid.querySelectorAll('button').forEach(function(b){ b.dataset.answered='1'; b.disabled=true; b.onmouseover=null; });
-        if(isCorrect){
-          btn.style.background='#eaf3de'; btn.style.borderColor='#639922'; btn.style.color='#3b6d11';
-          setTimeout(function(){
-            var ex = document.getElementById('tryb-card-example');
-            if(ex) ex.textContent = '2/2 · Teraz wpisz tłumaczenie';
-            grid.remove();
-            loadTrybMemorizeWritePhase(card, correctAnswer, frontText);
-          }, 600);
+      btn.style.cssText='padding:12px 14px;border:2px solid rgba(255,255,255,.25);border-radius:12px;background:rgba(255,255,255,.1);color:#fff;font-size:14px;cursor:pointer;text-align:center;font-family:DM Sans,sans-serif;transition:all .15s';
+      btn.textContent=opt;
+      btn.onmouseover=function(){if(!btn.dataset.answered)btn.style.background='rgba(255,255,255,.2)';};
+      btn.onmouseout=function(){if(!btn.dataset.answered)btn.style.background='rgba(255,255,255,.1)';};
+      btn.onclick=function(){
+        if(btn.dataset.answered)return;
+        var isCorrect=opt===correctAnswer;
+        grid.querySelectorAll('button').forEach(function(b){
+          b.dataset.answered='1';b.disabled=true;
+          if(b.textContent===correctAnswer){b.style.background='#eaf3de';b.style.color='#3b6d11';b.style.borderColor='#639922';}
+        });
+        if(!isCorrect){
+          btn.style.background='#fcebeb';btn.style.color='#a32d2d';btn.style.borderColor='#e24b4a';
+          _trybSessionStats.total++;
+          var wc=_trybCards[_trybIdx];
+          _trybCards.splice(Math.min(_trybIdx+3,_trybCards.length),0,wc);
+          var cont=document.createElement('div');
+          cont.style.cssText='margin-top:8px;font-size:12px;color:rgba(255,255,255,.6);text-align:center';
+          cont.textContent='Kliknij kartę aby kontynuować';
+          grid.appendChild(cont);
+          var fc=document.getElementById('tryb-card');
+          if(fc){fc.style.cursor='pointer';fc.onclick=function(){fc.onclick=null;_trybIdx++;loadTrybMemorizeCard();};}
         } else {
-          btn.style.background='#fcebeb'; btn.style.borderColor='#e24b4a'; btn.style.color='#a32d2d';
-          grid.querySelectorAll('button').forEach(function(b){
-            if(b.textContent === correctAnswer){ b.style.background='#eaf3de'; b.style.borderColor='#639922'; b.style.color='#3b6d11'; }
-          });
-          setTimeout(function(){ _trybIdx++; loadTrybMemorizeCard(); }, 900);
+          _trybSessionStats.correct++;_trybSessionStats.total++;_trybSessionStats.xpGained+=7;
+          setTimeout(function(){
+            // Phase 2: write mode
+            _trybMemPhase='write';
+            loadTrybMemorizeWritePhase(card,correctAnswer);
+          },600);
         }
       };
       grid.appendChild(btn);
@@ -6973,32 +6978,23 @@ function loadTrybMemorizeMCPhase(){
     qside.appendChild(grid);
   }
 
-  var num = document.getElementById('tryb-card-num');
-  var prog = document.getElementById('tryb-progress-bar');
-  if(num) num.textContent = _trybIdx+1;
-  if(prog) prog.style.width = Math.round(_trybIdx/_trybCards.length*100) + '%';
+  var num=document.getElementById('tryb-card-num');
+  var prog=document.getElementById('tryb-progress-bar');
+  if(num)num.textContent=_trybIdx+1;
+  if(prog)prog.style.width=Math.round(_trybIdx/_trybCards.length*100)+'%';
+  document.onkeydown=null;
 }
 
-function loadTrybMemorizeWritePhase(card, correctAnswer, frontText){
-  // Show input for writing
-  var inp = document.getElementById('tryb-answer-input');
-  if(inp){ inp.style.display='block'; inp.value=''; inp.placeholder='Wpisz: ' + correctAnswer.slice(0,1) + '...'; inp.focus(); }
 
-  var hintRow = document.getElementById('tryb-hint-row');
-  if(hintRow) hintRow.style.display = 'flex';
-
-  // Override checkAnswer to go to next memorize card
-  document.onkeydown = function(e){
-    if(e.key === 'Enter'){
-      e.preventDefault();
-      var val = (inp ? inp.value : '').trim().toLowerCase();
-      var correct = correctAnswer.toLowerCase();
-      var ok = val === correct || correct.includes(val) || val.includes(correct) || levenshteinDist(val,correct) <= 2;
-      revealTrybAnswer(val, ok, levenshteinDist(val,correct)<=2&&val!==correct);
-      setTimeout(function(){ _trybIdx++; loadTrybMemorizeCard(); }, 1200);
-    }
-  };
+function loadTrybMemorizeWritePhase(card, correctAnswer){
+  // Clear MC options, show write zone
+  var oldMC=document.getElementById('tryb-mc-options'); if(oldMC) oldMC.remove();
+  var writeZone=document.getElementById('tryb-write-zone');
+  if(writeZone) writeZone.style.display='block';
+  var inp=document.getElementById('tryb-answer-input');
+  if(inp){inp.value='';setTimeout(function(){inp.focus();},100);}
 }
+
 
 function loadTrybCard(){
   var card=_trybCards[_trybIdx];
@@ -7084,25 +7080,59 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
   var flipper=document.getElementById('tryb-card-flipper');
   if(flipper) flipper.classList.add('flipped');
 
-  // Update back face
+  // Update back face content
   var wordAns=document.getElementById('tryb-card-word-ans');
   var cardAns=document.getElementById('tryb-card-answer');
   var resIcon=document.getElementById('tryb-result-icon');
   var userWrote=document.getElementById('tryb-user-wrote');
-  if(wordAns) wordAns.textContent=card ? (card.word||'') : '';
-  if(cardAns) cardAns.textContent=card ? (card.translation||'') : '';
-  if(resIcon) resIcon.textContent=isCorrect?(isTypo?'⚠️ Literówka':'✅ Poprawnie'):'❌ Błędna odpowiedź';
-  if(userWrote) userWrote.textContent=(!userAns?'Nie wpisałeś odpowiedzi':isTypo?'Twoja odpowiedź: "'+userAns+'" — literówka':'Twoja odpowiedź: "'+userAns+'"');
+  if(wordAns) wordAns.textContent=card?(card.word||''):'';
+  if(cardAns) cardAns.textContent=card?(card.translation||''):'';
+  if(resIcon) resIcon.textContent=isCorrect?(isTypo?'⚠️ Literówka':'✅ Poprawnie'):'❌ Błędna';
+  if(userWrote) userWrote.textContent=!userAns?'Nie wpisałeś odpowiedzi':(isTypo?'Twoja: "'+userAns+'" — literówka':'Twoja: "'+userAns+'"');
 
-  // Show SRS rate row
-
-
-  if(isTypo){document.querySelectorAll('.tryb-rate-btn').forEach(function(b){if(parseInt(b.dataset.q)>3)b.style.opacity='0.5';});}
+  // For write mode: add SRS buttons to back face (like flip mode does)
+  if(_trybMode==='write'||_trybMode==='memorize'){
+    var oldNav=document.getElementById('tryb-flip-nav'); if(oldNav) oldNav.remove();
+    var answerSide=document.getElementById('tryb-a-side');
+    if(answerSide){
+      var nav=document.createElement('div');
+      nav.id='tryb-flip-nav';
+      nav.style.cssText='display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:14px;width:100%';
+      var rateLabel=document.createElement('div');
+      rateLabel.style.cssText='font-size:11px;color:var(--dim2)';
+      rateLabel.textContent='Jak dobrze znałeś to słowo?';
+      nav.appendChild(rateLabel);
+      var btnRow=document.createElement('div');
+      btnRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
+      [{q:1,l:'Nie wiedziałem',bg:'#fcebeb',c:'#a32d2d'},{q:2,l:'Prawie',bg:'#fef3c7',c:'#92400e'},{q:3,l:'Wiedziałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Łatwe',bg:'#e0f2fe',c:'#0369a1'}].forEach(function(opt){
+        var b=document.createElement('button');
+        b.style.cssText='padding:10px 14px;border-radius:10px;border:none;background:'+opt.bg+';color:'+opt.c+';font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .15s';
+        b.dataset.q=opt.q;
+        b.textContent=opt.l;
+        b.onmousedown=function(){this.style.transform='scale(0.94)';};
+        b.onmouseup=function(){this.style.transform='scale(1)';};
+        b.onclick=function(){ rateCard(opt.q); nav.remove(); };
+        btnRow.appendChild(b);
+      });
+      nav.appendChild(btnRow);
+      answerSide.appendChild(nav);
+    }
+  }
 }
 
 
 async function rateCard(btnRating){
   var card=_trybCards[_trybIdx];if(!card)return;
+  // Visual feedback on clicked button
+  document.querySelectorAll('.tryb-rate-btn,[data-q]').forEach(function(b){
+    if(parseInt(b.dataset&&b.dataset.q)===btnRating){
+      b.style.transform='scale(0.92)';
+      b.style.boxShadow='0 0 0 3px rgba(26,35,64,.3)';
+      setTimeout(function(){ b.style.transform='scale(1)'; b.style.boxShadow='none'; },200);
+    } else {
+      b.style.opacity='0.4';
+    }
+  });
   var isTypo=document.getElementById('tryb-result-icon')&&document.getElementById('tryb-result-icon').textContent.includes('⚠️');
   var eff=isTypo?Math.min(btnRating,3):btnRating;
   var qMap={1:0,2:2,3:4,4:5};
@@ -7544,6 +7574,26 @@ async function addSetToCollection(colIdx, modalEl){
   modalEl.remove();
   openCollection(colIdx);
   if(typeof showToast==='function') showToast(chosen.name+' dodany!','success');
+}
+
+function openCreateSetInCollection(){
+  // Open the same create set modal used in "Moje materiały"
+  if(typeof openCreateSet === 'function'){
+    openCreateSet();
+    // After set is created, it will appear in "Moje materiały" 
+    // User can then move it to collection via "Przenieś" button
+    if(typeof showToast==='function') showToast('Po stworzeniu zestawu możesz go przenieść do katalogu przyciskiem "Przenieś"','');
+  }
+}
+
+function filterCollectionSets(query){
+  var cards = document.querySelectorAll('#mat-collection-sets .mat-card');
+  cards.forEach(function(card){
+    var name = card.querySelector('.mat-card-name');
+    if(!name){ card.style.display=''; return; }
+    var match = !query || name.textContent.toLowerCase().includes(query.toLowerCase());
+    card.style.display = match ? '' : 'none';
+  });
 }
 
 function updateChallengeMode(on){var sl=document.getElementById('tryb-toggle-slider');var kn=document.getElementById('tryb-toggle-knob');if(sl)sl.style.background=on?'var(--orange)':'rgba(255,255,255,.2)';if(kn)kn.style.left=on?'25px':'3px';}
@@ -9582,7 +9632,7 @@ async function initStrefa(){
   if(accessMsg2) accessMsg2.style.display='none';
   if(mainEl2) mainEl2.style.display='block';
   _strefaLevels=levels;
-  showStrefaLangs(isPremium);
+  // showStrefaLangs is only for old layout - new layout handled by strefaSidebarMode
 }
 
 function showStrefaLangs(isPremium){
