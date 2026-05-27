@@ -2068,16 +2068,11 @@ async function loadRanking(){
   <div style="display:flex;gap:0;align-items:flex-start;width:100%">
 
     <!-- LEFT SIDEBAR: Katalogi — flush to left edge -->
-    <div id="mat-sidebar" style="width:200px;flex-shrink:0;padding:24px 0 24px 16px;position:sticky;top:110px;max-height:calc(100vh - 130px);overflow-y:auto;border-right:1px solid var(--border)">
-      <!-- Quick nav -->
-      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)">
-        <button onclick="switchMatTab('mine')" style="width:100%;text-align:left;padding:8px 10px;border-radius:10px;border:none;background:transparent;font-size:13px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s" onmouseover="this.style.background='var(--paper2)'" onmouseout="this.style.background='transparent'">📂 Moje zestawy</button>
-        <button onclick="switchMatTab('community')" style="width:100%;text-align:left;padding:8px 10px;border-radius:10px;border:none;background:transparent;font-size:13px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s" onmouseover="this.style.background='var(--paper2)'" onmouseout="this.style.background='transparent'">🌐 Społeczność</button>
-      </div>
+    <div id="mat-sidebar" style="width:260px;flex-shrink:0;padding:28px 0 28px 20px;position:sticky;top:110px;max-height:calc(100vh - 130px);overflow-y:auto;border-right:1px solid var(--border)">
       <!-- Katalogi -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">📁 Katalogi</div>
-        <button onclick="openCreateCollection()" style="background:none;border:none;color:var(--orange);font-size:20px;cursor:pointer;line-height:1;padding:0" title="Nowy katalog">+</button>
+        <div style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;color:var(--navy)">Katalogi</div>
+        <button onclick="openCreateCollection()" style="background:var(--orange);border:none;color:#fff;width:26px;height:26px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:700;flex-shrink:0" title="Nowy katalog">+</button>
       </div>
       <div id="mat-sidebar-collections" style="display:flex;flex-direction:column;gap:4px">
         <div style="font-size:12px;color:var(--dim2);padding:8px 0">Ładowanie...</div>
@@ -2085,7 +2080,7 @@ async function loadRanking(){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div style="flex:1;min-width:0;padding:24px">
+    <div style="flex:1;min-width:0;padding:24px;max-width:calc(100% - 520px)">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -2124,6 +2119,8 @@ async function loadRanking(){
         <div id="mat-collection-sets" class="mat-grid"><div class="mat-empty">Brak zestawów w tym katalogu</div></div>
       </div>
     </div>
+    <!-- RIGHT SIDEBAR: balance -->
+    <div style="width:260px;flex-shrink:0;border-left:1px solid var(--border)"></div>
   </div>
 </div>
 
@@ -2745,7 +2742,7 @@ async function initToFixPage(){
 
   <!-- Panel: Kalendarz Kultur (embedded) -->
   <div id="odkryj-panel-kultura" style="display:none">
-    <div id="odkryj-kk-root" style="max-width:720px;margin:0 auto">
+    <div id="odkryj-kk-root" style="max-width:960px;margin:0 auto">
       <!-- Month calendar -->
       <div id="kk-month-cal" style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px"></div>
       <div id="odkryj-kk-loading" style="text-align:center;padding:60px 20px">
@@ -3723,10 +3720,11 @@ async function loadDailyWord(){
       .eq('language', lang)
       .maybeSingle();
 
-    if(cached && cached.words){
+    if(cached && cached.words && cached.date === today){
       renderDailyWords(cached.words, lang);
       return;
     }
+    // No content for today — delete old and generate new
 
     // 2. Generate new words via AI proxy
     var level = (typeof getCurrentLangLevel === 'function') ? getCurrentLangLevel() : 'B1';
@@ -4222,7 +4220,7 @@ async function loadDailyQuiz(){
       .eq('language', lang)
       .maybeSingle();
 
-    if(cached && cached.question){
+    if(cached && cached.question && cached.date === today){
       renderDailyQuiz(cached);
       return;
     }
@@ -6622,7 +6620,7 @@ function startTrybMode(mode){
   var sessionHdr = document.getElementById('tryb-session');
   var existingBack = document.getElementById('tryb-back-to-modes');
   if(existingBack) existingBack.remove();
-  if(sessionHdr && mode !== 'write'){
+  if(sessionHdr){
     var backBtn = document.createElement('button');
     backBtn.id = 'tryb-back-to-modes';
     backBtn.style.cssText = 'padding:7px 14px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:4px';
@@ -7105,8 +7103,7 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
   if(userWrote) userWrote.textContent=(!userAns?'Nie wpisałeś odpowiedzi':isTypo?'Twoja odpowiedź: "'+userAns+'" — literówka':'Twoja odpowiedź: "'+userAns+'"');
 
   // Show SRS rate row
-  var rateRow=document.getElementById('tryb-rate-row');
-  if(rateRow) rateRow.style.display='flex';
+
 
   if(isTypo){document.querySelectorAll('.tryb-rate-btn').forEach(function(b){if(parseInt(b.dataset.q)>3)b.style.opacity='0.5';});}
 }
@@ -7268,16 +7265,18 @@ async function loadCollections(){
     _collections.forEach(function(col, cidx){
       var btn = document.createElement('button');
       btn.style.cssText = 'width:100%;text-align:left;padding:8px 10px;border-radius:10px;border:none;background:transparent;font-size:13px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;display:flex;align-items:center;gap:6px;justify-content:space-between';
-      var nameSpan = document.createElement('span');
-      nameSpan.textContent = (col.icon||'📁') + ' ' + col.name;
-      nameSpan.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-      var countSpan = document.createElement('span');
-      countSpan.textContent = (col.sets||[]).length;
-      countSpan.style.cssText = 'font-size:11px;background:var(--paper2);border-radius:100px;padding:1px 7px;color:var(--dim2)';
-      btn.appendChild(nameSpan);
-      btn.appendChild(countSpan);
-      btn.onmouseover = function(){ this.style.background='var(--paper2)'; };
-      btn.onmouseout = function(){ if(!this.dataset.active) this.style.background='transparent'; };
+      // Catalog tile styled like a flashcard
+      btn.style.cssText = 'width:100%;text-align:left;padding:14px 14px;border-radius:12px;border:1.5px solid var(--border);background:#fff;font-size:14px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;margin-bottom:6px;display:block;box-shadow:0 2px 8px rgba(26,35,64,.06)';
+      var nameDiv = document.createElement('div');
+      nameDiv.textContent = col.name;
+      nameDiv.style.cssText = 'font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:var(--navy);margin-bottom:3px';
+      var countDiv = document.createElement('div');
+      countDiv.textContent = (col.sets||[]).length + ' zestawów';
+      countDiv.style.cssText = 'font-size:12px;color:var(--dim2)';
+      btn.appendChild(nameDiv);
+      btn.appendChild(countDiv);
+      btn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-1px)'; };
+      btn.onmouseout = function(){ if(!this.dataset.active){ this.style.borderColor='var(--border)'; this.style.transform='none'; } };
       btn.onclick = function(){
         document.querySelectorAll('#mat-sidebar-collections button').forEach(function(b){ b.style.background='transparent'; b.style.fontWeight='normal'; delete b.dataset.active; });
         this.style.background='rgba(229,106,28,.12)'; this.style.fontWeight='700'; this.dataset.active='1';
@@ -7304,7 +7303,7 @@ function openCollectionView(colIdx){
   var createBtn = document.getElementById('mat-create-btn');
 
   if(title) title.textContent = (col.icon||'📁') + ' ' + col.name;
-  if(sub) sub.textContent = (col.sets||[]).length + ' zestawów w katalogu';
+  if(sub) sub.textContent = (col.sets&&col.sets.length ? col.sets.length + ' zestawów' : 'Pusty katalog');
   if(grid) grid.style.display='none';
   if(createBtn) createBtn.style.display='none';
   if(colView) colView.style.display='block';
@@ -7344,7 +7343,20 @@ function buildMatCard(s, inCollection, colIdx){
   var studyBtn = document.createElement('button');
   studyBtn.className = 'btn btn-orange'; studyBtn.style.cssText = 'font-size:12px;padding:6px 12px';
   studyBtn.textContent = '▶ Ucz się';
-  studyBtn.onclick = function(){ window._matViewSet=s; openMatSet(s.id); };
+  studyBtn.onclick = async function(){
+    // Load cards and start flip mode directly
+    var {data:cards} = await db.from('user_set_cards').select('word,translation').eq('set_id',s.id);
+    if(!cards||!cards.length){ if(typeof showToast==='function') showToast('Zestaw jest pusty',''); return; }
+    _trybExternalCards = cards;
+    _trybExternalName = s.name;
+    RewardSystem.load();
+    showPage('tryb');
+    setTimeout(function(){
+      startSession('set_external');
+      // After cards loaded, auto-select flip mode
+      setTimeout(function(){ startTrybMode('flip'); }, 300);
+    }, 150);
+  };
   btnRow.appendChild(studyBtn);
 
   if(inCollection){
@@ -7403,16 +7415,63 @@ async function moveSetToCollection(setId, setName){
 
 function saveCollections(uid){ try{ localStorage.setItem('eyelingo_collections_' + uid, JSON.stringify(_collections)); }catch(e){} }
 
-async function openCreateCollection(){
-  var name = prompt('Nazwa katalogu:');
-  if(!name||!name.trim()) return;
-  var icons = ['📁','📚','🎯','🌍','💼','✈️','🎓','🔬','🎨','🎵'];
-  var sess = (await db.auth.getSession()).data.session;
-  if(!sess) return;
-  _collections.push({name:name.trim(), icon:icons[Math.floor(Math.random()*icons.length)], sets:[], created:Date.now()});
-  saveCollections(sess.user.id);
-  loadCollections();
-  if(typeof showToast==='function') showToast('Katalog "' + name.trim() + '" utworzony!','success');
+function openCreateCollection(){
+  // Eyelingo-style modal
+  var existing = document.getElementById('create-col-modal');
+  if(existing) existing.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'create-col-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,35,64,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:20px;padding:32px;width:100%;max-width:400px;box-shadow:0 24px 64px rgba(26,35,64,.2)';
+  box.innerHTML = '<div style="font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:var(--navy);margin-bottom:6px">Nowy katalog</div>'
+    + '<div style="font-size:14px;color:var(--dim2);margin-bottom:20px">Nadaj nazwę swojemu katalogowi</div>';
+
+  var inp = document.createElement('input');
+  inp.type = 'text';
+  inp.placeholder = 'np. Hiszpański B1, Praca, Podróże...';
+  inp.style.cssText = 'width:100%;padding:12px 16px;border-radius:12px;border:2px solid var(--border2);font-size:15px;font-family:DM Sans,sans-serif;outline:none;box-sizing:border-box;transition:.15s;margin-bottom:16px';
+  inp.onfocus = function(){ this.style.borderColor='var(--orange)'; };
+  inp.onblur = function(){ this.style.borderColor='var(--border2)'; };
+  inp.onkeydown = function(e){ if(e.key==='Enter') doCreate(); };
+  box.appendChild(inp);
+
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:10px';
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Anuluj';
+  cancelBtn.style.cssText = 'flex:1;padding:12px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;font-size:14px;cursor:pointer;font-family:DM Sans,sans-serif;color:var(--dim)';
+  cancelBtn.onclick = function(){ overlay.remove(); };
+
+  var createBtn = document.createElement('button');
+  createBtn.textContent = 'Utwórz katalog';
+  createBtn.style.cssText = 'flex:2;padding:12px;border-radius:100px;border:none;background:var(--navy);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif';
+  createBtn.onclick = doCreate;
+
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(createBtn);
+  box.appendChild(btnRow);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  setTimeout(function(){ inp.focus(); }, 100);
+
+  async function doCreate(){
+    var name = inp.value.trim();
+    if(!name) return;
+    try{
+      var sess = (await db.auth.getSession()).data.session;
+      if(!sess) return;
+      _collections.push({name:name, sets:[], created:Date.now()});
+      saveCollections(sess.user.id);
+      overlay.remove();
+      loadCollections();
+      if(typeof showToast==='function') showToast('Katalog "'+name+'" utworzony!','success');
+    }catch(e){}
+  }
 }
 
 async function deleteCollection(idx){
@@ -7863,14 +7922,6 @@ function injectTrybPage(){
     +'<div id="tryb-card-answer" style="font-size:20px;color:var(--orange);font-weight:600;margin-bottom:10px"></div>'
     +'<div id="tryb-result-icon" style="font-size:20px;margin-bottom:4px"></div>'
     +'<div id="tryb-user-wrote" style="font-size:12px;color:var(--dim2);margin-bottom:12px"></div>'
-    +'<div id="tryb-rate-row" class="tryb-rate-row" style="display:flex;flex-direction:column;align-items:center;gap:10px;width:100%">'
-    +'<div style="font-size:11px;color:var(--dim2);font-weight:600">Jak dobrze znałeś to słowo?</div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;width:100%">'
-    +'<button onclick="rateCard(1)" class="tryb-rate-btn" data-q="1" style="padding:10px 6px;border-radius:10px;border:none;background:#fcebeb;color:#a32d2d;font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif"><div style="font-size:16px">😞</div>Nie wiedziałem</button>'
-    +'<button onclick="rateCard(2)" class="tryb-rate-btn" data-q="2" style="padding:10px 6px;border-radius:10px;border:none;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif"><div style="font-size:16px">🤔</div>Prawie</button>'
-    +'<button onclick="rateCard(3)" class="tryb-rate-btn" data-q="3" style="padding:10px 6px;border-radius:10px;border:none;background:#eaf3de;color:#3b6d11;font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif"><div style="font-size:16px">😊</div>Wiedziałem</button>'
-    +'<button onclick="rateCard(4)" class="tryb-rate-btn" data-q="4" style="padding:10px 6px;border-radius:10px;border:none;background:#e0f2fe;color:#0369a1;font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif"><div style="font-size:16px">🚀</div>Bardzo łatwe</button>'
-    +'</div></div>'
     +'</div>'
     +'</div>'
     +'</div>'
