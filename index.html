@@ -538,9 +538,9 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 
 /* ═══ FISZKA 3D FLIP ═══ */
 .tryb-card-scene{perspective:900px;width:100%}
-.tryb-card-flipper{position:relative;width:100%;min-height:300px;transition:transform .55s cubic-bezier(.4,0,.2,1);transform-style:preserve-3d}
+.tryb-card-flipper{position:relative;width:100%;min-height:300px;transition:transform .6s cubic-bezier(0.34,1.56,0.64,1);transform-style:preserve-3d;will-change:transform}
 .tryb-card-flipper.flipped{transform:rotateY(-180deg)}
-.tryb-card-front,.tryb-card-back{position:absolute;width:100%;min-height:300px;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;box-sizing:border-box;text-align:center}
+.tryb-card-front,.tryb-card-back{position:absolute;width:100%;min-height:300px;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;box-sizing:border-box;text-align:center;will-change:transform}
 .tryb-card-front{background:var(--navy);color:#fff;cursor:pointer;box-shadow:0 16px 48px rgba(26,35,64,.3),0 4px 12px rgba(26,35,64,.15);transition:box-shadow .2s}
 .tryb-card-back{background:#fff;color:var(--navy);transform:rotateY(180deg);border:2px solid var(--border);box-shadow:0 16px 48px rgba(26,35,64,.1)}
 .tryb-card-front:hover{box-shadow:0 20px 60px rgba(26,35,64,.4)}
@@ -7128,11 +7128,19 @@ async function rateCard(btnRating){
     if(parseInt(b.dataset&&b.dataset.q)===btnRating){
       b.style.transform='scale(0.92)';
       b.style.boxShadow='0 0 0 3px rgba(26,35,64,.3)';
+      b.style.opacity='1';
       setTimeout(function(){ b.style.transform='scale(1)'; b.style.boxShadow='none'; },200);
     } else {
-      b.style.opacity='0.4';
+      b.style.opacity='0.3';
     }
   });
+  // Brief XP toast
+  var xpMap={1:0,2:3,3:7,4:10};
+  var xpVal=xpMap[btnRating]||0;
+  if(xpVal>0 && typeof showToast==='function'){
+    var labels={1:'',2:'+'+xpVal+' XP',3:'+'+xpVal+' XP ✓',4:'+'+xpVal+' XP ⚡'};
+    showToast(labels[btnRating],'success');
+  }
   var isTypo=document.getElementById('tryb-result-icon')&&document.getElementById('tryb-result-icon').textContent.includes('⚠️');
   var eff=isTypo?Math.min(btnRating,3):btnRating;
   var qMap={1:0,2:2,3:4,4:5};
@@ -7999,8 +8007,8 @@ function injectTrybPage(){
     +'<div style="font-weight:800;font-size:18px" id="tryb-new-badge-name"></div>'
     +'<div style="font-size:13px;opacity:.85" id="tryb-new-badge-desc"></div></div>'
     +'<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
-    +'<button onclick="initTrybNauki()" class="btn btn-orange btn-lg">🔁 Nowa sesja</button>'
-    +'<button onclick="initTrybNauki()" class="btn btn-navy">← Strefa Nauki</button>'
+    +'<button onclick="showTrybModePicker()" class="btn btn-orange btn-lg">🔁 Nowa sesja</button>'
+    +'<button onclick="showPage(\'strefa\')" class="btn btn-navy">← Strefa Nauki</button>'
     +'</div></div>'
     +'</div>';
   document.body.appendChild(div);
@@ -9350,7 +9358,7 @@ async function strefaShowEyelingoCategories(langCode, langLabel, flag, lvl){
   if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie...</div>';
   try{
     var cats = [];
-    try{ var {data:rpcCats} = await db.rpc('get_categories_for_lang_level',{p_lang:langCode,p_level:lvl}); if(rpcCats&&rpcCats.length) cats=rpcCats; }catch(e2){}
+    // RPC removed - use direct query below
     if(!cats.length){
       var {data:langRow} = await db.from('languages').select('id').eq('code',langCode).single();
       var {data:lvlRow} = await db.from('levels').select('id').eq('code',lvl).maybeSingle();
@@ -9413,12 +9421,7 @@ async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catI
   if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie fiszek...</div>';
   try{
     var cards = [];
-    // Try RPC first
-    try{
-      var {data:rpc} = await db.rpc('get_flashcards',{p_lang:langCode, p_level:lvl, p_cat:catId});
-      if(rpc&&rpc.length) cards = rpc;
-    }catch(e2){}
-    // Fallback: direct query by category_id integer
+    // Direct query (RPC removed - use direct query)
     if(!cards.length && catId){
       var {data:direct} = await db.from('flashcards')
         .select('word,translation,example')
