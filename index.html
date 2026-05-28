@@ -569,7 +569,7 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 /* ─── Drag & Drop ─── */
 .mat-card[draggable=true]{cursor:grab}
 .mat-card[draggable=true]:active{cursor:grabbing}
-.mat-card.dragging{opacity:.45;transform:scale(.97);box-shadow:0 16px 48px rgba(26,35,64,.25)!important}
+.mat-card.dragging{opacity:.6;transform:scale(1.03) rotate(1.5deg);box-shadow:0 20px 60px rgba(26,35,64,.35)!important;cursor:grabbing;z-index:100;position:relative}
 .mat-card.drag-over{transform:scale(1.02);border-color:var(--orange)!important;box-shadow:0 0 0 2px var(--orange)}
 .sb-catalog-tile.drop-target{border-color:var(--orange)!important;background:rgba(232,112,26,.08)!important;transform:scale(1.02)}
 </style>
@@ -1554,6 +1554,7 @@ window.startStudyFromModal = function startStudyFromModal(id){
   var cards=(s.user_set_cards||[]).map(function(c){return{word:c.word||'',translation:c.translation||''};});
   if(!cards.length){typeof showToast!=='undefined'&&showToast('Brak fiszek','');return;}
   _trybExternalCards=cards; _trybExternalName=s.name;
+  window._trybSource='community';
   typeof RewardSystem!=='undefined'&&RewardSystem.load();
   showPage('tryb');
   setTimeout(function(){startSession('set_external');},300);
@@ -1566,35 +1567,91 @@ window.deleteSetConfirm = function deleteSetConfirm(id){
 window.openCreateSet = function openCreateSet(){
   var modal=document.getElementById('mat-modal');
   var title=document.getElementById('mat-modal-title');
-  var body=document.getElementById('mat-modal-body');
+  var bodyEl=document.getElementById('mat-modal-body');
   if(!modal) return;
   if(title) title.textContent='Nowy zestaw';
-  if(body) body.innerHTML=
-    '<div style="margin-bottom:16px">'
-    +'<label style="font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:6px">Nazwa zestawu</label>'
-    +'<input id="new-set-name" class="fi" placeholder="np. Angielski A1" style="width:100%;box-sizing:border-box">'
-    +'</div>'
-    +'<div style="margin-bottom:20px">'
-    +'<label style="font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:6px">Fiszki (słowo = tłumaczenie, jedna para na linię)</label>'
-    +'<textarea id="new-set-cards" class="fi" rows="8" placeholder="hello = cześć&#10;world = świat&#10;cat = kot"" style="width:100%;box-sizing:border-box;resize:vertical"></textarea>'
-    +'</div>'
-    +'<div style="display:flex;gap:10px;justify-content:flex-end">'
-    +'<button onclick="closeMatModal()" style="padding:10px 20px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif">Anuluj</button>'
-    +'<button onclick="saveNewSet()" class="btn btn-orange">Utwórz zestaw</button>'
-    +'</div>';
+  if(bodyEl){
+    var d=document.createElement('div');
+    d.innerHTML='<div style="margin-bottom:14px"><label style="font-size:13px;font-weight:600;color:var(--navy);display:block;margin-bottom:6px">Nazwa zestawu</label><input id="new-set-name" class="fi" placeholder="np. Angielski A1" style="width:100%;box-sizing:border-box"></div>';
+    // Column headers
+    var hdr=document.createElement('div');
+    hdr.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:8px;margin-bottom:6px';
+    hdr.innerHTML='<div style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.05em">Słowo / wyrażenie</div><div style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.05em">Tłumaczenie</div><div></div>';
+    d.appendChild(hdr);
+    // Rows container
+    var rowsDiv=document.createElement('div');
+    rowsDiv.id='new-set-rows';
+    rowsDiv.style.cssText='display:flex;flex-direction:column;gap:5px;max-height:300px;overflow-y:auto;margin-bottom:8px';
+    d.appendChild(rowsDiv);
+    // Add row button
+    var addBtn=document.createElement('button');
+    addBtn.textContent='+ Dodaj wiersz';
+    addBtn.style.cssText='background:transparent;border:1.5px dashed var(--border2);border-radius:10px;padding:8px;width:100%;cursor:pointer;font-size:13px;color:var(--dim2);font-family:DM Sans,sans-serif';
+    addBtn.onclick=function(){ window.addNewSetRow(); };
+    d.appendChild(addBtn);
+    // TAB hint
+    var hint=document.createElement('div');
+    hint.style.cssText='font-size:11px;color:var(--dim2);margin:8px 0 14px';
+    hint.innerHTML='💡 Użyj <kbd style="background:var(--paper2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:10px">TAB</kbd> — ostatni TAB dodaje nowy wiersz.';
+    d.appendChild(hint);
+    // Footer buttons
+    var footer=document.createElement('div');
+    footer.style.cssText='display:flex;gap:10px;justify-content:flex-end';
+    footer.innerHTML='<button onclick="closeMatModal()" style="padding:10px 20px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif">Anuluj</button>';
+    var saveBtn=document.createElement('button');
+    saveBtn.className='btn btn-orange';
+    saveBtn.textContent='Utwórz zestaw';
+    saveBtn.onclick=function(){ window.saveNewSet(); };
+    footer.appendChild(saveBtn);
+    d.appendChild(footer);
+    bodyEl.innerHTML='';
+    bodyEl.appendChild(d);
+  }
   modal.style.display='flex';
+  for(var i=0;i<3;i++) window.addNewSetRow();
   setTimeout(function(){ var n=document.getElementById('new-set-name'); if(n) n.focus(); },100);
+};
+
+window.addNewSetRow = function addNewSetRow(focusWord){
+  var container=document.getElementById('new-set-rows');
+  if(!container) return;
+  var rowIdx=container.children.length;
+  var row=document.createElement('div');
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;align-items:center';
+  var wInp=document.createElement('input');
+  wInp.className='fi'; wInp.placeholder='słowo'; wInp.style.fontSize='13px'; wInp.dataset.row=rowIdx;
+  var tInp=document.createElement('input');
+  tInp.className='fi'; tInp.placeholder='tłumaczenie'; tInp.style.fontSize='13px'; tInp.dataset.row=rowIdx;
+  var del=document.createElement('button');
+  del.style.cssText='background:transparent;border:none;cursor:pointer;color:#e24b4a;font-size:18px;font-weight:700;padding:0;line-height:1';
+  del.textContent='×'; del.onclick=function(){ row.remove(); };
+  // TAB on translation → next word or new row
+  tInp.addEventListener('keydown',function(e){
+    if(e.key==='Tab'&&!e.shiftKey){
+      e.preventDefault();
+      var allWords=document.querySelectorAll('#new-set-rows input:first-child');
+      var nextWord=allWords[rowIdx+1];
+      if(nextWord){ nextWord.focus(); }
+      else { window.addNewSetRow(true); }
+    }
+  });
+  row.appendChild(wInp); row.appendChild(tInp); row.appendChild(del);
+  container.appendChild(row);
+  if(focusWord){ setTimeout(function(){ wInp.focus(); },50); }
 };
 
 window.saveNewSet = async function saveNewSet(){
   var nameEl=document.getElementById('new-set-name');
-  var cardsEl=document.getElementById('new-set-cards');
   var name=(nameEl?nameEl.value:'').trim();
   if(!name){if(nameEl)nameEl.focus();return;}
-  var cards=(cardsEl?cardsEl.value:'').split('\n').filter(function(l){return l.trim();}).map(function(l){
-    var sep=l.indexOf('='); if(sep<0) return null;
-    return {word:l.slice(0,sep).trim(),translation:l.slice(sep+1).trim()};
-  }).filter(function(c){return c&&c.word&&c.translation;});
+  var rows=document.querySelectorAll('#new-set-rows > div');
+  var cards=[];
+  rows.forEach(function(r){
+    var inputs=r.querySelectorAll('input');
+    var w=(inputs[0]?inputs[0].value:'').trim();
+    var t=(inputs[1]?inputs[1].value:'').trim();
+    if(w&&t) cards.push({word:w,translation:t});
+  });
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){typeof showToast!=='undefined'&&showToast('Zaloguj się','');return;}
@@ -1606,6 +1663,7 @@ window.saveNewSet = async function saveNewSet(){
     if(window.loadMySets) loadMySets();
   }catch(e){typeof showToast!=='undefined'&&showToast('Błąd: '+(e.message||e),'');}
 };
+
 
 window.openEditSet = async function openEditSet(id){
   var s=_matSets.find(function(x){return x.id===id;});
@@ -1790,7 +1848,7 @@ function setCard(s){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px 332px">
+    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px 332px;max-width:100%">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -2295,7 +2353,7 @@ async function initToFixPage(){
       </div>
     </div>
     <!-- MAIN CONTENT -->
-    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px 332px">
+    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px 332px;max-width:100%">
       <!-- Breadcrumb -->
       <div id="strefa-breadcrumb-bar" style="font-size:12px;color:var(--dim2);margin-bottom:16px;min-height:18px"></div>
 
@@ -4139,7 +4197,20 @@ async function updatePowtorkiTile(){
 }
 
 function strefaStartPowtorki(){
+  var tile=document.getElementById('sb-powtorki-tile');
+  var cnt=parseInt((document.getElementById('sb-due-count')||{}).textContent||'0');
+  if(tile && tile.style.opacity==='0.55' || cnt===0){
+    // Show friendly message in center
+    var center=document.getElementById('strefa-center-content');
+    if(center) center.innerHTML='<div style="text-align:center;padding:80px 20px">'
+      +'<div style="font-size:56px;margin-bottom:16px">☀️</div>'
+      +'<div style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:700;color:var(--navy);margin-bottom:10px">Wszystko na bieżąco!</div>'
+      +'<div style="font-size:15px;color:var(--dim2);max-width:320px;margin:0 auto;line-height:1.6">Nie masz żadnych powtórek na dziś. Wróć jutro lub naucz się nowych słów.</div>'
+      +'</div>';
+    return;
+  }
   _trybExternalCards=null;
+  window._trybSource='strefa';
   showPage('tryb');
   setTimeout(function(){ startSession('due'); },300);
 }
@@ -4230,6 +4301,12 @@ async function strefaShowCatalogSets(colIdx, colName, mode){
     if(!sets.length){
       wrap.innerHTML+='<div style="text-align:center;padding:40px;color:var(--dim2)">Brak zestawów</div>';
     } else {
+      // Back button
+      var backBtn=document.createElement('button');
+      backBtn.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:inline-flex;align-items:center;gap:4px';
+      backBtn.innerHTML='← Katalogi';
+      backBtn.onclick=function(){ strefaToggleMine(); strefaToggleMine(); };
+      wrap.insertBefore(backBtn, wrap.firstChild);
       var grid=document.createElement('div');
       grid.className='mat-grid';
       if(mode==='tryb'){
@@ -4468,6 +4545,7 @@ async function strefaLoadEyelingoSet(langCode,langLabel,flag,lvl,catId,catLabel)
     startBtn.onclick=(function(cc,sn){ return function(){
       _trybExternalCards=cc.map(function(c){return {word:c.word||'',translation:c.translation||''};});
       _trybExternalName=sn;
+      window._trybSource='strefa';
       RewardSystem&&RewardSystem.load();
       showPage('tryb');
       setTimeout(function(){ startSession('set_external'); },300);
@@ -7960,7 +8038,7 @@ function renderStrefaKontekstowaCard(word, langCode, lvl, idx, total, catLabel, 
   var langYG={en:'english',es:'spanish',nl:'dutch',jp:'japanese'}[langCode]||'english';
 
   var wrap=document.createElement('div');
-  wrap.style.cssText='width:100%;max-width:900px';
+  wrap.style.cssText='width:100%;max-width:860px;margin:0 auto';
 
   // Progress header
   var hdr=document.createElement('div');
@@ -8009,8 +8087,8 @@ function renderStrefaKontekstowaCard(word, langCode, lvl, idx, total, catLabel, 
   var right=document.createElement('div');
   right.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:16px;overflow:hidden';
   right.innerHTML=
-    '<div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.07em;padding:14px 18px 10px">🎬 Użycie w zdaniach · YouGlish</div>'
-    +'<div id="kontekstowa-yg-widget" style="padding:0 12px 12px;min-height:200px;display:flex;align-items:center;justify-content:center"></div>';
+    '<div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.07em;padding:14px 18px 10px">🎬 Użycie w filmach · Playphrase</div>'
+    +'<div id="kontekstowa-yg-widget" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px"></div>';
   cols.appendChild(right);
   wrap.appendChild(cols);
 
@@ -8496,7 +8574,7 @@ function injectTrybPage(){
     +'<div style="font-weight:800;font-size:18px" id="tryb-new-badge-name"></div>'
     +'<div style="font-size:13px;opacity:.85" id="tryb-new-badge-desc"></div></div>'
     +'<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
-    +'<button onclick="showTrybModePicker()" class="btn btn-orange btn-lg">🔁 Nowa sesja</button>'
+    +'<button onclick="showTrybModePicker()" class="btn btn-orange btn-lg">🔁 Powtórz</button>'
     +'<button onclick="showPage(\'community\')" class="btn btn-navy">← Materiały</button>'
     +'</div></div>'
     +'</div>';
@@ -9841,12 +9919,10 @@ async function strefaSelectUserSet(setId, setNameEnc){
     strefaShowWordPreview(cards, setName, function(){
       _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||''}; });
       _trybExternalName = setName;
+      window._trybSource='strefa';
       RewardSystem.load();
       showPage('tryb');
-      // Wait for page-tryb to render then show mode picker
-      setTimeout(function(){
-        startSession('set_external');
-      }, 300);
+      setTimeout(function(){ startSession('set_external'); }, 300);
     });
   }catch(e){}
 }
