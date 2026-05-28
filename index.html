@@ -1792,6 +1792,8 @@ window.addSetToMine = async function addSetToMine(id){
 };
 // ── Mat loading functions ──
 let _matSets=[], _matMyUid=null;
+var _likedSets = new Set();
+var _addedSets = new Set();
 Object.defineProperty(window,'_matSets',{get:function(){return _matSets;},set:function(v){_matSets=v;}});
 Object.defineProperty(window,'_matMyUid',{get:function(){return _matMyUid;},set:function(v){_matMyUid=v;}});
 
@@ -2846,6 +2848,7 @@ async function initToFixPage(){
   </div><!-- end daily-panel-challenge -->
 
 </div><!-- end max-width daily -->
+</div><!-- /daily-main -->
 </div><!-- end page-daily -->
 
 <!-- ═══ AI NAUCZYCIEL (chat embedded) ═══ -->
@@ -9679,7 +9682,17 @@ function odkryjLoadKultura(){
       kkRenderFull(wrap, data, color);
       kkRenderMonthCalendar(today);
     }catch(e){
-      loading.innerHTML = '<div style="color:var(--dim2);padding:20px;text-align:center">Błąd ładowania: '+e.message+'</div>';
+      var msg = e.message||'';
+      if(msg.includes('403')||msg.includes('security policy')||msg.includes('RLS')){
+        loading.innerHTML='<div style="text-align:center;padding:40px">'
+          +'<div style="font-size:32px;margin-bottom:10px">🔒</div>'
+          +'<div style="font-family:DM Sans,sans-serif;font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px">Brak uprawnień do bazy</div>'
+          +'<div style="font-size:12px;color:var(--dim2);margin-bottom:12px">Uruchom w Supabase SQL Editor:</div>'
+          +'<code style="background:var(--paper);padding:8px 12px;border-radius:8px;font-size:11px;display:block;text-align:left">ALTER TABLE public.culture_articles ENABLE ROW LEVEL SECURITY;<br>CREATE POLICY "public_read" ON public.culture_articles FOR SELECT USING (true);<br>CREATE POLICY "auth_insert" ON public.culture_articles FOR INSERT WITH CHECK (true);</code>'
+          +'</div>';
+      } else {
+        loading.innerHTML='<div style="color:var(--dim2);padding:20px;text-align:center">Błąd ładowania: '+msg+'</div>';
+      }
     }
   })();
 }
