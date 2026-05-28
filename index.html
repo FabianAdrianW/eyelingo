@@ -1509,6 +1509,48 @@ window.openSet = function openSet(id){
   _matModal=s; _matEditMode=false;
   showSetModal(s,false);
 };
+
+window.showSetModal = function showSetModal(s, editMode){
+  _matModal=s; _matEditMode=!!editMode;
+  var modal=document.getElementById('mat-modal');
+  var title=document.getElementById('mat-modal-title');
+  var body=document.getElementById('mat-modal-body');
+  if(!modal) return;
+  if(title) title.textContent=s.name||'Zestaw';
+  var cards=s.user_set_cards||[];
+  var isOwn=s.user_id===_matMyUid;
+  var html='<div class="mat-modal-meta">'+cards.length+' fiszek'+(s.likes_count?' &nbsp;·&nbsp; ♥ '+s.likes_count:'')+'</div>';
+  if(isOwn){
+    html+='<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
+      +'<button onclick="startStudyFromModal('+s.id+')" class="btn btn-orange" style="font-size:12px;padding:7px 16px">▶ Ucz się</button>'
+      +'<button onclick="openEditSet('+s.id+')" class="btn btn-navy" style="font-size:12px;padding:7px 14px">✏️ Edytuj</button>'
+      +'<button onclick="deleteSetConfirm('+s.id+')" style="font-size:12px;padding:7px 14px;background:#fcebeb;border:1px solid #e24b4a;color:#a32d2d;border-radius:8px;cursor:pointer">🗑️ Usuń</button>'
+      +'</div>';
+  } else {
+    html+='<div style="margin-bottom:14px"><button onclick="addSetToMine('+s.id+')" class="btn btn-orange" style="font-size:12px;padding:7px 16px">+ Dodaj do moich</button></div>';
+  }
+  html+='<div class="mat-modal-cards">'+cards.slice(0,50).map(function(c){
+    return '<div class="mat-modal-row"><span>'+esc(c.word||'')+'</span><span class="mat-modal-tr">'+esc(c.translation||'')+'</span></div>';
+  }).join('')+'</div>';
+  if(body) body.innerHTML=html;
+  modal.style.display='flex';
+};
+
+window.closeMatModal = function closeMatModal(){
+  var m=document.getElementById('mat-modal'); if(m) m.style.display='none';
+};
+
+window.startStudyFromModal = function startStudyFromModal(id){
+  closeMatModal();
+  var s=_matSets.find(function(x){return x.id===id;});
+  if(!s) return;
+  var cards=(s.user_set_cards||[]).map(function(c){return{word:c.word||'',translation:c.translation||''};});
+  if(!cards.length){typeof showToast!=='undefined'&&showToast('Brak fiszek','');return;}
+  _trybExternalCards=cards; _trybExternalName=s.name;
+  typeof RewardSystem!=='undefined'&&RewardSystem.load();
+  showPage('tryb');
+  setTimeout(function(){startSession('set_external');},300);
+};
 // ── Mat loading functions ──
 let _matSets=[], _matMyUid=null;
 Object.defineProperty(window,'_matSets',{get:function(){return _matSets;},set:function(v){_matSets=v;}});
@@ -2088,11 +2130,7 @@ async function initToFixPage(){
             <div id="sb-eyelingo-list" style="display:none;margin-top:4px;padding-left:8px;border-left:2px solid var(--border)">
             </div>
           </div>
-          <!-- Odznaki -->
-          <div id="sb-badges-section" style="margin-top:8px;padding-right:0">
-            <div style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Odznaki</div>
-            <div id="tryb-badges" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-          </div>
+
         </div>
 
         <!-- KONTEKSTOWA content -->
@@ -3958,33 +3996,106 @@ function strefaToggleMine(){
 }
 
 async function strefaLoadMineList(mode){
-  var list=document.getElementById(mode==='tryb'?'sb-mine-list':'sb-mine-k-list');
+  var listId=mode==='tryb'?'sb-mine-list':'sb-mine-k-list';
+  var list=document.getElementById(listId);
   if(!list) return;
   list.innerHTML='<div style="font-size:11px;color:var(--dim2);padding:8px 4px">Ładowanie...</div>';
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){list.innerHTML='<div style="padding:8px 4px;font-size:12px;color:var(--dim2)">Zaloguj się</div>';return;}
-    var {data:sets}=await db.from('user_sets').select('id,name,user_set_cards(word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false});
-    if(!sets||!sets.length){list.innerHTML='<div style="padding:8px 4px;font-size:12px;color:var(--dim2)">Brak zestawów</div>';return;}
-    // Group by collections
-    var html='';
-    // Show uncategorized sets + collections
-    (_collections||[]).forEach(function(col){
-      html+='<div style="font-size:11px;font-weight:700;color:var(--dim2);padding:6px 4px 3px;text-transform:uppercase;letter-spacing:.05em">'+col.name+'</div>';
-      var colSets=(col.sets||[]).map(function(cs){return sets.find(function(s){return s.id===cs.id;});}).filter(Boolean);
-      colSets.forEach(function(s){ html+=sbSetTile(s,mode); });
+    // Load user sets to get counts per catalog
+    var {data:sets}=await db.from('user_sets').select('id,name,user_set_cards(id)').eq('user_id',sess.user.id);
+    var setsById={};
+    (sets||[]).forEach(function(s){setsById[s.id]=s;});
+    list.innerHTML='';
+    // "Wszystkie" tile
+    var allDiv=document.createElement('div');
+    allDiv.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s';
+    allDiv.innerHTML='<div style="font-size:13px;font-weight:600;color:var(--navy)">📂 Wszystkie</div>'
+      +'<div style="font-size:11px;color:var(--dim2)">'+(sets?sets.length:0)+' zestawów</div>';
+    allDiv.onmouseover=function(){this.style.borderColor='var(--orange)';};
+    allDiv.onmouseout=function(){this.style.borderColor='var(--border)';};
+    allDiv.onclick=(function(m){ return function(){ strefaShowCatalogSets(null,'Wszystkie zestawy',m); }; })(mode);
+    list.appendChild(allDiv);
+    // Catalog tiles
+    (_collections||[]).forEach(function(col,ci){
+      var colSets=(col.sets||[]).filter(function(cs){return setsById[cs.id];});
+      var div=document.createElement('div');
+      div.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s';
+      div.innerHTML='<div style="font-size:13px;font-weight:600;color:var(--navy)">'+(col.icon||'📁')+' '+col.name+'</div>'
+        +'<div style="font-size:11px;color:var(--dim2)">'+colSets.length+' zestawów</div>';
+      div.onmouseover=function(){this.style.borderColor='var(--orange)';};
+      div.onmouseout=function(){this.style.borderColor='var(--border)';};
+      div.onclick=(function(colIdx,colName,m){ return function(){ strefaShowCatalogSets(colIdx,colName,m); }; })(ci,col.name,mode);
+      list.appendChild(div);
     });
-    // Uncategorized
-    var assignedIds=new Set();
-    (_collections||[]).forEach(function(c){(c.sets||[]).forEach(function(s){assignedIds.add(s.id);});});
-    var uncat=sets.filter(function(s){return !assignedIds.has(s.id);});
-    if(uncat.length){
-      if(_collections&&_collections.length) html+='<div style="font-size:11px;font-weight:700;color:var(--dim2);padding:6px 4px 3px;text-transform:uppercase;letter-spacing:.05em">Bez katalogu</div>';
-      uncat.forEach(function(s){ html+=sbSetTile(s,mode); });
+    if(!_collections||!_collections.length){
+      list.innerHTML+='<div style="font-size:11px;color:var(--dim2);padding:4px">Brak katalogów</div>';
     }
-    list.innerHTML=html||'<div style="padding:8px 4px;font-size:12px;color:var(--dim2)">Brak zestawów</div>';
   }catch(e){list.innerHTML='<div style="padding:8px 4px;font-size:12px;color:#c33">Błąd</div>';}
 }
+
+async function strefaShowCatalogSets(colIdx, colName, mode){
+  var center=document.getElementById('strefa-center-content');
+  if(!center) return;
+  center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie...</div>';
+  setBreadcrumb&&setBreadcrumb(colName);
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){center.innerHTML='<div style="padding:20px">Zaloguj się</div>';return;}
+    var {data:allSets}=await db.from('user_sets').select('id,name,user_id,user_set_cards(id,word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false});
+    var sets=allSets||[];
+    if(colIdx!==null && _collections[colIdx]){
+      var ids=(_collections[colIdx].sets||[]).map(function(s){return s.id;});
+      sets=sets.filter(function(s){return ids.indexOf(s.id)>=0;});
+    } else if(colIdx===null){
+      // "Wszystkie" - just show all
+    }
+    // Add to _matSets so openSet works
+    sets.forEach(function(s){ s.user_id=sess.user.id; if(!_matSets.find(function(x){return x.id===s.id;})) _matSets.push(s); });
+    var wrap=document.createElement('div');
+    var hdr=document.createElement('div');
+    hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px';
+    hdr.innerHTML='<h2 style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:800;color:var(--navy);margin:0">'+colName+'</h2>'
+      +'<div style="font-size:14px;color:var(--dim2)">'+sets.length+' zestawów</div>';
+    wrap.appendChild(hdr);
+    if(!sets.length){
+      wrap.innerHTML+='<div style="text-align:center;padding:40px;color:var(--dim2)">Brak zestawów</div>';
+    } else {
+      var grid=document.createElement('div');
+      grid.className='mat-grid';
+      if(mode==='tryb'){
+        grid.innerHTML=sets.map(function(s){ return strefaSetCardTryb(s); }).join('');
+      } else {
+        grid.innerHTML=sets.map(function(s){ return strefaSetCardKontekstowa(s); }).join('');
+      }
+      wrap.appendChild(grid);
+    }
+    center.innerHTML=''; center.appendChild(wrap);
+  }catch(e){center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
+function strefaSetCardTryb(s){
+  var cnt=s.user_set_cards?s.user_set_cards.length:0;
+  var div=document.createElement('div');
+  div.className='mat-card';
+  div.style.cursor='pointer';
+  div.innerHTML='<div class="mat-card-head"><div><div class="mat-card-name">'+esc(s.name)+'</div><div class="mat-card-count">'+cnt+' fiszek</div></div></div>';
+  div.onclick=(function(sid,sname){ return function(){ strefaSelectUserSet(sid, encodeURIComponent(sname)); }; })(s.id, s.name);
+  return div.outerHTML;
+}
+
+function strefaSetCardKontekstowa(s){
+  var cnt=s.user_set_cards?s.user_set_cards.length:0;
+  var div=document.createElement('div');
+  div.className='mat-card';
+  div.style.cursor='pointer';
+  div.innerHTML='<div class="mat-card-head"><div><div class="mat-card-name">'+esc(s.name)+'</div><div class="mat-card-count">'+cnt+' fiszek</div></div></div>';
+  div.onclick=(function(sid,sname){ return function(){ strefaStartKontekstowaFromSet(sid, encodeURIComponent(sname)); }; })(s.id, s.name);
+  return div.outerHTML;
+}
+
+
 
 function sbSetTile(s,mode){
   var cnt=s.user_set_cards?s.user_set_cards.length:0;
@@ -7675,8 +7786,8 @@ function renderStrefaKontekstowaCard(word, langCode, lvl, idx, total, catLabel, 
   var right=document.createElement('div');
   right.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:16px;overflow:hidden';
   right.innerHTML=
-    '<div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.07em;padding:14px 18px 10px">🎬 Użycie w filmach · YouGlish</div>'
-    +'<div id="kontekstowa-yg-widget" style="padding:0 12px 12px;min-height:200px"></div>';
+    '<div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.07em;padding:14px 18px 10px">🎬 Użycie w zdaniach · YouGlish</div>'
+    +'<div id="kontekstowa-yg-widget" style="padding:0 12px 12px;min-height:200px;display:flex;align-items:center;justify-content:center"></div>';
   cols.appendChild(right);
   wrap.appendChild(cols);
 
@@ -7705,36 +7816,25 @@ function renderStrefaKontekstowaCard(word, langCode, lvl, idx, total, catLabel, 
   // Load AI sentence
   loadKontekstowaSentence(word.word, word.translation, langCode, lvl);
 
-  // Load YouGlish
+  // YouGlish public iframe (no API key needed)
   (function(w,ly){
     setTimeout(function(){
       var c=document.getElementById('kontekstowa-yg-widget');
       if(!c) return;
-      var fallback='<div style="padding:20px;text-align:center"><a href="https://youglish.com/pronounce/'+encodeURIComponent(w)+'/'+ly+'" target="_blank" style="color:var(--navy);font-weight:600;font-size:14px;text-decoration:none">🎬 Otwórz YouGlish: '+w+'</a><div style="font-size:11px;color:var(--dim2);margin-top:6px">Kliknij aby zobaczyć w filmach</div></div>';
-      function tryWidget(cid){
-        try{
-          var ygw=new YG.Widget(cid,{width:'100%',height:280,components:9,bkg:1,language:ly});
-          setTimeout(function(){
-            try{ if(ygw.fetch) ygw.fetch(w,ly); else if(ygw.pronounce) ygw.pronounce(w); }
-            catch(e2){ var el=document.getElementById(cid); if(el) el.innerHTML=fallback; }
-          },300);
-        }catch(e){ var el=document.getElementById(cid); if(el) el.innerHTML=fallback; }
-      }
-      if(window.YG&&window.YG.Widget){
-        c.innerHTML='<div id="yg-kard-1"></div>';
-        tryWidget('yg-kard-1');
-      } else {
-        var s=document.createElement('script');
-        s.src='https://youglish.com/public/emb/widget.js';
-        s.onload=function(){
-          if(window.YG&&window.YG.Widget){ c.innerHTML='<div id="yg-kard-2"></div>'; tryWidget('yg-kard-2'); }
-          else c.innerHTML=fallback;
-        };
-        s.onerror=function(){ c.innerHTML=fallback; };
-        if(!document.querySelector('script[src*="youglish.com"]')) document.head.appendChild(s);
-        else c.innerHTML=fallback;
-      }
-    },400);
+      // Use YouGlish public search page embedded
+      var ygUrl='https://youglish.com/pronounce/'+encodeURIComponent(w)+'/'+ly;
+      c.innerHTML=
+        '<div style="width:100%;text-align:center;padding:10px 0">'+
+        '<a href="'+ygUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:var(--navy);color:#fff;border-radius:100px;text-decoration:none;font-family:DM Sans,sans-serif;font-size:13px;font-weight:600">🎬 Zobacz "'+w+'" w filmach</a></div>'+
+        '<div style="font-size:11px;color:var(--dim2);text-align:center;margin-top:6px">Otwiera YouGlish w nowej karcie</div>'+
+        '<div style="margin-top:14px;padding:0 4px">'+
+        '<iframe src="https://youglish.com/api/loader?version=1" style="display:none"></iframe>'+
+        '<div style="background:var(--paper);border-radius:12px;padding:16px;text-align:center">'+
+        '<div style="font-size:32px;margin-bottom:8px">🎬</div>'+
+        '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">'+w+'</div>'+
+        '<div style="font-size:12px;color:var(--dim2)">Kliknij powyżej aby zobaczyć w prawdziwych filmach</div>'+
+        '</div></div>';
+    },200);
   })(word.word, langYG);
 }
 
