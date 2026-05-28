@@ -74,6 +74,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;background:rgba(26,35,64,0.9
 /* PAGES */
 .page{display:none}
 .page.active{display:block}
+#page-daily.active,#page-odkryj.active,#page-community.active,#page-strefa.active{display:flex;align-items:flex-start}
 #page-auth.active{display:flex}
 #page-dash.active{display:flex}
 
@@ -1514,14 +1515,6 @@ function showPage(name){
   if(_sidebarMap[name]){ 
     var _s=document.getElementById(_sidebarMap[name]); 
     if(_s) _s.style.display='block';
-    // Adjust main content padding when fixed sidebar is shown
-    var _mainMap={daily:'daily-main',odkryj:'odkryj-main'};
-    if(_mainMap[name]){ var _mc=document.getElementById(_mainMap[name]); if(_mc) _mc.style.paddingLeft='332px'; }
-  } else {
-    // No sidebar for this page - ensure no leftover padding
-    ['daily-main','odkryj-main'].forEach(function(mid){
-      var _mc=document.getElementById(mid); if(_mc) _mc.style.paddingLeft='24px';
-    });
   }
   return false;
 }
@@ -1926,10 +1919,9 @@ function setCard(s){
   <div style="display:flex;gap:0;align-items:flex-start;width:100%">
 
     <!-- LEFT SIDEBAR: Katalogi (sliding) -->
-    <!-- Toggle button OUTSIDE sidebar so it doesn't slide away -->
-    <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:300;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
-    <div id="mat-sidebar" style="width:300px;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);transition:transform .3s ease;z-index:50;backdrop-filter:blur(4px)">
-      <div id="mat-sidebar-inner" style="padding:110px 0 80px 20px;min-width:280px">
+    <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
+    <div id="mat-sidebar" style="width:300px;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49">
+      <div id="mat-sidebar-inner" style="padding:110px 0 80px 20px;min-width:280px;position:relative">
       <!-- Katalogi -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:800;color:var(--navy)">Katalogi</div>
@@ -1942,7 +1934,7 @@ function setCard(s){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px 332px;transition:padding-left .3s ease">
+    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px 32px">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -2446,7 +2438,7 @@ async function initToFixPage(){
       </div>
     </div>
     <!-- MAIN CONTENT -->
-    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px 332px;transition:padding-left .3s ease">
+    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px 32px">
       <!-- Breadcrumb -->
       <div id="strefa-breadcrumb-bar" style="font-size:12px;color:var(--dim2);margin-bottom:16px;min-height:18px"></div>
 
@@ -2471,9 +2463,9 @@ async function initToFixPage(){
 <!-- ═══ ODKRYJ PAGE ═══ -->
 <div id="page-odkryj" class="page" style="min-height:100vh;padding:0">
 <!-- Odkryj Sidebar Toggle -->
-<button id="odkryj-sidebar-toggle" onclick="toggleOdkryjSidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:200;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
+<button id="odkryj-sidebar-toggle" onclick="toggleOdkryjSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
 <!-- Odkryj Sidebar -->
-<div id="odkryj-sidebar" style="width:300px;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);transition:transform .3s ease;z-index:50;padding:110px 0 80px 0">
+<div id="odkryj-sidebar" style="width:300px;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49;padding:110px 0 80px 0">
   <div style="padding:0 20px">
     <div id="odkryj-sb-articles" onclick="odkryjShowTab('articles')" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
       <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">🌍 Odkryj Świat</div>
@@ -2490,7 +2482,7 @@ async function initToFixPage(){
   </div>
 </div>
 <!-- Odkryj Main Content -->
-<div id="odkryj-main" style="padding:110px 32px 80px 24px">
+<div id="odkryj-main" style="flex:1;min-width:0;padding:110px 32px 80px 32px">
 <div style="max-width:960px;margin:0 auto">
 
   
@@ -2605,9 +2597,9 @@ async function initToFixPage(){
 <!-- ═══ DZISIEJSZA PORCJA ═══ -->
 <div id="page-daily" class="page" style="min-height:100vh;padding:0">
 <!-- Daily Sidebar Toggle -->
-<button id="daily-sidebar-toggle" onclick="toggleDailySidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:200;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
+<button id="daily-sidebar-toggle" onclick="toggleDailySidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
 <!-- Daily Sidebar -->
-<div id="daily-sidebar" style="width:300px;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);transition:transform .3s ease;z-index:50;padding:110px 0 80px 0">
+<div id="daily-sidebar" style="width:300px;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49;padding:110px 0 80px 0">
   <div style="padding:0 20px">
     <div id="dsb-daily" onclick="dailyShowTab('daily')" style="background:linear-gradient(135deg,#e8701a,#f08020);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
       <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:#fff">✨ Porcja Dnia</div>
@@ -2620,7 +2612,7 @@ async function initToFixPage(){
   </div>
 </div>
 <!-- Daily Main Content -->
-<div id="daily-main" style="padding:110px 32px 80px 24px">
+<div id="daily-main" style="flex:1;min-width:0;padding:110px 32px 80px 32px">
 <div style="max-width:860px;margin:0 auto">
 
   
@@ -4235,15 +4227,12 @@ function toggleDailySidebar(){
   _dailySidebarOpen = !_dailySidebarOpen;
   var sb=document.getElementById('daily-sidebar');
   var btn=document.getElementById('daily-sidebar-toggle');
-  var main=document.getElementById('daily-main');
   if(_dailySidebarOpen){
-    sb.style.transform='translateX(0)';
-    if(btn){btn.textContent='‹';btn.style.left='300px';}
-    if(main) main.style.paddingLeft='332px';
+    sb.style.display='block';
+    if(btn){btn.textContent='‹';}
   } else {
-    sb.style.transform='translateX(-300px)';
-    if(btn){btn.textContent='›';btn.style.left='0px';}
-    if(main) main.style.paddingLeft='24px';
+    sb.style.display='none';
+    if(btn){btn.textContent='›';}
   }
 }
 
@@ -4251,15 +4240,12 @@ function toggleOdkryjSidebar(){
   _odkryjSidebarOpen = !_odkryjSidebarOpen;
   var sb=document.getElementById('odkryj-sidebar');
   var btn=document.getElementById('odkryj-sidebar-toggle');
-  var main=document.getElementById('odkryj-main');
   if(_odkryjSidebarOpen){
-    sb.style.transform='translateX(0)';
-    if(btn){btn.textContent='‹';btn.style.left='300px';}
-    if(main) main.style.paddingLeft='332px';
+    sb.style.display='block';
+    if(btn){btn.textContent='‹';}
   } else {
-    sb.style.transform='translateX(-300px)';
-    if(btn){btn.textContent='›';btn.style.left='0px';}
-    if(main) main.style.paddingLeft='24px';
+    sb.style.display='none';
+    if(btn){btn.textContent='›';}
   }
 }
 function toggleStrefaSidebar(){
@@ -4267,11 +4253,11 @@ function toggleStrefaSidebar(){
   var sb=document.getElementById('strefa-sidebar');
   var btn=document.getElementById('strefa-sidebar-toggle');
   if(_strefaSidebarOpen){
-    sb.style.transform='translateX(0)';
-    if(btn){btn.textContent='‹';btn.style.left='300px';}
+    sb.style.display='block';
+    if(btn) btn.textContent='‹';
   } else {
-    sb.style.transform='translateX(-300px)';
-    if(btn){btn.textContent='›';btn.style.left='0px';}
+    sb.style.display='none';
+    if(btn) btn.textContent='›';
   }
 }
 
@@ -7922,11 +7908,11 @@ function toggleMatSidebar(){
   var sb = document.getElementById('mat-sidebar');
   var btn = document.getElementById('mat-sidebar-toggle');
   if(_matSidebarOpen){
-    sb.style.transform = 'translateX(0)';
-    if(btn){ btn.textContent = '‹'; btn.style.left = '300px'; }
+    sb.style.display='block';
+    if(btn) btn.textContent='‹';
   } else {
-    sb.style.transform = 'translateX(-300px)';
-    if(btn){ btn.textContent = '›'; btn.style.left = '0px'; }
+    sb.style.display='none';
+    if(btn) btn.textContent='›';
   }
 }
 
@@ -12551,13 +12537,7 @@ async function lexInit(){
   }
   // Hide all fixed sidebars - they're position:fixed so escape page display:none
   // showPage() will reveal the correct one
-  document.addEventListener('DOMContentLoaded', function(){
-    ['mat-sidebar','strefa-sidebar','daily-sidebar','odkryj-sidebar',
-     'mat-sidebar-toggle','strefa-sidebar-toggle','daily-sidebar-toggle','odkryj-sidebar-toggle'].forEach(function(id){
-      var el=document.getElementById(id);
-      if(el) el.style.display='none';
-    });
-  });
+  // Sidebars are now position:sticky - hidden with parent page
   setTimeout(tryInit,200);
 })();
 </script>
