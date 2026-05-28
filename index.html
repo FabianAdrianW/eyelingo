@@ -572,6 +572,10 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 .mat-card.dragging{opacity:.6;transform:scale(1.03) rotate(1.5deg);box-shadow:0 20px 60px rgba(26,35,64,.35)!important;cursor:grabbing;z-index:100;position:relative}
 .mat-card.drag-over{transform:scale(1.02);border-color:var(--orange)!important;box-shadow:0 0 0 2px var(--orange)}
 .sb-catalog-tile.drop-target{border-color:var(--orange)!important;background:rgba(232,112,26,.08)!important;transform:scale(1.02)}
+
+/* Hide old tab selectors when sidebar is present */
+#page-daily .daily-tab-selector,
+#page-odkryj .odkryj-tab-selector { display: none !important; }
 </style>
 </head>
 <body>
@@ -1673,6 +1677,19 @@ window.saveNewSet = async function saveNewSet(){
     if(cards.length) await db.from('user_set_cards').insert(cards.map(function(c){return Object.assign({},c,{set_id:set.id});}));
     closeMatModal();
     typeof showToast!=='undefined'&&showToast('Zestaw "'+name+'" utworzony!','success');
+    // If created from within a collection, assign it there
+    if(window._createSetTargetCollection !== undefined && window._createSetTargetCollection !== null){
+      var ci = window._createSetTargetCollection;
+      if(_collections[ci]){
+        if(!_collections[ci].sets) _collections[ci].sets=[];
+        _collections[ci].sets.push({id:set.id, name:name});
+        db.auth.getSession().then(function(r){
+          if(r.data&&r.data.session) saveCollections(r.data.session.user.id);
+        });
+      }
+      window._createSetTargetCollection = null;
+      loadCollections();
+    }
     if(window.loadMySets) loadMySets();
   }catch(e){typeof showToast!=='undefined'&&showToast('Błąd: '+(e.message||e),'');}
 };
@@ -1788,12 +1805,13 @@ window.loadCommunity = async function loadCommunity(){
   try{
     var {data:{session}}=await db.auth.getSession();
     if(session) _matMyUid=session.user.id;
-    var {data}=await db.from('user_sets')
-      .select('id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation),profiles(username)')
+    var {data,error}=await db.from('user_sets')
+      .select('id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation)')
       .eq('is_public',true)
       .order('likes_count',{ascending:false})
       .limit(50);
-    _matSets=(data||[]).map(function(s){ return Object.assign({},s,{username:s.profiles&&s.profiles.username||'Użytkownik'}); });
+    if(error) throw error;
+    _matSets=(data||[]).map(function(s){ return Object.assign({},s,{username:'Użytkownik'}); });
     if(grid){
       if(!_matSets.length){ grid.innerHTML='<div class="mat-empty">Brak publicznych zestawów</div>'; }
       else { grid.innerHTML=_matSets.map(function(s){ return setCard(s); }).join(''); }
@@ -2389,11 +2407,31 @@ async function initToFixPage(){
 </div><!-- end page-strefa -->
 
 <!-- ═══ ODKRYJ PAGE ═══ -->
-<div id="page-odkryj" class="page" style="min-height:100vh;padding:120px 20px 80px">
+<div id="page-odkryj" class="page" style="min-height:100vh;padding:0">
+<!-- Odkryj Sidebar Toggle -->
+<button id="odkryj-sidebar-toggle" onclick="toggleOdkryjSidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:200;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
+<!-- Odkryj Sidebar -->
+<div id="odkryj-sidebar" style="width:300px;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);transition:transform .3s ease;z-index:50;padding:110px 0 80px 0">
+  <div style="padding:0 20px">
+    <div id="odkryj-sb-articles" onclick="odkryjShowTab('articles')" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">🌍 Odkryj Świat</div>
+      <div style="font-size:12px;color:var(--dim2)">Artykuły i ciekawostki</div>
+    </div>
+    <div id="odkryj-sb-kultura" onclick="odkryjShowTab('kultura')" style="background:var(--navy);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
+      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:#fff">🗓️ Kalendarz Kultur</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.7)">Kultura i obyczaje</div>
+    </div>
+    <div id="odkryj-sb-lyrics" onclick="odkryjShowTab('lyrics')" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">📝 Analiza Tekstu</div>
+      <div style="font-size:12px;color:var(--dim2)">Teksty piosenek i więcej</div>
+    </div>
+  </div>
+</div>
+<!-- Odkryj Main Content -->
+<div id="odkryj-main" style="padding:110px 32px 80px 332px">
 <div style="max-width:960px;margin:0 auto">
 
-  <!-- Selector kafelków -->
-  <div style="margin-bottom:20px">
+  <div class="daily-tab-selector" style="margin-bottom:20px">
     <h2 style="font-family:DM Sans,sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Odkryj</h2>
     <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Wybierz co chcesz dziś eksplorować</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px" id="odkryj-selector">
@@ -2523,7 +2561,24 @@ async function initToFixPage(){
 </div><!-- end page-odkryj -->
 
 <!-- ═══ DZISIEJSZA PORCJA ═══ -->
-<div id="page-daily" class="page" style="min-height:100vh;padding:120px 20px 80px">
+<div id="page-daily" class="page" style="min-height:100vh;padding:0">
+<!-- Daily Sidebar Toggle -->
+<button id="daily-sidebar-toggle" onclick="toggleDailySidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:200;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
+<!-- Daily Sidebar -->
+<div id="daily-sidebar" style="width:300px;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);transition:transform .3s ease;z-index:50;padding:110px 0 80px 0">
+  <div style="padding:0 20px">
+    <div id="dsb-daily" onclick="dailyShowTab('daily')" style="background:linear-gradient(135deg,#e8701a,#f08020);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
+      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:#fff">✨ Porcja Dnia</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.8)">Słówka · Quiz · Czytanka</div>
+    </div>
+    <div id="dsb-challenge" onclick="dailyShowTab('challenge')" style="background:var(--navy);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
+      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:#fff">🏆 Wyzwanie Tygodnia</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.7)">Ranking · Nagrody</div>
+    </div>
+  </div>
+</div>
+<!-- Daily Main Content -->
+<div id="daily-main" style="padding:110px 32px 80px 332px">
 <div style="max-width:860px;margin:0 auto">
 
   <!-- Selector kafelków -->
@@ -3621,14 +3676,22 @@ async function loadDailyRead(){
   }
 
   // 1. Sprawdź localStorage cache
+  // Clear all old caches from previous days (keep only today)
+  try{
+    for(var k in localStorage){
+      if(k.startsWith('daily_article_') && !k.endsWith(today)){
+        localStorage.removeItem(k);
+      }
+    }
+  }catch(e){}
   try{
     var lsCached=localStorage.getItem(lsKey);
     if(lsCached){
       var a=JSON.parse(lsCached);
-      // Re-check: if body looks like JSON, clear cache and re-fetch
       var testBody = a.body||'';
-      if(testBody.trim().startsWith('{')||testBody.trim().startsWith('"')){
-        localStorage.removeItem(lsKey); // clear bad cache
+      // Clear if JSON or too short
+      if(testBody.trim().startsWith('{')||testBody.trim().startsWith('"')||testBody.length<100){
+        localStorage.removeItem(lsKey);
       } else {
         displayArticle(a.title,a.body);return;
       }
@@ -4137,6 +4200,34 @@ var _challengeSetCache=null;
 
 // ── Strefa Nauki sidebar logic ──
 var _strefaSidebarOpen = true;
+var _dailySidebarOpen = true;
+var _odkryjSidebarOpen = true;
+
+function toggleDailySidebar(){
+  _dailySidebarOpen = !_dailySidebarOpen;
+  var sb=document.getElementById('daily-sidebar');
+  var btn=document.getElementById('daily-sidebar-toggle');
+  if(_dailySidebarOpen){
+    sb.style.transform='translateX(0)';
+    if(btn){btn.textContent='‹';btn.style.left='300px';}
+  } else {
+    sb.style.transform='translateX(-300px)';
+    if(btn){btn.textContent='›';btn.style.left='0px';}
+  }
+}
+
+function toggleOdkryjSidebar(){
+  _odkryjSidebarOpen = !_odkryjSidebarOpen;
+  var sb=document.getElementById('odkryj-sidebar');
+  var btn=document.getElementById('odkryj-sidebar-toggle');
+  if(_odkryjSidebarOpen){
+    sb.style.transform='translateX(0)';
+    if(btn){btn.textContent='‹';btn.style.left='300px';}
+  } else {
+    sb.style.transform='translateX(-300px)';
+    if(btn){btn.textContent='›';btn.style.left='0px';}
+  }
+}
 function toggleStrefaSidebar(){
   _strefaSidebarOpen = !_strefaSidebarOpen;
   var sb=document.getElementById('strefa-sidebar');
@@ -4686,23 +4777,63 @@ function renderChallengeSet(set, ch){
   if(importBtn) importBtn.style.display='flex';
 }
 
-async function importChallengeSet(){
+function importChallengeSet(){
+  var set=window._challengeSetToImport;
+  if(!set||!set.user_set_cards||!set.user_set_cards.length){showToast('Brak zestawu do importu','error');return;}
+  // Show catalog selection modal
+  var modal=document.getElementById('mat-modal');
+  var title=document.getElementById('mat-modal-title');
+  var bodyEl=document.getElementById('mat-modal-body');
+  if(!modal){doImportChallenge(null);return;}
+  if(title) title.textContent='Importuj: '+set.name;
+  if(bodyEl){
+    var d=document.createElement('div');
+    d.innerHTML='<div style="font-size:14px;color:var(--dim2);margin-bottom:16px">Wybierz katalog lub importuj bez katalogu:</div>';
+    // "Bez katalogu" option
+    var noCatBtn=document.createElement('div');
+    noCatBtn.style.cssText='padding:10px 14px;border-radius:10px;background:#fff;border:1.5px solid var(--border);margin-bottom:6px;cursor:pointer;font-size:13px;font-weight:600;color:var(--navy);transition:all .2s';
+    noCatBtn.innerHTML='📂 Bez katalogu (Moje materiały)';
+    noCatBtn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+    noCatBtn.onmouseout=function(){this.style.borderColor='var(--border)';};
+    noCatBtn.onclick=function(){closeMatModal();doImportChallenge(null);};
+    d.appendChild(noCatBtn);
+    // Catalog options
+    (_collections||[]).forEach(function(col,ci){
+      var btn=document.createElement('div');
+      btn.style.cssText='padding:10px 14px;border-radius:10px;background:#fff;border:1.5px solid var(--border);margin-bottom:6px;cursor:pointer;font-size:13px;font-weight:600;color:var(--navy);transition:all .2s';
+      btn.innerHTML=(col.icon||'📁')+' '+col.name;
+      btn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+      btn.onmouseout=function(){this.style.borderColor='var(--border)';};
+      btn.onclick=(function(idx){return function(){closeMatModal();doImportChallenge(idx);};})(ci);
+      d.appendChild(btn);
+    });
+    bodyEl.innerHTML=''; bodyEl.appendChild(d);
+  }
+  modal.style.display='flex';
+}
+
+async function doImportChallenge(colIdx){
   var sess=(await db.auth.getSession()).data.session;
   if(!sess){showToast('Zaloguj się aby importować','error');return;}
   var set=window._challengeSetToImport;
-  if(!set||!set.user_set_cards||!set.user_set_cards.length){showToast('Brak zestawu do importu','error');return;}
+  if(!set) return;
   var btn=document.getElementById('ch-import-btn');
   if(btn){btn.disabled=true;btn.textContent='Importuję...';}
   try{
     var {data:newSet}=await db.from('user_sets').insert({
-      user_id:sess.user.id,name:set.name+' (mój)',is_public:false
+      user_id:sess.user.id,name:set.name,is_public:false
     }).select('id').single();
-    var rows=set.user_set_cards.map(function(c,i){return{set_id:newSet.id,word:c.word,translation:c.translation,sort_order:i};});
-    await db.from('user_set_cards').insert(rows);
-    // Oznacz zestaw jako zaimportowany (nie może być publiczny)
-    await db.from('user_sets').update({is_public:false,name:set.name+' (mój)'}).eq('id',newSet.id);
-    showToast('Zestaw zaimportowany do Materiałów! ✅','success');
-    if(btn){btn.textContent='✓ Zaimportowano';btn.disabled=true;}
+    var rows=(set.user_set_cards||[]).map(function(c,i){return{set_id:newSet.id,word:c.word,translation:c.translation,sort_order:i};});
+    if(rows.length) await db.from('user_set_cards').insert(rows);
+    // Assign to collection if chosen
+    if(colIdx!==null && _collections[colIdx]){
+      if(!_collections[colIdx].sets) _collections[colIdx].sets=[];
+      _collections[colIdx].sets.push({id:newSet.id,name:set.name});
+      saveCollections(sess.user.id);
+      loadCollections();
+    }
+    showToast('✅ Zestaw "'+set.name+'" zaimportowany!','success');
+    if(btn){btn.textContent='✓ Zaimportowano';btn.style.background='#639922';}
   }catch(e){
     showToast('Błąd importu: '+e.message,'error');
     if(btn){btn.disabled=false;btn.textContent='+ Importuj do Moich zestawów';}
@@ -7900,12 +8031,11 @@ async function addSetToCollection(colIdx, modalEl){
 }
 
 function openCreateSetInCollection(){
-  // Open the same create set modal used in "Moje materiały"
+  // Remember which collection we're in, then open create modal
+  window._createSetTargetCollection = _matActiveCollection;
   if(typeof openCreateSet === 'function'){
+    // Override saveNewSet to assign to collection after creation
     openCreateSet();
-    // After set is created, it will appear in "Moje materiały" 
-    // User can then move it to collection via "Przenieś" button
-    if(typeof showToast==='function') showToast('Po stworzeniu zestawu możesz go przenieść do katalogu przyciskiem "Przenieś"','');
   }
 }
 
@@ -9357,6 +9487,15 @@ function tileActivate(btnId, allPrefix){
 
 // ── ODKRYJ ──
 function odkryjShowTab(tab){
+  // Update sidebar active styles
+  var sbItems={articles:'odkryj-sb-articles',kultura:'odkryj-sb-kultura',lyrics:'odkryj-sb-lyrics'};
+  Object.keys(sbItems).forEach(function(k){
+    var el=document.getElementById(sbItems[k]);
+    if(el){
+      if(k===tab){el.style.opacity='1';el.style.transform='scale(1.02)';}
+      else{el.style.opacity='.65';el.style.transform='';}
+    }
+  });
   document.getElementById('odkryj-panel-articles').style.display = tab==='articles' ? '' : 'none';
   document.getElementById('odkryj-panel-kultura').style.display  = tab==='kultura'  ? '' : 'none';
   document.getElementById('odkryj-panel-lyrics').style.display   = tab==='lyrics'   ? '' : 'none';
