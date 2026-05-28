@@ -1504,11 +1504,14 @@ function showPage(name){
   if(name==='tryb'){ /* page-tryb handles itself */ }
   setActiveTab(name);
   // Show only sidebar toggle for current page, hide others
-  ['mat-sidebar-toggle','strefa-sidebar-toggle','daily-sidebar-toggle','odkryj-sidebar-toggle'].forEach(function(id){
+  ['mat-sidebar-toggle','strefa-sidebar-toggle','daily-sidebar-toggle','odkryj-sidebar-toggle',
+   'mat-sidebar','strefa-sidebar','daily-sidebar','odkryj-sidebar'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.style.display='none';
   });
   var _sidebarToggleMap={community:'mat-sidebar-toggle',strefa:'strefa-sidebar-toggle',daily:'daily-sidebar-toggle',odkryj:'odkryj-sidebar-toggle'};
+  var _sidebarMap={community:'mat-sidebar',strefa:'strefa-sidebar',daily:'daily-sidebar',odkryj:'odkryj-sidebar'};
   if(_sidebarToggleMap[name]){ var _t=document.getElementById(_sidebarToggleMap[name]); if(_t) _t.style.display='flex'; }
+  if(_sidebarMap[name]){ var _s=document.getElementById(_sidebarMap[name]); if(_s) _s.style.display='block'; }
   return false;
 }
 
@@ -7694,21 +7697,6 @@ window.loadCollections = async function loadCollections(){
     if(!sidebar) return;
     sidebar.innerHTML = '';
 
-    // "All" link (no filter)
-    var allBtn = document.createElement('button');
-    allBtn.style.cssText = 'width:100%;text-align:left;padding:14px 14px;border-radius:12px;border:1.5px solid var(--border);background:#fff;font-size:14px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;margin-bottom:6px;display:block;box-shadow:0 2px 8px rgba(26,35,64,.06)';
-    allBtn.innerHTML = '<div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:800;color:var(--navy);margin-bottom:3px">📂 Wszystkie zestawy</div><div style="font-size:12px;color:var(--dim2)">Bez katalogu</div>';
-    allBtn.className = 'sb-catalog-tile';
-    allBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-1px)'; };
-    allBtn.onmouseout = function(){ this.style.background='transparent'; };
-    allBtn.onclick = function(){
-      document.querySelectorAll('#mat-sidebar-collections button').forEach(function(b){ b.style.background='transparent'; b.style.fontWeight='normal'; });
-      this.style.background='var(--paper2)'; this.style.fontWeight='700';
-      _matActiveCollection = null;
-      switchMatTab('mine');
-    };
-    sidebar.appendChild(allBtn);
-
     if(!_collections.length){
       var hint = document.createElement('div');
       hint.style.cssText = 'font-size:11px;color:var(--dim2);padding:8px 0;line-height:1.4';
@@ -12543,6 +12531,15 @@ async function lexInit(){
       }
     });
   }
+  // Hide all fixed sidebars - they're position:fixed so escape page display:none
+  // showPage() will reveal the correct one
+  document.addEventListener('DOMContentLoaded', function(){
+    ['mat-sidebar','strefa-sidebar','daily-sidebar','odkryj-sidebar',
+     'mat-sidebar-toggle','strefa-sidebar-toggle','daily-sidebar-toggle','odkryj-sidebar-toggle'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el) el.style.display='none';
+    });
+  });
   setTimeout(tryInit,200);
 })();
 </script>
