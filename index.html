@@ -1503,6 +1503,12 @@ function showPage(name){
   if(name==='lyrics'){showPage('odkryj');setTimeout(function(){odkryjShowTab('lyrics');},50);return false;}
   if(name==='tryb'){ /* page-tryb handles itself */ }
   setActiveTab(name);
+  // Show only sidebar toggle for current page, hide others
+  ['mat-sidebar-toggle','strefa-sidebar-toggle','daily-sidebar-toggle','odkryj-sidebar-toggle'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  var _sidebarToggleMap={community:'mat-sidebar-toggle',strefa:'strefa-sidebar-toggle',daily:'daily-sidebar-toggle',odkryj:'odkryj-sidebar-toggle'};
+  if(_sidebarToggleMap[name]){ var _t=document.getElementById(_sidebarToggleMap[name]); if(_t) _t.style.display='flex'; }
   return false;
 }
 
@@ -1958,9 +1964,8 @@ function setCard(s){
 
       <!-- Collection view (inside a collection) -->
       <div id="mat-collection-view" style="display:none">
-        <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-          <input id="mat-col-search" class="fi" placeholder="🔍 Szukaj zestawów..." style="flex:1;min-width:180px;font-size:13px" oninput="filterCollectionSets(this.value)">
-          <button onclick="openCreateSetInCollection()" class="btn btn-orange" style="font-size:13px;padding:8px 16px;white-space:nowrap">+ Nowy zestaw</button>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+          <button onclick="openCreateSetInCollection()" class="btn btn-orange" style="font-size:13px;padding:8px 16px">+ Nowy zestaw</button>
         </div>
         <div id="mat-collection-sets" class="mat-grid"><div class="mat-empty">Brak zestawów w tym katalogu</div></div>
       </div>
@@ -2474,27 +2479,7 @@ async function initToFixPage(){
 <div id="odkryj-main" style="padding:110px 32px 80px 332px">
 <div style="max-width:960px;margin:0 auto">
 
-  <div class="daily-tab-selector" style="margin-bottom:20px">
-    <h2 style="font-family:DM Sans,sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Odkryj</h2>
-    <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Wybierz co chcesz dziś eksplorować</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px" id="odkryj-selector">
-      <button onclick="odkryjShowTab('articles')" id="odkryj-btn-articles" class="odkryj-tile odkryj-tile-active" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
-        <span style="font-size:24px">🌐</span>
-        <span style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Odkryj świat</span>
-        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Artykuły i słownictwo dopasowane do zainteresowań</span>
-      </button>
-      <button onclick="odkryjShowTab('kultura')" id="odkryj-btn-kultura" class="odkryj-tile" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
-        <span style="font-size:24px">🌍</span>
-        <span style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Kalendarz Kultur</span>
-        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Codzienny artykuł o kulturach świata ze słowem dnia</span>
-      </button>
-      <button onclick="odkryjShowTab('lyrics')" id="odkryj-btn-lyrics" class="odkryj-tile" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
-        <span style="font-size:24px">🎵</span>
-        <span style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Analiza tekstu</span>
-        <span style="font-size:12px;color:var(--dim2);line-height:1.4">AI wyjaśni slang, kontekst i gry słowne z piosenek</span>
-      </button>
-    </div>
-  </div>
+  
 
   <!-- Panel: Odkryj świat -->
   <div id="odkryj-panel-articles">
@@ -2624,23 +2609,7 @@ async function initToFixPage(){
 <div id="daily-main" style="padding:110px 32px 80px 332px">
 <div style="max-width:860px;margin:0 auto">
 
-  <!-- Selector kafelków -->
-  <div style="margin-bottom:20px">
-    <h2 style="font-family:DM Sans,sans-serif;font-size:36px;font-weight:800;color:var(--navy);margin-bottom:6px">Porcja dnia</h2>
-    <p style="color:var(--dim2);font-size:15px;margin-bottom:20px">Codzienna dawka nauki i rywalizacji</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px" id="daily-tiles-grid">
-      <button onclick="dailyShowTab('daily')" id="daily-btn-daily" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--orange);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
-        <span style="font-size:24px">✨</span>
-        <span style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Porcja dnia</span>
-        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Codzienne słówka i ćwiczenia dopasowane do Ciebie</span>
-      </button>
-      <button onclick="dailyShowTab('challenge')" id="daily-btn-challenge" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#fff;border:1.5px solid var(--border);border-radius:16px;cursor:pointer;text-align:left;transition:all .2s">
-        <span style="font-size:24px">🏆</span>
-        <span style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Wyzwanie tygodnia</span>
-        <span style="font-size:12px;color:var(--dim2);line-height:1.4">Rywalizuj ze społecznością. Nagrody dla najlepszych.</span>
-      </button>
-    </div>
-  </div>
+  
 
   <!-- Panel: Porcja dnia -->
   <div id="daily-panel-daily">
@@ -2860,7 +2829,7 @@ async function initToFixPage(){
 <!-- ═══ AI NAUCZYCIEL (chat embedded) ═══ -->
 <div id="page-chat" class="page" style="display:none"><!-- stara strona ukryta, logika przeniesiona do teacher --></div>
 
-<div id="page-teacher" class="page" style="min-height:100vh;padding:110px 0 80px;background:var(--paper)">
+<div id="page-teacher" class="page" style="min-height:100vh;padding:110px 0 80px;background:var(--paper);overflow-x:hidden">
 <div style="width:100%">
   <!-- Kafelki z marginesami -->
   <div style="max-width:960px;margin:0 auto;padding:0 24px 0">
@@ -3777,7 +3746,7 @@ async function loadDailyRead(){
         var parsed2=JSON.parse(rawText);
         rawText=parsed2.content||parsed2.text||parsed2.body||rawText;
         if(!d.title&&parsed2.title) d.title=parsed2.title;
-      }catch(e){}
+      }catch(parseErr){ console.warn("[daily] JSON parse:", parseErr); }
     }
     var title=d.title||topic;
     var body=rawText;
@@ -7751,7 +7720,7 @@ window.loadCollections = async function loadCollections(){
     // "Wszystkie" tile - same style as catalogs
     var allBtn = document.createElement('button');
     allBtn.style.cssText = 'width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:var(--navy);font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px;margin-bottom:4px';
-    allBtn.innerHTML = '<span style="font-size:16px">📂</span><div><div style="font-size:13px;font-weight:700;color:var(--navy)">Wszystkie (bez katalogu)</div></div>';
+    allBtn.innerHTML = '<span style="font-size:16px">📂</span><div><div style="font-size:13px;font-weight:700;color:var(--navy)">Wszystkie zestawy</div></div>';
     allBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-1px)'; };
     allBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; };
     allBtn.onclick = function(){ switchMatTab('mine'); };
@@ -12545,17 +12514,23 @@ async function lexInit(){
 
 <script>
 (function initApp(){
+  var _appInitialized = false;
   function tryInit(){
     if(typeof db==='undefined'||!db){setTimeout(tryInit,100);return;}
+    // Only react to actual sign-in/out events, NOT tab focus (TOKEN_REFRESHED)
     db.auth.onAuthStateChange(function(event,session){
-      if(event==='SIGNED_IN'&&session){
-        if(typeof loadDashboard==='function') loadDashboard().then(function(){showPage('dash');});
-      } else if(event==='SIGNED_OUT'){
+      if(event==='SIGNED_OUT'){
+        _appInitialized=false;
         showPage('auth');
       }
+      // Do NOT redirect on SIGNED_IN from onAuthStateChange - 
+      // this fires on tab focus and would always go to dash
     });
+    // Only check session ONCE on startup
     db.auth.getSession().then(function(r){
+      if(_appInitialized) return; // already done
       if(r.data&&r.data.session){
+        _appInitialized=true;
         if(typeof loadDashboard==='function'){
           loadDashboard().then(function(){
             var hash=window.location.hash.replace('#','');
@@ -12563,7 +12538,9 @@ async function lexInit(){
             showPage(valid.indexOf(hash)>=0?hash:'dash');
           });
         }
-      } else { showPage('auth'); }
+      } else {
+        showPage('auth');
+      }
     });
   }
   setTimeout(tryInit,200);
