@@ -538,9 +538,11 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 
 /* ═══ FISZKA 3D FLIP ═══ */
 .tryb-card-scene{perspective:900px;width:100%}
-.tryb-card-flipper{position:relative;width:100%;min-height:300px;transform-style:preserve-3d;will-change:transform;transition:none}
+.tryb-card-scene{perspective:1400px;width:100%;cursor:pointer}
+.tryb-card-flipper{position:relative;width:100%;min-height:300px;transform-style:preserve-3d;will-change:transform;transition:transform .55s cubic-bezier(0.645,0.045,0.355,1.000)}
 .tryb-card-flipper.flipped{transform:rotateY(-180deg)}
-.tryb-card-scene{perspective:1200px;width:100%;cursor:pointer}
+.tryb-card-front{transform:rotateY(0deg)}
+.tryb-card-back{transform:rotateY(180deg)}
 .tryb-card-front,.tryb-card-back{position:absolute;width:100%;min-height:300px;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;box-sizing:border-box;text-align:center;will-change:transform}
 .tryb-card-front{background:var(--navy);color:#fff;cursor:pointer;box-shadow:0 16px 48px rgba(26,35,64,.3),0 4px 12px rgba(26,35,64,.15);transition:box-shadow .2s}
 .tryb-card-back{background:#fff;color:var(--navy);transform:rotateY(180deg);border:2px solid var(--border);box-shadow:0 16px 48px rgba(26,35,64,.1)}
@@ -555,10 +557,10 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 * { scrollbar-width: none; -ms-overflow-style: none; }
 
 /* ─── Card slide animation (book-page turn) ─── */
-@keyframes slideInRight{from{transform:translateX(60px);opacity:0}to{transform:translateX(0);opacity:1}}
-@keyframes slideInLeft{from{transform:translateX(-60px);opacity:0}to{transform:translateX(0);opacity:1}}
-.card-slide-next{animation:slideInRight .35s cubic-bezier(.25,.46,.45,.94)}
-.card-slide-prev{animation:slideInLeft .35s cubic-bezier(.25,.46,.45,.94)}
+@keyframes slideInRight{from{transform:translateX(55px) rotateY(-8deg);opacity:0}to{transform:translateX(0) rotateY(0);opacity:1}}
+@keyframes slideInLeft{from{transform:translateX(-55px) rotateY(8deg);opacity:0}to{transform:translateX(0) rotateY(0);opacity:1}}
+.card-slide-next .tryb-card-flipper{animation:slideInRight .4s cubic-bezier(.25,.46,.45,.94)}
+.card-slide-prev .tryb-card-flipper{animation:slideInLeft .4s cubic-bezier(.25,.46,.45,.94)}
 
 /* Rate button pulse on click */
 @keyframes ratePulse{0%{transform:scale(1)}50%{transform:scale(1.1);box-shadow:0 0 0 4px rgba(26,35,64,.2)}100%{transform:scale(1)}}
@@ -1477,143 +1479,29 @@ function showPage(name){
 
 // ── Stub functions (safe fallbacks) ──
 async function loadNotifications(){
-  // Ładuj powiadomienia jeśli panel istnieje
   try{
-    var panel=document.getElementById('notif-panel');
-    var badge=document.getElementById('notif-badge');
-    if(!panel&&!badge) return;
     var sess=(await db.auth.getSession()).data.session;
     if(!sess) return;
-    var{data:notifs}=await db.from('notifications')
+    var{data:notifs,error}=await db.from('notifications')
       .select('id,type,message,read_at,created_at')
       .eq('user_id',sess.user.id)
       .order('created_at',{ascending:false})
       .limit(20);
-    if(!notifs) return;
+    if(error) return; // Table may not exist yet - silent fail
+    if(!notifs||!notifs.length) return;
+    var badge=document.getElementById('notif-badge');
     var unread=notifs.filter(function(n){return !n.read_at;}).length;
-    if(badge) badge.textContent=unread||'';
-    if(badge) badge.style.display=unread?'flex':'none';
-    if(panel){
-      var icon={voice_rated:'🎙️',voice_commented:'💬',material_liked:'❤️',streak:'🔥',gold:'🪙',review:'⭐'};
-      panel.innerHTML=notifs.length
-        ?notifs.map(function(n){
-          return'<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;'+(n.read_at?'opacity:.6':'')+'">'
-            +'<span style="font-size:18px">'+(icon[n.type]||'🔔')+'</span>'
-            +'<div><div style="font-size:13px;color:var(--navy)">'+(n.message||'')+'</div>'
-            +'<div style="font-size:11px;color:var(--dim2)">'+ new Date(n.created_at).toLocaleDateString('pl')+'</div></div>'
-            +'</div>';
-        }).join('')
-        :'<div style="padding:20px;text-align:center;color:var(--dim2);font-size:13px">Brak powiadomień</div>';
-    }
-  }catch(e){ /* silent */ }
+    if(badge) badge.textContent=unread>0?unread:'';
+    var list=document.getElementById('notif-list');
+    if(list) list.innerHTML=notifs.map(function(n){
+      return '<div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px">'
+        +'<div style="color:var(--navy)">'+(n.message||n.type||'')+'</div>'
+        +'<div style="font-size:11px;color:var(--dim2);margin-top:3px">'+new Date(n.created_at).toLocaleString('pl')+'</div>'
+        +'</div>';
+    }).join('');
+  }catch(e){ /* notifications not available */ }
 }
 
-// ── Materiały - stan globalny ──
-let _likedSets = new Set();
-let _addedSets = new Set();
-let _matSets = [];
-let _matMyUid = null;
-let _matTab = 'mine';
-Object.defineProperty(window, '_matTab', {get:function(){return _matTab;}, set:function(v){_matTab=v;}});
-let _matModal = null;
-let _matEditMode = false;
-
-window.loadCommunity = async function loadCommunity(){
-  loadCollections();
-  document.getElementById('mat-grid').innerHTML='<div class="mat-empty">Ładowanie...</div>';
-  try{
-    const{data:{session}}=await db.auth.getSession();
-    _matMyUid=session?.user?.id||null;
-
-    // Pobierz publiczne zestawy
-    const{data,error}=await db.from('user_sets')
-      .select('id,name,likes_count,user_id,created_at,is_public,user_set_cards(id,word,translation)')
-      .eq('is_public',true)
-      .order('likes_count',{ascending:false})
-      .limit(60);
-    if(error)throw error;
-
-    // Pobierz usernames osobno
-    const userIds=[...new Set((data||[]).map(s=>s.user_id))];
-    let usernameMap={};
-    if(userIds.length){
-      const{data:profiles}=await db.from('profiles')
-        .select('user_id,username')
-        .in('user_id',userIds);
-      (profiles||[]).forEach(p=>usernameMap[p.user_id]=p.username);
-    }
-
-    // Pobierz lajki użytkownika
-    _likedSets=new Set();
-    if(_matMyUid){
-      const{data:likes}=await db.from('set_likes')
-        .select('set_id')
-        .eq('user_id',_matMyUid);
-      if(likes) likes.forEach(l=>_likedSets.add(l.set_id));
-    }
-
-    const now=Date.now();
-    _matSets=(data||[]).map(s=>{
-      const age=(now-new Date(s.created_at).getTime())/(1000*3600);
-      const hot=(s.likes_count||0)/Math.pow(age+2,1.5);
-      return{...s,_hot:hot,username:usernameMap[s.user_id]||'Nieznany'};
-    }).sort((a,b)=>b._hot-a._hot);
-
-    renderMat();
-  }catch(e){
-    console.error('mat error:','Błąd: '+e.message);
-    console.error('[loadCommunity]',e);
-  }
-}
-
-window.loadMySets = async function loadMySets(){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){
-    document.getElementById('mat-grid').innerHTML='<div class="mat-empty">Zaloguj się aby zobaczyć swoje zestawy.<br><br><button class="btn btn-navy" onclick="showAuth(\'login\')" style="margin-top:8px">Zaloguj się</button></div>';
-    const countEl=document.getElementById('mat-count');
-    if(countEl) countEl.textContent='';
-    return;
-  }
-  _matMyUid=session.user.id;
-  const{data,error}=await db.from('user_sets')
-    .select('id,name,likes_count,is_public,created_at,user_set_cards(id,word,translation)')
-    .eq('user_id',_matMyUid)
-    .order('created_at',{ascending:false});
-  if(error){console.error('mat error:',error.message);return;}
-  const{data:profile}=await db.from('profiles').select('username').eq('user_id',_matMyUid).maybeSingle();
-  const username=profile?.username||'Ty';
-  // Filter out sets that belong to any collection (if mine tab)
-    var assignedIds = new Set();
-    if(_matTab === 'mine'){
-      (_collections||[]).forEach(function(col){ (col.sets||[]).forEach(function(s){ assignedIds.add(s.id); }); });
-    }
-    _matSets=(data||[]).filter(s => _matTab !== 'mine' || !assignedIds.has(s.id)).map(s=>({...s,username,user_id:_matMyUid}));
-  renderMat();
-}
-
-window.renderMat = function(query=''){
-  const el=document.getElementById('mat-grid');
-  const countEl=document.getElementById('mat-count');
-  if(!el)return;
-  let filtered=_matSets;
-  if(query){
-    const q=query.toLowerCase();
-    filtered=_matSets.filter(s=>
-      s.name.toLowerCase().includes(q)||
-      (s.username||'').toLowerCase().includes(q)
-    );
-  }
-  if(countEl) countEl.textContent=filtered.length?`${filtered.length} zestaw${filtered.length===1?'':'ów'}`:'';
-  if(!filtered.length){
-    el.innerHTML=`<div class="mat-empty">${query?`Brak wyników dla "${query}"`
-      :_matTab==='mine'?'Nie masz jeszcze żadnych zestawów.'
-      :'Brak publicznych zestawów.'}</div>`;
-    return;
-  }
-  el.innerHTML=filtered.map(s=>setCard(s)).join('');
-}
-
-window.filterMat = function(q){renderMat(q)}
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 window.openSet = function openSet(id){
@@ -6213,17 +6101,9 @@ function loadTrybFlipCard(direction){
   if(!card){ showTrybSessionSummary(); return; }
   _trybFlipRevealed = false;
 
-  // Page turn: smooth flip back to front
+  // Flip back to front (CSS transition handles smoothness)
   var flipper = document.getElementById('tryb-card-flipper');
-  if(flipper && flipper.classList.contains('flipped')){
-    flipper.style.transition = 'transform .35s cubic-bezier(0.4,0,0.2,1)';
-    flipper.classList.remove('flipped');
-    setTimeout(function(){
-      if(flipper) flipper.style.transition = 'none';
-    }, 360);
-  } else {
-    if(flipper) flipper.classList.remove('flipped');
-  }
+  if(flipper) flipper.classList.remove('flipped');
 
   // Slide animation (book page direction)
   var scene = document.getElementById('tryb-card-scene');
@@ -6283,9 +6163,7 @@ function trybFlipReveal(backText){
   _trybFlipRevealed = true;
   var flipper = document.getElementById('tryb-card-flipper');
   if(flipper){
-    flipper.style.transition = 'transform .5s cubic-bezier(0.4,0,0.2,1)';
     flipper.classList.add('flipped');
-    setTimeout(function(){ if(flipper) flipper.style.transition='none'; }, 520);
   }
 
   var card = _trybCards[_trybIdx];
