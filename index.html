@@ -1493,8 +1493,8 @@ function showPage(name){
   if(name==='tofix') initToFixPage();
   if(name==='strefa'){ initStrefa(); strefaShowTab('tryb'); }
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
-  if(name==='daily'){ initDaily(); dailyShowTab('daily'); }
-  if(name==='teacher'){ teacherShowTab('chat'); }
+  if(name==='daily'){ setTimeout(function(){ var ind=document.getElementById('daily-loading-indicator'); if(ind) ind.style.display='none'; initDaily(); dailyShowTab('daily'); }, 50); }
+  if(name==='teacher'){ setTimeout(function(){ teacherShowTab('chat'); }, 50); }
   if(name==='tutors') initTutors();
   // Redirects for merged pages — route to parent hub
   if(name==='kultura'){showPage('odkryj');setTimeout(function(){odkryjShowTab('kultura');},50);return false;}
@@ -1931,7 +1931,7 @@ function setCard(s){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px 332px">
+    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px 332px;transition:padding-left .3s ease">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -2435,7 +2435,7 @@ async function initToFixPage(){
       </div>
     </div>
     <!-- MAIN CONTENT -->
-    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px 332px">
+    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px 332px;transition:padding-left .3s ease">
       <!-- Breadcrumb -->
       <div id="strefa-breadcrumb-bar" style="font-size:12px;color:var(--dim2);margin-bottom:16px;min-height:18px"></div>
 
@@ -2479,7 +2479,7 @@ async function initToFixPage(){
   </div>
 </div>
 <!-- Odkryj Main Content -->
-<div id="odkryj-main" style="padding:110px 32px 80px 332px">
+<div id="odkryj-main" style="padding:110px 32px 80px 24px">
 <div style="max-width:960px;margin:0 auto">
 
   
@@ -2487,7 +2487,7 @@ async function initToFixPage(){
   <!-- Panel: Odkryj świat -->
   <div id="odkryj-panel-articles">
   <!-- Hero z globem 3D -->
-  <div style="display:flex;align-items:center;gap:32px;margin-bottom:32px;flex-wrap:wrap">
+  <div style="display:flex;align-items:center;gap:32px;margin-bottom:16px;flex-wrap:wrap">
     <div style="flex:1;min-width:200px">
       <h3 style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:800;color:var(--navy);margin-bottom:8px">Odkryj świat</h3>
       <p style="color:var(--dim2);font-size:15px;line-height:1.6">Artykuły, filmy i słownictwo dopasowane do Twojego poziomu i zainteresowań. Ucz się przez treści które kochasz.</p>
@@ -2609,13 +2609,14 @@ async function initToFixPage(){
   </div>
 </div>
 <!-- Daily Main Content -->
-<div id="daily-main" style="padding:110px 32px 80px 332px">
+<div id="daily-main" style="padding:110px 32px 80px 24px">
 <div style="max-width:860px;margin:0 auto">
 
   
 
   <!-- Panel: Porcja dnia -->
   <div id="daily-panel-daily">
+  <div id="daily-loading-indicator" style="padding:40px;text-align:center;color:var(--dim2);font-size:14px">⏳ Ładowanie...</div>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:12px">
   <div>
     <h3 style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:800;color:var(--navy);margin-bottom:4px">Porcja dnia</h3>
@@ -7707,8 +7708,8 @@ window.loadCollections = async function loadCollections(){
 
     // "Wszystkie" tile - same style as catalogs
     var allBtn = document.createElement('button');
-    allBtn.style.cssText = 'width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:var(--navy);font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px;margin-bottom:4px';
-    allBtn.innerHTML = '<span style="font-size:16px">📂</span><div><div style="font-size:13px;font-weight:700;color:var(--navy)">Wszystkie zestawy</div></div>';
+    allBtn.style.cssText = 'width:100%;text-align:left;padding:14px 14px;border-radius:12px;border:1.5px solid var(--border);background:#fff;font-size:14px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;margin-bottom:6px;display:block;box-shadow:0 2px 8px rgba(26,35,64,.06)';
+    allBtn.innerHTML = '<div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">📂 Wszystkie zestawy</div><div style="font-size:12px;color:var(--dim2);margin-top:3px">Pokaż wszystkie</div>';
     allBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-1px)'; };
     allBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; };
     allBtn.onclick = function(){ switchMatTab('mine'); };
