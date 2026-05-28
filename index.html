@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet">
 <style>
@@ -1139,8 +1139,18 @@ window.dailyReadDone = function(){
 const SUPABASE_URL='https://sntlgkhktscezxpxrchl.supabase.co';
 const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const DOWNLOAD_URL='#';
-const{createClient}=supabase;
-const db=createClient(SUPABASE_URL,SUPABASE_KEY);
+// Initialize Supabase with retry if CDN loaded slowly
+var db;
+(function initDB(){
+  if(typeof supabase !== 'undefined'){
+    var _c=supabase.createClient||supabase.default&&supabase.default.createClient;
+    if(_c) db=_c(SUPABASE_URL,SUPABASE_KEY);
+  }
+  if(!db){
+    // CDN not loaded yet - retry in 100ms
+    setTimeout(initDB, 100);
+  }
+})();
 function getChatUsageToday(){try{return parseInt(localStorage.getItem('chat_usage_'+new Date().toISOString().slice(0,10))||'0');}catch(e){return 0;}}
 // Global escH helper — available in all script blocks
 window.escH = function(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
@@ -1159,7 +1169,7 @@ window.renderStarsDisplay = function(rating){
 function renderStarsDisplay(r){ return window.renderStarsDisplay(r); }
 
 
-let authMode='login';
+var authMode='login';
 
 function _showPageBasic(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
 function navHome(){showPage('home');return false}
@@ -1466,7 +1476,10 @@ function showPage(name){
     switchMatTab('mine');
   }
   if(name==='strefa') strefaSidebarMode('tryb');
-  if(name==='ranking') loadRanking();
+  if(name==='ranking'){
+    if(typeof loadRanking==='function') loadRanking();
+    else setTimeout(function(){ if(typeof loadRanking==='function') loadRanking(); },300);
+  }
   if(name==='tofix') initToFixPage();
   if(name==='strefa'){ initStrefa(); strefaShowTab('tryb'); }
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
