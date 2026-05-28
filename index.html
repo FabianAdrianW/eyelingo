@@ -9595,28 +9595,79 @@ function odkryjLoadKultura(){
       var today = new Date().toISOString().split('T')[0];
       var {data} = await db.from('culture_articles').select('*').eq('date', today).maybeSingle();
       if(!data){
-        // Try to generate via Edge Function
+        // Generate directly via AI proxy (no Edge Function needed)
         try{
+          loading.innerHTML='<div style="text-align:center;padding:40px;color:var(--dim2)"><div style="font-size:32px;margin-bottom:8px">🌍</div>⏳ Generuję artykuł kulturowy...</div>';
           var sess2=(await db.auth.getSession()).data.session;
           var tok2=sess2?sess2.access_token:'';
-          loading.innerHTML='<div style="text-align:center;padding:40px;color:var(--dim2)">⏳ Generuję artykuł...</div>';
-          var genR=await fetch('https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-culture-article',{
-            method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok2,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
-            body:JSON.stringify({lang:'en'})
+          
+          // Get recent cultures to avoid repetition
+          var {data:history}=await db.from('culture_history').select('culture').order('date',{ascending:false}).limit(10);
+          var lastCultures=(history||[]).map(function(h){return h.culture;}).join(', ')||'brak';
+          
+          var prompt='Jesteś ekspertem kulturoznawstwa. DATA: '+today+'. Ostatnie kultury (unikaj): '+lastCultures+'. Napisz artykuł o kulturze świata. Odpowiedz WYŁĄCZNIE JSON: {"kultura":"nazwa","kraj":"kraj","naglowek":"tytul","podtytul":"podtytul","hook":"intro","akapity":["a1","a2","a3"],"ciekawostka":"ciekawostka","most":"podobienstwa z Polska","slowo":"slowo","slowo_fonetyka":"/wymowa/","slowo_znaczenie":"znaczenie","slowo_przyklad":"przyklad","quiz":[{"pytanie":"p","odpowiedzi":["A","B","C","D"],"poprawna":0,"wyjasnienie":"w","trudnosc":"latwe"},{"pytanie":"p2","odpowiedzi":["A","B","C","D"],"poprawna":1,"wyjasnienie":"w2","trudnosc":"srednie"}],"tagi":["t1","t2"],"poziom_trudnosci":"sredni","czy_dla_dzieci":true}'
+
+          var res=await fetch(AI_PROXY_URL,{
+            method:'POST',
+            headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok2,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+            body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:2000})
           });
-          if(genR.ok){
-            // Re-fetch article after generation
-            var {data:data2}=await db.from('culture_articles').select('*').eq('date',today).maybeSingle();
-            if(data2){ data=data2; } else {
-              loading.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:32px;margin-bottom:12px">🌍</div>Artykuł zostanie dostępny wkrótce.</div>';
-              return;
-            }
+          
+          if(!res.ok) throw new Error('AI proxy error '+res.status);
+          var aiData=await res.json();
+          // Extract text from response (handle different AI response formats)
+          var rawText='';
+          if(aiData.candidates&&aiData.candidates[0]&&aiData.candidates[0].content&&aiData.candidates[0].content.parts)
+            rawText=aiData.candidates[0].content.parts[0].text||'';
+          else if(aiData.content&&aiData.content[0])
+            rawText=aiData.content[0].text||'';
+          else if(aiData.choices&&aiData.choices[0])
+            rawText=aiData.choices[0].message&&aiData.choices[0].message.content||'';
+          
+          // Parse JSON
+          var cleaned=rawText.replace(/```json|```/g,'').trim();
+          var fb=cleaned.indexOf('{'), lb=cleaned.lastIndexOf('}');
+          if(fb<0||lb<0) throw new Error('No JSON in response');
+          var article=JSON.parse(cleaned.slice(fb,lb+1));
+          
+          // Save to DB
+          var heroColor='#1a2340';
+          var countryLower=(article.kraj||'').toLowerCase();
+          if(countryLower.includes('japan')||countryLower.includes('japon')) heroColor='#2a1a1a';
+          else if(countryLower.includes('india')||countryLower.includes('indie')) heroColor='#2a1a0a';
+          else if(countryLower.includes('afryk')) heroColor='#2a1a08';
+          else if(countryLower.includes('europ')) heroColor='#1a1a3a';
+          else if(countryLower.includes('ameryk')) heroColor='#1a3a2a';
+          
+          var {data:inserted,error:insErr}=await db.from('culture_articles').insert({
+            date:today,culture:article.kultura,country:article.kraj,language:'polski',
+            headline:article.naglowek,subline:article.podtytul,hook:article.hook,
+            paragraphs:article.akapity,fact:article.ciekawostka,bridge:article.most,
+            word:article.slowo,word_phonetic:article.slowo_fonetyka,
+            word_meaning:article.slowo_znaczenie,word_example:article.slowo_przyklad,
+            quiz:article.quiz,tags:article.tagi,difficulty:article.poziom_trudnosci,
+            for_children:article.czy_dla_dzieci,hero_color:heroColor
+          }).select().single();
+          
+          if(insErr){
+            // Maybe already inserted by concurrent request - re-fetch
+            var {data:refetch}=await db.from('culture_articles').select('*').eq('date',today).maybeSingle();
+            if(refetch) data=refetch;
+            else throw new Error(insErr.message);
           } else {
-            loading.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:32px;margin-bottom:12px">🌍</div>Artykuł na dziś jeszcze nie jest gotowy.</div>';
-            return;
+            data=inserted;
+            // Add to history
+            try{ await db.from('culture_history').insert({date:today,culture:article.kultura}); }catch(e3){}
           }
+          
+          if(!data) throw new Error('No data after generation');
         }catch(e2){
-          loading.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:32px;margin-bottom:12px">🌍</div>Artykuł na dziś jeszcze nie jest gotowy.</div>';
+          loading.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--dim2)">'
+            +'<div style="font-size:48px;margin-bottom:12px">🌍</div>'
+            +'<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:700;color:var(--navy);margin-bottom:8px">Artykuł niedostępny</div>'
+            +'<div style="font-size:13px">Błąd: '+e2.message+'</div>'
+            +'<button onclick="odkryjLoadKultura()" style="margin-top:14px;padding:8px 20px;border-radius:100px;background:var(--orange);color:#fff;border:none;cursor:pointer;font-size:13px">Spróbuj ponownie</button>'
+            +'</div>';
           return;
         }
       }
