@@ -1511,7 +1511,18 @@ function showPage(name){
   var _sidebarToggleMap={community:'mat-sidebar-toggle',strefa:'strefa-sidebar-toggle',daily:'daily-sidebar-toggle',odkryj:'odkryj-sidebar-toggle'};
   var _sidebarMap={community:'mat-sidebar',strefa:'strefa-sidebar',daily:'daily-sidebar',odkryj:'odkryj-sidebar'};
   if(_sidebarToggleMap[name]){ var _t=document.getElementById(_sidebarToggleMap[name]); if(_t) _t.style.display='flex'; }
-  if(_sidebarMap[name]){ var _s=document.getElementById(_sidebarMap[name]); if(_s) _s.style.display='block'; }
+  if(_sidebarMap[name]){ 
+    var _s=document.getElementById(_sidebarMap[name]); 
+    if(_s) _s.style.display='block';
+    // Adjust main content padding when fixed sidebar is shown
+    var _mainMap={daily:'daily-main',odkryj:'odkryj-main'};
+    if(_mainMap[name]){ var _mc=document.getElementById(_mainMap[name]); if(_mc) _mc.style.paddingLeft='332px'; }
+  } else {
+    // No sidebar for this page - ensure no leftover padding
+    ['daily-main','odkryj-main'].forEach(function(mid){
+      var _mc=document.getElementById(mid); if(_mc) _mc.style.paddingLeft='24px';
+    });
+  }
   return false;
 }
 
@@ -4224,12 +4235,15 @@ function toggleDailySidebar(){
   _dailySidebarOpen = !_dailySidebarOpen;
   var sb=document.getElementById('daily-sidebar');
   var btn=document.getElementById('daily-sidebar-toggle');
+  var main=document.getElementById('daily-main');
   if(_dailySidebarOpen){
     sb.style.transform='translateX(0)';
     if(btn){btn.textContent='‹';btn.style.left='300px';}
+    if(main) main.style.paddingLeft='332px';
   } else {
     sb.style.transform='translateX(-300px)';
     if(btn){btn.textContent='›';btn.style.left='0px';}
+    if(main) main.style.paddingLeft='24px';
   }
 }
 
@@ -4237,12 +4251,15 @@ function toggleOdkryjSidebar(){
   _odkryjSidebarOpen = !_odkryjSidebarOpen;
   var sb=document.getElementById('odkryj-sidebar');
   var btn=document.getElementById('odkryj-sidebar-toggle');
+  var main=document.getElementById('odkryj-main');
   if(_odkryjSidebarOpen){
     sb.style.transform='translateX(0)';
     if(btn){btn.textContent='‹';btn.style.left='300px';}
+    if(main) main.style.paddingLeft='332px';
   } else {
     sb.style.transform='translateX(-300px)';
     if(btn){btn.textContent='›';btn.style.left='0px';}
+    if(main) main.style.paddingLeft='24px';
   }
 }
 function toggleStrefaSidebar(){
