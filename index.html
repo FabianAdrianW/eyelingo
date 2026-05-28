@@ -1749,6 +1749,32 @@ window.deleteSet = async function deleteSet(id){
   }catch(e){typeof showToast!=='undefined'&&showToast('Błąd: '+(e.message||e),'');}
 };
 
+window.toggleLike = async function toggleLike(id){
+  if(!_matMyUid){ showToast&&showToast('Zaloguj się',''); return; }
+  if(!_likedSets) window._likedSets = new Set();
+  try{
+    if(_likedSets.has(id)){
+      _likedSets.delete(id);
+      await db.from('user_sets').update({likes_count: db.rpc ? undefined : 0}).eq('id',id);
+      // Decrement
+      var {data:s}=await db.from('user_sets').select('likes_count').eq('id',id).single();
+      var newCount=Math.max(0,(s?s.likes_count||0:0)-1);
+      await db.from('user_sets').update({likes_count:newCount}).eq('id',id);
+    } else {
+      _likedSets.add(id);
+      var {data:s2}=await db.from('user_sets').select('likes_count').eq('id',id).single();
+      var newCount2=(s2?s2.likes_count||0:0)+1;
+      await db.from('user_sets').update({likes_count:newCount2}).eq('id',id);
+    }
+    // Refresh the like button
+    var btn=document.getElementById('like-btn-'+id);
+    if(btn){
+      btn.textContent=(_likedSets.has(id)?'❤️':'🤍')+' '+(_matSets.find(function(x){return x.id===id;})||{}).likes_count;
+    }
+    if(typeof loadCommunity==='function') loadCommunity();
+  }catch(e){ console.error('toggleLike',e); }
+};
+
 window.addSetToMine = async function addSetToMine(id){
   try{
     var sess=(await db.auth.getSession()).data.session;
@@ -1839,6 +1865,13 @@ function setCard(s){
   const moveBtn = isOwn && isMineTab
     ? `<button data-sid="${s.id}" onclick="event.stopPropagation();promptMoveSet(parseInt(this.dataset.sid))" class="mat-btn-move" style="background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:4px 12px;font-size:12px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif">📁 Przenieś</button>`
     : '';
+  const liked = _likedSets&&_likedSets.has?_likedSets.has(s.id):false;
+  const likeBtn = !isMineTab
+    ? `<button onclick="event.stopPropagation();toggleLike(${s.id})" style="background:transparent;border:none;cursor:pointer;font-size:15px;padding:2px 6px;border-radius:6px;transition:transform .15s" title="Polub">${liked?'❤️':'🤍'} ${s.likes_count||0}</button>`
+    : '';
+  const authorLine = !isOwn && s.username
+    ? `<div style="font-size:11px;color:var(--dim2);margin-top:2px">👤 ${esc(s.username)}</div>`
+    : '';
 
   return `<div class="mat-card" onclick="openSet(${s.id})" style="cursor:pointer"
     draggable="true"
@@ -1848,7 +1881,9 @@ function setCard(s){
       <div>
         <div class="mat-card-name">${esc(s.name)}</div>
         <div class="mat-card-count">${cards.length} fiszek</div>
+        ${authorLine}
       </div>
+      ${likeBtn}
     </div>
     ${preview ? `<div class="mat-preview">${preview}</div>` : ''}
     ${moveBtn ? `<div class="mat-card-actions" style="margin-top:10px">${moveBtn}</div>` : ''}
@@ -1863,9 +1898,9 @@ function setCard(s){
   <div style="display:flex;gap:0;align-items:flex-start;width:100%">
 
     <!-- LEFT SIDEBAR: Katalogi (sliding) -->
+    <!-- Toggle button OUTSIDE sidebar so it doesn't slide away -->
+    <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:300;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
     <div id="mat-sidebar" style="width:300px;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);transition:transform .3s ease;z-index:50;backdrop-filter:blur(4px)">
-      <!-- Toggle button -->
-      <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:200;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
       <div id="mat-sidebar-inner" style="padding:110px 0 80px 20px;min-width:280px">
       <!-- Katalogi -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -1879,7 +1914,7 @@ function setCard(s){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px 332px;max-width:100%">
+    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px 332px">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -2384,7 +2419,7 @@ async function initToFixPage(){
       </div>
     </div>
     <!-- MAIN CONTENT -->
-    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px 332px;max-width:100%">
+    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px 332px">
       <!-- Breadcrumb -->
       <div id="strefa-breadcrumb-bar" style="font-size:12px;color:var(--dim2);margin-bottom:16px;min-height:18px"></div>
 
@@ -7710,9 +7745,9 @@ window.loadCollections = async function loadCollections(){
     allBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-1px)'; };
     allBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; };
     allBtn.onclick = function(){ switchMatTab('mine'); };
-    allBtn.setAttribute('ondragover','catalogTileDragOver(event,null)');
-    allBtn.setAttribute('ondragleave','catalogTileDragLeave(event)');
-    allBtn.setAttribute('ondrop','catalogTileDrop(event,null)');
+    allBtn.addEventListener('dragover', function(e){ catalogTileDragOver(e,null); });
+    allBtn.addEventListener('dragleave', function(e){ catalogTileDragLeave(e); });
+    allBtn.addEventListener('drop', function(e){ catalogTileDrop(e,null); });
     allBtn.className = 'sb-catalog-tile';
     sidebar.appendChild(allBtn);
 
@@ -7744,6 +7779,11 @@ window.loadCollections = async function loadCollections(){
         this.style.background='rgba(229,106,28,.12)'; this.style.fontWeight='700'; this.dataset.active='1';
         openCollectionView(cidx);
       };
+      // DnD drop target
+      btn.className = 'sb-catalog-tile';
+      btn.addEventListener('dragover', (function(ci){ return function(e){ catalogTileDragOver(e,ci); }; })(cidx));
+      btn.addEventListener('dragleave', function(e){ catalogTileDragLeave(e); });
+      btn.addEventListener('drop', (function(ci){ return function(e){ catalogTileDrop(e,ci); }; })(cidx));
       sidebar.appendChild(btn);
     });
   }catch(e){
