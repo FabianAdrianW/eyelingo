@@ -1472,7 +1472,6 @@ function showPage(name){
   if(name==='chat'){showPage('teacher');setTimeout(function(){teacherShowTab('chat');},50);return false;}
   if(name==='lyrics'){showPage('odkryj');setTimeout(function(){odkryjShowTab('lyrics');},50);return false;}
   if(name==='tryb'){ /* page-tryb handles itself */ }
-  loadNotifications();
   setActiveTab(name);
   return false;
 }
@@ -1510,9 +1509,70 @@ window.openSet = function openSet(id){
   _matModal=s; _matEditMode=false;
   showSetModal(s,false);
 };
+// ── Mat loading functions ──
+let _matSets=[], _matMyUid=null;
+Object.defineProperty(window,'_matSets',{get:function(){return _matSets;},set:function(v){_matSets=v;}});
+Object.defineProperty(window,'_matMyUid',{get:function(){return _matMyUid;},set:function(v){_matMyUid=v;}});
+
+window.loadMySets = async function loadMySets(){
+  var grid=document.getElementById('mat-grid');
+  if(grid) grid.innerHTML='<div class="mat-empty">Ładowanie...</div>';
+  try{
+    var {data:{session}}=await db.auth.getSession();
+    if(!session){ if(grid) grid.innerHTML='<div class="mat-empty">Zaloguj się</div>'; return; }
+    _matMyUid=session.user.id;
+    // Get assigned set IDs from collections
+    var assignedIds=new Set();
+    (_collections||[]).forEach(function(c){ (c.sets||[]).forEach(function(s){ assignedIds.add(s.id); }); });
+    var {data}=await db.from('user_sets')
+      .select('id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation)')
+      .eq('user_id',session.user.id)
+      .order('created_at',{ascending:false});
+    var username=session.user.user_metadata&&session.user.user_metadata.username||session.user.email||'';
+    _matSets=(data||[]).filter(function(s){ return !assignedIds.has(s.id); }).map(function(s){ return Object.assign({},s,{username,user_id:_matMyUid}); });
+    if(grid){
+      if(!_matSets.length){
+        grid.innerHTML='<div class="mat-empty">Nie masz jeszcze żadnych zestawów.<br><small>Kliknij + Nowy zestaw</small></div>';
+      } else {
+        grid.innerHTML=_matSets.map(function(s){ return setCard(s); }).join('');
+      }
+    }
+    var createBtn=document.getElementById('mat-create-btn');
+    if(createBtn) createBtn.style.display='block';
+  }catch(e){
+    if(grid) grid.innerHTML='<div class="mat-empty">Błąd: '+(e.message||e)+'</div>';
+  }
+};
+
+window.loadCommunity = async function loadCommunity(){
+  var grid=document.getElementById('mat-grid');
+  if(grid) grid.innerHTML='<div class="mat-empty">Ładowanie...</div>';
+  try{
+    var {data:{session}}=await db.auth.getSession();
+    if(session) _matMyUid=session.user.id;
+    var {data}=await db.from('user_sets')
+      .select('id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation),profiles(username)')
+      .eq('is_public',true)
+      .order('likes_count',{ascending:false})
+      .limit(50);
+    _matSets=(data||[]).map(function(s){ return Object.assign({},s,{username:s.profiles&&s.profiles.username||'Użytkownik'}); });
+    if(grid){
+      if(!_matSets.length){ grid.innerHTML='<div class="mat-empty">Brak publicznych zestawów</div>'; }
+      else { grid.innerHTML=_matSets.map(function(s){ return setCard(s); }).join(''); }
+    }
+  }catch(e){ console.error('[loadCommunity]',e); }
+};
+
+window.filterMat = function filterMat(q){
+  document.querySelectorAll('#mat-grid .mat-card').forEach(function(c){
+    var name=c.querySelector('.mat-card-name');
+    c.style.display=(!q||!name||name.textContent.toLowerCase().includes(q.toLowerCase()))?'':'none';
+  });
+};
+
 function setCard(s){
   const isOwn = s.user_id === _matMyUid;
-  const isMineTab = _matTab === 'mine';
+  const isMineTab = (window._matTab || 'mine') === 'mine';
   const cards = s.user_set_cards || [];
   const preview = cards.slice(0,3).map(c=>`
     <div class="mat-preview-row">
@@ -1985,37 +2045,84 @@ async function initToFixPage(){
 <div id="page-strefa" class="page" style="min-height:100vh;padding:0;background:var(--paper)">
   <div style="display:flex;width:100%;align-items:stretch;min-height:100vh;position:relative">
 
-    <!-- LEFT SIDEBAR -->
-    <div id="strefa-sidebar" style="width:300px;flex-shrink:0;padding:110px 0 80px 20px;min-height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12)">
+    <!-- LEFT SIDEBAR: Strefa Nauki (sliding, accordion) -->
+    <button id="strefa-sidebar-toggle" onclick="toggleStrefaSidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:200;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
+    <div id="strefa-sidebar" style="width:300px;flex-shrink:0;min-height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(26,35,64,.03);border-right:2px solid rgba(26,35,64,.12);transition:width .3s ease,min-width .3s ease;overflow:hidden">
+      <div id="strefa-sidebar-inner" style="padding:110px 0 80px 20px;min-width:280px">
 
-      <!-- Mode switcher header -->
-      <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid var(--border)">
-        <button onclick="strefaSidebarMode('tryb')" id="sb-btn-tryb" style="flex:1;padding:10px 8px;border:none;background:transparent;color:var(--navy);font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;border-bottom:2.5px solid var(--navy);margin-bottom:-2px">📚 Tryb Nauki</button>
-        <button onclick="strefaSidebarMode('strefa')" id="sb-btn-strefa" style="flex:1;padding:10px 8px;border:none;background:transparent;color:var(--dim2);font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;border-bottom:2.5px solid transparent;margin-bottom:-2px">🧠 Kontekstowa</button>
-      </div>
+        <!-- Tryb Nauki / Kontekstowa tabs -->
+        <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
+          <button id="sb-btn-tryb" onclick="strefaSidebarMode('tryb')" style="flex:1;padding:10px 8px;border:none;background:transparent;color:var(--navy);font-size:12px;font-weight:800;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;border-bottom:2.5px solid var(--navy);margin-bottom:-2px">📚 Tryb Nauki</button>
+          <button id="sb-btn-strefa" onclick="strefaSidebarMode('strefa')" style="flex:1;padding:10px 8px;border:none;background:transparent;color:var(--dim2);font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;border-bottom:2.5px solid transparent;margin-bottom:-2px">🧠 Kontekstowa</button>
+        </div>
 
-      <!-- Tryb Nauki sidebar tiles -->
-      <div id="sb-tryb-content" style="display:flex;flex-direction:column;gap:8px;padding-right:20px">
-        <button onclick="strefaSidebarSelect('due')" id="sb-tile-due" style="width:100%;text-align:left;padding:14px;border-radius:14px;border:2px solid var(--orange);background:linear-gradient(135deg,var(--orange),#e07020);cursor:pointer;transition:all .2s;color:#fff">
-          <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:800;margin-bottom:3px">Powtórki na dziś</div>
-          <div style="font-size:11px;color:rgba(255,255,255,.8)">Algorytm SM-2</div>
-        </button>
-        <button onclick="strefaSidebarSelect('mine')" id="sb-tile-mine" style="width:100%;text-align:left;padding:14px;border-radius:14px;border:2px solid var(--border);background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--navy)'" onmouseout="this.style.borderColor='var(--border)'">
-          <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:800;color:var(--navy);margin-bottom:3px">Moje zestawy</div>
-          <div style="font-size:11px;color:var(--dim2)">Twoje fiszki</div>
-        </button>
-        <button onclick="strefaSidebarSelect('eyelingo')" id="sb-tile-eyelingo" style="width:100%;text-align:left;padding:14px;border-radius:14px;border:2px solid var(--border);background:#fff;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--navy)'" onmouseout="this.style.borderColor='var(--border)'">
-          <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:800;color:var(--navy);margin-bottom:3px">Zestawy Eyelingo</div>
-          <div style="font-size:11px;color:var(--dim2)">Program językowy</div>
-        </button>
-      </div>
+        <!-- TRYB NAUKI content -->
+        <div id="sb-tryb-content" style="display:flex;flex-direction:column;gap:8px;padding-right:20px">
+          <!-- Powtórki -->
+          <div onclick="strefaStartPowtorki()" style="background:linear-gradient(135deg,#e8701a,#f08020);border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .2s" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
+            <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:#fff">Powtórki na dziś</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.8)">Algorytm SM-2</div>
+          </div>
+          <!-- Moje zestawy accordion -->
+          <div>
+            <div id="sb-mine-tile" onclick="strefaToggleMine()" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="if(!document.getElementById('sb-mine-list').style.display||document.getElementById('sb-mine-list').style.display==='none')this.style.borderColor='var(--border)'">
+              <div>
+                <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Moje zestawy</div>
+                <div style="font-size:12px;color:var(--dim2)">Ucz się ze swoich zestawów</div>
+              </div>
+              <span id="sb-mine-arrow" style="font-size:12px;color:var(--dim2);transition:transform .2s">▼</span>
+            </div>
+            <div id="sb-mine-list" style="display:none;margin-top:4px;padding-left:8px;border-left:2px solid var(--border)">
+              <div style="font-size:11px;color:var(--dim2);padding:8px 4px">Ładowanie katalogów...</div>
+            </div>
+          </div>
+          <!-- Zestawy Eyelingo accordion -->
+          <div>
+            <div id="sb-eyelingo-tile" onclick="strefaToggleEyelingo('tryb')" style="background:var(--navy);border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
+              <div>
+                <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:#fff">Zestawy Eyelingo</div>
+                <div style="font-size:12px;color:rgba(255,255,255,.7)">Fiszki z programu językowego</div>
+              </div>
+              <span id="sb-eyelingo-arrow" style="font-size:12px;color:rgba(255,255,255,.7);transition:transform .2s">▼</span>
+            </div>
+            <div id="sb-eyelingo-list" style="display:none;margin-top:4px;padding-left:8px;border-left:2px solid var(--border)">
+            </div>
+          </div>
+          <!-- Odznaki -->
+          <div id="sb-badges-section" style="margin-top:8px;padding-right:0">
+            <div style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Odznaki</div>
+            <div id="tryb-badges" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+          </div>
+        </div>
 
-      <!-- Kontekstowa Nauka sidebar: languages -->
-      <div id="sb-strefa-content" style="display:none;flex-direction:column;gap:6px;padding-right:20px">
-        <div id="sb-strefa-langs" style="display:flex;flex-direction:column;gap:6px"></div>
+        <!-- KONTEKSTOWA content -->
+        <div id="sb-strefa-content" style="display:none;flex-direction:column;gap:8px;padding-right:20px">
+          <!-- Moje zestawy accordion -->
+          <div>
+            <div onclick="strefaToggleMineKontekstowa()" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
+              <div>
+                <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:var(--navy)">Moje zestawy</div>
+                <div style="font-size:12px;color:var(--dim2)">Kontekstowo</div>
+              </div>
+              <span id="sb-mine-k-arrow" style="font-size:12px;color:var(--dim2)">▼</span>
+            </div>
+            <div id="sb-mine-k-list" style="display:none;margin-top:4px;padding-left:8px;border-left:2px solid var(--border)"></div>
+          </div>
+          <!-- Zestawy Eyelingo accordion -->
+          <div>
+            <div onclick="strefaToggleEyelingo('kontekstowa')" style="background:var(--navy);border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
+              <div>
+                <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:700;color:#fff">Zestawy Eyelingo</div>
+                <div style="font-size:12px;color:rgba(255,255,255,.7)">Program językowy</div>
+              </div>
+              <span id="sb-eyelingo-k-arrow" style="font-size:12px;color:rgba(255,255,255,.7)">▼</span>
+            </div>
+            <div id="sb-eyelingo-k-list" style="display:none;margin-top:4px;padding-left:8px;border-left:2px solid var(--border)"></div>
+          </div>
+        </div>
+
       </div>
     </div>
-
     <!-- MAIN CONTENT -->
     <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px">
       <!-- Breadcrumb -->
@@ -3781,6 +3888,314 @@ async function initChallenge(){
   setTimeout(loadChallengeRanking, 300000);
   loadChallengeSet(ch);
 }
+
+var _challengeSetCache=null;
+
+// ── Strefa Nauki sidebar logic ──
+var _strefaSidebarOpen = true;
+function toggleStrefaSidebar(){
+  _strefaSidebarOpen = !_strefaSidebarOpen;
+  var sb=document.getElementById('strefa-sidebar');
+  var inner=document.getElementById('strefa-sidebar-inner');
+  var btn=document.getElementById('strefa-sidebar-toggle');
+  if(_strefaSidebarOpen){
+    sb.style.width='300px'; sb.style.minWidth='300px';
+    if(inner){inner.style.opacity='1';inner.style.pointerEvents='';}
+    if(btn){btn.textContent='‹';btn.style.left='300px';}
+  } else {
+    sb.style.width='0px'; sb.style.minWidth='0px';
+    if(inner){inner.style.opacity='0';inner.style.pointerEvents='none';}
+    if(btn){btn.textContent='›';btn.style.left='0px';}
+  }
+}
+
+function strefaSidebarMode(mode){
+  var btnTryb=document.getElementById('sb-btn-tryb');
+  var btnStrefa=document.getElementById('sb-btn-strefa');
+  var tryb=document.getElementById('sb-tryb-content');
+  var strefa=document.getElementById('sb-strefa-content');
+  var center=document.getElementById('strefa-center-content');
+  if(mode==='tryb'){
+    if(btnTryb){btnTryb.style.borderBottomColor='var(--navy)';btnTryb.style.color='var(--navy)';btnTryb.style.fontWeight='800';}
+    if(btnStrefa){btnStrefa.style.borderBottomColor='transparent';btnStrefa.style.color='var(--dim2)';btnStrefa.style.fontWeight='600';}
+    if(tryb) tryb.style.display='flex';
+    if(strefa) strefa.style.display='none';
+    if(center) center.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">📚</div><div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px">Tryb Nauki</div><div style="font-size:14px">Wybierz zestaw po lewej</div></div>';
+  } else {
+    if(btnStrefa){btnStrefa.style.borderBottomColor='var(--orange)';btnStrefa.style.color='var(--navy)';btnStrefa.style.fontWeight='800';}
+    if(btnTryb){btnTryb.style.borderBottomColor='transparent';btnTryb.style.color='var(--dim2)';btnTryb.style.fontWeight='600';}
+    if(tryb) tryb.style.display='none';
+    if(strefa){strefa.style.display='flex';}
+    if(center) center.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">🧠</div><div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px">Kontekstowa Nauka</div><div style="font-size:14px">Wybierz zestaw po lewej</div></div>';
+    strefaLoadMineKontekstowaList();
+    strefaLoadEyelingoLangsList('kontekstowa');
+  }
+}
+
+function strefaStartPowtorki(){
+  _trybExternalCards=null;
+  showPage('tryb');
+  setTimeout(function(){ startSession('due'); },300);
+}
+
+// ── Moje zestawy accordion (Tryb Nauki) ──
+var _sbMineOpen=false;
+function strefaToggleMine(){
+  _sbMineOpen=!_sbMineOpen;
+  var list=document.getElementById('sb-mine-list');
+  var arrow=document.getElementById('sb-mine-arrow');
+  var tile=document.getElementById('sb-mine-tile');
+  if(_sbMineOpen){
+    list.style.display='block';
+    if(arrow) arrow.style.transform='rotate(180deg)';
+    if(tile) tile.style.borderColor='var(--orange)';
+    strefaLoadMineList('tryb');
+  } else {
+    list.style.display='none';
+    if(arrow) arrow.style.transform='rotate(0deg)';
+    if(tile) tile.style.borderColor='var(--border)';
+  }
+}
+
+async function strefaLoadMineList(mode){
+  var list=document.getElementById(mode==='tryb'?'sb-mine-list':'sb-mine-k-list');
+  if(!list) return;
+  list.innerHTML='<div style="font-size:11px;color:var(--dim2);padding:8px 4px">Ładowanie...</div>';
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){list.innerHTML='<div style="padding:8px 4px;font-size:12px;color:var(--dim2)">Zaloguj się</div>';return;}
+    var {data:sets}=await db.from('user_sets').select('id,name,user_set_cards(word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false});
+    if(!sets||!sets.length){list.innerHTML='<div style="padding:8px 4px;font-size:12px;color:var(--dim2)">Brak zestawów</div>';return;}
+    // Group by collections
+    var html='';
+    // Show uncategorized sets + collections
+    (_collections||[]).forEach(function(col){
+      html+='<div style="font-size:11px;font-weight:700;color:var(--dim2);padding:6px 4px 3px;text-transform:uppercase;letter-spacing:.05em">'+col.name+'</div>';
+      var colSets=(col.sets||[]).map(function(cs){return sets.find(function(s){return s.id===cs.id;});}).filter(Boolean);
+      colSets.forEach(function(s){ html+=sbSetTile(s,mode); });
+    });
+    // Uncategorized
+    var assignedIds=new Set();
+    (_collections||[]).forEach(function(c){(c.sets||[]).forEach(function(s){assignedIds.add(s.id);});});
+    var uncat=sets.filter(function(s){return !assignedIds.has(s.id);});
+    if(uncat.length){
+      if(_collections&&_collections.length) html+='<div style="font-size:11px;font-weight:700;color:var(--dim2);padding:6px 4px 3px;text-transform:uppercase;letter-spacing:.05em">Bez katalogu</div>';
+      uncat.forEach(function(s){ html+=sbSetTile(s,mode); });
+    }
+    list.innerHTML=html||'<div style="padding:8px 4px;font-size:12px;color:var(--dim2)">Brak zestawów</div>';
+  }catch(e){list.innerHTML='<div style="padding:8px 4px;font-size:12px;color:#c33">Błąd</div>';}
+}
+
+function sbSetTile(s,mode){
+  var cnt=s.user_set_cards?s.user_set_cards.length:0;
+  var enc=encodeURIComponent(s.name);
+  var fn=mode==='tryb'
+    ?'strefaSelectUserSet('+s.id+',"'+enc+'")'
+    :'strefaStartKontekstowaFromSet('+s.id+',"'+enc+'")';
+  var div=document.createElement('div');
+  div.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s';
+  div.innerHTML='<div style="font-size:13px;font-weight:600;color:var(--navy)">'+s.name+'</div>'
+    +'<div style="font-size:11px;color:var(--dim2)">'+cnt+' fiszek</div>';
+  div.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.background='#fffaf7';};
+  div.onmouseout=function(){this.style.borderColor='var(--border)';this.style.background='#fff';};
+  div.setAttribute('onclick',fn);
+  return div.outerHTML;
+}
+
+// ── Zestawy Eyelingo accordion ──
+var _sbEyelingoOpen={tryb:false,kontekstowa:false};
+async function strefaToggleEyelingo(mode){
+  var listId=mode==='tryb'?'sb-eyelingo-list':'sb-eyelingo-k-list';
+  var arrowId=mode==='tryb'?'sb-eyelingo-arrow':'sb-eyelingo-k-arrow';
+  _sbEyelingoOpen[mode]=!_sbEyelingoOpen[mode];
+  var list=document.getElementById(listId);
+  var arrow=document.getElementById(arrowId);
+  if(_sbEyelingoOpen[mode]){
+    if(list) list.style.display='block';
+    if(arrow) arrow.style.transform='rotate(180deg)';
+    strefaLoadEyelingoLangsList(mode);
+  } else {
+    if(list) list.style.display='none';
+    if(arrow) arrow.style.transform='rotate(0)';
+  }
+}
+
+async function strefaLoadEyelingoLangsList(mode){
+  var listId=mode==='tryb'?'sb-eyelingo-list':'sb-eyelingo-k-list';
+  var list=document.getElementById(listId);
+  if(!list) return;
+  var LANGS=[{code:'en',label:'Angielski',flag:'🇬🇧'},{code:'es',label:'Hiszpański',flag:'🇪🇸'},{code:'jp',label:'Japoński',flag:'🇯🇵'},{code:'nl',label:'Niderlandzki',flag:'🇳🇱'}];
+  list.innerHTML='';
+  LANGS.forEach(function(l){
+    var div=document.createElement('div');
+    div.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px';
+    div.innerHTML='<span style="font-size:16px">'+l.flag+'</span><div style="font-size:13px;font-weight:600;color:var(--navy)">'+l.label+'</div>';
+    div.onmouseover=function(){this.style.borderColor='var(--orange)';};
+    div.onmouseout=function(){this.style.borderColor='var(--border)';};
+    div.onclick=(function(lc,ll,lf,m){ return function(){ strefaSelectLang(lc,ll,lf,m); }; })(l.code,l.label,l.flag,mode);
+    list.appendChild(div);
+  });
+}
+
+
+function strefaSelectLang(code,label,flag,mode){
+  // Show levels in center
+  var center=document.getElementById('strefa-center-content');
+  if(!center) return;
+  setBreadcrumb(flag+' '+label);
+  var wrap=document.createElement('div');
+  var back=document.createElement('button');
+  back.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+  back.textContent='← Języki';
+  back.onclick=function(){ center.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">'+(mode==='tryb'?'📚':'🧠')+'</div><div style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px">'+(mode==='tryb'?'Tryb Nauki':'Kontekstowa')+'</div><div style="font-size:14px">Wybierz zestaw po lewej</div></div>'; };
+  wrap.appendChild(back);
+  var title=document.createElement('div');
+  title.style.cssText='font-family:DM Sans,sans-serif;font-size:22px;font-weight:700;color:var(--navy);margin-bottom:16px';
+  title.textContent=flag+' '+label+' — wybierz poziom';
+  wrap.appendChild(title);
+  var grid=document.createElement('div');
+  grid.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:10px';
+  ['A1','A2','B1','B2','C1','C2'].forEach(function(lvl){
+    var div=document.createElement('div');
+    div.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:20px;cursor:pointer;text-align:center;transition:all .2s';
+    div.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:22px;font-weight:800;color:var(--navy)">'+lvl+'</div>';
+    div.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)';};
+    div.onmouseout=function(){this.style.borderColor='var(--border)';this.style.transform='none';};
+    div.onclick=(function(lc,ll,lf,lv,m){ return function(){
+      if(m==='tryb') strefaShowEyelingoCategories(lc,ll,lf,lv);
+      else strefaKontekstowaCategories(lc,ll,lf,lv);
+    }; })(code,label,flag,lvl,mode);
+    grid.appendChild(div);
+  });
+  wrap.appendChild(grid);
+  center.innerHTML=''; center.appendChild(wrap);
+}
+
+// ── Kontekstowa - Moje zestawy accordion ──
+var _sbMineKOpen=false;
+function strefaToggleMineKontekstowa(){
+  _sbMineKOpen=!_sbMineKOpen;
+  var list=document.getElementById('sb-mine-k-list');
+  var arrow=document.getElementById('sb-mine-k-arrow');
+  if(_sbMineKOpen){
+    list.style.display='block';
+    if(arrow) arrow.style.transform='rotate(180deg)';
+    strefaLoadMineList('kontekstowa');
+  } else {
+    list.style.display='none';
+    if(arrow) arrow.style.transform='rotate(0)';
+  }
+}
+
+function strefaLoadMineKontekstowaList(){ /* called on mode switch - loads lazily */ }
+
+async function strefaStartKontekstowaFromSet(setId, setNameEnc){
+  var setName=decodeURIComponent(setNameEnc);
+  var center=document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie...</div>';
+  try{
+    var {data:s}=await db.from('user_sets').select('id,name,user_set_cards(word,translation)').eq('id',setId).single();
+    var cards=(s&&s.user_set_cards)||[];
+    if(!cards.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak fiszek w zestawie</div>';return;}
+    window._strefaWords=cards; window._strefaIdx=0;
+    renderStrefaKontekstowaCard(cards[0],'en','B1',0,cards.length,setName,setName,'📂','B1','custom');
+  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
+// ── Eyelingo categories in center (Tryb Nauki) ──
+async function strefaShowEyelingoCategories(langCode,langLabel,flag,lvl){
+  var center=document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie kategorii...</div>';
+  setBreadcrumb(flag+' '+langLabel+' → '+lvl);
+  try{
+    var {data:langRow}=await db.from('languages').select('id').eq('code',langCode).single();
+    var {data:lvlRow}=await db.from('levels').select('id').eq('code',lvl).maybeSingle();
+    if(!langRow){if(center)center.innerHTML='<div style="padding:20px;color:#c33">Błąd języka</div>';return;}
+    var q=db.from('flashcards').select('category_id').eq('language_id',langRow.id);
+    if(lvlRow) q=q.eq('level_id',lvlRow.id);
+    var {data:rows}=await q.limit(500);
+    var ids=[...new Set((rows||[]).map(function(r){return r.category_id;}).filter(Boolean))];
+    var {data:cats}=await db.from('categories').select('id,code,label,icon').in('id',ids).order('label');
+    if(!cats||!cats.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak kategorii</div>';return;}
+    var wrap=document.createElement('div');
+    var back=document.createElement('button');
+    back.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+    back.textContent='← Poziomy';
+    back.onclick=(function(lc,ll,lf){ return function(){ strefaSelectLang(lc,ll,lf,'tryb'); }; })(langCode,langLabel,flag);
+    wrap.appendChild(back);
+    var title=document.createElement('div');
+    title.style.cssText='font-family:DM Sans,sans-serif;font-size:22px;font-weight:700;color:var(--navy);margin-bottom:16px';
+    title.textContent=flag+' '+langLabel+' '+lvl+' — wybierz kategorię';
+    wrap.appendChild(title);
+    var grid=document.createElement('div');
+    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px';
+    cats.forEach(function(cat){
+      var div=document.createElement('div');
+      div.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;transition:all .2s;text-align:center';
+      div.innerHTML='<div style="font-size:24px;margin-bottom:8px">'+(cat.icon||'📂')+'</div><div style="font-size:13px;font-weight:700;color:var(--navy)">'+(cat.label||cat.code)+'</div>';
+      div.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)';};
+      div.onmouseout=function(){this.style.borderColor='var(--border)';this.style.transform='none';};
+      div.onclick=(function(lc,ll,lf,lv,catRow){ return function(){
+        strefaLoadEyelingoSet(lc,ll,lf,lv,catRow.id,catRow.label||catRow.code);
+      }; })(langCode,langLabel,flag,lvl,cat);
+      grid.appendChild(div);
+    });
+    wrap.appendChild(grid);
+    if(center){center.innerHTML='';center.appendChild(wrap);}
+  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
+async function strefaLoadEyelingoSet(langCode,langLabel,flag,lvl,catId,catLabel){
+  var center=document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie fiszek...</div>';
+  try{
+    var {data:langRow}=await db.from('languages').select('id').eq('code',langCode).single();
+    var {data:lvlRow}=await db.from('levels').select('id').eq('code',lvl).maybeSingle();
+    var q=db.from('flashcards').select('word,translation').eq('language_id',langRow.id).eq('category_id',catId);
+    if(lvlRow) q=q.eq('level_id',lvlRow.id);
+    var {data:cards}=await q.limit(200);
+    if(!cards||!cards.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak fiszek</div>';return;}
+    // Preview + start button
+    var wrap=document.createElement('div');
+    var back=document.createElement('button');
+    back.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+    back.textContent='← Kategorie';
+    back.onclick=(function(lc,ll,lf,lv){ return function(){ strefaShowEyelingoCategories(lc,ll,lf,lv); }; })(langCode,langLabel,flag,lvl);
+    wrap.appendChild(back);
+    var hdr=document.createElement('div');
+    hdr.style.cssText='margin-bottom:20px';
+    hdr.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:700;color:var(--navy);margin-bottom:6px">'+flag+' '+(catLabel)+'</div>'
+      +'<div style="font-size:14px;color:var(--dim2)">'+lvl+' · '+cards.length+' fiszek</div>';
+    wrap.appendChild(hdr);
+    // Preview grid
+    var pg=document.createElement('div');
+    pg.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:20px';
+    cards.slice(0,8).forEach(function(c){
+      var d=document.createElement('div');
+      d.style.cssText='background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center';
+      d.innerHTML='<div style="font-size:14px;font-weight:700;color:var(--navy)">'+c.word+'</div>'
+        +'<div style="font-size:12px;color:var(--orange);margin-top:3px">'+c.translation+'</div>';
+      pg.appendChild(d);
+    });
+    wrap.appendChild(pg);
+    var btnRow=document.createElement('div');
+    btnRow.style.cssText='display:flex;gap:10px';
+    var startBtn=document.createElement('button');
+    startBtn.className='btn btn-orange btn-lg';
+    startBtn.textContent='▶ Zacznij naukę';
+    startBtn.onclick=(function(cc,sn){ return function(){
+      _trybExternalCards=cc.map(function(c){return {word:c.word||'',translation:c.translation||''};});
+      _trybExternalName=sn;
+      RewardSystem&&RewardSystem.load();
+      showPage('tryb');
+      setTimeout(function(){ startSession('set_external'); },300);
+    }; })(cards,flag+' '+catLabel+' '+lvl);
+    btnRow.appendChild(startBtn);
+    wrap.appendChild(btnRow);
+    if(center){center.innerHTML='';center.appendChild(wrap);}
+  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
 
 async function loadChallengeSet(ch){
   var setDesc=document.getElementById('ch-set-desc');
