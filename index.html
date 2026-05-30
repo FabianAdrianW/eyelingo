@@ -1714,99 +1714,59 @@ window.dailyReadDone = function(){
       </div>
     </div>
 
-    <!-- Hero stats -->
-    <div class="dstats">
-      <div class="dstat"><div class="dstat-l">🏺 Złoto</div><div class="dstat-v gold" id="dash-gold">0</div><div class="dstat-s">zebrane punkty</div></div>
-      <div class="dstat"><div class="dstat-l">🔥 Streak</div><div class="dstat-v" id="dash-streak">0</div><div class="dstat-s">dni z rzędu</div></div>
-      <div class="dstat"><div class="dstat-l">📖 Fiszki</div><div class="dstat-v" id="dash-cards">0</div><div class="dstat-s">przerobionych</div></div>
-      <div class="dstat"><div class="dstat-l">🏆 Status</div><div class="dstat-v sm" id="dash-status">Ładowanie...</div></div>
+    <!-- ═══ HERO: co desktop zrobił dziś (Most #1 + ambient feedback) ═══ -->
+    <div class="dash-hero">
+      <div class="dash-hero-main">
+        <div class="dash-hero-eyebrow">Twój desktop pracował w tle</div>
+        <div class="dash-hero-line">
+          <span class="dash-hero-num" id="dash-today-shown">—</span>
+          <span class="dash-hero-unit">fiszek pokazanych dziś</span>
+        </div>
+        <p class="dash-hero-sub" id="dash-hero-sub">Eyelingo wyświetlał Ci słowa w rogu ekranu, kiedy pracowałeś. Bez wysiłku, bez przerw.</p>
+        <div class="dash-hero-cta">
+          <button class="btn btn-orange" onclick="startSrsSession()">Sesja powtórek</button>
+          <button class="btn btn-navy" onclick="startAlexSession()">Porozmawiaj z Alexem</button>
+        </div>
+      </div>
+      <div class="dash-hero-side">
+        <div class="dhs-item"><div class="dhs-v" id="dash-stat-seen">0</div><div class="dhs-l">słów widzianych łącznie</div></div>
+        <div class="dhs-item"><div class="dhs-v" id="dash-stat-mastered">0</div><div class="dhs-l">opanowanych</div></div>
+        <div class="dhs-item"><div class="dhs-v" id="dash-stat-consistency">0</div><div class="dhs-l">dni konsystencji</div></div>
+      </div>
     </div>
 
-    <!-- Statystyki rozszerzone -->
-    <div class="stats-section">
-      <h3 class="stats-title">📊 Twoje postępy</h3>
-      <div class="stats-grid">
-
-        <!-- Streak -->
-        <div class="stat-card-big">
-          <div class="scb-head">
-            <div>
-              <div class="scb-label">🔥 Streak</div>
-              <div class="scb-value" id="stat-streak">0</div>
-              <div class="scb-sub">dni z rzędu</div>
-            </div>
-            <div class="streak-flame" id="streak-flame">🔥</div>
-          </div>
-          <div class="streak-bar-wrap">
-            <div class="streak-bar-label">Tygodniowy cel (7 dni)</div>
-            <div class="streak-bar-track"><div class="streak-bar-fill" id="streak-bar"></div></div>
-          </div>
-          <div style="margin-top:12px;font-size:12px;color:var(--dim2)" id="streak-msg"></div>
-        </div>
-
-        <!-- AI Partner -->
-        <div class="stat-card-big">
-          <div class="scb-label">🤖 AI Partner</div>
-          <div class="scb-value" id="stat-chat">0</div>
-          <div class="scb-sub">wiadomości dziś</div>
-          <div style="margin-top:12px">
-            <div style="font-size:12px;color:var(--dim2);margin-bottom:4px">Dzienny limit</div>
-            <div class="streak-bar-track"><div id="chat-usage-bar" style="height:100%;border-radius:20px;background:linear-gradient(90deg,#16a34a,#f5c842);transition:width .5s"></div></div>
-          </div>
-        </div>
-
-        <!-- Fiszki i czas -->
-        <div class="stat-card-big">
-          <div class="scb-label">📖 Nauka</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
-            <div style="text-align:center;padding:12px;background:var(--paper2);border-radius:10px">
-              <div style="font-size:24px;font-weight:700;color:var(--navy)" id="stat-cards2">0</div>
-              <div style="font-size:11px;color:var(--dim2)">Fiszek przerobionych</div>
-            </div>
-            <div style="text-align:center;padding:12px;background:var(--paper2);border-radius:10px">
-              <div style="font-size:24px;font-weight:700;color:var(--navy)" id="stat-minutes">0</div>
-              <div style="font-size:11px;color:var(--dim2)">Minut nauki</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Głosówki -->
-        <div class="stat-card-big">
-          <div class="scb-label">🎙️ Głosówki</div>
-          <div class="scb-value" id="stat-voices">0</div>
-          <div class="scb-sub">opublikowanych</div>
-          <div style="margin-top:8px;font-size:12px;color:var(--dim2)" id="stat-voices-rating"></div>
-        </div>
-
-        <!-- Wyzwanie -->
-        <div class="stat-card-big">
-          <div class="scb-label">🏆 Wyzwanie tygodnia</div>
-          <div id="stat-challenge-name" style="font-size:14px;font-weight:600;color:var(--navy);margin:8px 0"></div>
-          <div style="font-size:12px;color:var(--dim2);margin-bottom:6px" id="stat-challenge-progress">Brak danych</div>
-          <div class="streak-bar-track"><div id="stat-challenge-bar" style="height:100%;border-radius:20px;background:linear-gradient(90deg,#f5c842,#c96a2a);transition:width .5s;width:0%"></div></div>
-        </div>
-
-        <!-- Odznaki -->
-        <div class="stat-card-big">
-          <div class="scb-label">🎖️ Odznaki</div>
-          <div id="stat-badges" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
-            <div style="font-size:12px;color:var(--dim2)">Zdobywaj odznaki przez naukę!</div>
-          </div>
-        </div>
-
-        <!-- Postęp językowy -->
-        <div class="stat-card-big" style="grid-column:span 2">
-          <div class="scb-label">🌍 Postęp językowy</div>
-          <div id="lang-progress" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"></div>
-        </div>
-
-        <!-- Aktywność -->
-        <div class="stat-card-big" style="grid-column:span 2">
-          <div class="scb-label">📅 Aktywność — ostatnie 7 dni</div>
-          <div class="activity-chart" id="activity-chart" style="margin-top:16px"></div>
-        </div>
-
+    <!-- ═══ BRIDGE CARDS ═══ -->
+    <div class="bridge-row">
+      <!-- Most #1: słowa wymagające rozmowy z Alexem -->
+      <div class="bridge-card bridge-1" id="bridge1-card" style="display:none">
+        <div class="bridge-eyebrow">Rekomendowane na dziś</div>
+        <h3 class="bridge-title" id="bridge1-title">Porozmawiaj o słowach, których jeszcze nie opanowałeś</h3>
+        <p class="bridge-text">Desktop pokazywał Ci ostatnio te słowa — utrwal je w rozmowie z&nbsp;Alexem:</p>
+        <div class="bridge-pills" id="bridge1-pills"></div>
+        <button class="btn btn-orange bridge-btn" id="bridge1-btn" onclick="startAlexSession(window._bridge1Words)">Zacznij rozmowę · 5 min</button>
       </div>
+
+      <!-- Kolejka SRS: sugestia sesji powtórek -->
+      <div class="bridge-card bridge-2" id="bridge2-card" style="display:none">
+        <div class="bridge-eyebrow">Kolejka powtórek</div>
+        <h3 class="bridge-title"><span id="bridge2-count">0</span> słów czeka na powtórkę</h3>
+        <p class="bridge-text">Algorytm SM-2 uznał, że dziś warto je sobie przypomnieć. Krótka sesja wystarczy.</p>
+        <button class="btn btn-navy bridge-btn" onclick="startSrsSession()">Rozpocznij sesję</button>
+      </div>
+
+      <!-- Pusty stan: brak danych z mostów -->
+      <div class="bridge-card bridge-empty" id="bridge-empty" style="display:none">
+        <div class="bridge-eyebrow">Wszystko ogarnięte</div>
+        <h3 class="bridge-title">Brak słów do powtórki</h3>
+        <p class="bridge-text">Desktop dalej pracuje w tle. Wróć tu wieczorem — pojawią się nowe słowa do utrwalenia z&nbsp;Alexem.</p>
+      </div>
+    </div>
+
+    <!-- ═══ WYKRES: ostatnie 7 dni ═══ -->
+    <div class="dcard d7-card">
+      <div class="dcard-t">Ostatnie 7 dni</div>
+      <div class="d7-chart" id="d7-chart"></div>
+      <div class="d7-foot" id="d7-foot">Liczba fiszek pokazanych przez desktop każdego dnia.</div>
     </div>
 
     <div class="drow">
@@ -1828,13 +1788,6 @@ window.dailyReadDone = function(){
           <button class="btn btn-navy" id="code-btn" onclick="activateCode()"><span id="code-btn-text">Aktywuj</span></button>
         </div>
         <div id="code-msg" class="amsg" style="margin-top:10px;margin-bottom:0"></div>
-      </div>
-    </div>
-    <div class="tip">
-      <div class="tip-i">🏺</div>
-      <div>
-        <div class="tip-t">Jak zdobywać złoto?</div>
-        <div class="tip-x"><strong>+1 złoto</strong> co minutę aktywności &nbsp;·&nbsp; <strong>+1 złoto</strong> co 5 wyświetlonych fiszek &nbsp;·&nbsp; Za <strong>7 500 złota</strong> odblokujesz dowolny poziom w sklepie aplikacji</div>
       </div>
     </div>
   </div>
@@ -1946,177 +1899,192 @@ async function loadDashboard(){
   document.getElementById('dash-name').textContent=name+' 👋';
   updateNav(true,name);
 
-  // Złoto i statystyki z learning_stats
-  // maybeSingle() nie rzuca 406 gdy brak wiersza
-  let{data:s}=await db.from('learning_stats').select('gold,cards_seen,minutes_active,streak_days').eq('user_id',user.id).maybeSingle();
+  // ── Konsystencja + łączne statystyki (learning_stats, kumulatywne) ──
+  let{data:s}=await db.from('learning_stats').select('cards_seen,minutes_active,streak_days').eq('user_id',user.id).maybeSingle();
   if(!s){
-    // Utwórz wiersz dla nowego użytkownika
     await db.from('learning_stats').upsert({user_id:user.id,gold:0,cards_seen:0,minutes_active:0,streak_days:0},{onConflict:'user_id'});
-    s={gold:0,cards_seen:0,minutes_active:0,streak_days:0};
+    s={cards_seen:0,minutes_active:0,streak_days:0};
   }
-  if(s){
-    const streak=s.streak_days||0;
-    const cards=s.cards_seen||0;
-    const minutes=s.minutes_active||0;
-    const gold=s.gold||0;
+  const seenTotal=s.cards_seen||0;
+  const consistency=s.streak_days||0;
+  setText('dash-stat-seen', seenTotal.toLocaleString('pl-PL'));
+  setText('dash-stat-consistency', consistency);
 
-    // Hero stats
-    document.getElementById('dash-gold').textContent=gold.toLocaleString('pl-PL');
-    document.getElementById('dash-streak').textContent=streak;
-    document.getElementById('dash-cards').textContent=cards;
-
-    // Streak card
-    const streakEl=document.getElementById('stat-streak');
-    if(streakEl) streakEl.textContent=streak;
-    const bar=document.getElementById('streak-bar');
-    if(bar) bar.style.width=Math.min(100,Math.round(streak/7*100))+'%';
-    const flame=document.getElementById('streak-flame');
-    if(flame) flame.textContent=streak>=7?'🔥🔥':streak>=3?'🔥':'💤';
-    const streakMsg=document.getElementById('streak-msg');
-    if(streakMsg){
-      if(streak===0) streakMsg.textContent='Zacznij dziś — pierwszy dzień streaka!';
-      else if(streak<3) streakMsg.textContent='Dobry start! Utrzymaj go jutro 💪';
-      else if(streak<7) streakMsg.textContent='Świetnie! Jeszcze '+(7-streak)+' dni do tygodniowego celu 🎯';
-      else streakMsg.textContent='Niesamowite! Tydzień z rzędu — tak trzymaj! 🏆';
-    }
-
-    // Nauka stats
-    const sc2=document.getElementById('stat-cards2');
-    if(sc2) sc2.textContent=cards;
-    const sm=document.getElementById('stat-minutes');
-    if(sm) sm.textContent=minutes;
-
-    // AI Partner usage
-    const chatUsed=getChatUsageToday?getChatUsageToday():0;
-    const chatEl=document.getElementById('stat-chat');
-    if(chatEl) chatEl.textContent=chatUsed;
-    const chatBar=document.getElementById('chat-usage-bar');
-    if(chatBar) chatBar.style.width=Math.min(100,Math.round(chatUsed/15*100))+'%';
-
-    // Wyzwanie
-    const challenges=[
-      {name:'Mistrz Podróży 🗺️',goal:50},
-      {name:'Biznes Pro 💼',goal:40},
-      {name:'Naukowy Umysł 🔬',goal:30}
-    ];
-    const week=Math.floor(Date.now()/604800000)%challenges.length;
-    const ch=challenges[week];
-    const myProgress=Math.min(ch.goal,Math.floor(cards%ch.goal));
-    const chName=document.getElementById('stat-challenge-name');
-    const chProg=document.getElementById('stat-challenge-progress');
-    const chBar=document.getElementById('stat-challenge-bar');
-    if(chName) chName.textContent=ch.name;
-    if(chProg) chProg.textContent=myProgress+' / '+ch.goal+' słów';
-    if(chBar) chBar.style.width=Math.round(myProgress/ch.goal*100)+'%';
-
-    // Odznaki
-    const badges=[];
-    if(streak>=3) badges.push({icon:'🔥',name:'Ogień x3',desc:'3-dniowy streak'});
-    if(streak>=7) badges.push({icon:'💎',name:'Diament',desc:'7-dniowy streak'});
-    if(cards>=100) badges.push({icon:'📚',name:'Czytelnik',desc:'100 fiszek'});
-    if(cards>=500) badges.push({icon:'🧠',name:'Erudyta',desc:'500 fiszek'});
-    if(gold>=1000) badges.push({icon:'🪙',name:'Kolekcjoner',desc:'1000 złota'});
-    if(minutes>=60) badges.push({icon:'⏰',name:'Godzina nauki',desc:'60 minut'});
-    const badgesEl=document.getElementById('stat-badges');
-    if(badgesEl){
-      if(badges.length){
-        badgesEl.innerHTML=badges.map(function(b){
-          return'<div style="text-align:center;padding:8px 12px;background:var(--paper2);border-radius:10px;border:1px solid var(--border)">'
-            +'<div style="font-size:24px">'+b.icon+'</div>'
-            +'<div style="font-size:11px;font-weight:600;color:var(--navy);margin-top:2px">'+b.name+'</div>'
-            +'<div style="font-size:10px;color:var(--dim2)">'+b.desc+'</div>'
-            +'</div>';
-        }).join('');
-      } else {
-        badgesEl.innerHTML='<div style="font-size:12px;color:var(--dim2)">Brak odznak — zacznij się uczyć! 🚀</div>';
-      }
-    }
-  }
-
-  // Głosówki
-  try{
-    const{data:vr}=await db.from('voice_recordings').select('id,rating_pronunciation_avg,rating_count').eq('user_id',user.id);
-    const svEl=document.getElementById('stat-voices');
-    if(svEl) svEl.textContent=(vr||[]).length;
-    const svRating=document.getElementById('stat-voices-rating');
-    if(svRating&&vr&&vr.length){
-      const avgRating=vr.reduce(function(sum,r){return sum+(r.rating_pronunciation_avg||0);},0)/vr.length;
-      svRating.textContent='Śr. ocena wymowy: '+avgRating.toFixed(1)+' ⭐';
-    }
-  }catch(e){}
-
-  // Status premium z profiles
-  const{data:p}=await db.from('profiles').select('is_premium,premium_until,levels_bought,username').eq('user_id',user.id).maybeSingle();
+  // ── Pseudonim + status premium (profiles) ──
+  const{data:p}=await db.from('profiles').select('is_premium,premium_until,username').eq('user_id',user.id).maybeSingle();
+  if(p?.username) document.getElementById('dash-name').textContent=p.username+' 👋';
   const now=new Date();
   const until=p?.premium_until?new Date(p.premium_until):null;
   const isPremium=p?.is_premium&&until&&until>now;
-  const se=document.getElementById('dash-status');
-  if(isPremium){
-    const days=Math.ceil((until-now)/(1000*60*60*24));
-    se.textContent=`🏆 Premium (${days}d)`;
-    se.style.color='#16a34a';
-    document.getElementById('premium-card').style.display='none';
-  } else {
-    se.textContent='🔒 Darmowy';
-    se.style.color='';
+  const pc=document.getElementById('premium-card');
+  if(pc) pc.style.display=isPremium?'none':'';
+
+  // ── Hero: ile desktop pokazał DZIŚ + opanowane + wykres 7 dni (desktop_daily_stats) ──
+  // Tabela desktop_daily_stats jest nowa (Logic Bible §7). Degradacja gdy pusta/brak.
+  loadDesktopStats(user.id, seenTotal);
+
+  // ── Most #1: słowa wymagające rozmowy z Alexem (word_progress: repetitions 3–7, najtrudniejsze pierwsze) ──
+  loadBridge1(user.id);
+
+  // ── Kolejka SRS: słowa due dziś (word_progress: next_review <= dziś) ──
+  loadSrsQueue(user.id);
+}
+
+function setText(id,val){const e=document.getElementById(id);if(e)e.textContent=val;}
+
+// Hero number, opanowane, wykres 7 dni — z desktop_daily_stats (z fallbackiem)
+async function loadDesktopStats(uid, seenTotal){
+  const days=[];
+  for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);days.push(d.toISOString().slice(0,10));}
+  const todayKey=days[6];
+  let rows=null;
+  try{
+    const{data,error}=await db.from('desktop_daily_stats')
+      .select('date,flashcards_shown,flashcards_mastered_today')
+      .eq('user_id',uid)
+      .gte('date',days[0]);
+    if(error) throw error;
+    rows=data||[];
+  }catch(e){ rows=null; } // tabela jeszcze nie istnieje / brak uprawnień
+
+  const byDate={};
+  (rows||[]).forEach(r=>{byDate[r.date]={shown:r.flashcards_shown||0,mastered:r.flashcards_mastered_today||0};});
+
+  // Hero: dziś pokazane
+  const hasData = rows && rows.length>0;
+  const todayShown = byDate[todayKey]?byDate[todayKey].shown:0;
+  const shownEl=document.getElementById('dash-today-shown');
+  const subEl=document.getElementById('dash-hero-sub');
+  if(shownEl){
+    if(hasData){
+      shownEl.textContent=todayShown.toLocaleString('pl-PL');
+    } else {
+      shownEl.textContent='—';
+      if(subEl) subEl.textContent='Zainstaluj i uruchom desktop Eyelingo, aby zobaczyć tu ile fiszek pokazał Ci dziś w tle.';
+    }
   }
 
-  // Pseudonim
-  if(p?.username) document.getElementById('dash-name').textContent=p.username+' 👋';
+  // Opanowane łącznie (suma mastered z dostępnych dni; brak → 0)
+  let masteredSum=0; (rows||[]).forEach(r=>masteredSum+=(r.flashcards_mastered_today||0));
+  setText('dash-stat-mastered', hasData ? masteredSum.toLocaleString('pl-PL') : '0');
 
-  // Postęp językowy
-  loadLangProgress(user.id, p?.levels_bought||[]);
-
-  // Aktywność (symulowana z danych)
-  loadActivityChart(s);
+  // Wykres 7 dni
+  renderD7Chart(days, byDate, hasData);
 }
 
-async function loadLangProgress(uid, levelsBought){
-  const el=document.getElementById('lang-progress');
+function renderD7Chart(days, byDate, hasData){
+  const el=document.getElementById('d7-chart');
   if(!el)return;
-  const langs=[
-    {code:'en',label:'🇬🇧 Angielski'},
-    {code:'es',label:'🇪🇸 Hiszpański'},
-    {code:'jp',label:'🇯🇵 Japoński'},
-    {code:'nl',label:'🇳🇱 Niderlandzki'},
-  ];
-  const levels=['A1','A2','B1','B2','C1','C2'];
-  el.innerHTML=langs.map(lang=>{
-    const bought=levels.filter(lv=>levelsBought.includes(`${lang.code}_${lv}`)).length;
-    const pct=Math.round(bought/6*100);
-    return `<div class="lang-row">
-      <div class="lang-row-label">${lang.label}</div>
-      <div class="lang-row-track"><div class="lang-row-fill" style="width:${pct}%"></div></div>
-      <div class="lang-row-val">${bought}/6</div>
+  const labels=['Pn','Wt','Śr','Cz','Pt','Sb','Nd'];
+  const vals=days.map(k=>byDate[k]?byDate[k].shown:0);
+  const maxV=Math.max(...vals,1);
+  el.innerHTML=days.map((k,i)=>{
+    const v=vals[i];
+    const dow=(new Date(k+'T00:00:00').getDay()+6)%7; // 0=Pn
+    const pct=hasData?Math.round(v/maxV*100):0;
+    const isToday=i===6;
+    return `<div class="d7-bar-wrap">
+      <div class="d7-val">${hasData&&v>0?v:''}</div>
+      <div class="d7-bar${isToday?' d7-bar-today':''}" style="height:${Math.max(pct,hasData&&v>0?6:0)}%"></div>
+      <div class="d7-label">${labels[dow]}</div>
     </div>`;
   }).join('');
+  const foot=document.getElementById('d7-foot');
+  if(foot && !hasData) foot.textContent='Brak danych z desktopa — wykres wypełni się, gdy aplikacja zacznie pokazywać fiszki.';
 }
 
-function loadActivityChart(stats){
-  const el=document.getElementById('activity-chart');
-  if(!el)return;
-  const days=['Pn','Wt','Śr','Cz','Pt','Sb','Nd'];
-  const today=new Date().getDay();
-  const reorder=i=>(today-6+i+7)%7;
-  // Symulujemy dane na podstawie streak i minut
-  const streak=stats?.streak_days||0;
-  const mins=stats?.minutes_active||0;
-  const avgMins=streak>0?Math.round(mins/Math.max(streak,1)):0;
-  const bars=days.map((_,i)=>{
-    const active=i>=(7-streak)&&streak>0;
-    const h=active?Math.max(20,Math.min(100,avgMins*2)):Math.random()<0.2?Math.round(Math.random()*20):0;
-    return h;
-  });
-  const maxH=Math.max(...bars,1);
-  el.innerHTML=days.map((d,i)=>{
-    const ri=reorder(i);
-    const h=bars[ri];
-    const pct=Math.round(h/maxH*100);
-    return `<div class="act-bar-wrap">
-      <div class="act-bar" style="height:${pct}%;opacity:${h>0?'0.85':'0.15'}"></div>
-      <div class="act-label">${d}</div>
-    </div>`;
-  }).join('');
+// Most #1 — słowa znane ale nieopanowane, najtrudniejsze pierwsze
+async function loadBridge1(uid){
+  let words=[];
+  try{
+    const{data}=await db.from('word_progress')
+      .select('ease_factor,repetitions,flashcards(word,translation)')
+      .eq('user_id',uid)
+      .gte('repetitions',3)
+      .lte('repetitions',7)
+      .order('ease_factor',{ascending:true})
+      .limit(7);
+    words=(data||[])
+      .filter(r=>r.flashcards&&r.flashcards.word)
+      .map(r=>({word:r.flashcards.word,translation:r.flashcards.translation||''}));
+  }catch(e){ words=[]; }
+
+  window._bridge1Words=words;
+  const card=document.getElementById('bridge1-card');
+  if(!card)return;
+  if(words.length===0){ card.style.display='none'; return; }
+
+  card.style.display='';
+  const n=words.length;
+  setText('bridge1-title', `Porozmawiaj o ${n} ${plWord(n,'słowie','słowach','słowach')}, których jeszcze nie opanowałeś`);
+  const pills=document.getElementById('bridge1-pills');
+  if(pills){
+    const shown=words.slice(0,5);
+    let html=shown.map(w=>`<span class="word-pill" title="${escH(w.translation)}">${escH(w.word)}</span>`).join('');
+    if(n>shown.length) html+=`<span class="word-pill word-pill-more">+${n-shown.length}</span>`;
+    pills.innerHTML=html;
+  }
+  toggleBridgeEmpty();
+}
+
+// Kolejka SRS — liczba słów due dziś
+async function loadSrsQueue(uid){
+  let cnt=0;
+  try{
+    const today=new Date().toISOString().slice(0,10);
+    const{count}=await db.from('word_progress').select('*',{count:'exact',head:true}).eq('user_id',uid).lte('next_review',today);
+    cnt=count||0;
+  }catch(e){ cnt=0; }
+  const card=document.getElementById('bridge2-card');
+  setText('bridge2-count', cnt);
+  if(card) card.style.display = cnt>0 ? '' : 'none';
+  toggleBridgeEmpty();
+}
+
+function toggleBridgeEmpty(){
+  const b1=document.getElementById('bridge1-card');
+  const b2=document.getElementById('bridge2-card');
+  const empty=document.getElementById('bridge-empty');
+  if(!empty)return;
+  const anyVisible=(b1&&b1.style.display!=='none')||(b2&&b2.style.display!=='none');
+  empty.style.display=anyVisible?'none':'';
+}
+
+function plWord(n,one,few,many){
+  if(n===1)return one;
+  const t=n%10, h=n%100;
+  if(t>=2&&t<=4&&!(h>=12&&h<=14))return few;
+  return many;
+}
+
+// ── Most #1 akcja: rozmowa z Alexem zasiana lukami ──
+function startAlexSession(words){
+  showPage('teacher');
+  setTimeout(function(){
+    try{ if(typeof teacherShowTab==='function') teacherShowTab('chat'); }catch(e){}
+    var list=(words&&words.length?words:(window._bridge1Words||[])).map(function(w){return typeof w==='string'?w:w.word;}).filter(Boolean);
+    var el=document.getElementById('teacher-messages');
+    if(el){ el.dataset.inited='1'; el.innerHTML=''; }
+    var lang=window._strefaLang||'en';
+    if(list.length){
+      var sys='You are Alex, the user\'s friendly English conversation partner from New York. '
+        +'The user struggles with these words from their flashcards: '+list.join(', ')+'. '
+        +'Start a natural conversation that organically uses these words. Do NOT make it feel like a test. '
+        +'Use each target word at least once across the conversation. Keep responses short (2-3 sentences).';
+      window._teacherHistory=[{role:'user',content:sys}];
+      appendTeacherMsg('assistant','Cześć! Jestem Alex. Wyłapałem kilka słów, które ostatnio widziałeś na desktopie — wplotę je w rozmowę. Powiedz mi, jak minął Ci dzień?');
+    } else {
+      window._teacherHistory=[{role:'user',content:'You are Alex, a friendly English conversation partner from New York. Be encouraging. Keep responses short (2-3 sentences).'}];
+      appendTeacherMsg('assistant','Cześć! Jestem Alex. O czym chcesz dziś porozmawiać?');
+    }
+  },120);
+}
+
+// ── Sesja powtórek SRS ──
+function startSrsSession(){
+  if(typeof strefaStartPowtorki==='function'){ showPage('strefa'); setTimeout(strefaStartPowtorki,200); return; }
+  if(typeof startSession==='function'){ startSession('due'); return; }
+  showPage('strefa');
 }
 
 function updateNav(li,email){
@@ -2196,6 +2164,7 @@ function showPage(name){
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
   if(name==='daily'){ setTimeout(function(){ var ind=document.getElementById('daily-loading-indicator'); if(ind) ind.style.display='none'; initDaily(); dailyShowTab('daily'); }, 50); }
   if(name==='teacher'){ setTimeout(function(){ teacherShowTab('chat'); }, 50); }
+  if(name==='dash'){ try{ loadDashboard(); }catch(e){} }
   if(name==='tutors') initTutors();
   // Redirects for merged pages — route to parent hub
   if(name==='kultura'){showPage('odkryj');setTimeout(function(){odkryjShowTab('kultura');},50);return false;}
@@ -2912,6 +2881,48 @@ function setCard(s){
 .act-bar-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%}
 .act-bar{width:100%;border-radius:6px;background:var(--orange);opacity:.85;transition:height .4s ease;min-height:4px}
 .act-label{font-size:10px;color:var(--dim2);text-align:center}
+/* ═══ DASHBOARD — Most #1 refactor ═══ */
+.dash-hero{display:grid;grid-template-columns:1fr 280px;gap:0;background:var(--navy);border-radius:20px;overflow:hidden;margin-bottom:18px;color:#fff}
+.dash-hero-main{padding:34px 36px}
+.dash-hero-eyebrow{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--orange2);margin-bottom:14px}
+.dash-hero-line{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.dash-hero-num{font-family:DM Sans,sans-serif;font-size:64px;font-weight:800;letter-spacing:-2px;line-height:1;color:#fff}
+.dash-hero-unit{font-size:16px;font-weight:500;color:rgba(255,255,255,.75)}
+.dash-hero-sub{font-size:14px;line-height:1.6;color:rgba(255,255,255,.62);margin:14px 0 22px;max-width:440px}
+.dash-hero-cta{display:flex;gap:10px;flex-wrap:wrap}
+.dash-hero-side{background:rgba(255,255,255,.04);border-left:1px solid rgba(255,255,255,.08);padding:28px 26px;display:flex;flex-direction:column;justify-content:center;gap:20px}
+.dhs-item{}
+.dhs-v{font-family:DM Sans,sans-serif;font-size:30px;font-weight:800;letter-spacing:-1px;line-height:1;color:#fff}
+.dhs-l{font-size:11px;color:rgba(255,255,255,.55);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
+
+.bridge-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.bridge-card{background:var(--white);border:1.5px solid var(--border);border-radius:18px;padding:26px;display:flex;flex-direction:column}
+.bridge-card.bridge-1{border-color:rgba(201,106,42,.35);background:linear-gradient(180deg,#fffaf5,#fff)}
+.bridge-eyebrow{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:10px}
+.bridge-card.bridge-2 .bridge-eyebrow{color:var(--navy)}
+.bridge-card.bridge-empty .bridge-eyebrow{color:var(--success-dark,#0F6E56)}
+.bridge-title{font-family:DM Sans,sans-serif;font-size:19px;font-weight:700;line-height:1.25;color:var(--navy);margin-bottom:8px}
+.bridge-text{font-size:13px;line-height:1.6;color:var(--dim2,#666);margin-bottom:14px}
+.bridge-pills{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:18px}
+.word-pill{display:inline-block;background:rgba(201,106,42,.10);border:1px solid rgba(201,106,42,.28);color:var(--orange);font-size:13px;font-weight:600;padding:4px 11px;border-radius:100px}
+.word-pill-more{background:transparent;border-color:var(--border);color:var(--dim2,#888)}
+.bridge-btn{margin-top:auto;align-self:flex-start}
+
+.d7-card{margin-bottom:14px}
+.d7-chart{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;align-items:end;height:120px;margin-top:18px}
+.d7-bar-wrap{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%}
+.d7-val{font-size:11px;font-weight:700;color:var(--navy);min-height:14px}
+.d7-bar{width:100%;border-radius:7px 7px 4px 4px;background:rgba(26,35,64,.16);transition:height .5s ease;min-height:2px}
+.d7-bar-today{background:var(--orange)}
+.d7-label{font-size:11px;color:var(--dim2,#888);font-weight:600}
+.d7-foot{font-size:12px;color:var(--dim2,#888);margin-top:14px;line-height:1.5}
+
+@media(max-width:760px){
+  .dash-hero{grid-template-columns:1fr}
+  .dash-hero-side{flex-direction:row;border-left:none;border-top:1px solid rgba(255,255,255,.08);justify-content:space-between}
+  .dash-hero-num{font-size:48px}
+  .bridge-row{grid-template-columns:1fr}
+}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
 .modal-box{background:#fff;border-radius:20px;padding:40px;max-width:540px;width:100%;position:relative;max-height:80vh;overflow-y:auto}
 .modal-box h2{font-family:DM Sans,sans-serif;font-size:24px;font-weight:800;color:var(--navy);margin-bottom:20px}
