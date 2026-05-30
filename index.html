@@ -14,63 +14,419 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-/* Scroll snap na stronie głównej */
-#page-home{scroll-snap-type:y mandatory;overflow-y:scroll;height:100vh}
-#page-home section{scroll-snap-align:start;scroll-snap-stop:always}
+/* ═══════════════════════════════════════════════════════════════════
+   EYELINGO DESIGN SYSTEM v2.0
+   Aktualizacja zgodnie z EYELINGO_DESIGN_BIBLE.md
+   Zachowujemy: twój granat + pomarańcz
+   Aktualizujemy: typografia, spacing, radius, weights, tone
+   ═══════════════════════════════════════════════════════════════════ */
 
-:root{
-  --navy:   #1a2340;
-  --navy2:  #0f1729;
-  --orange: #c96a2a;
-  --orange2:#e07830;
-  --gold:   #f5c842;
-  --white:  #ffffff;
-  --paper:  #f8f7f4;
-  --paper2: #f0eee9;
-  --text:   #1a2340;
-  --dim:    #5a6480;
-  --dim2:   #8890aa;
-  --border: rgba(26,35,64,0.1);
-  --border2:rgba(26,35,64,0.18);
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-body{font-family:DM Sans,sans-serif;background:var(--white);color:var(--text);overflow-x:hidden;-webkit-font-smoothing:antialiased}
-h1,h2,h3,h4{font-family:DM Sans,sans-serif;font-weight:700;line-height:1.1;letter-spacing:-0.01em}
+html {
+  scroll-behavior: smooth;
+}
 
-/* NAV */
-nav{position:fixed;top:0;left:0;right:0;z-index:200;background:rgba(26,35,64,0.97);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,0.08)}
-.nav-top{display:flex;align-items:center;justify-content:space-between;padding:10px 40px}
-.nav-logo img{height:44px;display:block}
-.nav-global{display:flex;gap:24px;align-items:center}
-.nav-global a{font-size:14px;color:rgba(255,255,255,.6);text-decoration:none;font-weight:500;transition:color .2s}
-.nav-global a:hover{color:#fff}
-.nav-r{display:flex;gap:10px;align-items:center}
-/* Tabs - widoczne tylko dla zalogowanych */
-.nav-tabs{display:none;padding:0 40px;border-top:1px solid rgba(255,255,255,.06)}
-.nav-tabs.visible{display:flex}
-.nav-tab{font-size:13px;font-weight:500;color:rgba(255,255,255,.5);text-decoration:none;padding:10px 16px;border-bottom:2px solid transparent;transition:.2s;cursor:pointer;background:none;border-left:none;border-right:none;border-top:none;white-space:nowrap}
-.nav-tab:hover{color:rgba(255,255,255,.85)}
-.nav-tab.active{color:#fff;border-bottom-color:var(--orange)}
-/* Avatar */
-.nav-avatar{width:32px;height:32px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;cursor:pointer;flex-shrink:0}
+/* Scroll snap - zachowane */
+#page-home {
+  scroll-snap-type: y mandatory;
+  overflow-y: scroll;
+  height: 100vh;
+}
+#page-home section {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
 
-/* BUTTONS */
-.btn{font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;padding:11px 24px;border-radius:100px;cursor:pointer;border:none;transition:all .2s;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
-.btn-ghost{background:transparent;color:rgba(255,255,255,.8);border:1.5px solid rgba(255,255,255,.25)}
-.btn-ghost:hover{border-color:rgba(255,255,255,.6);color:#fff}
-.btn-navy{background:var(--navy);color:#fff}
-.btn-navy:hover{background:var(--navy2);transform:translateY(-1px)}
-.btn-orange{background:var(--orange);color:#fff;box-shadow:0 4px 20px rgba(201,106,42,.3)}
-.btn-orange:hover{background:var(--orange2);transform:translateY(-1px);box-shadow:0 6px 28px rgba(201,106,42,.4)}
-.btn-white{background:#fff;color:var(--navy);font-weight:600;box-shadow:0 2px 16px rgba(0,0,0,.12)}
-.btn-white:hover{transform:translateY(-1px);box-shadow:0 4px 24px rgba(0,0,0,.18)}
-.btn-lg{padding:16px 36px;font-size:16px}
-.btn-full{width:100%;justify-content:center}
-.btn-danger{background:transparent;color:#dc2626;border:1.5px solid rgba(220,38,38,.2)}
-.btn-danger:hover{background:rgba(220,38,38,.06)}
+/* ─────────────────────────────────────────────────
+   DESIGN TOKENS
+   ───────────────────────────────────────────────── */
 
+:root {
+  /* Brand colors — TWOJE, zachowane */
+  --navy:    #1a2340;
+  --navy2:   #0f1729;
+  --orange:  #c96a2a;
+  --orange2: #e07830;
+
+  /* Gold — DEPRECATED w UI, zostaje TYLKO dla XP/badges */
+  --gold:    #f5c842;
+
+  /* Backgrounds */
+  --white:   #ffffff;
+  --paper:   #f8f7f4;   /* main bg, lekko cieplejszy od biblii — twój */
+  --paper2:  #f0eee9;   /* alt bg dla kart */
+  --cream:   #FAF8F3;   /* z biblii — wariant dla nowych sekcji */
+
+  /* Text - hierarchy */
+  --text:        #1a2340;  /* primary (= navy) */
+  --text-2:      #666666;  /* secondary */
+  --text-3:      #888888;  /* tertiary */
+  --text-disabled: #B5AC93;
+
+  /* Borders */
+  --border:    rgba(26, 35, 64, 0.10);
+  --border-2:  rgba(26, 35, 64, 0.18);
+  --border-strong: #D8D2C0;
+  --border-divider: #F0EBDD;
+
+  /* Semantic colors (z biblii) */
+  --success:    #5DCAA5;
+  --success-dark: #0F6E56;
+  --success-bg: #E1F5EE;
+  --info:       #185FA5;
+  --info-bg:    #E6F1FB;
+  --error:      #A32D2D;
+  --error-bg:   rgba(160, 45, 45, 0.08);
+  --premium:    #B47B0E;
+  --premium-bg: #FFF4E0;
+
+  /* Spacing scale (8px base) */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+
+  /* Border radius */
+  --r-badge:  4px;
+  --r-btn:    6px;
+  --r-card:   10px;
+  --r-hero:   14px;
+
+  /* Transitions */
+  --t-fast:   120ms linear;
+  --t-base:   200ms ease-out;
+  --t-slow:   300ms ease;
+}
+
+/* ─────────────────────────────────────────────────
+   BASE TYPOGRAPHY
+   Biblia: Inter, weights 400 + 500, no bold (700+)
+   ───────────────────────────────────────────────── */
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--white);
+  color: var(--text);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.4px;
+  color: var(--text);
+}
+
+h1 {
+  font-size: clamp(36px, 5vw, 44px);
+  letter-spacing: -0.6px;
+}
+
+h2 {
+  font-size: clamp(28px, 3.5vw, 36px);
+  letter-spacing: -0.5px;
+}
+
+h3 {
+  font-size: clamp(18px, 2.5vw, 22px);
+  letter-spacing: -0.3px;
+}
+
+h4 {
+  font-size: 16px;
+  letter-spacing: -0.2px;
+}
+
+p {
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+/* Eyebrow tag — wszędzie tak samo */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  background: var(--white);
+  border: 0.5px solid var(--border-divider);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.3px;
+  margin-bottom: 18px;
+}
+
+/* ─────────────────────────────────────────────────
+   NAV - granat z white text, zachowany styl
+   ───────────────────────────────────────────────── */
+
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 200;
+  background: rgba(26, 35, 64, 0.97);
+  backdrop-filter: blur(16px);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.08);
+}
+
+.nav-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 40px;
+}
+
+.nav-logo img {
+  height: 32px;
+  display: block;
+}
+
+.nav-global {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.nav-global a {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  text-decoration: none;
+  font-weight: 400;
+  transition: color var(--t-base);
+}
+
+.nav-global a:hover {
+  color: #fff;
+}
+
+.nav-r {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.nav-tabs {
+  display: none;
+  padding: 0 40px;
+  border-top: 0.5px solid rgba(255, 255, 255, 0.06);
+}
+
+.nav-tabs.visible {
+  display: flex;
+}
+
+.nav-tab {
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.5);
+  text-decoration: none;
+  padding: 10px 16px;
+  border-bottom: 2px solid transparent;
+  transition: var(--t-base);
+  cursor: pointer;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.nav-tab:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.nav-tab.active {
+  color: #fff;
+  border-bottom-color: var(--orange);
+}
+
+.nav-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ─────────────────────────────────────────────────
+   BUTTONS — 4 hierarchie z biblii
+   Radius 6px (NIE 100px pill)
+   No transform on hover (no movement)
+   No agresywne shadows
+   ───────────────────────────────────────────────── */
+
+.btn {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 11px 22px;
+  border-radius: var(--r-btn);
+  cursor: pointer;
+  border: none;
+  transition: background-color var(--t-base), color var(--t-base);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+
+.btn-orange {
+  background: var(--orange);
+  color: #fff;
+}
+.btn-orange:hover {
+  background: var(--orange2);
+}
+
+.btn-navy {
+  background: var(--navy);
+  color: #fff;
+}
+.btn-navy:hover {
+  background: var(--navy2);
+}
+
+.btn-white {
+  background: #fff;
+  color: var(--navy);
+  border: 0.5px solid var(--navy);
+}
+.btn-white:hover {
+  background: var(--paper);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  border: 0.5px solid rgba(255, 255, 255, 0.2);
+}
+.btn-ghost:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.btn-lg {
+  padding: 14px 26px;
+  font-size: 14px;
+}
+
+.btn-full {
+  width: 100%;
+  justify-content: center;
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--error);
+  border: 0.5px solid rgba(160, 45, 45, 0.25);
+}
+.btn-danger:hover {
+  background: var(--error-bg);
+}
+
+/* ─────────────────────────────────────────────────
+   PAGES
+   ───────────────────────────────────────────────── */
+
+.page { display: none; }
+.page.active { display: block; }
+#page-daily.active, #page-odkryj.active { display: flex; align-items: stretch; min-height: 100vh; }
+#page-community.active, #page-strefa.active { display: flex; align-items: stretch; }
+#page-auth.active { display: flex; }
+#page-dash.active { display: flex; }
+
+/* ─────────────────────────────────────────────────
+   BADGES — 5 kolorów semantycznych
+   ───────────────────────────────────────────────── */
+
+.badge {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 9px;
+  border-radius: var(--r-badge);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-recommended {
+  background: rgba(201, 106, 42, 0.12);
+  color: var(--orange);
+}
+
+.badge-free {
+  background: var(--success-bg);
+  color: var(--success-dark);
+}
+
+.badge-pro {
+  background: var(--premium-bg);
+  color: var(--premium);
+}
+
+.badge-info {
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+.badge-warn {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+/* ─────────────────────────────────────────────────
+   CARDS — 3 warianty z biblii
+   ───────────────────────────────────────────────── */
+
+.card-standard {
+  background: var(--white);
+  border: 0.5px solid var(--border-divider);
+  border-radius: var(--r-card);
+  padding: var(--space-4);
+}
+
+.card-hero {
+  background: var(--navy);
+  color: #fff;
+  border-radius: var(--r-hero);
+  padding: var(--space-6);
+}
+
+.card-highlighted {
+  background: var(--white);
+  border: 2px solid var(--orange);
+  border-radius: var(--r-card);
+  padding: var(--space-4);
+}
 /* PAGES */
 .page{display:none}
 .page.active{display:block}
