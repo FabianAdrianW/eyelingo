@@ -2059,25 +2059,14 @@ function plWord(n,one,few,many){
 
 // ── Most #1 akcja: rozmowa z Alexem zasiana lukami ──
 function startAlexSession(words){
+  var list=(words&&words.length?words:(window._bridge1Words||[])).map(function(w){return typeof w==='string'?w:w.word;}).filter(Boolean);
+  window._chatSeedWords = list.length?list:null;
   showPage('teacher');
   setTimeout(function(){
     try{ if(typeof teacherShowTab==='function') teacherShowTab('chat'); }catch(e){}
-    var list=(words&&words.length?words:(window._bridge1Words||[])).map(function(w){return typeof w==='string'?w:w.word;}).filter(Boolean);
-    var el=document.getElementById('teacher-messages');
-    if(el){ el.dataset.inited='1'; el.innerHTML=''; }
-    var lang=window._strefaLang||'en';
-    if(list.length){
-      var sys='You are Alex, the user\'s friendly English conversation partner from New York. '
-        +'The user struggles with these words from their flashcards: '+list.join(', ')+'. '
-        +'Start a natural conversation that organically uses these words. Do NOT make it feel like a test. '
-        +'Use each target word at least once across the conversation. Keep responses short (2-3 sentences).';
-      window._teacherHistory=[{role:'user',content:sys}];
-      appendTeacherMsg('assistant','Cześć! Jestem Alex. Wyłapałem kilka słów, które ostatnio widziałeś na desktopie — wplotę je w rozmowę. Powiedz mi, jak minął Ci dzień?');
-    } else {
-      window._teacherHistory=[{role:'user',content:'You are Alex, a friendly English conversation partner from New York. Be encouraging. Keep responses short (2-3 sentences).'}];
-      appendTeacherMsg('assistant','Cześć! Jestem Alex. O czym chcesz dziś porozmawiać?');
-    }
-  },120);
+    // teacherShowTab('chat') wywołuje initChat → chatReset (użyje _chatSeedWords do powitania)
+    setTimeout(function(){ try{ if(typeof chatReset==='function') chatReset(); }catch(e){} var inp=document.getElementById('chat-input'); if(inp) inp.focus(); }, 260);
+  },140);
 }
 
 // ── Sesja powtórek SRS ──
@@ -3943,6 +3932,8 @@ async function initToFixPage(){
 .chat-hint{display:inline-flex;align-items:center;padding:6px 12px;border-radius:20px;font-size:12px;cursor:pointer;background:var(--paper);color:var(--dim);border:1px solid var(--border2);transition:.2s}
 .chat-hint:hover{border-color:var(--orange);color:var(--orange)}
 .chat-info{font-size:11px;color:var(--dim2);text-align:center;padding:2px 0}
+.fc-hl{background:rgba(201,106,42,.14);color:var(--orange);font-weight:600;border-radius:4px;padding:0 3px}
+.chat-info-known{color:#0F6E56;font-weight:700}
 .lyric-line-wrap{padding:10px 12px;border-radius:10px;cursor:pointer;border-left:3px solid transparent;transition:.15s;margin-bottom:1px}
 .lyric-line-wrap:hover{background:rgba(201,106,42,.07);border-left-color:rgba(201,106,42,.3)}
 .lyric-line-wrap.lyric-active{background:rgba(201,106,42,.12);border-left-color:var(--orange)}
@@ -5595,9 +5586,7 @@ function chatUpdatePersona(){
   var langPlaceholder={en:'Napisz po angielsku...',es:'Escribe en español...',nl:'Schrijf in het Nederlands...',jp:'日本語で書いてください...'};
   var inp=document.getElementById('chat-input');
   if(inp) inp.placeholder=langPlaceholder[_chatLang]||'Napisz...';
-  // Przeładuj słabe słowa dla nowego języka
   loadChatWeakWords();
-  // Reset rozmowy przy zmianie języka
   chatReset();
 }
 
@@ -5608,33 +5597,48 @@ async function initChat(){
   updateChatLimitUI();
 }
 
+// Wywoływane przyciskiem „Zacznij rozmowę" (wcześniej niezdefiniowane → błąd)
+function chatStart(){
+  chatReset();
+  var inp=document.getElementById('chat-input');
+  if(inp) inp.focus();
+}
+
+// Pełna lista fiszek usera dla aktywnego języka: {id, word, translation, ease, reps}
+var _chatFlashcards=[];
+var _chatSeedWords=null; // słowa zasiane z Mostu #1 (dashboard)
+
 async function loadChatWeakWords(){
   var lang=document.getElementById('chat-lang')?document.getElementById('chat-lang').value:'en';
+  _chatFlashcards=[];
   var words=[];
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){renderWeakWords([]);return;}
-    // Najpierw word_progress filtrowany po języku
     try{
       var{data:wp}=await db.from('word_progress')
-        .select('ease_factor,flashcards(word,languages(code))')
+        .select('flashcard_id,ease_factor,repetitions,flashcards(word,translation,languages(code))')
         .eq('user_id',sess.user.id)
         .order('ease_factor',{ascending:true})
-        .limit(30);
+        .limit(50);
       if(wp&&wp.length){
         var filtered=wp.filter(function(r){
           return r.flashcards&&r.flashcards.word&&r.flashcards.languages&&r.flashcards.languages.code===lang;
         });
         var pool=filtered.length?filtered:wp.filter(function(r){return r.flashcards&&r.flashcards.word;});
-        words=pool.slice(0,8).map(function(r){return r.flashcards.word;});
+        _chatFlashcards=pool.map(function(r){return {
+          id:r.flashcard_id, word:r.flashcards.word, translation:r.flashcards.translation||'',
+          ease:r.ease_factor||2.5, reps:r.repetitions||0
+        };});
+        words=_chatFlashcards.slice(0,8).map(function(f){return f.word;});
       }
     }catch(e){}
-    // Fallback - zestawy webowe
     if(!words.length){
-      var{data:sets2}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).limit(5);
+      var{data:sets2}=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(5);
       var allW=[];
       if(sets2)sets2.forEach(function(s){if(s.user_set_cards)allW=allW.concat(s.user_set_cards);});
-      words=allW.slice(0,8).map(function(c){return c.word;});
+      _chatFlashcards=allW.slice(0,50).map(function(c){return {id:null,word:c.word,translation:c.translation||'',ease:2.5,reps:0};});
+      words=_chatFlashcards.slice(0,8).map(function(f){return f.word;});
     }
   }catch(e){}
   renderWeakWords(words, lang);
@@ -5644,72 +5648,157 @@ function renderWeakWords(words, lang){
   var el=document.getElementById('chat-weak-words');
   var label=document.getElementById('chat-weak-label');
   if(!el)return;
-  var langNames={en:'angielski',es:'hiszpański',nl:'holenderski',jp:'japoński'};
-  if(label) label.textContent='Partner użyje tych słów ('+(langNames[lang]||lang)+')';
+  if(label) label.textContent='Z Twoich fiszek';
   if(words.length){
     el.innerHTML=words.map(function(w){
-      return'<span style="display:inline-block;padding:2px 8px;border-radius:6px;background:var(--paper2);border:1px solid var(--border);font-size:12px;color:var(--navy)">'+w+'</span>';
+      return '<span class="word-pill" style="font-size:12px;padding:3px 9px">'+escH(w)+'</span>';
     }).join('');
   } else {
-    el.innerHTML='<span style="font-size:12px;color:var(--dim2)">Ucz się więcej aby personalizować rozmowę</span>';
+    el.innerHTML='<span style="font-size:12px;color:var(--dim2,#888)">Ucz się więcej, aby spersonalizować rozmowę</span>';
   }
 }
+
 var _chatLevel='beginner';
 
 function setChatLevel(level, el){
   _chatLevel=level;
-  // Update UI
   ['beginner','intermediate','advanced'].forEach(function(l){
     var btn=document.getElementById('lvl-'+l);
     if(!btn)return;
-    if(l===level){
-      btn.style.borderColor='var(--orange)';
-      btn.style.background='#faeeda';
-      btn.style.color='var(--orange)';
-    } else {
-      btn.style.borderColor='var(--border2)';
-      btn.style.background='transparent';
-      btn.style.color='var(--dim2)';
-    }
+    if(l===level){ btn.style.borderColor='var(--orange)'; btn.style.background='#faeeda'; btn.style.color='var(--orange)'; }
+    else { btn.style.borderColor='var(--border-2,#ccc)'; btn.style.background='transparent'; btn.style.color='var(--dim2,#888)'; }
   });
-  // Dla zaawansowanych - auto-włącz tryb odwagi
-  if(level==='advanced'){
-    var brave=document.querySelector('input[name="chat-mode"][value="brave"]');
-    if(brave) brave.checked=true;
-  } else if(level==='beginner'){
-    var hints=document.querySelector('input[name="chat-mode"][value="hints"]');
-    if(hints) hints.checked=true;
-  }
+  if(level==='advanced'){ var brave=document.querySelector('input[name="chat-mode"][value="brave"]'); if(brave) brave.checked=true; }
+  else if(level==='beginner'){ var hints=document.querySelector('input[name="chat-mode"][value="hints"]'); if(hints) hints.checked=true; }
 }
 
 function chatReset(){
   _chatHistory=[];
   var msgs=document.getElementById('chat-messages');
-  msgs.innerHTML='';
+  if(msgs) msgs.innerHTML='';
   var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
-  _chatHistory.push({role:'assistant',content:p.greeting});
-  appendChatMsg('ai',p.greeting);
+  if(_chatSeedWords&&_chatSeedWords.length){
+    var greet=(_chatLang==='en')
+      ? "Hey! I'm "+p.name+". I noticed a few words you've been seeing on your desktop lately — let's weave them into a chat. How's your day going?"
+      : p.greeting;
+    _chatHistory.push({role:'assistant',content:greet});
+    appendChatMsg('ai',greet);
+  } else {
+    _chatHistory.push({role:'assistant',content:p.greeting});
+    appendChatMsg('ai',p.greeting);
+  }
   showChatHints();
+}
+
+// ── Renderowanie odpowiedzi AI z podświetleniem fiszek ──
+function _escFcRegex(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+
+function _fcWordRegex(word){
+  try{ return new RegExp('(?<![\\p{L}\\p{N}_])('+_escFcRegex(word)+')(?![\\p{L}\\p{N}_])','giu'); }
+  catch(e){ return new RegExp('\\b('+_escFcRegex(word)+')\\b','gi'); } // fallback gdy brak lookbehind/\p
+}
+
+// Zwraca {html, used:[słowa fiszek użyte w odpowiedzi]}
+function renderAiHtml(text){
+  var html=escH(text);
+  html=html.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+  var used=[];
+  (_chatFlashcards||[]).forEach(function(f){
+    if(!f.word)return;
+    var re=_fcWordRegex(f.word);
+    if(re.test(text)){
+      used.push(f.word);
+      html=html.replace(_fcWordRegex(f.word),'<span class="fc-hl">$1</span>');
+    }
+  });
+  return {html:html, used:used};
 }
 
 function appendChatMsg(who, text, info){
   var msgs=document.getElementById('chat-messages');
+  if(!msgs)return 0;
   if(info){
-    var d=document.createElement('div');
-    d.className='chat-info';
-    d.textContent=info;
-    msgs.appendChild(d);
+    var di=document.createElement('div');
+    di.className='chat-info';
+    di.textContent=info;
+    msgs.appendChild(di);
   }
   var d=document.createElement('div');
   d.className=who==='user'?'chat-msg-user':'chat-msg-ai';
-  d.style.cssText='max-width:75%;align-self:'+(who==='user'?'flex-end':'flex-start');
-  d.innerHTML=text.replace(/\*\*(.*?)\*\*/g,'<strong style="color:'+(who==='user'?'#f5c842':'var(--orange)')+'">$1</strong>');
+  d.style.cssText='max-width:'+(who==='user'?'75%':'80%')+';align-self:'+(who==='user'?'flex-end':'flex-start');
+  var usedCount=0;
+  if(who==='user'){
+    d.innerHTML=escH(text).replace(/\*\*(.*?)\*\*/g,'<strong style="color:#f5c842">$1</strong>');
+  } else {
+    var r=renderAiHtml(text);
+    d.innerHTML=r.html;
+    usedCount=r.used.length;
+  }
+  msgs.appendChild(d);
+  msgs.scrollTop=msgs.scrollHeight;
+  return usedCount;
+}
+
+function appendChatInfo(text, kind){
+  var msgs=document.getElementById('chat-messages');
+  if(!msgs)return;
+  var d=document.createElement('div');
+  d.className='chat-info'+(kind==='known'?' chat-info-known':'');
+  d.textContent=text;
   msgs.appendChild(d);
   msgs.scrollTop=msgs.scrollHeight;
 }
 
+// ── Most #5: parsowanie sentinela [[KNOWN: word=conf, ...]] ──
+function parseKnownSentinel(reply){
+  var demos=[];
+  var cleaned=reply;
+  var m=reply.match(/\[\[\s*KNOWN\s*:(.*?)\]\]/is);
+  if(m){
+    cleaned=reply.replace(m[0],'').trim();
+    var body=m[1].trim();
+    if(body && !/^none$/i.test(body)){
+      body.split(',').forEach(function(part){
+        var kv=part.split('=');
+        var w=(kv[0]||'').trim();
+        var c=(kv[1]||'medium').trim().toLowerCase();
+        if(!/^(high|medium|low)$/.test(c)) c='medium';
+        if(w) demos.push({word:w, confidence:c});
+      });
+    }
+  }
+  return {cleaned:cleaned, demos:demos};
+}
+
+// Boost SM-2 dla słów, które user zademonstrował poprawnie
+async function boostDemonstrated(demos){
+  if(!demos||!demos.length)return [];
+  var boostMap={high:{reps:2,ease:0.15},medium:{reps:1,ease:0.10},low:{reps:0,ease:0.05}};
+  var applied=[];
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess)return [];
+  for(var i=0;i<demos.length;i++){
+    var d=demos[i];
+    var fc=(_chatFlashcards||[]).find(function(f){return f.word&&f.word.toLowerCase()===d.word.toLowerCase();});
+    if(!fc||!fc.id) continue; // tylko realne fiszki word_progress
+    var b=boostMap[d.confidence]||boostMap.medium;
+    var newEase=Math.min(2.8,(fc.ease||2.5)+b.ease);
+    var newReps=(fc.reps||0)+b.reps;
+    try{
+      await db.from('word_progress')
+        .update({ease_factor:newEase, repetitions:newReps})
+        .eq('user_id',sess.user.id)
+        .eq('flashcard_id',fc.id);
+      fc.ease=newEase; fc.reps=newReps; // odśwież cache
+      applied.push(fc.word);
+    }catch(e){}
+  }
+  return applied;
+}
+
 function showChatHints(){
   var hintsWrap=document.getElementById('chat-hints-wrap');
+  if(!hintsWrap)return;
   var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
   if(mode==='brave'){hintsWrap.innerHTML='';return;}
   var hints={
@@ -5732,28 +5821,20 @@ function chatUseHint(text){
 const CHAT_DAILY_LIMIT = 15;
 
 function getChatUsageToday(){
-  try{
-    var key='chat_usage_'+new Date().toISOString().slice(0,10);
-    return parseInt(localStorage.getItem(key)||'0');
-  }catch(e){return 0;}
+  try{ return parseInt(localStorage.getItem('chat_usage_'+new Date().toISOString().slice(0,10))||'0'); }
+  catch(e){return 0;}
 }
-
 function incrementChatUsage(){
-  try{
-    var key='chat_usage_'+new Date().toISOString().slice(0,10);
-    var n=getChatUsageToday()+1;
-    localStorage.setItem(key,String(n));
-    return n;
-  }catch(e){return 1;}
+  try{ var key='chat_usage_'+new Date().toISOString().slice(0,10); var n=getChatUsageToday()+1; localStorage.setItem(key,String(n)); return n; }
+  catch(e){return 1;}
 }
-
 function updateChatLimitUI(){
   var used=getChatUsageToday();
   var left=Math.max(0,CHAT_DAILY_LIMIT-used);
   var el=document.getElementById('chat-limit-info');
   if(el){
-    el.textContent=left>0?(left+' wiadomości pozostało dziś'):'Limit dzienny wyczerpany';
-    el.style.color=left<=3?'#c96a2a':left===0?'#dc2626':'var(--dim2)';
+    el.textContent=left>0?(left+' wiadomości pozostało dziś'):'Limit dzienny wyczerpany — odblokuj PRO dla nielimitowanych rozmów';
+    el.style.color=left===0?'#dc2626':(left<=3?'#c96a2a':'var(--dim2,#888)');
   }
 }
 
@@ -5762,7 +5843,7 @@ async function chatSend(){
   var text=input.value.trim();
   if(!text)return;
   if(getChatUsageToday()>=CHAT_DAILY_LIMIT){
-    appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości. Wróć jutro lub odblokuj premium! 🌟');
+    appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości z Alexem. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO. 🌟');
     return;
   }
   var btn=document.getElementById('chat-send-btn');
@@ -5771,75 +5852,76 @@ async function chatSend(){
   appendChatMsg('user',text);
   _chatHistory.push({role:'user',content:text});
 
-  // Typing indicator
   var typing=document.createElement('div');
   typing.className='chat-msg-ai';
-  typing.style.cssText='max-width:75%;align-self:flex-start;color:var(--dim2);font-size:13px';
+  typing.style.cssText='max-width:75%;align-self:flex-start;color:var(--dim2,#888);font-size:13px';
   typing.textContent='pisze...';
   document.getElementById('chat-messages').appendChild(typing);
   document.getElementById('chat-messages').scrollTop=99999;
 
   try{
-    var sess=(await db.auth.getSession()).data.session;
-    var tok=sess?sess.access_token:'';
+    // Słowa docelowe: zasiane z Mostu #1 (priorytet) + najtrudniejsze fiszki
+    var targetWords=[];
+    if(_chatSeedWords&&_chatSeedWords.length) targetWords=_chatSeedWords.slice(0,7);
+    (_chatFlashcards||[]).slice(0,8).forEach(function(f){ if(targetWords.indexOf(f.word)===-1) targetWords.push(f.word); });
+    targetWords=targetWords.slice(0,8);
 
-    // Pobierz słabe słowa usera
-    var weakWords=[];
-    if(sess){
-      try{
-        try{
-          var {data:wp2}=await db.from('word_progress')
-            .select('flashcard_id,ease_factor,flashcards(word)')
-            .eq('user_id',sess.user.id)
-            .order('ease_factor',{ascending:true})
-            .limit(5);
-          if(wp2&&wp2.length) weakWords=wp2.filter(function(r){return r.flashcards&&r.flashcards.word;}).map(function(r){return r.flashcards.word;});
-        }catch(e){}
-        if(!weakWords.length){
-          try{
-            var {data:sets3}=await db.from('user_sets').select('user_set_cards(word)').eq('user_id',sess.user.id).limit(3);
-            var allW3=[];if(sets3)sets3.forEach(function(s){if(s.user_set_cards)allW3=allW3.concat(s.user_set_cards);});
-            weakWords=allW3.slice(0,5).map(function(c){return c.word;});
-          }catch(e){}
-        }
-      }catch(e){}
-    }
+    // Pełna lista słownictwa (do rozpoznawania demonstracji)
+    var vocabList=(_chatFlashcards||[]).slice(0,40).map(function(f){
+      return f.translation? (f.word+' ('+f.translation+')') : f.word;
+    });
 
     var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
     var topic=document.getElementById('chat-topic').value;
     var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
     var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
-    var topicNames={daily:'everyday life',travel:'travel and trips',work:'work and career',tech:'technology and gadgets',movies:'movies and TV series',music:'music and artists',games:'video games',anime:'anime and manga',sport:'sports',food:'cooking and food',fashion:'fashion and style',science:'science and discoveries',nature:'environment and nature',relationships:'relationships and feelings',health:'health and fitness',history:'history',culture:'culture and traditions',money:'money and finance',art:'art and creativity',free:'any topic'};
+    var topicNames={daily:'everyday life',travel:'travel and trips',work:'work and career',tech:'technology and gadgets',movies:'movies and TV series',music:'music and artists',games:'video games',anime:'anime and manga',sport:'sports',food:'cooking and food',custom:'a topic of their choice',free:'any topic'};
     var levelInstructions={
-      beginner:'Use very simple vocabulary (A1-A2 level). Short sentences max 10 words. Speak slowly and clearly. If user makes a mistake, gently correct them in a friendly way. Add Polish translations in parentheses for difficult words.',
+      beginner:'Use very simple vocabulary (A1-A2). Short sentences max 10 words. If user makes a mistake, gently correct them. Add Polish translations in parentheses for difficult words.',
       intermediate:'Use natural B1-B2 vocabulary. Normal sentence length. Occasionally use idioms and explain them. Correct major errors only.',
-      advanced:'Use sophisticated C1 vocabulary, idioms, complex structures. Challenge the user. Correct errors naturally within your response. No Polish unless absolutely necessary.'
+      advanced:'Use sophisticated C1 vocabulary, idioms, complex structures. Challenge the user. Correct errors naturally. No Polish unless absolutely necessary.'
     };
-
     var levelInst=levelInstructions[_chatLevel]||levelInstructions['intermediate'];
+
     var systemPrompt='You are '+p.name+', a friendly native '+langNames[_chatLang]+' speaker from '+p.desc.split('·')[1].trim()+'. '
-      +'You are having a conversation about '+topicNames[topic]+'. '
+      +'You are having a conversation about '+(topicNames[topic]||'everyday life')+'. '
       +'LEVEL: '+levelInst+' '
-      +(weakWords.length?'Naturally weave these words into your responses when possible (the user is learning them): '+weakWords.join(', ')+'. When you use one, bold it like **word**. ':'' )
-      +(mode==='brave'?'Respond ONLY in '+langNames[_chatLang]+'. Do not use Polish at all. If the user writes in Polish, gently ask them to try in '+langNames[_chatLang]+'.':'Respond in '+langNames[_chatLang]+'. ')
-      +' Keep responses conversational, 2-4 sentences. Be warm and encouraging.';
+      +(targetWords.length?('Naturally weave these words from the user\'s flashcards into your responses (do not force them all at once): '+targetWords.join(', ')+'. When you use one, wrap it in **double asterisks**. '):'')
+      +(mode==='brave'?('Respond ONLY in '+langNames[_chatLang]+'. If the user writes in Polish, gently ask them to try in '+langNames[_chatLang]+'. '):('Respond in '+langNames[_chatLang]+'. '))
+      +'Keep responses conversational, 2-4 sentences. Be warm and encouraging.\n\n'
+      +(vocabList.length?('The user is learning these flashcard words: '+vocabList.join('; ')+'.\n'
+        +'After your conversational reply, on a NEW LINE at the very end, output a marker listing ONLY the flashcard words from that list which the user used CORRECTLY in their MOST RECENT message, with a confidence level. Use EXACTLY this format:\n'
+        +'[[KNOWN: word=high, word=medium]]\n'
+        +'If the user used none of those words, output: [[KNOWN: none]]\n'
+        +'Confidence: high = clearly correct in context; medium = correct but ambiguous; low = mentioned, possibly guessing. Do NOT be over-generous. Never mention this marker in your conversational reply.'):'');
 
     var tok2=(await db.auth.getSession()).data.session?.access_token||'';
     var res=await fetch(AI_PROXY_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok2,'apikey':APIKEY_CONST},
-      body:JSON.stringify({
-        systemPrompt:systemPrompt,
-        messages:_chatHistory.slice(-10),
-        max_tokens:400
-      })
+      body:JSON.stringify({ systemPrompt:systemPrompt, messages:_chatHistory.slice(-10), max_tokens:450 })
     });
     var data=await res.json();
-    // Gemini response format
-    var reply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Sorry, something went wrong. Try again!';
+    var rawReply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Sorry, something went wrong. Try again!';
+
+    // Most #5: wytnij sentinel, zboostuj zademonstrowane słowa
+    var parsed=parseKnownSentinel(rawReply);
+    var reply=parsed.cleaned;
+
     _chatHistory.push({role:'assistant',content:reply});
     typing.remove();
-    appendChatMsg('ai',reply);
+
+    var usedCount=appendChatMsg('ai',reply);
+    if(usedCount>0){
+      appendChatInfo('Alex użył '+usedCount+' '+plWord(usedCount,'słowa','słów','słów')+' z Twoich fiszek');
+    }
+    // boost + zielony micro-text
+    var applied=await boostDemonstrated(parsed.demos);
+    if(applied.length>0){
+      appendChatInfo('✓ Rozpoznał '+applied.length+' '+plWord(applied.length,'słowo','słowa','słów')+' z Twoich fiszek — wzmocniono w powtórkach', 'known');
+    }
+
+    _chatSeedWords=null; // seed zużyty po pierwszej wymianie
     incrementChatUsage();
     updateChatLimitUI();
     showChatHints();
@@ -5847,13 +5929,14 @@ async function chatSend(){
     typing.remove();
     console.error('[AI Partner]',e);
     var errMsg='Błąd połączenia z AI. ';
-    if(e.message&&e.message.includes('CORS')) errMsg+='Problem z CORS - sprawdz czy funkcja ai-proxy jest wdrozona i ma wylaczony JWT.';
+    if(e.message&&e.message.includes('CORS')) errMsg+='Problem z CORS — sprawdź czy funkcja AI jest wdrożona.';
     else if(e.message&&e.message.includes('fetch')) errMsg+='Nie można połączyć z serwerem.';
     else errMsg+=e.message||'Spróbuj ponownie.';
     appendChatMsg('ai',errMsg);
   }
   btn.disabled=false;
 }
+
 
 // ═══════════════════════════════════════
 // ANALIZA LYRICS
