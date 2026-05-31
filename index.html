@@ -3114,108 +3114,58 @@ async function initToFixPage(){
 </script>
 <!-- ═══ STREFA NAUKI ═══ -->
 <div id="page-strefa" class="page" style="min-height:100vh;padding:0;background:var(--paper)">
-  <div style="display:flex;width:100%;align-items:stretch;min-height:100vh;position:relative">
+  <div style="display:flex;width:100%;align-items:stretch;min-height:100vh">
 
-    <!-- LEFT SIDEBAR: Strefa Nauki (sliding, accordion) -->
-    <button id="strefa-sidebar-toggle" onclick="toggleStrefaSidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:200;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
-    <div id="strefa-sidebar" style="width:300px;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);transition:transform .3s ease;z-index:50;backdrop-filter:blur(4px)">
-      <div id="strefa-sidebar-inner" style="padding:86px 0 80px 20px;min-width:280px">
+    <!-- QUIET CATALOG SIDEBAR (220px, in-flow) -->
+    <aside id="strefa-sidebar" style="width:220px;flex-shrink:0;border-right:.5px solid var(--border);padding:86px 0 64px 0">
+      <div id="strefa-sidebar-inner" style="padding:0 16px">
+        <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Katalog</div>
 
-        <!-- Tryb Nauki / Kontekstowa tabs -->
-        <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
-          <button id="sb-btn-tryb" onclick="strefaSidebarMode('tryb')" style="flex:1;padding:10px 8px;border:none;background:transparent;color:var(--navy);font-size:12px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;border-bottom:2px solid var(--navy);margin-bottom:-2px">Tryb Nauki</button>
-          <button id="sb-btn-strefa" onclick="strefaSidebarMode('strefa')" style="flex:1;padding:10px 8px;border:none;background:transparent;color:var(--dim2);font-size:12px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;border-bottom:2px solid transparent;margin-bottom:-2px">Kontekstowa</button>
+        <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:.2s;margin-bottom:16px" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
+          <div style="width:30px;height:30px;border-radius:8px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:500;color:var(--navy)" id="sb-powtorki-label">Powtórki na dziś</div>
+            <div style="font-size:11px;color:var(--dim2)" id="sb-powtorki-sub">Algorytm SM-2</div>
+          </div>
+          <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--dim);background:rgba(26,35,64,.05);border-radius:7px;padding:2px 8px;display:none">0</div>
         </div>
 
-        <!-- TRYB NAUKI content -->
-        <div id="sb-tryb-content" style="display:flex;flex-direction:column;gap:8px;padding-right:20px">
-          <!-- Powtórki -->
-          <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="background:#e8e8ec;border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .3s;opacity:.6" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity=document.getElementById('sb-due-count').textContent==='0'?'.6':'1'">
-            <div style="display:flex;align-items:center;justify-content:space-between">
-              <div>
-                <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)" id="sb-powtorki-label">Powtórki na dziś</div>
-                <div style="font-size:12px;color:var(--dim2)" id="sb-powtorki-sub">Algorytm SM-2</div>
-              </div>
-              <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:22px;font-weight:500;color:var(--navy);display:none">0</div>
-            </div>
+        <div style="margin-top:4px">
+          <div id="sb-mine-tile" onclick="strefaToggleMine()" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;cursor:pointer;border:none">
+            <span style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2)">Moje zestawy</span>
+            <span id="sb-mine-arrow" style="font-size:10px;color:var(--dim2);transition:transform .2s">▼</span>
           </div>
-          <!-- Moje zestawy accordion -->
-          <div>
-            <div id="sb-mine-tile" onclick="strefaToggleMine()" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="if(!document.getElementById('sb-mine-list').style.display||document.getElementById('sb-mine-list').style.display==='none')this.style.borderColor='var(--border)'">
-              <div>
-                <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">Moje zestawy</div>
-                <div style="font-size:12px;color:var(--dim2)">Ucz się ze swoich zestawów</div>
-              </div>
-              <span id="sb-mine-arrow" style="font-size:12px;color:var(--dim2);transition:transform .2s">▼</span>
-            </div>
-            <div id="sb-mine-list" style="display:none;margin-top:4px;padding-left:8px;border-left:2px solid var(--border)">
-              <div style="font-size:11px;color:var(--dim2);padding:8px 4px">Ładowanie katalogów...</div>
-            </div>
-          </div>
-          <!-- Zestawy Eyelingo accordion -->
-          <div>
-            <div id="sb-eyelingo-tile" onclick="strefaToggleEyelingo('tryb')" style="background:var(--navy);border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
-              <div>
-                <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:#fff">Zestawy Eyelingo</div>
-                <div style="font-size:12px;color:rgba(255,255,255,.7)">Fiszki z programu językowego</div>
-              </div>
-              <span id="sb-eyelingo-arrow" style="font-size:12px;color:rgba(255,255,255,.7);transition:transform .2s">▼</span>
-            </div>
-            <div id="sb-eyelingo-list" style="display:none;margin-top:4px;padding-left:8px;border-left:2px solid var(--border)">
-            </div>
-          </div>
-
+          <div id="sb-mine-list" style="display:none"><div style="font-size:11px;color:var(--dim2);padding:8px 8px">Ładowanie...</div></div>
         </div>
 
-        <!-- KONTEKSTOWA content -->
-        <div id="sb-strefa-content" style="display:none;flex-direction:column;gap:8px;padding-right:20px">
-          <!-- Moje zestawy accordion -->
-          <div>
-            <div onclick="strefaToggleMineKontekstowa()" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
-              <div>
-                <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">Moje zestawy</div>
-                <div style="font-size:12px;color:var(--dim2)">Kontekstowo</div>
-              </div>
-              <span id="sb-mine-k-arrow" style="font-size:12px;color:var(--dim2)">▼</span>
-            </div>
-            <div id="sb-mine-k-list" style="display:none;margin-top:4px;padding-left:8px;border-left:2px solid var(--border)"></div>
+        <div style="margin-top:8px">
+          <div id="sb-eyelingo-tile" onclick="strefaToggleEyelingo('tryb')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;cursor:pointer">
+            <span style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2)">Zestawy Eyelingo</span>
+            <span id="sb-eyelingo-arrow" style="font-size:10px;color:var(--dim2);transition:transform .2s">▼</span>
           </div>
-          <!-- Zestawy Eyelingo accordion -->
-          <div>
-            <div onclick="strefaToggleEyelingo('kontekstowa')" style="background:var(--navy);border-radius:14px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
-              <div>
-                <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:#fff">Zestawy Eyelingo</div>
-                <div style="font-size:12px;color:rgba(255,255,255,.7)">Program językowy</div>
-              </div>
-              <span id="sb-eyelingo-k-arrow" style="font-size:12px;color:rgba(255,255,255,.7)">▼</span>
-            </div>
-            <div id="sb-eyelingo-k-list" style="display:none;margin-top:4px;padding-left:8px;border-left:2px solid var(--border)"></div>
-          </div>
+          <div id="sb-eyelingo-list" style="display:none"></div>
         </div>
-
       </div>
-    </div>
-    <!-- MAIN CONTENT -->
-    <div id="strefa-main-col" style="flex:1;min-width:0;padding:86px 32px 80px 32px">
-      <!-- Breadcrumb -->
-      <div id="strefa-breadcrumb-bar" style="font-size:12px;color:var(--dim2);margin-bottom:16px;min-height:18px"></div>
+    </aside>
 
-      <!-- Dynamic content area -->
+    <div id="strefa-main-col" style="flex:1;min-width:0;padding:86px 40px 64px 40px">
+      <div style="margin-bottom:22px">
+        <h1 style="font-family:DM Sans,sans-serif;font-size:32px;font-weight:500;letter-spacing:-.6px;color:var(--navy);line-height:1.1">Strefa Nauki</h1>
+        <div style="font-size:13px;color:var(--dim);margin-top:6px">Powtórki rozłożone w czasie — algorytm SM-2 sam dobiera tryb do każdego słowa.</div>
+      </div>
+      <div id="strefa-breadcrumb-bar" style="font-size:12px;color:var(--dim2);margin-bottom:16px;min-height:18px"></div>
       <div id="strefa-center-content">
-        <!-- Default: welcome message -->
-        <div style="text-align:center;padding:64px 24px;color:var(--dim2)">
-          <div style="width:48px;height:48px;border-radius:12px;background:rgba(26,35,64,.06);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+        <div style="text-align:center;padding:72px 24px;color:var(--dim2)">
+          <div style="width:48px;height:48px;border-radius:12px;background:rgba(26,35,64,.06);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:var(--navy)">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
           </div>
           <div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy);margin-bottom:6px">Wybierz zestaw</div>
-          <div style="font-size:13px">Kliknij kafelek po lewej, aby zacząć</div>
+          <div style="font-size:13px">Kliknij katalog po lewej, aby zacząć</div>
         </div>
       </div>
-
-
-        </div><!-- /strefa-main-col -->
-
-    
+    </div>
 
   </div><!-- /3-col flex -->
 </div><!-- end page-strefa -->
@@ -5087,10 +5037,10 @@ function strefaStartPowtorki(){
   if(tile && tile.style.opacity==='0.55' || cnt===0){
     // Show friendly message in center
     var center=document.getElementById('strefa-center-content');
-    if(center) center.innerHTML='<div style="text-align:center;padding:80px 20px">'
-      +'<div style="font-size:56px;margin-bottom:16px">☀️</div>'
-      +'<div style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:10px">Wszystko na bieżąco!</div>'
-      +'<div style="font-size:15px;color:var(--dim2);max-width:320px;margin:0 auto;line-height:1.6">Nie masz żadnych powtórek na dziś. Wróć jutro lub naucz się nowych słów.</div>'
+    if(center) center.innerHTML='<div style="text-align:center;padding:72px 24px">'
+      +'<div style="width:48px;height:48px;border-radius:12px;background:var(--green-bg,#E1F5EE);color:var(--green-dark,#0F6E56);display:flex;align-items:center;justify-content:center;margin:0 auto 16px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>'
+      +'<div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:8px">Wszystko na bieżąco</div>'
+      +'<div style="font-size:14px;color:var(--dim2);max-width:320px;margin:0 auto;line-height:1.6">Brak powtórek na dziś. Wróć jutro albo dodaj nowe słowa.</div>'
       +'</div>';
     return;
   }
