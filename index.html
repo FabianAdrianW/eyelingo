@@ -5967,19 +5967,24 @@ async function chatSend(){
     var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
     var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
     var topicNames={daily:'everyday life',travel:'travel and trips',work:'work and career',tech:'technology and gadgets',movies:'movies and TV series',music:'music and artists',games:'video games',anime:'anime and manga',sport:'sports',food:'cooking and food',custom:'a topic of their choice',free:'any topic'};
+    var cefr=((document.getElementById('chat-level')||{}).value)||'B1';
     var levelInstructions={
-      beginner:'Use very simple vocabulary (A1-A2). Short sentences max 10 words. If user makes a mistake, gently correct them. Add Polish translations in parentheses for difficult words.',
-      intermediate:'Use natural B1-B2 vocabulary. Normal sentence length. Occasionally use idioms and explain them. Correct major errors only.',
-      advanced:'Use sophisticated C1 vocabulary, idioms, complex structures. Challenge the user. Correct errors naturally. No Polish unless absolutely necessary.'
+      A1:'CEFR A1. Very simple words, short sentences (max 8 words), speak slowly. Add a Polish gloss in parentheses for any non-basic word. Gently correct mistakes.',
+      A2:'CEFR A2. Simple everyday vocabulary, short clear sentences. Occasional Polish gloss for hard words. Correct major mistakes gently.',
+      B1:'CEFR B1. Natural everyday vocabulary, normal sentence length. Minimal Polish. Correct only significant errors.',
+      B2:'CEFR B2. Rich vocabulary, idioms, varied structure. No Polish. Engage with substance — give real opinions and concrete details.',
+      C1:'CEFR C1. Sophisticated, nuanced language and idioms. No Polish. Treat the user as a fluent peer; give detailed, substantive answers.',
+      C2:'CEFR C2. Native-level register, subtle nuance, wit, complex structures. No Polish. Be a sharp, articulate equal — never simplify or talk down.'
     };
-    var levelInst=levelInstructions[_chatLevel]||levelInstructions['intermediate'];
+    var levelInst=levelInstructions[cefr]||levelInstructions['B1'];
 
     var systemPrompt='You are '+p.name+', a friendly native '+langNames[_chatLang]+' speaker from '+p.desc.split('·')[1].trim()+'. '
-      +'You are having a conversation about '+(topicNames[topic]||'everyday life')+'. '
-      +'LEVEL: '+levelInst+' '
-      +(targetWords.length?('Naturally weave these words from the user\'s flashcards into your responses (do not force them all at once): '+targetWords.join(', ')+'. When you use one, wrap it in **double asterisks**. '):'')
-      +(mode==='brave'?('Respond ONLY in '+langNames[_chatLang]+'. If the user writes in Polish, gently ask them to try in '+langNames[_chatLang]+'. '):('Respond in '+langNames[_chatLang]+'. '))
-      +'Keep responses conversational, 2-4 sentences. Be warm and encouraging.\n\n'
+      +'CONVERSATION TOPIC: '+(topicNames[topic]||'everyday life')+'. '
+      +'YOUR FIRST PRIORITY: respond genuinely and substantively to what the user actually said, on their chosen topic, at their level. If they ask for a story, tell a real, interesting story. '
+      +'LEVEL (strict, do not drift below it): '+levelInst+' '
+      +(mode==='brave'?('Respond ONLY in '+langNames[_chatLang]+'. If the user writes in Polish, gently nudge them back to '+langNames[_chatLang]+'. '):('Respond in '+langNames[_chatLang]+'. '))
+      +(targetWords.length?('SECONDARY and OPTIONAL — the user is practising these words: '+targetWords.join(', ')+'. ONLY if one fits naturally in an otherwise on-topic reply, use it and wrap THAT word in **double asterisks**. Never force them, never steer the conversation toward them, never use more than two per reply. A natural, on-topic, level-appropriate answer ALWAYS beats inserting a practice word. '):'')
+      +'Match the depth the level implies: at B2+ give detailed, interesting replies (3-6 sentences), not one-liners; below that keep it shorter. Be warm but never hollow.\n\n'
       +(vocabList.length?('The user is learning these flashcard words: '+vocabList.join('; ')+'.\n'
         +'After your conversational reply, on a NEW LINE at the very end, output a marker listing ONLY the flashcard words from that list which the user used CORRECTLY in their MOST RECENT message, with a confidence level. Use EXACTLY this format:\n'
         +'[[KNOWN: word=high, word=medium]]\n'
@@ -5990,7 +5995,7 @@ async function chatSend(){
     var res=await fetch(AI_PROXY_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok2,'apikey':APIKEY_CONST},
-      body:JSON.stringify({ systemPrompt:systemPrompt, messages:_chatHistory.slice(-10), max_tokens:450 })
+      body:JSON.stringify({ systemPrompt:systemPrompt, messages:_chatHistory.slice(-10), max_tokens:((cefr==='B2'||cefr==='C1'||cefr==='C2')?850:500) })
     });
     var data=await res.json();
     var rawReply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Sorry, something went wrong. Try again!';
@@ -12557,10 +12562,10 @@ function lexBuildSystemPrompt(flashcardSets){
 
   return 'You are Lex, an expert language teacher. You teach ONLY the ' + _lexLangNative + ' language.\n'
     + 'CRITICAL RULES:\n'
-    + '1. ALWAYS communicate IN ' + _lexLangNative + '. Use Polish ONLY for brief translations or when student needs help.\n'
+    + '1. ALWAYS communicate IN ' + _lexLangNative + '. For B1+ keep explanations in the target language too; use Polish ONLY for a single-word gloss in parentheses, never whole sentences. NEVER use emoji or emoticons anywhere — keep a calm, professional, pedagogical tone.\n'
     + '2. Each response = ONE card = ONE clear thought or exercise. Be concise.\n'
     + '3. Student: ' + (name || 'learner') + ', level: ' + level + ', goal: ' + goal + ', lesson: ' + dur + ' min\n'
-    + '4. If level is "unknown" — run a THOROUGH placement test: minimum 10-12 questions, A1 to C1 difficulty range. Do NOT conclude level after fewer than 10 questions. Be skeptical of guesses.\n'
+    + '4. If level is "unknown" — run a THOROUGH placement test: minimum 10-12 questions, A1 to C1 difficulty range. Do NOT conclude before 10 answers. The moment you conclude the level, add the marker [LEVEL]X[/LEVEL] exactly once (X = A1/A2/B1/B2/C1/C2).\n'
     + '5. After each student answer, give brief encouraging feedback (1 sentence), then move to next step.\n'
     + '\n'
     + 'EXERCISE FORMATS — end EVERY response with ONE:\\n'
@@ -12571,7 +12576,7 @@ function lexBuildSystemPrompt(flashcardSets){
     + 'KRYTYCZNE: NIE używaj markdown headers (#, ##). NIE używaj bloków kodu (```). NIE pisz tagów HTML (<br>, <p> itp). NIE pisz \\n dosłownie. Używaj zwykłych enterów. Pisz czysty tekst.\\n'
     + 'KRYTYCZNE: Ćwiczenia i pytania MC ZAWSZE po ' + _lexLangNative + '. Student odpowiada ZAWSZE po ' + _lexLangNative + '.\\n'
     + 'VOCAB: [WORD]słowo_po_' + _lexLangNative + '|tłumaczenie_PL|przykład[/WORD]\\n'
-    + 'GAP: [GAP]temat[/GAP] gdy wykryjesz błąd\\n'
+    + 'GAP: [GAP]temat[/GAP] gdy wykryjesz błąd. LEVEL: [LEVEL]B1[/LEVEL] raz, gdy ustalisz poziom (tylko w teście poziomującym)\\n'
     + 'END: [END] po ~' + Math.round(dur * 1.5) + ' wymianach\\n'
     + 'LESSON FLOW ' + dur + ' min:\\n'
     + (level === 'unknown' ? '→ Przywitaj po ' + _lexLangNative + ', test poziomujący min 10 pytań MC A1→C1\\n' : '→ Krótkie powitanie po ' + _lexLangNative + '\\n')
@@ -12599,6 +12604,17 @@ function lexParseCard(text){
   for(var g of gm){
     var gap = g[1].trim();
     if(!_lexGaps.includes(gap)) _lexGaps.push(gap);
+  }
+
+  // Level (placement result) — persist, by ewaluacja nie powtarzała się (#8)
+  var lvlm = text.match(/\[LEVEL\]\s*([ABC][12])\s*\[\/LEVEL\]/i);
+  if(lvlm){
+    var lvl = lvlm[1].toUpperCase();
+    card.level = lvl;
+    if(_lexProfile && _lexProfile.user_level === 'unknown'){
+      _lexProfile.user_level = lvl;
+      (async function(){ try{ var s=(await db.auth.getSession()).data.session; if(s) await db.from('lex_profiles').update({user_level: lvl, updated_at: new Date().toISOString()}).eq('user_id', s.user.id); }catch(e){} })();
+    }
   }
 
   // End
@@ -13138,6 +13154,7 @@ function lexFormatCardText(text){
     .replace(/\[INFO\][\s\S]*?\[\/INFO\]/g, '')
     .replace(/\[GAP\][^\[]+\[\/GAP\]/g, '')
     .replace(/\[END\]/g, '')
+    .replace(/\[LEVEL\][\s\S]*?\[\/LEVEL\]/gi, '')
     .replace(/\[WORD\]([^|]+)\|([^|]+)\|[^\[]+\[\/WORD\]/g,
       '<strong style="color:var(--orange)">$1</strong> <sup style="font-size:10px;color:var(--dim2)">$2</sup>')
     // Strip code blocks entirely
