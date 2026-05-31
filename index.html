@@ -5077,6 +5077,7 @@ async function strefaLoadMineList(mode){
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){list.innerHTML='<div style="padding:8px 4px;font-size:12px;color:var(--dim2)">Zaloguj się</div>';return;}
+    try{ if(typeof loadCollections==='function') await loadCollections(); }catch(e){}
     // Load user sets to get counts per catalog
     var {data:sets}=await db.from('user_sets').select('id,name,user_set_cards(id)').eq('user_id',sess.user.id);
     var setsById={};
@@ -5085,7 +5086,7 @@ async function strefaLoadMineList(mode){
     // "Wszystkie" tile
     var allDiv=document.createElement('div');
     allDiv.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s';
-    allDiv.innerHTML='<div style="font-size:13px;font-weight:500;color:var(--navy)">📂 Wszystkie</div>'
+    allDiv.innerHTML='<div style="font-size:13px;font-weight:500;color:var(--navy)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.6" style="vertical-align:-2px;margin-right:6px"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>Wszystkie</div>'
       +'<div style="font-size:11px;color:var(--dim2)">'+(sets?sets.length:0)+' zestawów</div>';
     allDiv.onmouseover=function(){this.style.borderColor='var(--orange)';};
     allDiv.onmouseout=function(){this.style.borderColor='var(--border)';};
@@ -5096,7 +5097,7 @@ async function strefaLoadMineList(mode){
       var colSets=(col.sets||[]).filter(function(cs){return setsById[cs.id];});
       var div=document.createElement('div');
       div.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s';
-      div.innerHTML='<div style="font-size:13px;font-weight:500;color:var(--navy)">'+(col.icon||'📁')+' '+col.name+'</div>'
+      div.innerHTML='<div style="font-size:13px;font-weight:500;color:var(--navy)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.6" style="vertical-align:-2px;margin-right:6px"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>'+col.name+'</div>'
         +'<div style="font-size:11px;color:var(--dim2)">'+colSets.length+' zestawów</div>';
       div.onmouseover=function(){this.style.borderColor='var(--orange)';};
       div.onmouseout=function(){this.style.borderColor='var(--border)';};
