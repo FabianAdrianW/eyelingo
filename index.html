@@ -1209,13 +1209,16 @@ window.switchMatTab = function(tab){
   if(voices) voices.style.display='none';
   if(colView) colView.style.display='none';
   if(createBtn) createBtn.style.display='none';
+  var srcf=document.getElementById('mat-source-filter');
+  if(srcf) srcf.style.display='none';
   var search=document.getElementById('mat-search');
   if(search) search.value='';
   if(tab==='mine'){
-    if(title) title.textContent='Moje materiały';
-    if(sub) sub.textContent='Zestawy nieprzypisane do katalogu';
+    if(title) title.textContent='Twoje zestawy';
+    if(sub) sub.textContent='Twoje fiszki i zestawy';
     if(grid){ grid.style.display='grid'; }
     if(createBtn&&window._matMyUid) createBtn.style.display='block';
+    if(srcf) srcf.style.display='flex';
     if(typeof loadMySets==='function') loadMySets();
     else setTimeout(function(){ if(typeof loadMySets==='function') loadMySets(); }, 300);
   } else if(tab==='community'){
@@ -1308,7 +1311,7 @@ window.dailyReadDone = function(){
   </div>
   <!-- Tabs: widoczne tylko dla zalogowanych -->
   <div class="nav-tabs" id="nav-tabs">
-    <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Materiały</button>
+    <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Twoje zestawy</button>
     <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)">Porcja dnia ✨</button>
     <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
     <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
@@ -1578,7 +1581,7 @@ window.dailyReadDone = function(){
 <!-- FEATURES -->
 <section class="feats">
   <div class="feats-in">
-    <div><div class="feat-i">🏺</div><div class="feat-t">Złoto i streak</div><p class="feat-x">Zbieraj złoto za minuty nauki i wyświetlone fiszki. Za 10 000 złota odblokujesz nowy poziom w sklepie.</p></div>
+    <div><div class="feat-i">📈</div><div class="feat-t">Konsystencja bez presji</div><p class="feat-x">Desktop pokazuje fiszki w tle Twojej pracy — nauka dzieje się sama, dzień po dniu. Żadnych punktów, serii do utrzymania ani presji.</p></div>
     <div><div class="feat-i">🔁</div><div class="feat-t">Algorytm SRS</div><p class="feat-x">SuperMemo SM-2 — ten sam co Anki. Trudne słowa wracają częściej, łatwe rzadziej. Nauka zoptymalizowana.</p></div>
     <div><div class="feat-i">⌨️</div><div class="feat-t">Skróty klawiszowe</div><p class="feat-x">Zmień kategorię, język lub wstrzymaj naukę bez odrywania rąk od klawiatury. ALT + strzałki.</p></div>
     <div><div class="feat-i">🔒</div><div class="feat-t">6 poziomów trudności</div><p class="feat-x">Od A1 (darmowy) do C2. Każdy poziom to 500+ słów w 25 kategoriach tematycznych.</p></div>
@@ -1618,7 +1621,7 @@ window.dailyReadDone = function(){
         <div class="lvl-box paid">C1<span class="ls">Premium</span></div>
         <div class="lvl-box paid">C2<span class="ls">Premium</span></div>
       </div>
-      <p class="lvl-note">💡 Wyższe poziomy odblokujesz kodem premium lub zbierając <strong>7 500 złota</strong> w aplikacji.</p>
+      <p class="lvl-note">💡 Wyższe poziomy i języki odblokujesz w planie PRO.</p>
     </div>
   </div>
 </section>
@@ -1650,7 +1653,7 @@ window.dailyReadDone = function(){
     <button class="modal-close" onclick="closeModal('privacy')">✕</button>
     <h2>Polityka Prywatności</h2>
     <p><strong>1. Administrator danych</strong><br>Administratorem Twoich danych jest Eyelingo, kontakt: eyelingo.app@gmail.com</p>
-    <p><strong>2. Zbierane dane</strong><br>Zbieramy: adres e-mail, pseudonim, statystyki nauki (liczba obejrzanych słów, czas aktywności, streak), informacje o zakupionych poziomach.</p>
+    <p><strong>2. Zbierane dane</strong><br>Zbieramy: adres e-mail, pseudonim, statystyki nauki (liczba obejrzanych słów, czas aktywności, konsystencja), informacje o zakupionych poziomach.</p>
     <p><strong>3. Cel przetwarzania</strong><br>Dane służą do świadczenia usługi nauki języków, obsługi konta użytkownika, wyświetlania rankingu oraz realizacji płatności.</p>
     <p><strong>4. Przechowywanie</strong><br>Dane są przechowywane na serwerach Supabase (UE) do momentu usunięcia konta.</p>
     <p><strong>5. Prawa użytkownika</strong><br>Masz prawo do dostępu, poprawy i usunięcia swoich danych. Napisz do nas na adres e-mail powyżej.</p>
@@ -2490,19 +2493,41 @@ window.loadMySets = async function loadMySets(){
       .order('created_at',{ascending:false});
     var username=session.user.user_metadata&&session.user.user_metadata.username||session.user.email||'';
     _matSets=(data||[]).filter(function(s){ return !assignedIds.has(s.id); }).map(function(s){ return Object.assign({},s,{username,user_id:_matMyUid}); });
-    if(grid){
-      if(!_matSets.length){
-        grid.innerHTML='<div class="mat-empty">Nie masz jeszcze żadnych zestawów.<br><small>Kliknij + Nowy zestaw</small></div>';
-      } else {
-        grid.innerHTML=_matSets.map(function(s){ return setCard(s); }).join('');
-      }
-    }
+    if(grid){ matRenderMine(); }
     var createBtn=document.getElementById('mat-create-btn');
     if(createBtn) createBtn.style.display='block';
   }catch(e){
     if(grid) grid.innerHTML='<div class="mat-empty">Błąd: '+(e.message||e)+'</div>';
   }
 };
+
+var _matSourceFilter='all';
+function matRenderMine(){
+  var grid=document.getElementById('mat-grid');
+  if(!grid)return;
+  var f=_matSourceFilter||'all';
+  var list=(_matSets||[]).filter(function(s){
+    var src=(s.source||'manual').toLowerCase();
+    if(f==='all') return true;
+    if(f==='manual') return !s.source||src==='manual'||src==='web_srs'||src==='community';
+    if(f==='lex') return src.indexOf('lex')===0;
+    if(f==='alex') return src.indexOf('alex')===0;
+    return true;
+  });
+  if(!list.length){
+    var msg = f==='lex' ? 'Brak zestawów z lekcji Lexa.<br><small>Pojawią się tu, gdy dodasz fiszki z lekcji.</small>'
+      : f==='alex' ? 'Brak zestawów z rozmów z Alexem.<br><small>Pojawią się tu po rozmowach z AI.</small>'
+      : 'Nie masz jeszcze żadnych zestawów.<br><small>Kliknij + Nowy zestaw</small>';
+    grid.innerHTML='<div class="mat-empty">'+msg+'</div>';
+  } else {
+    grid.innerHTML=list.map(function(s){ return setCard(s); }).join('');
+  }
+}
+function matFilterSource(src, btn){
+  _matSourceFilter=src;
+  document.querySelectorAll('.mat-srcf').forEach(function(b){ b.classList.toggle('active', b===btn); });
+  matRenderMine();
+}
 
 window.loadCommunity = async function loadCommunity(){
   var grid=document.getElementById('mat-grid');
@@ -2597,8 +2622,8 @@ function setCard(s){
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
         <div>
-          <h2 id="mat-main-title" style="font-family:DM Sans,sans-serif;font-size:32px;font-weight:800;color:var(--navy);margin-bottom:4px">Moje materiały</h2>
-          <p id="mat-main-sub" style="color:var(--dim2);font-size:14px">Twoje zestawy fiszek</p>
+          <h2 id="mat-main-title" style="font-family:DM Sans,sans-serif;font-size:32px;font-weight:800;color:var(--navy);margin-bottom:4px">Twoje zestawy</h2>
+          <p id="mat-main-sub" style="color:var(--dim2);font-size:14px">Twoje fiszki i zestawy</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <input id="mat-search" class="fi" placeholder="🔍 Szukaj..." style="width:200px;font-size:13px" oninput="filterMat(this.value)">
@@ -2609,8 +2634,16 @@ function setCard(s){
       <!-- Tabs -->
       <div class="mat-tabs" style="margin-bottom:20px">
         <button class="mat-tab" data-tab="mine" onclick="switchMatTab('mine')">📂 Moje materiały</button>
-        <button class="mat-tab" data-tab="community" onclick="switchMatTab('community')">🌐 Społeczność</button>
-        <button class="mat-tab" data-tab="voices" onclick="switchMatTab('voices')">🎙️ Głosówki</button>
+        <button class="mat-tab" data-tab="community" onclick="switchMatTab('community')" style="display:none">🌐 Społeczność</button>
+        <button class="mat-tab" data-tab="voices" onclick="switchMatTab('voices')" style="display:none">🎙️ Głosówki</button>
+      </div>
+
+      <!-- Source filter (Most #2/#5: skąd pochodzą fiszki) -->
+      <div id="mat-source-filter" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="mat-srcf active" data-src="all" onclick="matFilterSource('all',this)">Wszystkie</button>
+        <button class="mat-srcf" data-src="manual" onclick="matFilterSource('manual',this)">Manualne</button>
+        <button class="mat-srcf" data-src="lex" onclick="matFilterSource('lex',this)">Z lekcji Lexa</button>
+        <button class="mat-srcf" data-src="alex" onclick="matFilterSource('alex',this)">Z rozmów z Alexem</button>
       </div>
 
       <!-- Count -->
@@ -2920,6 +2953,9 @@ function setCard(s){
 .modal-close:hover{background:rgba(0,0,0,.15)}
 /* Materiały */
 .mat-tabs{display:flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:14px;width:fit-content}
+.mat-srcf{padding:6px 13px;border-radius:100px;border:1.5px solid var(--border);background:var(--white,#fff);color:var(--dim2,#666);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s}
+.mat-srcf:hover{border-color:var(--orange);color:var(--orange)}
+.mat-srcf.active{background:var(--orange);border-color:var(--orange);color:#fff}
 .mat-tab{background:transparent;border:none;padding:10px 22px;border-radius:10px;font-weight:600;font-size:14px;color:var(--dim2);cursor:pointer;transition:.2s}
 .mat-tab.active{background:#fff;color:var(--navy);box-shadow:0 2px 8px rgba(0,0,0,.1)}
 .mat-tab:hover:not(.active){color:var(--navy)}
