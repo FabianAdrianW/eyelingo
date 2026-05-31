@@ -1738,6 +1738,17 @@ window.dailyReadDone = function(){
       </div>
     </div>
 
+    <!-- Przełącznik języka utrwalania -->
+    <div id="dash-bridge-langrow" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--dim2,#666);font-weight:600">Język do utrwalenia:</span>
+      <select id="dash-bridge-lang" onchange="dashSetBridgeLang(this.value)" style="padding:6px 12px;border-radius:100px;border:1.5px solid var(--border);font-size:13px;background:var(--white,#fff);color:var(--navy);font-family:inherit;cursor:pointer">
+        <option value="en">🇬🇧 Angielski</option>
+        <option value="es">🇪🇸 Hiszpański</option>
+        <option value="nl">🇳🇱 Holenderski</option>
+        <option value="jp">🇯🇵 Japoński</option>
+      </select>
+    </div>
+
     <!-- ═══ BRIDGE CARDS ═══ -->
     <div class="bridge-row">
       <!-- Most #1: słowa wymagające rozmowy z Alexem -->
@@ -1927,7 +1938,8 @@ async function loadDashboard(){
   loadDesktopStats(user.id, seenTotal);
 
   // ── Most #1: słowa wymagające rozmowy z Alexem (word_progress: repetitions 3–7, najtrudniejsze pierwsze) ──
-  loadBridge1(user.id);
+  var _bl=document.getElementById('dash-bridge-lang'); if(_bl) _bl.value=_dashBridgeLang;
+  loadBridge1(user.id, _dashBridgeLang);
 
   // ── Kolejka SRS: słowa due dziś (word_progress: next_review <= dziś) ──
   loadSrsQueue(user.id);
@@ -1997,18 +2009,27 @@ function renderD7Chart(days, byDate, hasData){
 }
 
 // Most #1 — słowa znane ale nieopanowane, najtrudniejsze pierwsze
-async function loadBridge1(uid){
+var _dashBridgeLang = (function(){ try{ return localStorage.getItem('dashBridgeLang')||'en'; }catch(e){ return 'en'; } })();
+function dashSetBridgeLang(code){
+  _dashBridgeLang = code;
+  try{ localStorage.setItem('dashBridgeLang', code); }catch(e){}
+  (async function(){ try{ var u=(await db.auth.getUser()).data.user; if(u) loadBridge1(u.id, code); }catch(e){} })();
+}
+
+async function loadBridge1(uid, lang){
+  lang = lang || _dashBridgeLang || 'en';
   let words=[];
   try{
     const{data}=await db.from('word_progress')
-      .select('ease_factor,repetitions,flashcards(word,translation)')
+      .select('ease_factor,repetitions,flashcards(word,translation,languages(code))')
       .eq('user_id',uid)
       .gte('repetitions',3)
       .lte('repetitions',7)
       .order('ease_factor',{ascending:true})
-      .limit(7);
+      .limit(40);
     words=(data||[])
-      .filter(r=>r.flashcards&&r.flashcards.word)
+      .filter(r=>r.flashcards&&r.flashcards.word&&r.flashcards.languages&&r.flashcards.languages.code===lang)
+      .slice(0,7)
       .map(r=>({word:r.flashcards.word,translation:r.flashcards.translation||''}));
   }catch(e){ words=[]; }
 
@@ -2064,10 +2085,12 @@ function plWord(n,one,few,many){
 function startAlexSession(words){
   var list=(words&&words.length?words:(window._bridge1Words||[])).map(function(w){return typeof w==='string'?w:w.word;}).filter(Boolean);
   window._chatSeedWords = list.length?list:null;
+  var blang = window._dashBridgeLang || 'en';
   showPage('teacher');
   setTimeout(function(){
+    var sel=document.getElementById('chat-lang'); if(sel){ sel.value=blang; }
     try{ if(typeof teacherShowTab==='function') teacherShowTab('chat'); }catch(e){}
-    // teacherShowTab('chat') wywołuje initChat → chatReset (użyje _chatSeedWords do powitania)
+    // teacherShowTab('chat') wywołuje initChat → chatUpdatePersona (czyta chat-lang) → chatReset w wybranym języku
     setTimeout(function(){ try{ if(typeof chatReset==='function') chatReset(); }catch(e){} var inp=document.getElementById('chat-input'); if(inp) inp.focus(); }, 260);
   },140);
 }
@@ -2602,10 +2625,10 @@ function setCard(s){
     <!-- LEFT SIDEBAR: Katalogi (sliding) -->
     <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
     <div id="mat-sidebar" style="width:300px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49">
-      <div id="mat-sidebar-inner" style="padding:110px 0 80px 20px;min-width:280px;position:relative">
+      <div id="mat-sidebar-inner" style="padding:132px 0 80px 24px;min-width:280px;position:relative">
       <!-- Katalogi -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:800;color:var(--navy)">Katalogi</div>
+        <div style="font-family:DM Sans,sans-serif;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-3)">Katalogi</div>
         <button onclick="openCreateCollection()" style="background:var(--orange);border:none;color:#fff;width:26px;height:26px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:700;flex-shrink:0" title="Nowy katalog">+</button>
       </div>
       <div id="mat-sidebar-collections" style="display:flex;flex-direction:column;gap:8px;padding-right:20px">
@@ -2615,12 +2638,12 @@ function setCard(s){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div id="mat-main-content" style="flex:1;min-width:0;padding:110px 32px 80px 32px">
+    <div id="mat-main-content" style="flex:1;min-width:0;padding:132px 40px 80px 40px">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
         <div>
-          <h2 id="mat-main-title" style="font-family:DM Sans,sans-serif;font-size:32px;font-weight:800;color:var(--navy);margin-bottom:4px">Twoje zestawy</h2>
+          <h2 id="mat-main-title" style="font-family:DM Sans,sans-serif;font-size:34px;font-weight:500;letter-spacing:-0.6px;color:var(--navy);margin-bottom:6px">Twoje zestawy</h2>
           <p id="mat-main-sub" style="color:var(--dim2);font-size:14px">Twoje fiszki i zestawy</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
@@ -5940,8 +5963,9 @@ async function chatSend(){
   document.getElementById('chat-messages').scrollTop=99999;
 
   try{
-    // AI Partner: bez wstrzykiwania fiszek (usunięte — było źródłem błędów i złego języka)
+    // AI Partner: słowa tylko z deliberate flow (Bridge #1), w wybranym języku; brak pasywnego wstrzykiwania
     var targetWords=[];
+    if(window._chatSeedWords && window._chatSeedWords.length) targetWords=window._chatSeedWords.slice(0,8);
     var vocabList=[];
 
     var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
