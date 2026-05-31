@@ -5874,6 +5874,51 @@ function updateChatLimitUI(){
   }
 }
 
+// ── Most #3/#4: boost priorytetu słowa w word_progress (czyta desktop-sync) ──
+async function boostWordPriority(flashcardId, opts){
+  opts=opts||{};
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess||!flashcardId) return false;
+    var days=opts.days||3;
+    var patch={ priority_boost:true, priority_until:new Date(Date.now()+days*864e5).toISOString() };
+    if(opts.makeDue){ patch.next_review=new Date().toISOString(); patch.interval_days=0; }
+    if(typeof opts.easeDelta==='number'){
+      var fc=(_chatFlashcards||[]).find(function(f){return f.id===flashcardId;});
+      if(fc){ patch.ease_factor=Math.max(1.3,(fc.ease||2.5)+opts.easeDelta); fc.ease=patch.ease_factor; }
+    }
+    await db.from('word_progress').update(patch).eq('user_id',sess.user.id).eq('flashcard_id',flashcardId);
+    return true;
+  }catch(e){ return false; }
+}
+
+// Most #4 — wyślij listę słów na desktop (priorytet na 5 dni). words: [{id}] lub [id].
+async function boostWordsOnDesktop(words){
+  var ids=(words||[]).map(function(w){ return (w&&w.id!==undefined)?w.id:w; }).filter(Boolean);
+  if(!ids.length) return;
+  try{
+    var sess=(await db.auth.getSession()).data.session; if(!sess) return;
+    var until=new Date(Date.now()+5*864e5).toISOString();
+    await db.from('word_progress').update({priority_boost:true,priority_until:until})
+      .eq('user_id',sess.user.id).in('flashcard_id',ids);
+    if(typeof showToast==='function') showToast('Wysłano na desktop — pojawią się częściej przez 5 dni','success');
+  }catch(e){}
+}
+
+// Most #3 — wykryj prośbę o wytłumaczenie słowa
+function detectExplanationRequest(msg){
+  var patterns=[
+    /co znaczy\s+["']?([^\s.,!?"']+)/i,
+    /co to (?:jest|znaczy)\s+["']?([^\s.,!?"']+)/i,
+    /what does\s+["']?([^\s.,!?"']+)["']?\s+mean/i,
+    /what(?:'s| is)\s+["']?([^\s.,!?"']+)/i,
+    /(?:could you |can you )?explain\s+["']?([^\s.,!?"']+)/i,
+    /nie rozumiem\s+["']?([^\s.,!?"']+)/i
+  ];
+  for(var i=0;i<patterns.length;i++){ var m=msg.match(patterns[i]); if(m&&m[1]) return m[1].toLowerCase(); }
+  return null;
+}
+
 async function chatSend(){
   var input=document.getElementById('chat-input');
   var text=input.value.trim();
@@ -5887,6 +5932,18 @@ async function chatSend(){
 
   appendChatMsg('user',text);
   _chatHistory.push({role:'user',content:text});
+
+  // Most #3: user pyta o znaczenie słowa z fiszek → boost na desktopie
+  try{
+    var _askWord=detectExplanationRequest(text);
+    if(_askWord){
+      var _fcMatch=(_chatFlashcards||[]).find(function(f){return f.word&&f.word.toLowerCase()===_askWord;});
+      if(_fcMatch&&_fcMatch.id){
+        appendChatInfo('📌 „'+_fcMatch.word+'" wróci częściej na desktopie przez kilka dni');
+        boostWordPriority(_fcMatch.id,{days:3,makeDue:true,easeDelta:-0.2});
+      }
+    }
+  }catch(e){}
 
   var typing=document.createElement('div');
   typing.className='chat-msg-ai';
