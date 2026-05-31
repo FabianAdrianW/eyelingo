@@ -190,8 +190,8 @@ nav {
 .nav-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 40px;
+  gap: 16px;
+  padding: 9px 28px;
 }
 
 .nav-logo img {
@@ -225,9 +225,12 @@ nav {
 
 .nav-tabs {
   display: none;
-  padding: 0 40px;
-  border-top: 0.5px solid rgba(255, 255, 255, 0.06);
+  gap: 2px;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.nav-tabs::-webkit-scrollbar { display: none; }
 
 .nav-tabs.visible {
   display: flex;
@@ -238,7 +241,7 @@ nav {
   font-weight: 400;
   color: rgba(255, 255, 255, 0.5);
   text-decoration: none;
-  padding: 10px 16px;
+  padding: 8px 13px;
   border-bottom: 2px solid transparent;
   transition: var(--t-base);
   cursor: pointer;
@@ -856,7 +859,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
 .footer-links a:hover{color:#fff}
 
 /* ═══════════════ AUTH ═══════════════ */
-#page-auth{min-height:100vh;align-items:center;justify-content:center;background:var(--paper);padding:100px 24px 40px}
+#page-auth{min-height:100vh;align-items:center;justify-content:center;background:var(--paper);padding:84px 24px 40px}
 .auth-box{display:grid;grid-template-columns:1fr 1fr;max-width:880px;width:100%;background:var(--white);border:1.5px solid var(--border);border-radius:24px;overflow:hidden;box-shadow:0 32px 80px rgba(26,35,64,.12)}
 .auth-l{background:var(--navy);padding:52px 44px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
 .auth-l::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 30%,rgba(201,106,42,.2),transparent 60%);pointer-events:none}
@@ -886,7 +889,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
 .aswitch a:hover{text-decoration:underline}
 
 /* ═══════════════ DASHBOARD ═══════════════ */
-#page-dash{min-height:100vh;background:var(--paper);padding:100px 56px 60px;flex-direction:column}
+#page-dash{min-height:100vh;background:var(--paper);padding:84px 56px 60px;flex-direction:column}
 .di{max-width:980px;margin:0 auto;width:100%}
 .dash-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:36px;flex-wrap:wrap;gap:16px}
 .dash-wl{font-size:15px;color:var(--dim2);margin-bottom:6px;font-weight:500}
@@ -943,7 +946,7 @@ footer{padding:36px 56px;background:var(--navy2);display:flex;justify-content:sp
   .auth-box{grid-template-columns:1fr}
   .auth-l{display:none}
   .auth-r{padding:40px 28px}
-  #page-dash{padding:100px 24px 40px}
+  #page-dash{padding:84px 24px 40px}
   .dstats{grid-template-columns:1fr 1fr}
   .drow{grid-template-columns:1fr}
 }
@@ -1292,11 +1295,20 @@ window.dailyReadDone = function(){
 
 <!-- NAV -->
 <nav>
-  <!-- Górny pasek: logo + globalne + auth -->
   <div class="nav-top">
     <div class="nav-logo" onclick="return navHome()" style="cursor:pointer">
-      <img src="https://fabianadrianw.github.io/eyelingo/logo_transparent_navy.png" alt="Eyelingo" style="height:44px;display:block">
+      <img src="https://fabianadrianw.github.io/eyelingo/logo_transparent_navy.png" alt="Eyelingo" style="height:34px;display:block">
     </div>
+    <!-- Zakładki: w jednym rzędzie obok logo, widoczne dla zalogowanych -->
+    <div class="nav-tabs" id="nav-tabs">
+      <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Twoje zestawy</button>
+      <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)">Porcja dnia ✨</button>
+      <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
+      <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
+      <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">Nauczyciel AI <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
+      <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
+    </div>
+    <div style="flex:1;min-width:8px"></div>
     <div class="nav-global">
       <a href="#" onclick="return showPage('ranking')">Ranking</a>
       <a href="#" onclick="return showPage('tofix')">Zgłoszenia</a>
@@ -1308,16 +1320,6 @@ window.dailyReadDone = function(){
       <button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button>
       <button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>
     </div>
-  </div>
-  <!-- Tabs: widoczne tylko dla zalogowanych -->
-  <div class="nav-tabs" id="nav-tabs">
-    <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Twoje zestawy</button>
-    <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)">Porcja dnia ✨</button>
-    <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
-    <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
-    <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">Nauczyciel AI <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
-    <div style="flex:1;min-width:8px"></div>
-    <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
   </div>
 </nav>
 
@@ -2625,7 +2627,7 @@ function setCard(s){
     <!-- LEFT SIDEBAR: Katalogi (sliding) -->
     <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
     <div id="mat-sidebar" style="width:300px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49">
-      <div id="mat-sidebar-inner" style="padding:132px 0 80px 24px;min-width:280px;position:relative">
+      <div id="mat-sidebar-inner" style="padding:86px 0 80px 24px;min-width:280px;position:relative">
       <!-- Katalogi -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-family:DM Sans,sans-serif;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-3)">Katalogi</div>
@@ -2638,7 +2640,7 @@ function setCard(s){
     </div>
 
     <!-- MAIN CONTENT -->
-    <div id="mat-main-content" style="flex:1;min-width:0;padding:132px 40px 80px 40px">
+    <div id="mat-main-content" style="flex:1;min-width:0;padding:86px 40px 80px 40px">
 
       <!-- Header -->
       <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -2703,7 +2705,7 @@ function setCard(s){
 </div>
 
 <!-- ═══ RANKING PAGE ═══ -->
-<div id="page-tutors" class="page" style="min-height:100vh;padding:120px 20px 80px;background:var(--paper)">
+<div id="page-tutors" class="page" style="min-height:100vh;padding:92px 20px 80px;background:var(--paper)">
 <div style="max-width:1000px;margin:0 auto">
 
   <!-- Nagłówek -->
@@ -2833,7 +2835,7 @@ function setCard(s){
 </div>
 </div>
 
-<div id="page-ranking" class="page" style="min-height:100vh;padding:120px 20px 80px">
+<div id="page-ranking" class="page" style="min-height:100vh;padding:92px 20px 80px">
   <div style="max-width:960px;margin:0 auto">
     <h2 style="font-family:DM Sans,sans-serif;font-size:38px;font-weight:500;color:var(--navy);margin-bottom:6px">Ranking</h2>
     <p style="color:var(--dim2);margin-bottom:32px">Najlepsi uczący się w społeczności Eyelingo</p>
@@ -2876,7 +2878,7 @@ function setCard(s){
 </div>
 
 <!-- ═══ TO FIX PAGE ═══ -->
-<div id="page-tofix" class="page" style="min-height:100vh;padding:120px 20px 80px">
+<div id="page-tofix" class="page" style="min-height:100vh;padding:92px 20px 80px">
   <div style="max-width:600px;margin:0 auto">
     <h2 style="font-family:DM Sans,sans-serif;font-size:38px;font-weight:500;color:var(--navy);margin-bottom:6px">To Fix</h2>
     <p style="color:var(--dim2);margin-bottom:32px">Coś nie działa? Powiedz nam o tym — poprawimy to jak najszybciej.</p>
@@ -3118,7 +3120,7 @@ async function initToFixPage(){
     <!-- LEFT SIDEBAR: Strefa Nauki (sliding, accordion) -->
     <button id="strefa-sidebar-toggle" onclick="toggleStrefaSidebar()" style="position:fixed;top:50vh;left:300px;transform:translateY(-50%);z-index:200;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2);transition:left .3s ease">‹</button>
     <div id="strefa-sidebar" style="width:300px;position:fixed;top:0;left:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);transition:transform .3s ease;z-index:50;backdrop-filter:blur(4px)">
-      <div id="strefa-sidebar-inner" style="padding:110px 0 80px 20px;min-width:280px">
+      <div id="strefa-sidebar-inner" style="padding:86px 0 80px 20px;min-width:280px">
 
         <!-- Tryb Nauki / Kontekstowa tabs -->
         <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
@@ -3195,7 +3197,7 @@ async function initToFixPage(){
       </div>
     </div>
     <!-- MAIN CONTENT -->
-    <div id="strefa-main-col" style="flex:1;min-width:0;padding:110px 32px 80px 32px">
+    <div id="strefa-main-col" style="flex:1;min-width:0;padding:86px 32px 80px 32px">
       <!-- Breadcrumb -->
       <div id="strefa-breadcrumb-bar" style="font-size:12px;color:var(--dim2);margin-bottom:16px;min-height:18px"></div>
 
@@ -3222,7 +3224,7 @@ async function initToFixPage(){
 <!-- Odkryj Sidebar Toggle -->
 <button id="odkryj-sidebar-toggle" onclick="toggleOdkryjSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
 <!-- Odkryj Sidebar -->
-<div id="odkryj-sidebar" style="width:300px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49;padding:110px 0 80px 0">
+<div id="odkryj-sidebar" style="width:300px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49;padding:86px 0 80px 0">
   <div style="padding:0 20px">
     <div id="odkryj-sb-articles" onclick="odkryjShowTab('articles')" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
       <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">🌍 Odkryj Świat</div>
@@ -3239,7 +3241,7 @@ async function initToFixPage(){
   </div>
 </div>
 <!-- Odkryj Main Content -->
-<div id="odkryj-main" style="flex:1;min-width:0;min-height:100vh;padding:110px 32px 80px 32px;overflow-x:hidden">
+<div id="odkryj-main" style="flex:1;min-width:0;min-height:100vh;padding:86px 32px 80px 32px;overflow-x:hidden">
 <div style="max-width:960px;margin:0 auto">
 
   
@@ -3357,7 +3359,7 @@ async function initToFixPage(){
 <!-- Daily Sidebar Toggle -->
 <button id="daily-sidebar-toggle" onclick="toggleDailySidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
 <!-- Daily Sidebar -->
-<div id="daily-sidebar" style="width:300px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49;padding:110px 0 80px 0">
+<div id="daily-sidebar" style="width:300px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49;padding:86px 0 80px 0">
   <div style="padding:0 20px">
     <div id="dsb-daily" onclick="dailyShowTab('daily')" style="background:linear-gradient(135deg,#e8701a,#f08020);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
       <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:#fff">✨ Porcja Dnia</div>
@@ -3370,7 +3372,7 @@ async function initToFixPage(){
   </div>
 </div>
 <!-- Daily Main Content -->
-<div id="daily-main" style="flex:1;min-width:0;min-height:100vh;padding:110px 32px 80px 32px;overflow-x:hidden">
+<div id="daily-main" style="flex:1;min-width:0;min-height:100vh;padding:86px 32px 80px 32px;overflow-x:hidden">
 <div style="max-width:860px;margin:0 auto">
 
   
@@ -3594,7 +3596,7 @@ async function initToFixPage(){
 <!-- ═══ AI NAUCZYCIEL (chat embedded) ═══ -->
 <div id="page-chat" class="page" style="display:none"><!-- stara strona ukryta, logika przeniesiona do teacher --></div>
 
-<div id="page-teacher" class="page" style="min-height:100vh;padding:110px 0 80px;background:var(--paper);overflow-x:hidden">
+<div id="page-teacher" class="page" style="min-height:100vh;padding:86px 0 80px;background:var(--paper);overflow-x:hidden">
 <div style="width:100%">
   <!-- Kafelki z marginesami -->
   <div style="max-width:960px;margin:0 auto;padding:0 24px 0">
@@ -3904,7 +3906,7 @@ async function initToFixPage(){
 </div><!-- /page-teacher -->
 
 <!-- ═══ ANALIZA LYRICS ═══ -->
-<div id="page-lyrics" class="page" style="min-height:100vh;padding:120px 20px 80px">
+<div id="page-lyrics" class="page" style="min-height:100vh;padding:92px 20px 80px">
 <div style="max-width:900px;margin:0 auto">
   <h2 style="font-family:DM Sans,sans-serif;font-size:36px;font-weight:500;color:var(--navy);margin-bottom:6px">Analiza tekstu</h2>
   <p style="color:var(--dim2);margin-bottom:24px">Wklej tekst piosenki — AI wyjaśni każdą linijkę: slang, kontekst kulturowy, gry słowne.</p>
@@ -9544,7 +9546,7 @@ function injectTrybPage(){
   if(document.getElementById('page-tryb'))return;
   var div=document.createElement('div');
   div.id='page-tryb';div.className='page';
-  div.style.cssText='min-height:100vh;background:var(--paper);padding:120px 20px 80px';
+  div.style.cssText='min-height:100vh;background:var(--paper);padding:92px 20px 80px';
   div.innerHTML='<div style="max-width:860px;margin:0 auto">'
     +'<div id="tryb-lobby" style="display:none">'
     +'<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">'
