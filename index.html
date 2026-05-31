@@ -3748,6 +3748,7 @@ async function initToFixPage(){
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div id="lex-card-num" style="font-size:11px;color:var(--dim2)">Karta 1</div>
+          <span id="lex-phase" style="display:none;font-size:11px;padding:3px 10px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--dim);font-weight:600"></span>
           <div id="lex-eval-badge" style="display:none;font-size:11px;padding:3px 10px;background:#e0f2fe;border:1px solid #0ea5e9;border-radius:100px;color:#0369a1">🎯 Ocena poziomu</div>
           <div id="lex-score-badge" style="font-size:11px;padding:3px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:100px;color:#92400e;display:none">⭐ 0</div>
           <button id="lex-speech-toggle" onclick="lexToggleSpeech()" style="font-size:16px;padding:4px 8px;background:transparent;border:1px solid var(--border2);border-radius:100px;cursor:pointer" title="Włącz/wyłącz czytanie">🔊</button>
@@ -3843,6 +3844,8 @@ async function initToFixPage(){
           <div id="lex-vocab-panel" style="font-size:12px;max-height:200px;overflow-y:auto"></div>
           <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:1px;margin-top:8px;margin-bottom:4px">🎯 Wynik</div>
           <div id="lex-score-display" style="font-family:DM Sans,sans-serif;font-size:32px;font-weight:800;color:var(--navy);line-height:1">0</div>
+          <div style="font-size:10px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:1px;margin-top:12px;margin-bottom:6px">🔍 Luki językowe</div>
+          <div id="lex-gaps-panel" style="display:flex;flex-wrap:wrap;gap:5px;max-height:160px;overflow-y:auto"><span style="font-size:11px;color:var(--dim2)">Pisz swobodnie — Lex zbierze tu wzorce do poprawy.</span></div>
         </div>
 
       </div><!-- /card-main -->
@@ -12219,6 +12222,9 @@ var _lexTypingIdx = 0;
 var _lexStreaming = false;
 var _lexObGoal = 'ogólny';
 var _lexObDur = 25;
+var _lexNextTopic = null;
+var _lexLessonFocus = null;
+var _lexTopGap = null;
 
 var LEX_LANG_MAP = {
   en: {name:'angielski', native:'English', flag:'🇬🇧'},
@@ -12298,6 +12304,11 @@ function lexObSelect(btn, type, val){
   }
 }
 
+function lexStartLessonOnGap(){
+  if(_lexTopGap){ window._lexNextTopic = _lexTopGap; }
+  lexStartLesson();
+}
+
 async function lexStartFromOnboarding(){
   try{
     var sess = (await db.auth.getSession()).data.session;
@@ -12326,6 +12337,7 @@ async function lexStartFromOnboarding(){
 
 // ── Lesson start ──────────────────────────────────────────
 async function lexStartLesson(){
+  _lexLessonFocus = window._lexNextTopic || null; window._lexNextTopic = null;
   _lexVocab = [];
   _lexGaps = [];
   _lexScore = 0;
@@ -12341,6 +12353,9 @@ async function lexStartLesson(){
   // Reset UI
   document.getElementById('lex-card-text').innerHTML = '';
   document.getElementById('lex-progress-bar').style.width = '0%';
+  var _gp=document.getElementById('lex-gaps-panel'); if(_gp) _gp.innerHTML='<span style="font-size:11px;color:var(--dim2)">Pisz swobodnie — Lex zbierze tu wzorce do poprawy.</span>';
+  var _vp=document.getElementById('lex-vocab-panel'); if(_vp) _vp.innerHTML='';
+  var _ph=document.getElementById('lex-phase'); if(_ph) _ph.style.display='none';
   lexSetAnswerType('loading');
 
   lexShowScreen('lex-card-engine');
@@ -12421,6 +12436,12 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
   var pct2 = Math.min(95, Math.round((_lexCardNum / expected2) * 100));
   var bar2 = document.getElementById('lex-progress-bar');
   if(bar2) bar2.style.width = pct2 + '%';
+  var phaseEl=document.getElementById('lex-phase');
+  if(phaseEl){
+    var _isEv=!_lexProfile||_lexProfile.user_level==='unknown';
+    if(_isEv){ phaseEl.style.display='none'; }
+    else { phaseEl.style.display='inline'; phaseEl.textContent = (pct2<25?'Wprowadzenie':pct2<60?'Ćwiczenie':pct2<90?'Praktyka':'Podsumowanie'); }
+  }
 
   // Build conversation history
   var history = _lexHistory.map(function(h){ return h.msg; });
@@ -12557,6 +12578,7 @@ function lexBuildSystemPrompt(flashcardSets){
   var dur = prof.lesson_duration || _lexObDur || 25;
   var level = prof.user_level || 'unknown';
   var goal = prof.user_goal || _lexObGoal || 'ogólny';
+  if(window._lexLessonFocus) goal = window._lexLessonFocus;
   var name = prof.user_name || '';
   var gaps = (prof.known_gaps || []).slice(0,5);
 
@@ -12565,7 +12587,7 @@ function lexBuildSystemPrompt(flashcardSets){
     + '1. ALWAYS communicate IN ' + _lexLangNative + '. For B1+ keep explanations in the target language too; use Polish ONLY for a single-word gloss in parentheses, never whole sentences. NEVER use emoji or emoticons anywhere — keep a calm, professional, pedagogical tone.\n'
     + '2. Each response = ONE card = ONE clear thought or exercise. Be concise.\n'
     + '3. Student: ' + (name || 'learner') + ', level: ' + level + ', goal: ' + goal + ', lesson: ' + dur + ' min\n'
-    + '4. If level is "unknown" — run a THOROUGH placement test: minimum 10-12 questions, A1 to C1 difficulty range. Do NOT conclude before 10 answers. The moment you conclude the level, add the marker [LEVEL]X[/LEVEL] exactly once (X = A1/A2/B1/B2/C1/C2).\n'
+    + '4. If level is "unknown" — run the placement as a NATURAL WRITTEN CONVERSATION, NOT a quiz: ask open [CONV] questions (their day, opinions, plans, a short story), escalating difficulty A1->C1. After EACH student answer detect grammar errors (tense, pronoun, agreement, word order, prepositions) and emit a [GAP]krotka nazwa po polsku[/GAP] for each error type, then a one-sentence encouraging correction. Use [CONV] cards, NOT [MC], during placement. Aim for 8-10 exchanges. Do NOT conclude before 10 answers. The moment you conclude the level, add the marker [LEVEL]X[/LEVEL] exactly once (X = A1/A2/B1/B2/C1/C2).\n'
     + '5. After each student answer, give brief encouraging feedback (1 sentence), then move to next step.\n'
     + '\n'
     + 'EXERCISE FORMATS — end EVERY response with ONE:\\n'
@@ -12579,7 +12601,7 @@ function lexBuildSystemPrompt(flashcardSets){
     + 'GAP: [GAP]temat[/GAP] gdy wykryjesz błąd. LEVEL: [LEVEL]B1[/LEVEL] raz, gdy ustalisz poziom (tylko w teście poziomującym)\\n'
     + 'END: [END] po ~' + Math.round(dur * 1.5) + ' wymianach\\n'
     + 'LESSON FLOW ' + dur + ' min:\\n'
-    + (level === 'unknown' ? '→ Przywitaj po ' + _lexLangNative + ', test poziomujący min 10 pytań MC A1→C1\\n' : '→ Krótkie powitanie po ' + _lexLangNative + '\\n')
+    + (level === 'unknown' ? '→ Przywitaj po ' + _lexLangNative + ', swobodna rozmowa pisana (CONV) jako diagnostyka, wyłapuj [GAP], 8-10 wymian, zakończ [LEVEL]\\n' : '→ Krótkie powitanie po ' + _lexLangNative + '\\n')
     + '→ HPPP: Hook → Present → Practice → Produce\\n'
     + '→ Zakończ [END]\\n'
     + 'Jedna myśl na kartę. Zawsze kończ ćwiczeniem lub [INFO].';
@@ -12605,6 +12627,7 @@ function lexParseCard(text){
     var gap = g[1].trim();
     if(!_lexGaps.includes(gap)) _lexGaps.push(gap);
   }
+  lexUpdateGapsPanel();
 
   // Level (placement result) — persist, by ewaluacja nie powtarzała się (#8)
   var lvlm = text.match(/\[LEVEL\]\s*([ABC][12])\s*\[\/LEVEL\]/i);
@@ -13120,12 +13143,22 @@ function lexUpdateScore(){
 
 function lexUpdateVocabPanel(){
   var panel = document.getElementById('lex-vocab-panel');
+  var _sp=document.getElementById('lex-side-panel'); if(_sp) _sp.style.display='flex';
   if(!panel || !_lexVocab.length) return;
   panel.innerHTML = _lexVocab.map(function(w){
     return '<div style="padding:4px 0;border-bottom:1px solid var(--border)">'
       + '<div style="font-size:12px;font-weight:600;color:var(--navy)">' + w.word + '</div>'
       + '<div style="font-size:11px;color:var(--orange)">' + w.translation + '</div>'
       + '</div>';
+  }).join('');
+}
+
+function lexUpdateGapsPanel(){
+  var panel=document.getElementById('lex-gaps-panel');
+  var sp=document.getElementById('lex-side-panel'); if(sp) sp.style.display='flex';
+  if(!panel || !_lexGaps.length) return;
+  panel.innerHTML=_lexGaps.map(function(g){
+    return '<span style="display:inline-block;background:rgba(201,106,42,.10);border:1px solid rgba(201,106,42,.30);color:var(--orange);font-size:11px;font-weight:600;padding:3px 9px;border-radius:100px">'+g+'</span>';
   }).join('');
 }
 
@@ -13225,6 +13258,16 @@ async function lexEndLesson(){
         + _lexGaps.map(function(g,i){
           return '<div style="font-size:13px;color:var(--dim);padding:4px 0">' + (i+1) + '. ' + g + '</div>';
         }).join('');
+    }
+  }
+
+  // Most #7: propozycja ustrukturyzowanej lekcji na najważniejszej luce
+  if(_lexGaps.length){
+    _lexTopGap = _lexGaps[0];
+    var gWrap2 = document.getElementById('lex-summary-gaps-wrap');
+    if(gWrap2){
+      gWrap2.style.display = 'block';
+      gWrap2.innerHTML += '<button onclick="lexStartLessonOnGap()" style="margin-top:14px;width:100%;padding:12px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">📚 Zacznij lekcję na temat: ' + _lexTopGap + '</button>';
     }
   }
 
