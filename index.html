@@ -2487,10 +2487,10 @@ window.loadMySets = async function loadMySets(){
     // Get assigned set IDs from collections
     var assignedIds=new Set();
     (_collections||[]).forEach(function(c){ (c.sets||[]).forEach(function(s){ assignedIds.add(s.id); }); });
-    var {data}=await db.from('user_sets')
-      .select('id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation)')
-      .eq('user_id',session.user.id)
-      .order('created_at',{ascending:false});
+    var _selS='id,name,user_id,is_public,likes_count,source,user_set_cards(id,word,translation)';
+    var _selN='id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation)';
+    var {data,error:_e}=await db.from('user_sets').select(_selS).eq('user_id',session.user.id).order('created_at',{ascending:false});
+    if(_e){ var _r=await db.from('user_sets').select(_selN).eq('user_id',session.user.id).order('created_at',{ascending:false}); data=_r.data; }
     var username=session.user.user_metadata&&session.user.user_metadata.username||session.user.email||'';
     _matSets=(data||[]).filter(function(s){ return !assignedIds.has(s.id); }).map(function(s){ return Object.assign({},s,{username,user_id:_matMyUid}); });
     if(grid){ matRenderMine(); }
@@ -2535,12 +2535,10 @@ window.loadCommunity = async function loadCommunity(){
   try{
     var {data:{session}}=await db.auth.getSession();
     if(session) _matMyUid=session.user.id;
-    var {data,error}=await db.from('user_sets')
-      .select('id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation)')
-      .eq('is_public',true)
-      .order('likes_count',{ascending:false})
-      .limit(50);
-    if(error) throw error;
+    var _cS='id,name,user_id,is_public,likes_count,source,user_set_cards(id,word,translation)';
+    var _cN='id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation)';
+    var {data,error}=await db.from('user_sets').select(_cS).eq('is_public',true).order('likes_count',{ascending:false}).limit(50);
+    if(error){ var _rc=await db.from('user_sets').select(_cN).eq('is_public',true).order('likes_count',{ascending:false}).limit(50); data=_rc.data; }
     _matSets=(data||[]).map(function(s){ return Object.assign({},s,{username:'Użytkownik'}); });
     if(grid){
       if(!_matSets.length){ grid.innerHTML='<div class="mat-empty">Brak publicznych zestawów</div>'; }
@@ -2583,7 +2581,7 @@ function setCard(s){
     ondragend="matCardDragEnd(event)">
     <div class="mat-card-head">
       <div>
-        <div class="mat-card-name">${esc(s.name)}</div>
+        <div class="mat-card-name">${esc(s.name)}${s.source==='lex'?' <span style=\'font-size:9px;font-weight:800;letter-spacing:.5px;background:var(--orange);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle\'>LEX</span>':s.source==='alex'?' <span style=\'font-size:9px;font-weight:800;letter-spacing:.5px;background:var(--navy);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle\'>ALEX</span>':''}</div>
         <div class="mat-card-count">${cards.length} fiszek</div>
         ${authorLine}
       </div>
@@ -3871,7 +3869,7 @@ async function initToFixPage(){
         <div id="lex-summary-vocab" style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;text-align:left"></div>
         <div id="lex-summary-gaps-wrap" style="display:none;background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;text-align:left"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:12px">
-          <button onclick="lexSaveVocab('all')" style="padding:10px 20px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Zapisz wszystkie</button>
+          <button onclick="lexSaveVocab('all')" style="padding:10px 20px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">🖥️ Dodaj do fiszek desktopa</button>
           <button onclick="lexSaveVocab('select')" style="padding:10px 16px;background:transparent;border:1.5px solid var(--border2);color:var(--dim);border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Wybierz zestaw</button>
           <button onclick="lexSaveVocab('skip')" style="padding:10px 14px;background:transparent;border:none;color:var(--dim2);font-size:12px;cursor:pointer;font-family:DM Sans,sans-serif">Pomiń</button>
         </div>
@@ -13250,15 +13248,16 @@ async function lexSaveVocab(mode){
   try{
     var sess = (await db.auth.getSession()).data.session;
     if(!sess){ lexStartNewLesson(); return; }
-    var setName = 'Lex · ' + new Date().toLocaleDateString('pl-PL', {day:'numeric', month:'short'});
+    var topic = (_lexObGoal && _lexObGoal!=='ogólny') ? _lexObGoal : 'lekcja';
+    var setName = 'Lex · ' + topic + ' · ' + new Date().toLocaleDateString('pl-PL', {day:'numeric', month:'short'});
     var {data: newSet} = await db.from('user_sets').insert({
-      user_id: sess.user.id, name: setName, is_public: false
+      user_id: sess.user.id, name: setName, is_public: false, source: 'lex'
     }).select('id').single();
     if(newSet){
       await db.from('user_set_cards').insert(
         _lexVocab.map(function(w){ return {set_id: newSet.id, word: w.word, translation: w.translation}; })
       );
-      if(typeof showToast === 'function') showToast(_lexVocab.length + ' słów zapisano do "' + setName + '"', 'success');
+      if(typeof showToast === 'function') showToast('Dodano ' + _lexVocab.length + ' słów do fiszek — pojawią się w tle na desktopie 🖥️', 'success');
     }
   }catch(e){ console.error('Lex save vocab:', e); }
   lexStartNewLesson();
