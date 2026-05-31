@@ -3646,11 +3646,6 @@ async function initToFixPage(){
           </select>
         </div>
         <button class="btn btn-orange" onclick="chatStart()" style="width:100%;justify-content:center;margin-bottom:10px">Zacznij rozmowę</button>
-        <div style="margin-bottom:14px">
-          <label style="font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px" id="chat-weak-label">Partner użyje tych słów</label>
-          <div id="chat-weak-words" style="display:flex;flex-wrap:wrap;gap:4px;font-size:12px;color:var(--dim2)">brak danych</div>
-          <div style="font-size:11px;color:var(--dim2);margin-top:6px">pobrane z Twoich fiszek</div>
-        </div>
         <button class="btn btn-navy" onclick="chatReset()" style="width:100%;margin-top:8px;font-size:13px;padding:10px">Nowa rozmowa</button>
       </div>
 
@@ -5739,16 +5734,7 @@ function _fcWordRegex(word){
 function renderAiHtml(text){
   var html=escH(text);
   html=html.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
-  var used=[];
-  (_chatFlashcards||[]).forEach(function(f){
-    if(!f.word)return;
-    var re=_fcWordRegex(f.word);
-    if(re.test(text)){
-      used.push(f.word);
-      html=html.replace(_fcWordRegex(f.word),'<span class="fc-hl">$1</span>');
-    }
-  });
-  return {html:html, used:used};
+  return {html:html, used:[]};
 }
 
 function appendChatMsg(who, text, info){
@@ -5954,16 +5940,9 @@ async function chatSend(){
   document.getElementById('chat-messages').scrollTop=99999;
 
   try{
-    // Słowa docelowe: zasiane z Mostu #1 (priorytet) + najtrudniejsze fiszki
+    // AI Partner: bez wstrzykiwania fiszek (usunięte — było źródłem błędów i złego języka)
     var targetWords=[];
-    if(_chatSeedWords&&_chatSeedWords.length) targetWords=_chatSeedWords.slice(0,7);
-    (_chatFlashcards||[]).slice(0,8).forEach(function(f){ if(targetWords.indexOf(f.word)===-1) targetWords.push(f.word); });
-    targetWords=targetWords.slice(0,8);
-
-    // Pełna lista słownictwa (do rozpoznawania demonstracji)
-    var vocabList=(_chatFlashcards||[]).slice(0,40).map(function(f){
-      return f.translation? (f.word+' ('+f.translation+')') : f.word;
-    });
+    var vocabList=[];
 
     var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
     var topic=document.getElementById('chat-topic').value;
@@ -6010,15 +5989,7 @@ async function chatSend(){
     _chatHistory.push({role:'assistant',content:reply});
     typing.remove();
 
-    var usedCount=appendChatMsg('ai',reply);
-    if(usedCount>0){
-      appendChatInfo('Alex użył '+usedCount+' '+plWord(usedCount,'słowa','słów','słów')+' z Twoich fiszek');
-    }
-    // boost + zielony micro-text
-    var applied=await boostDemonstrated(parsed.demos);
-    if(applied.length>0){
-      appendChatInfo('✓ Rozpoznał '+applied.length+' '+plWord(applied.length,'słowo','słowa','słów')+' z Twoich fiszek — wzmocniono w powtórkach', 'known');
-    }
+    appendChatMsg('ai',reply);
 
     _chatSeedWords=null; // seed zużyty po pierwszej wymianie
     incrementChatUsage();
@@ -12225,6 +12196,7 @@ var _lexObDur = 25;
 var _lexNextTopic = null;
 var _lexLessonFocus = null;
 var _lexTopGap = null;
+var _lexRecommendedGap = null;
 
 var LEX_LANG_MAP = {
   en: {name:'angielski', native:'English', flag:'🇬🇧'},
@@ -12338,6 +12310,7 @@ async function lexStartFromOnboarding(){
 // ── Lesson start ──────────────────────────────────────────
 async function lexStartLesson(){
   _lexLessonFocus = window._lexNextTopic || null; window._lexNextTopic = null;
+  _lexTopGap = null; _lexRecommendedGap = null;
   _lexVocab = [];
   _lexGaps = [];
   _lexScore = 0;
@@ -12457,6 +12430,7 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
   // Start typing animation with empty card
   var cardEl = document.getElementById('lex-card-lex');
   if(cardEl){ cardEl.style.animation='none'; cardEl.offsetHeight; cardEl.style.animation=''; }
+  var _st=document.getElementById('lex-sentence-tr'); if(_st) _st.style.display='none';
   document.getElementById('lex-card-text').innerHTML = '<span class="lex-typing-dot"></span><span class="lex-typing-dot"></span><span class="lex-typing-dot"></span>';
 
   var fullResponse = '';
@@ -12598,7 +12572,7 @@ function lexBuildSystemPrompt(flashcardSets){
     + 'KRYTYCZNE: NIE używaj markdown headers (#, ##). NIE używaj bloków kodu (```). NIE pisz tagów HTML (<br>, <p> itp). NIE pisz \\n dosłownie. Używaj zwykłych enterów. Pisz czysty tekst.\\n'
     + 'KRYTYCZNE: Ćwiczenia i pytania MC ZAWSZE po ' + _lexLangNative + '. Student odpowiada ZAWSZE po ' + _lexLangNative + '.\\n'
     + 'VOCAB: [WORD]słowo_po_' + _lexLangNative + '|tłumaczenie_PL|przykład[/WORD]\\n'
-    + 'GAP: [GAP]temat[/GAP] gdy wykryjesz błąd. LEVEL: [LEVEL]B1[/LEVEL] raz, gdy ustalisz poziom (tylko w teście poziomującym)\\n'
+    + 'GAP: [GAP]nazwa luki PO POLSKU, konkretna (np. czas przeszły Preterito, rodzajniki, odmiana ser/estar)[/GAP] gdy wykryjesz błąd. FIX: poprawioną wersję zdania/frazy/wyrazu ZAWSZE owiń w [FIX]...[/FIX]. LEVEL: [LEVEL]B1[/LEVEL] raz, gdy ustalisz poziom. RECOMMEND: kończąc test, jako metodyk wskaż JEDNĄ lukę od której najlepiej zacząć i owiń w [RECOMMEND]nazwa luki po polsku[/RECOMMEND]\\n'
     + 'END: [END] po ~' + Math.round(dur * 1.5) + ' wymianach\\n'
     + 'LESSON FLOW ' + dur + ' min:\\n'
     + (level === 'unknown' ? '→ Przywitaj po ' + _lexLangNative + ', swobodna rozmowa pisana (CONV) jako diagnostyka, wyłapuj [GAP], 8-10 wymian, zakończ [LEVEL]\\n' : '→ Krótkie powitanie po ' + _lexLangNative + '\\n')
@@ -12639,6 +12613,10 @@ function lexParseCard(text){
       (async function(){ try{ var s=(await db.auth.getSession()).data.session; if(s) await db.from('lex_profiles').update({user_level: lvl, updated_at: new Date().toISOString()}).eq('user_id', s.user.id); }catch(e){} })();
     }
   }
+
+  // Rekomendacja Lexa: od której luki zacząć (#2)
+  var rcm = text.match(/\[RECOMMEND\]([^\[]+)\[\/RECOMMEND\]/i);
+  if(rcm){ _lexTopGap = rcm[1].trim(); _lexRecommendedGap = _lexTopGap; }
 
   // End
   if(text.includes('[END]')){ card.type = 'end'; return card; }
@@ -13188,8 +13166,10 @@ function lexFormatCardText(text){
     .replace(/\[GAP\][^\[]+\[\/GAP\]/g, '')
     .replace(/\[END\]/g, '')
     .replace(/\[LEVEL\][\s\S]*?\[\/LEVEL\]/gi, '')
+    .replace(/\[RECOMMEND\][\s\S]*?\[\/RECOMMEND\]/gi, '')
     .replace(/\[WORD\]([^|]+)\|([^|]+)\|[^\[]+\[\/WORD\]/g,
       '<strong style="color:var(--orange)">$1</strong> <sup style="font-size:10px;color:var(--dim2)">$2</sup>')
+    .replace(/\[FIX\]([\s\S]*?)\[\/FIX\]/g, '<span style="background:rgba(201,106,42,.14);color:var(--orange);font-weight:600;padding:1px 5px;border-radius:5px">$1</span>')
     // Strip code blocks entirely
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`[^`]+`/g, function(m){ return '<code style="background:var(--paper);padding:1px 5px;border-radius:4px;font-size:13px">' + m.slice(1,-1) + '</code>'; })
@@ -13263,7 +13243,7 @@ async function lexEndLesson(){
 
   // Most #7: propozycja ustrukturyzowanej lekcji na najważniejszej luce
   if(_lexGaps.length){
-    _lexTopGap = _lexGaps[0];
+    if(!_lexTopGap) _lexTopGap = _lexGaps[0];
     var gWrap2 = document.getElementById('lex-summary-gaps-wrap');
     if(gWrap2){
       gWrap2.style.display = 'block';
