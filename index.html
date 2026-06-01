@@ -2247,7 +2247,7 @@ window.showSetModal = function showSetModal(s, editMode){
   if(title) title.textContent=s.name||'Zestaw';
   var cards=s.user_set_cards||[];
   var isOwn=s.user_id===_matMyUid;
-  var html='<div class="mat-modal-meta">'+cards.length+' fiszek'+(s.likes_count?' &nbsp;·&nbsp; ♥ '+s.likes_count:'')+'</div>';
+  var html='<div class="mat-modal-meta">'+cards.length+' fiszek'+(s.likes_count?' &nbsp;·&nbsp; <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;color:var(--dim2)"><path d="M12 21s-7-4.5-9.5-9C0.5 8 2 4.5 5.5 4.5c2 0 3.3 1.2 4.5 3 1.2-1.8 2.5-3 4.5-3C18 4.5 19.5 8 17.5 12 15 16.5 12 21 12 21z"></path></svg> '+s.likes_count:'')+'</div>';
   if(isOwn){
     html+='<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
       +'<button onclick="startStudyFromModal('+s.id+')" class="btn btn-orange" style="font-size:12px;padding:7px 16px">Ucz się</button>'
@@ -2313,7 +2313,7 @@ window.openCreateSet = function openCreateSet(){
     // TAB hint
     var hint=document.createElement('div');
     hint.style.cssText='font-size:11px;color:var(--dim2);margin:8px 0 14px';
-    hint.innerHTML='💡 Użyj <kbd style="background:var(--paper2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:10px">TAB</kbd> — ostatni TAB dodaje nowy wiersz.';
+    hint.innerHTML='Użyj <kbd style="background:var(--paper2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:10px">TAB</kbd> — ostatni TAB dodaje nowy wiersz.';
     d.appendChild(hint);
     // Footer buttons
     var footer=document.createElement('div');
@@ -2405,33 +2405,67 @@ window.openEditSet = async function openEditSet(id){
   var modal=document.getElementById('mat-modal');
   var title=document.getElementById('mat-modal-title');
   var body=document.getElementById('mat-modal-body');
-  if(!modal) return;
-  if(title) title.textContent='Edytuj: '+s.name;
-  var cardsText=(s.user_set_cards||[]).map(function(c){return c.word+' = '+c.translation;}).join('\n');
-  if(body) body.innerHTML=
+  if(!modal||!body) return;
+  if(title) title.textContent='Edytuj: '+(window.stripEmoji?stripEmoji(s.name||''):s.name||'');
+  body.innerHTML=
     '<div style="margin-bottom:16px">'
     +'<label style="font-size:13px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px">Nazwa zestawu</label>'
     +'<input id="edit-set-name" class="fi" value="'+esc(s.name||'')+'" style="width:100%;box-sizing:border-box">'
     +'</div>'
-    +'<div style="margin-bottom:20px">'
-    +'<label style="font-size:13px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px">Fiszki (słowo = tłumaczenie)</label>'
-    +'<textarea id="edit-set-cards" class="fi" rows="10" style="width:100%;box-sizing:border-box;resize:vertical">'+esc(cardsText)+'</textarea>'
-    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;margin-bottom:6px"><div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.05em">Słowo</div><div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.05em">Tłumaczenie</div><div></div></div>'
+    +'<div id="edit-set-rows" style="display:flex;flex-direction:column;gap:5px;max-height:300px;overflow-y:auto;margin-bottom:8px"></div>'
+    +'<button onclick="window.addEditSetRow(\'\',\'\',true)" style="width:100%;padding:9px;border:1px dashed var(--border2);border-radius:10px;background:transparent;font-size:13px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;margin-bottom:8px">+ Dodaj wiersz</button>'
+    +'<div style="font-size:11px;color:var(--dim2);margin:0 0 14px">Użyj <kbd style="background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:10px">TAB</kbd> &mdash; ostatni TAB dodaje nowy wiersz.</div>'
     +'<div style="display:flex;gap:10px;justify-content:flex-end">'
     +'<button onclick="closeMatModal()" style="padding:10px 20px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif">Anuluj</button>'
     +'<button onclick="saveEditSet('+id+')" class="btn btn-orange">Zapisz zmiany</button>'
     +'</div>';
   modal.style.display='flex';
+  var cards=s.user_set_cards||[];
+  if(cards.length){ cards.forEach(function(c){ window.addEditSetRow(c.word||'', c.translation||'', false); }); }
+  else { window.addEditSetRow('','',false); window.addEditSetRow('','',false); window.addEditSetRow('','',false); }
+};
+
+window.addEditSetRow = function addEditSetRow(word, translation, focusWord){
+  var container=document.getElementById('edit-set-rows');
+  if(!container) return;
+  var row=document.createElement('div');
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;align-items:center';
+  var wInp=document.createElement('input');
+  wInp.className='fi'; wInp.placeholder='słowo'; wInp.style.fontSize='13px'; if(word) wInp.value=word;
+  var tInp=document.createElement('input');
+  tInp.className='fi'; tInp.placeholder='tłumaczenie'; tInp.style.fontSize='13px'; if(translation) tInp.value=translation;
+  var del=document.createElement('button');
+  del.style.cssText='background:transparent;border:none;cursor:pointer;color:var(--dim2);font-size:18px;font-weight:500;padding:0;line-height:1;transition:color .15s';
+  del.textContent='\u00d7'; del.title='Usuń wiersz';
+  del.onmouseover=function(){ this.style.color='#c0392b'; };
+  del.onmouseout=function(){ this.style.color='var(--dim2)'; };
+  del.onclick=function(){ row.remove(); };
+  tInp.addEventListener('keydown',function(e){
+    if(e.key==='Tab'&&!e.shiftKey){
+      e.preventDefault();
+      var rows=Array.prototype.slice.call(container.children);
+      var idx=rows.indexOf(row);
+      var next=rows[idx+1];
+      if(next){ var nw=next.querySelector('input'); if(nw) nw.focus(); }
+      else { window.addEditSetRow('','',true); }
+    }
+  });
+  row.appendChild(wInp); row.appendChild(tInp); row.appendChild(del);
+  container.appendChild(row);
+  if(focusWord){ setTimeout(function(){ wInp.focus(); },50); }
 };
 
 window.saveEditSet = async function saveEditSet(id){
   var nameEl=document.getElementById('edit-set-name');
-  var cardsEl=document.getElementById('edit-set-cards');
   var name=(nameEl?nameEl.value:'').trim(); if(!name) return;
-  var cards=(cardsEl?cardsEl.value:'').split('\n').filter(function(l){return l.trim();}).map(function(l){
-    var sep=l.indexOf('='); if(sep<0) return null;
-    return {word:l.slice(0,sep).trim(),translation:l.slice(sep+1).trim(),set_id:id};
-  }).filter(function(c){return c&&c.word&&c.translation;});
+  var cards=[];
+  document.querySelectorAll('#edit-set-rows > div').forEach(function(r){
+    var inps=r.querySelectorAll('input');
+    var w=(inps[0]?inps[0].value:'').trim();
+    var tr=(inps[1]?inps[1].value:'').trim();
+    if(w&&tr) cards.push({word:w,translation:tr,set_id:id});
+  });
   try{
     await db.from('user_sets').update({name}).eq('id',id);
     await db.from('user_set_cards').delete().eq('set_id',id);
@@ -2439,6 +2473,7 @@ window.saveEditSet = async function saveEditSet(id){
     closeMatModal();
     typeof showToast!=='undefined'&&showToast('Zapisano!','success');
     if(window.loadMySets) loadMySets();
+    if(typeof strefaRefreshCurrent==='function') strefaRefreshCurrent();
   }catch(e){typeof showToast!=='undefined'&&showToast('Błąd: '+(e.message||e),'');}
 };
 
@@ -11121,7 +11156,7 @@ async function strefaShowEyelingoCategories(langCode, langLabel, flag, lvl){
       var div = document.createElement('div');
       div.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:all .2s';
       div.dataset.catid = cat.id;
-      div.innerHTML = '<div style="font-size:18px;margin-bottom:6px">'+(cat.icon||'📂')+'</div><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">'+(cat.label||cat.code)+'</div>';
+      div.innerHTML = '<div style="margin-bottom:8px;color:var(--navy)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg></div><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">'+cleanCat(cat.label||cat.code)+'</div>';
       div.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
       div.onmouseout = function(){ this.style.borderColor='var(--border)'; };
       div.onclick = (function(lc,ll,lf,lv,cid,cn){ return function(){ strefaSelectEyelingoCategory(lc,ll,lf,lv,cid,encodeURIComponent(cn)); }; })(langCode,langLabel,flag,lvl,cat.id,cat.label||cat.code);
@@ -11151,7 +11186,7 @@ async function strefaShowEyelingoCategories(langCode, langLabel, flag, lvl){
 
 async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catId, catNameEnc){
   var catName = decodeURIComponent(catNameEnc);
-  setBreadcrumb(flag + ' ' + langLabel + ' ' + lvl + ' → ' + catName);
+  setBreadcrumb(flag + ' ' + langLabel + ' ' + lvl + ' \u2192 ' + cleanCat(catName));
   var center = document.getElementById('strefa-center-content');
   if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie fiszek...</div>';
   try{
@@ -11179,11 +11214,12 @@ async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catI
       }catch(e3){}
     }
     if(!cards.length){
-      if(center) center.innerHTML='<div style="text-align:center;padding:40px 20px"><div style="font-size:48px;margin-bottom:12px">📭</div><div style="font-size:16px;font-weight:500;color:var(--navy)">Brak fiszek</div><div style="font-size:13px;color:var(--dim2)">Nie znaleziono fiszek dla tej kategorii</div></div>';
+      if(center) center.innerHTML='<div style="text-align:center;padding:40px 20px"><div style="width:48px;height:48px;border-radius:12px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;margin:0 auto 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg></div><div style="font-size:16px;font-weight:500;color:var(--navy)">Brak fiszek</div><div style="font-size:13px;color:var(--dim2)">Nie znaleziono fiszek dla tej kategorii</div></div>';
       return;
     }
-    var fullName = flag + ' ' + langLabel + ' ' + lvl + ' · ' + catName;
+    var fullName = flag + ' ' + langLabel + ' ' + lvl + ' \u00b7 ' + cleanCat(catName);
     strefaShowWordPreview(cards, fullName, function(){
+      if(typeof closeMatModal==='function') closeMatModal();
       _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||''}; });
       _trybExternalName = fullName;
       RewardSystem.load();
@@ -11196,51 +11232,26 @@ async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catI
 }
 
 
+function cleanCat(n){ return stripEmoji(n||'').replace(/\s*[·\-\u2013]?\s*(a1|a2|b1|b2|c1|c2)\s*$/i,'').replace(/\s{2,}/g,' ').trim(); }
+window.cleanCat=cleanCat;
 function strefaShowWordPreview(cards, title, onStart){
   window._strefaStartFn = onStart;
-  var center = document.getElementById('strefa-center-content');
-  if(!center) return;
-  center.innerHTML = '';
-
-  var wrap = document.createElement('div');
-  wrap.style.cssText = 'max-width:600px';
-
-  var titleEl = document.createElement('div');
-  titleEl.style.cssText = 'font-family:DM Sans,sans-serif;font-size:22px;font-weight:500;color:var(--navy);margin-bottom:6px';
-  titleEl.textContent = title;
-  wrap.appendChild(titleEl);
-
-  var subEl = document.createElement('div');
-  subEl.style.cssText = 'font-size:14px;color:var(--dim2);margin-bottom:20px';
-  subEl.textContent = cards.length + ' fiszek · Podgląd pierwszych słów';
-  wrap.appendChild(subEl);
-
-  var grid = document.createElement('div');
-  grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px';
-  var preview = cards.slice(0,8);
-  preview.forEach(function(c){
-    var tile = document.createElement('div');
-    tile.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px';
-    tile.innerHTML = '<div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">'+(c.word||'')+'</div>'
-      + '<div style="font-size:12px;color:var(--orange)">'+(c.translation||'')+'</div>';
-    grid.appendChild(tile);
-  });
-  if(cards.length > 8){
-    var more = document.createElement('div');
-    more.style.cssText = 'background:var(--paper);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--dim2);display:flex;align-items:center';
-    more.textContent = '+' + (cards.length-8) + ' więcej';
-    grid.appendChild(more);
-  }
-  wrap.appendChild(grid);
-
-  var startBtn = document.createElement('button');
-  startBtn.style.cssText = 'padding:14px 32px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif';
-  startBtn.textContent = '▶ Zacznij naukę';
-  startBtn.onclick = function(){
-    if(window._strefaStartFn) window._strefaStartFn();
-  };
-  wrap.appendChild(startBtn);
-  center.appendChild(wrap);
+  var modal=document.getElementById('mat-modal');
+  var titleEl=document.getElementById('mat-modal-title');
+  var body=document.getElementById('mat-modal-body');
+  if(!modal||!body) return;
+  if(titleEl) titleEl.textContent = stripEmoji(title);
+  var preview = cards.slice(0,12);
+  var html = '<div style="font-size:13px;color:var(--dim2);margin-bottom:16px">'+cards.length+' fiszek</div>';
+  html += '<div style="display:flex;flex-direction:column;margin-bottom:20px;max-height:300px;overflow-y:auto">';
+  html += preview.map(function(c){
+    return '<div style="display:flex;justify-content:space-between;gap:16px;padding:9px 2px;border-bottom:.5px solid var(--border)"><span style="font-size:14px;color:var(--navy)">'+esc(c.word||'')+'</span><span style="font-size:14px;color:var(--dim2);text-align:right">'+esc(c.translation||'')+'</span></div>';
+  }).join('');
+  html += '</div>';
+  if(cards.length>12) html += '<div style="font-size:12px;color:var(--dim2);margin-bottom:16px">+'+(cards.length-12)+' więcej</div>';
+  html += '<button onclick="if(window._strefaStartFn)window._strefaStartFn()" class="btn btn-orange" style="width:100%">Ucz się</button>';
+  body.innerHTML = html;
+  modal.style.display='flex';
 }
 
 
