@@ -2317,7 +2317,7 @@ window.openCreateSet = function openCreateSet(){
     d.appendChild(hint);
     // Footer buttons
     var footer=document.createElement('div');
-    footer.style.cssText='display:flex;gap:10px;justify-content:flex-end';
+    footer.style.cssText='display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;background:var(--white);padding:12px 0 2px;border-top:.5px solid var(--border)';
     footer.innerHTML='<button onclick="closeMatModal()" style="padding:10px 20px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif">Anuluj</button>';
     var saveBtn=document.createElement('button');
     saveBtn.className='btn btn-orange';
@@ -2413,10 +2413,10 @@ window.openEditSet = async function openEditSet(id){
     +'<input id="edit-set-name" class="fi" value="'+esc(s.name||'')+'" style="width:100%;box-sizing:border-box">'
     +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;margin-bottom:6px"><div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.05em">Słowo</div><div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.05em">Tłumaczenie</div><div></div></div>'
-    +'<div id="edit-set-rows" style="display:flex;flex-direction:column;gap:5px;max-height:300px;overflow-y:auto;margin-bottom:8px"></div>'
+    +'<div id="edit-set-rows" style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px"></div>'
     +'<button onclick="window.addEditSetRow(\'\',\'\',true)" style="width:100%;padding:9px;border:1px dashed var(--border2);border-radius:10px;background:transparent;font-size:13px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;margin-bottom:8px">+ Dodaj wiersz</button>'
     +'<div style="font-size:11px;color:var(--dim2);margin:0 0 14px">Użyj <kbd style="background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:10px">TAB</kbd> &mdash; ostatni TAB dodaje nowy wiersz.</div>'
-    +'<div style="display:flex;gap:10px;justify-content:flex-end">'
+    +'<div style="display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;background:var(--white);padding:12px 0 2px;margin-top:8px;border-top:.5px solid var(--border)">'
     +'<button onclick="closeMatModal()" style="padding:10px 20px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif">Anuluj</button>'
     +'<button onclick="saveEditSet('+id+')" class="btn btn-orange">Zapisz zmiany</button>'
     +'</div>';
@@ -2618,37 +2618,32 @@ function setCard(s){
   const isOwn = s.user_id === _matMyUid;
   const isMineTab = (window._matTab || 'mine') === 'mine';
   const cards = s.user_set_cards || [];
-  const preview = cards.slice(0,3).map(c=>`
-    <div class="mat-preview-row">
-      <span class="mat-pf">${esc(c.word)}</span>
-      <span class="mat-pb">${esc(c.translation)}</span>
-    </div>`).join('');
-
-  const moveBtn = isOwn && isMineTab
-    ? `<button data-sid="${s.id}" onclick="event.stopPropagation();promptMoveSet(parseInt(this.dataset.sid))" class="mat-btn-move" style="background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:4px 12px;font-size:12px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif">📁 Przenieś</button>`
+  const cleanName = window.stripEmoji ? stripEmoji(s.name||'') : (s.name||'');
+  const badge = s.source==='lex' ? ' <span style="font-size:9px;font-weight:500;letter-spacing:.5px;background:var(--orange);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle">LEX</span>'
+    : s.source==='alex' ? ' <span style="font-size:9px;font-weight:500;letter-spacing:.5px;background:var(--navy);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle">ALEX</span>' : '';
+  const delBtn = (isOwn && isMineTab)
+    ? `<span title="Usuń zestaw" onclick="event.stopPropagation();deleteSetConfirm(${s.id})" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500" onmouseover="this.style.opacity=1;this.style.color='#c0392b'" onmouseout="this.style.opacity=.5;this.style.color='var(--dim2)'">&times;</span>`
     : '';
   const liked = _likedSets&&_likedSets.has?_likedSets.has(s.id):false;
   const likeBtn = !isMineTab
-    ? `<button onclick="event.stopPropagation();toggleLike(${s.id})" style="background:transparent;border:none;cursor:pointer;font-size:15px;padding:2px 6px;border-radius:6px;transition:transform .15s" title="Polub">${liked?'❤️':'🤍'} ${s.likes_count||0}</button>`
+    ? `<span onclick="event.stopPropagation();toggleLike(${s.id})" style="position:absolute;top:8px;right:10px;cursor:pointer;font-size:12px;color:var(--dim2);display:flex;align-items:center;gap:4px" title="Polub"><svg width="14" height="14" viewBox="0 0 24 24" fill="${liked?'#c0392b':'none'}" stroke="${liked?'#c0392b':'var(--dim2)'}" stroke-width="1.6"><path d="M12 21s-7-4.5-9.5-9C0.5 8 2 4.5 5.5 4.5c2 0 3.3 1.2 4.5 3 1.2-1.8 2.5-3 4.5-3C18 4.5 19.5 8 17.5 12 15 16.5 12 21 12 21z"></path></svg>${s.likes_count||0}</span>`
     : '';
   const authorLine = !isOwn && s.username
-    ? `<div style="font-size:11px;color:var(--dim2);margin-top:2px">👤 ${esc(s.username)}</div>`
+    ? `<div class="mat-card-count" style="margin-top:1px">${esc(s.username)}</div>`
     : '';
-
-  return `<div class="mat-card" onclick="openSet(${s.id})" style="cursor:pointer"
+  return `<div class="mat-card" onclick="openSet(${s.id})" style="cursor:pointer;position:relative"
     draggable="true"
     ondragstart="matCardDragStart(event,${s.id},'${(s.name||'').replace(/'/g,'')}')"
     ondragend="matCardDragEnd(event)">
-    <div class="mat-card-head">
-      <div>
-        <div class="mat-card-name">${esc(s.name)}${s.source==='lex'?' <span style=\'font-size:9px;font-weight:500;letter-spacing:.5px;background:var(--orange);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle\'>LEX</span>':s.source==='alex'?' <span style=\'font-size:9px;font-weight:500;letter-spacing:.5px;background:var(--navy);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle\'>ALEX</span>':''}</div>
+    ${delBtn}${likeBtn}
+    <div class="mat-card-head" style="display:flex;align-items:center;gap:12px">
+      <div style="width:36px;height:36px;border-radius:8px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg></div>
+      <div style="flex:1;min-width:0;padding-right:18px">
+        <div class="mat-card-name">${esc(cleanName)}${badge}</div>
         <div class="mat-card-count">${cards.length} fiszek</div>
         ${authorLine}
       </div>
-      ${likeBtn}
     </div>
-    ${preview ? `<div class="mat-preview">${preview}</div>` : ''}
-    ${moveBtn ? `<div class="mat-card-actions" style="margin-top:10px">${moveBtn}</div>` : ''}
   </div>`;
 }
 
@@ -2707,6 +2702,11 @@ function setCard(s){
       <!-- Count -->
       <div id="mat-count" style="font-size:13px;color:var(--dim2);margin-bottom:14px"></div>
 
+      <!-- Drag-and-drop hint -->
+      <div id="mat-drag-hint" style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim2);margin-bottom:14px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l-3 3 3 3"></path><path d="M9 5l3-3 3 3"></path><path d="M15 19l-3 3-3-3"></path><path d="M19 9l3 3-3 3"></path><path d="M2 12h20"></path><path d="M12 2v20"></path></svg>
+        <span>Przeciągnij zestaw na katalog po lewej, aby go przenieść.</span>
+      </div>
       <!-- Content panels -->
       <div id="mat-grid" class="mat-grid"><div class="mat-empty">Ładowanie...</div></div>
 
@@ -2735,7 +2735,7 @@ function setCard(s){
   <div class="modal-box" style="max-width:600px;width:100%">
     <button class="modal-close" onclick="closeMatModal()">✕</button>
     <h2 id="mat-modal-title" style="margin-bottom:16px"></h2>
-    <div id="mat-modal-body"></div>
+    <div id="mat-modal-body" style="max-height:78vh;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -5105,6 +5105,16 @@ function strefaToggleMine(){
   }
 }
 
+function strefaSetActiveCat(key){
+  try{
+    document.querySelectorAll('#sb-mine-list [data-scat]').forEach(function(el){
+      el.dataset.active='0'; el.style.background='var(--white)'; el.style.borderColor='var(--border)';
+    });
+    var sel=document.querySelector('#sb-mine-list [data-scat="'+key+'"]');
+    if(sel){ sel.dataset.active='1'; sel.style.background='rgba(201,106,42,.10)'; sel.style.borderColor='var(--orange)'; }
+  }catch(e){}
+}
+window.strefaSetActiveCat=strefaSetActiveCat;
 async function strefaLoadMineList(mode){
   var listId=mode==='tryb'?'sb-mine-list':'sb-mine-k-list';
   var list=document.getElementById(listId);
@@ -5124,9 +5134,10 @@ async function strefaLoadMineList(mode){
     allDiv.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s';
     allDiv.innerHTML='<div style="font-size:13px;font-weight:500;color:var(--navy)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.6" style="vertical-align:-2px;margin-right:6px"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>Wszystkie</div>'
       +'<div style="font-size:11px;color:var(--dim2)">'+(sets?sets.length:0)+' zestawów</div>';
-    allDiv.onmouseover=function(){this.style.borderColor='var(--orange)';};
-    allDiv.onmouseout=function(){this.style.borderColor='var(--border)';};
-    allDiv.onclick=(function(m){ return function(){ strefaShowCatalogSets(null,'Wszystkie zestawy',m); }; })(mode);
+    allDiv.dataset.scat='all';
+    allDiv.onmouseover=function(){ if(this.dataset.active!=='1') this.style.borderColor='var(--orange)'; };
+    allDiv.onmouseout=function(){ if(this.dataset.active!=='1') this.style.borderColor='var(--border)'; };
+    allDiv.onclick=(function(m){ return function(){ strefaSetActiveCat('all'); strefaShowCatalogSets(null,'Wszystkie zestawy',m); }; })(mode);
     list.appendChild(allDiv);
     // Catalog tiles
     (_collections||[]).forEach(function(col,ci){
@@ -5141,9 +5152,10 @@ async function strefaLoadMineList(mode){
       delC.style.cssText='position:absolute;top:6px;right:8px;font-size:15px;line-height:1;color:var(--dim2);cursor:pointer;opacity:0;transition:opacity .2s;font-weight:500';
       delC.onclick=(function(colIdx){ return function(e){ e.stopPropagation(); Promise.resolve(deleteCollection(colIdx)).then(function(){ strefaLoadMineList(mode); }); }; })(ci);
       div.appendChild(delC);
-      div.onmouseover=function(){this.style.borderColor='var(--orange)';delC.style.opacity='1';};
-      div.onmouseout=function(){this.style.borderColor='var(--border)';delC.style.opacity='0';};
-      div.onclick=(function(colIdx,colName,m){ return function(){ strefaShowCatalogSets(colIdx,colName,m); }; })(ci,col.name,mode);
+      div.dataset.scat=ci;
+      div.onmouseover=function(){ if(this.dataset.active!=='1') this.style.borderColor='var(--orange)'; delC.style.opacity='1'; };
+      div.onmouseout=function(){ if(this.dataset.active!=='1') this.style.borderColor='var(--border)'; delC.style.opacity='0'; };
+      div.onclick=(function(colIdx,colName,m){ return function(){ strefaSetActiveCat(colIdx); strefaShowCatalogSets(colIdx,colName,m); }; })(ci,col.name,mode);
       list.appendChild(div);
     });
     if(!_collections||!_collections.length){
@@ -8635,11 +8647,16 @@ window.loadCollections = async function loadCollections(){
     allBtn.innerHTML = '<div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.6" style="vertical-align:-2px;margin-right:6px"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>Wszystkie zestawy</div><div style="font-size:12px;color:var(--dim2);margin-top:3px">Pokaż wszystkie</div>';
     allBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-1px)'; };
     allBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; };
-    allBtn.onclick = function(){ switchMatTab('mine'); };
+    allBtn.onclick = function(){
+      document.querySelectorAll('#mat-sidebar-collections button').forEach(function(b){ b.style.background='transparent'; b.style.fontWeight='normal'; delete b.dataset.active; });
+      this.style.background='rgba(229,106,28,.12)'; this.style.fontWeight='500'; this.dataset.active='1';
+      switchMatTab('mine');
+    };
     allBtn.addEventListener('dragover', function(e){ catalogTileDragOver(e,null); });
     allBtn.addEventListener('dragleave', function(e){ catalogTileDragLeave(e); });
     allBtn.addEventListener('drop', function(e){ catalogTileDrop(e,null); });
     allBtn.className = 'sb-catalog-tile';
+    allBtn.style.background='rgba(229,106,28,.12)'; allBtn.dataset.active='1';
     sidebar.appendChild(allBtn);
 
     _collections.forEach(function(col, cidx){
