@@ -2281,8 +2281,26 @@ window.startStudyFromModal = function startStudyFromModal(id){
   setTimeout(function(){startSession('set_external');},300);
 };
 
+window.confirmModal = function confirmModal(opts){
+  opts=opts||{};
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,41,.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px';
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:16px;padding:28px;max-width:380px;width:100%;box-shadow:0 24px 60px rgba(15,23,41,.25)';
+  box.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy);margin-bottom:8px">'+(opts.title||'Na pewno?')+'</div>'
+    +'<div style="font-size:14px;color:var(--dim);line-height:1.6;margin-bottom:22px">'+(opts.message||'')+'</div>'
+    +'<div style="display:flex;gap:10px;justify-content:flex-end">'
+    +'<button id="cm-cancel" style="padding:10px 18px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif;font-size:14px;color:var(--navy)">Anuluj</button>'
+    +'<button id="cm-ok" style="padding:10px 18px;border-radius:10px;border:none;background:'+(opts.danger?'#c0392b':'var(--orange)')+';color:#fff;cursor:pointer;font-family:DM Sans,sans-serif;font-size:14px;font-weight:500">'+(opts.confirmLabel||'Potwierdź')+'</button>'
+    +'</div>';
+  ov.appendChild(box); document.body.appendChild(ov);
+  function close(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }
+  box.querySelector('#cm-cancel').onclick=close;
+  ov.onclick=function(e){ if(e.target===ov) close(); };
+  box.querySelector('#cm-ok').onclick=function(){ close(); if(typeof opts.onConfirm==='function') opts.onConfirm(); };
+};
 window.deleteSetConfirm = function deleteSetConfirm(id){
-  if(confirm('Usunąć zestaw?')) deleteSet(id);
+  confirmModal({title:'Usunąć zestaw?', message:'Tej operacji nie można cofnąć — zestaw i jego fiszki zostaną trwale usunięte.', confirmLabel:'Usuń', danger:true, onConfirm:function(){ deleteSet(id); }});
 };
 
 window.openCreateSet = function openCreateSet(){
@@ -2483,9 +2501,13 @@ window.deleteSet = async function deleteSet(id){
     await db.from('user_sets').delete().eq('id',id);
     closeMatModal();
     _matSets=_matSets.filter(function(s){return s.id!==id;});
+    (_collections||[]).forEach(function(c){ c.sets=(c.sets||[]).filter(function(x){return x.id!==id;}); });
+    if(_matMyUid && typeof saveCollections==='function') saveCollections(_matMyUid);
     typeof showToast!=='undefined'&&showToast('Zestaw usunięty','success');
     if(window.loadMySets) loadMySets();
+    if(typeof loadCollections==='function') loadCollections();
     if(typeof strefaRefreshCurrent==='function') strefaRefreshCurrent();
+    if(typeof strefaLoadMineList==='function'){ var _ml=document.getElementById('sb-mine-list'); if(_ml && _ml.style.display!=='none') strefaLoadMineList('tryb'); }
   }catch(e){typeof showToast!=='undefined'&&showToast('Błąd: '+(e.message||e),'');}
 };
 
@@ -2551,6 +2573,10 @@ window.loadMySets = async function loadMySets(){
     var _selN='id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation)';
     var {data,error:_e}=await db.from('user_sets').select(_selS).eq('user_id',session.user.id).order('created_at',{ascending:false});
     if(_e){ var _r=await db.from('user_sets').select(_selN).eq('user_id',session.user.id).order('created_at',{ascending:false}); data=_r.data; }
+    var _valid=new Set((data||[]).map(function(s){return s.id;}));
+    var _chg=false;
+    (_collections||[]).forEach(function(c){ var _b=(c.sets||[]).length; c.sets=(c.sets||[]).filter(function(s){return _valid.has(s.id);}); if(c.sets.length!==_b)_chg=true; });
+    if(_chg && typeof saveCollections==='function') saveCollections(session.user.id);
     var username=session.user.user_metadata&&session.user.user_metadata.username||session.user.email||'';
     _matSets=(data||[]).filter(function(s){ return !assignedIds.has(s.id); }).map(function(s){ return Object.assign({},s,{username,user_id:_matMyUid}); });
     if(grid){ matRenderMine(); }
@@ -3346,15 +3372,16 @@ async function initToFixPage(){
 <!-- Daily Sidebar Toggle -->
 <button id="daily-sidebar-toggle" onclick="toggleDailySidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
 <!-- Daily Sidebar -->
-<div id="daily-sidebar" style="width:300px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49;padding:86px 0 80px 0">
-  <div style="padding:0 20px">
-    <div id="dsb-daily" onclick="dailyShowTab('daily')" style="background:linear-gradient(135deg,#e8701a,#f08020);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
-      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:#fff">Porcja Dnia</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.8)">Słówka · Quiz · Czytanka</div>
+<div id="daily-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49;padding:86px 0 64px 0">
+  <div style="padding:0 16px">
+    <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Porcja dnia</div>
+    <div id="daily-btn-daily" onclick="dailyShowTab('daily')" style="background:var(--white);border:.5px solid var(--orange);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;transition:.2s">
+      <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Porcja dnia</div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:1px">Słówko · Quiz · Czytanka</div>
     </div>
-    <div id="dsb-challenge" onclick="dailyShowTab('challenge')" style="background:var(--navy);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
-      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:#fff">Wyzwanie Tygodnia</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.7)">Ranking · Nagrody</div>
+    <div id="daily-btn-challenge" onclick="dailyShowTab('challenge')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.2s">
+      <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Wyzwanie tygodnia</div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:1px">Ranking · Nagrody</div>
     </div>
   </div>
 </div>
@@ -3374,7 +3401,7 @@ async function initToFixPage(){
   </div>
   <div style="display:flex;align-items:center;gap:10px">
     <label style="font-size:12px;color:var(--dim2);font-weight:500">Język:</label>
-    <select id="daily-lang-select" onchange="reloadDailyContent()" style="padding:7px 12px;border-radius:20px;border:1.5px solid var(--border2);font-size:13px;background:var(--paper);color:var(--navy);font-weight:500;cursor:pointer">
+    <select id="daily-lang-select" onchange="reloadDailyContent()" style="padding:8px 14px;border-radius:10px;border:1.5px solid rgba(26,35,64,.3);font-size:13px;background:var(--white);color:var(--navy);font-weight:500;cursor:pointer">
       <option value="en">🇬🇧 Angielski</option>
       <option value="es">🇪🇸 Hiszpański</option>
       <option value="nl">🇳🇱 Holenderski</option>
@@ -3412,15 +3439,10 @@ async function initToFixPage(){
     </div>
     <div id="dc-word-loading" style="color:var(--dim2);font-size:13px">Ładowanie...</div>
     <div id="dc-word-content" style="display:none">
-      <div id="dc-word-1" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+      <div id="dc-word-1">
         <div id="dc-word-text" style="font-size:26px;font-weight:500;color:var(--navy);margin-bottom:2px;font-family:DM Sans,sans-serif"></div>
         <div id="dc-word-translation" style="font-size:14px;color:var(--orange);font-weight:500;margin-bottom:8px"></div>
         <div id="dc-word-sentence" style="font-size:12px;color:var(--dim);line-height:1.6;border-left:3px solid var(--border2);padding-left:10px;font-style:italic"></div>
-      </div>
-      <div id="dc-word-2">
-        <div id="dc-word-text2" style="font-size:26px;font-weight:500;color:var(--navy);margin-bottom:2px;font-family:DM Sans,sans-serif"></div>
-        <div id="dc-word-translation2" style="font-size:14px;color:var(--orange);font-weight:500;margin-bottom:8px"></div>
-        <div id="dc-word-sentence2" style="font-size:12px;color:var(--dim);line-height:1.6;border-left:3px solid var(--border2);padding-left:10px;font-style:italic"></div>
       </div>
       <button class="btn btn-orange" onclick="dailyWordDone()" id="dc-word-btn" style="font-size:13px;padding:9px 20px;margin-top:14px;width:100%">✓ Zapamiętałem!</button>
     </div>
@@ -3499,7 +3521,7 @@ async function initToFixPage(){
   <!-- Panel: Wyzwanie (embedded w Porcja dnia) -->
   <div id="daily-panel-challenge" style="display:none">
     <h3 style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:500;color:var(--navy);margin-bottom:6px">Wyzwanie tygodnia</h3>
-    <p style="color:var(--dim2);margin-bottom:28px">Rywalizuj ze społecznością. Nagrody dla najlepszych.</p>
+    <p style="color:var(--dim2);margin-bottom:28px">Kuratorowany zestaw na każdy tydzień — ucz się we własnym tempie.</p>
 
   <!-- Banner aktualnego wyzwania -->
   <div id="challenge-banner" style="background:var(--navy);border-radius:20px;padding:28px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden">
@@ -3513,7 +3535,7 @@ async function initToFixPage(){
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:4px">Kończy się za</div>
-        <div id="ch-countdown" style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:500;color:#f5c842">--</div>
+        <div id="ch-countdown" style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:500;color:rgba(255,255,255,.92)">--</div>
       </div>
     </div>
     <div style="margin-top:20px">
@@ -3522,7 +3544,7 @@ async function initToFixPage(){
         <span id="ch-progress-text">0 / 0</span>
       </div>
       <div style="height:10px;background:rgba(255,255,255,.1);border-radius:20px;overflow:hidden">
-        <div id="ch-progress-bar" style="width:0%;height:100%;border-radius:20px;background:linear-gradient(90deg,#f5c842,#c96a2a);transition:width .6s ease"></div>
+        <div id="ch-progress-bar" style="width:0%;height:100%;border-radius:20px;background:var(--orange);transition:width .6s ease"></div>
       </div>
     </div>
     <div style="margin-top:12px;font-size:12px;color:rgba(255,255,255,.4)" id="ch-reward"></div>
@@ -3532,7 +3554,7 @@ async function initToFixPage(){
   <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;margin-bottom:20px" id="ch-set-section">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:15px;font-weight:500;color:var(--navy);margin-bottom:2px">📦 Gotowy zestaw do wyzwania</div>
+        <div style="font-size:15px;font-weight:500;color:var(--navy);margin-bottom:2px">Zestaw tygodnia</div>
         <div style="font-size:13px;color:var(--dim2)" id="ch-set-desc">Ładowanie zestawu...</div>
       </div>
       <button id="ch-import-btn" class="btn btn-orange" onclick="importChallengeSet()" style="display:none;font-size:13px;padding:9px 20px">+ Importuj do Moich zestawów</button>
@@ -3541,38 +3563,9 @@ async function initToFixPage(){
     <div id="ch-set-status" style="font-size:12px;color:var(--dim2)"></div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-    <!-- Live ranking -->
-    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
-      <div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:14px;display:flex;align-items:center;gap:6px">
-        🏆 Live ranking
-        <span style="font-size:11px;color:var(--dim2);font-weight:400;margin-left:auto" id="ch-rank-update">odświeżam...</span>
-      </div>
-      <div id="ch-ranking" style="display:flex;flex-direction:column;gap:0"></div>
-    </div>
-
-    <!-- Nagrody -->
-    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
-      <div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:14px">🎁 Nagrody</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--paper2);border-radius:10px">
-          <div style="font-size:26px">🥇</div>
-          <div><div style="font-size:13px;font-weight:500;color:var(--navy)">1. miejsce</div><div style="font-size:12px;color:var(--dim2)">tytuł tygodnia</div></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--paper2);border-radius:10px">
-          <div style="font-size:26px">🥈</div>
-          <div><div style="font-size:13px;font-weight:500;color:var(--navy)">Top 3</div><div style="font-size:12px;color:var(--dim2)">wyróżnienie w rankingu</div></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--paper2);border-radius:10px">
-          <div style="font-size:26px">⚡</div>
-          <div><div style="font-size:13px;font-weight:500;color:var(--navy)">Ukończenie</div><div style="font-size:12px;color:var(--dim2)">komplet dzienny</div></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--paper2);border-radius:10px">
-          <div style="font-size:26px">🔥</div>
-          <div><div style="font-size:13px;font-weight:500;color:var(--navy)">Konsystencja 7 dni</div><div style="font-size:12px;color:var(--dim2)">słowa wracają rzadziej</div></div>
-        </div>
-      </div>
-    </div>
+  <div style="background:#fff;border:.5px solid var(--border);border-radius:16px;padding:20px">
+    <div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:6px">Jak to działa</div>
+    <div style="font-size:13px;color:var(--dim2);line-height:1.6">Co tydzień przygotowujemy jeden kuratorowany zestaw na wybrany temat. Ucz się go we własnym tempie — bez rankingów, punktów i presji. Twój postęp powyżej dotyczy tylko Ciebie.</div>
   </div>
   </div><!-- end daily-panel-challenge -->
 
@@ -4273,12 +4266,6 @@ function showDailyWordFallback(){
   document.getElementById('dc-word-translation').textContent=words[0].t;
   var s1=words[0].s.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
   document.getElementById('dc-word-sentence').innerHTML='"'+s1+'"';
-  if(words[1]){
-    document.getElementById('dc-word-text2').textContent=words[1].w;
-    document.getElementById('dc-word-translation2').textContent=words[1].t;
-    var s2=words[1].s.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
-    document.getElementById('dc-word-sentence2').innerHTML='"'+s2+'"';
-  }
 }
 
 async function loadDailyWord(){
@@ -4290,7 +4277,7 @@ async function loadDailyWord(){
 
   // Show loading state
   var wrap = document.getElementById('daily-words-wrap');
-  if(wrap) wrap.innerHTML = '<div style="text-align:center;padding:20px;color:var(--dim2);font-size:13px">⏳ Ładuję słówka dnia...</div>';
+  if(wrap) wrap.innerHTML = '<div style="text-align:center;padding:20px;color:var(--dim2);font-size:13px">Ładuję słówko dnia...</div>';
 
   try{
     var sess = (await db.auth.getSession()).data.session;
@@ -4312,11 +4299,10 @@ async function loadDailyWord(){
 
     // 2. Generate new words via AI proxy
     var level = (typeof getCurrentLangLevel === 'function') ? getCurrentLangLevel() : 'B1';
-    var prompt = 'Wygeneruj dokładnie 2 ciekawe słówka w języku ' + langLabel + ' na poziomie ' + level + '.'
+    var prompt = 'Wygeneruj dokładnie 1 ciekawe słówko w języku ' + langLabel + ' na poziomie ' + level + '.'
       + ' Wybierz słowa użyteczne, nieoczywiste, z ciekawym kontekstem kulturowym lub stylistycznym.'
       + ' Odpowiedz TYLKO poprawnym JSON bez żadnego tekstu przed ani po, bez backticks:'
-      + ' [{"word":"słowo","translation":"polskie tłumaczenie","example":"przykładowe zdanie w ' + langLabel + '","example_pl":"tłumaczenie przykładu po polsku","tip":"krótka ciekawostka o tym słowie po polsku max 1 zdanie"},'
-      + '{"word":"słowo2","translation":"tłumaczenie2","example":"zdanie2","example_pl":"tłumaczenie2","tip":"ciekawostka2"}]';
+      + ' [{"word":"słowo","translation":"polskie tłumaczenie","example":"przykładowe zdanie w ' + langLabel + '","example_pl":"tłumaczenie przykładu po polsku","tip":"krótka ciekawostka o tym słowie po polsku max 1 zdanie"}]';
 
     var res = await fetch(AI_PROXY_URL, {
       method: 'POST',
@@ -4366,7 +4352,7 @@ function renderDailyWords(words, lang){
   if(s1){
     s1.innerHTML = (w1.example ? '<em>'+w1.example+'</em>' : '')
       + (w1.example_pl ? '<br><span style="color:var(--dim2);font-style:normal">'+w1.example_pl+'</span>' : '')
-      + (w1.tip ? '<br><span style="color:var(--orange);font-size:11px">💡 '+w1.tip+'</span>' : '');
+      + (w1.tip ? '<br><span style="color:var(--orange);font-size:11px">'+w1.tip+'</span>' : '');
   }
 
   // Word 2
@@ -4936,15 +4922,15 @@ async function initChallenge(){
 
   // Wyzwanie — dynamicznie
   var challenges=[
-    {name:'Mistrz Podróży 🗺️',desc:'Naucz się 50 słów z kategorii Travel',goal:50,category:'Podróże',topic:'travel, tourism, airports, hotels, transportation, sightseeing, vacation',reward:'zestaw Podróże opanowany'},
-    {name:'Biznes Pro 💼',desc:'Opanuj 40 słów z języka biznesu',goal:40,category:'Business',topic:'business, finance, corporate, meetings, negotiations, management, marketing, economics',reward:'zestaw Biznes opanowany'},
-    {name:'Naukowy Umysł 🔬',desc:'Przyswój 30 słów naukowych',goal:30,category:'Science',topic:'science, biology, chemistry, physics, research, laboratory, discoveries, technology',reward:'zestaw Nauka opanowany'},
+    {name:'Słownictwo podróżnicze',desc:'Naucz się 50 słów z kategorii Travel',goal:50,category:'Podróże',topic:'travel, tourism, airports, hotels, transportation, sightseeing, vacation',reward:'zestaw Podróże opanowany'},
+    {name:'Język biznesu',desc:'Opanuj 40 słów z języka biznesu',goal:40,category:'Business',topic:'business, finance, corporate, meetings, negotiations, management, marketing, economics',reward:'zestaw Biznes opanowany'},
+    {name:'Słownictwo naukowe',desc:'Przyswój 30 słów naukowych',goal:30,category:'Science',topic:'science, biology, chemistry, physics, research, laboratory, discoveries, technology',reward:'zestaw Nauka opanowany'},
   ];
   var week=Math.floor(Date.now()/604800000)%challenges.length;
   var ch=challenges[week];
   document.getElementById('ch-name').textContent=ch.name;
   document.getElementById('ch-desc').textContent=ch.desc;
-  document.getElementById('ch-reward').textContent='Nagroda za ukończenie: '+ch.reward;
+  document.getElementById('ch-reward').textContent='Po ukończeniu: '+ch.reward;
 
   // Pobierz postęp usera
   try{
@@ -4957,9 +4943,6 @@ async function initChallenge(){
     }
   }catch(e){}
 
-  loadChallengeRanking();
-  document.getElementById('ch-rank-update').textContent='aktualizuje się co 5 min';
-  setTimeout(loadChallengeRanking, 300000);
   loadChallengeSet(ch);
 }
 
@@ -5224,7 +5207,7 @@ function strefaSetCardTryb(s){
   var cnt=s.user_set_cards?s.user_set_cards.length:0;
   var div=document.createElement('div');
   div.className='mat-card'; div.style.cursor='pointer'; div.setAttribute('draggable','true');
-  div.setAttribute('onclick','openSet('+s.id+')');
+  div.setAttribute('onclick','strefaSelectUserSet('+s.id+',"'+encodeURIComponent(s.name)+'")');
   div.setAttribute('ondragstart','matCardDragStart(event,'+s.id+',"'+(s.name||'').replace(/"/g,'')+'")')
   div.setAttribute('ondragend','matCardDragEnd(event)');
   div.style.position='relative';
