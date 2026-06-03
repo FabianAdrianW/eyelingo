@@ -1302,8 +1302,8 @@ window.dailyReadDone = function(){
     <!-- Zakładki: w jednym rzędzie obok logo, widoczne dla zalogowanych -->
     <div class="nav-tabs" id="nav-tabs">
       <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Twoje zestawy</button>
-      <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)">Porcja dnia</button>
       <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
+      <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)">Porcja dnia</button>
       <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
       <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">Nauczyciel AI <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
       <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
@@ -2194,7 +2194,7 @@ function showPage(name){
    'mat-sidebar','strefa-sidebar','daily-sidebar','odkryj-sidebar'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.style.display='none';
   });
-  var _sidebarToggleMap={community:'mat-sidebar-toggle',strefa:'strefa-sidebar-toggle',daily:'daily-sidebar-toggle',odkryj:'odkryj-sidebar-toggle'};
+  var _sidebarToggleMap={};
   var _sidebarMap={community:'mat-sidebar',strefa:'strefa-sidebar',daily:'daily-sidebar',odkryj:'odkryj-sidebar'};
   if(_sidebarToggleMap[name]){ var _t=document.getElementById(_sidebarToggleMap[name]); if(_t) _t.style.display='flex'; }
   if(_sidebarMap[name]){ 
@@ -3237,19 +3237,20 @@ async function initToFixPage(){
 <!-- Odkryj Sidebar Toggle -->
 <button id="odkryj-sidebar-toggle" onclick="toggleOdkryjSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
 <!-- Odkryj Sidebar -->
-<div id="odkryj-sidebar" style="width:300px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;background:rgba(246,245,242,.97);border-right:2px solid rgba(26,35,64,.12);z-index:49;padding:86px 0 80px 0">
-  <div style="padding:0 20px">
-    <div id="odkryj-sb-articles" onclick="odkryjShowTab('articles')" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
-      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">🌍 Odkryj Świat</div>
-      <div style="font-size:12px;color:var(--dim2)">Artykuły i ciekawostki</div>
+<div id="odkryj-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49;padding:86px 0 64px 0">
+  <div style="padding:0 16px">
+    <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Odkryj</div>
+    <div id="odkryj-btn-articles" onclick="odkryjShowTab('articles')" style="background:var(--white);border:.5px solid var(--orange);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)';this.style.transform='translateY(-1px)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)';this.style.transform='none'}">
+      <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Odkryj świat</div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:1px">Artykuły i ciekawostki</div>
     </div>
-    <div id="odkryj-sb-kultura" onclick="odkryjShowTab('kultura')" style="background:var(--navy);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.opacity='.9'" onmouseout="this.style.opacity='1'">
-      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:#fff">🗓️ Kalendarz Kultur</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.7)">Kultura i obyczaje</div>
+    <div id="odkryj-btn-kultura" onclick="odkryjShowTab('kultura')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)';this.style.transform='translateY(-1px)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)';this.style.transform='none'}">
+      <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Kalendarz kultur</div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:1px">Kultura i obyczaje</div>
     </div>
-    <div id="odkryj-sb-lyrics" onclick="odkryjShowTab('lyrics')" style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;cursor:pointer;margin-bottom:8px;transition:all .2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'">
-      <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">📝 Analiza Tekstu</div>
-      <div style="font-size:12px;color:var(--dim2)">Teksty piosenek i więcej</div>
+    <div id="odkryj-btn-lyrics" onclick="odkryjShowTab('lyrics')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)';this.style.transform='translateY(-1px)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)';this.style.transform='none'}">
+      <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Analiza tekstu</div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:1px">Teksty piosenek i więcej</div>
     </div>
   </div>
 </div>
@@ -3375,11 +3376,11 @@ async function initToFixPage(){
 <div id="daily-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49;padding:86px 0 64px 0">
   <div style="padding:0 16px">
     <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Porcja dnia</div>
-    <div id="daily-btn-daily" onclick="dailyShowTab('daily')" style="background:var(--white);border:.5px solid var(--orange);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;transition:.2s">
+    <div id="daily-btn-daily" onclick="dailyShowTab('daily')" style="background:var(--white);border:.5px solid var(--orange);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)';this.style.transform='translateY(-1px)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)';this.style.transform='none'}">
       <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Porcja dnia</div>
       <div style="font-size:11px;color:var(--dim2);margin-top:1px">Słówko · Quiz · Czytanka</div>
     </div>
-    <div id="daily-btn-challenge" onclick="dailyShowTab('challenge')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.2s">
+    <div id="daily-btn-challenge" onclick="dailyShowTab('challenge')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)';this.style.transform='translateY(-1px)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)';this.style.transform='none'}">
       <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Wyzwanie tygodnia</div>
       <div style="font-size:11px;color:var(--dim2);margin-top:1px">Ranking · Nagrody</div>
     </div>
@@ -10418,19 +10419,10 @@ function tileActivate(btnId, allPrefix){
 
 // ── ODKRYJ ──
 function odkryjShowTab(tab){
-  // Update sidebar active styles
-  var sbItems={articles:'odkryj-sb-articles',kultura:'odkryj-sb-kultura',lyrics:'odkryj-sb-lyrics'};
-  Object.keys(sbItems).forEach(function(k){
-    var el=document.getElementById(sbItems[k]);
-    if(el){
-      if(k===tab){el.style.opacity='1';el.style.transform='scale(1.02)';}
-      else{el.style.opacity='.65';el.style.transform='';}
-    }
-  });
   document.getElementById('odkryj-panel-articles').style.display = tab==='articles' ? '' : 'none';
   document.getElementById('odkryj-panel-kultura').style.display  = tab==='kultura'  ? '' : 'none';
   document.getElementById('odkryj-panel-lyrics').style.display   = tab==='lyrics'   ? '' : 'none';
-  tileActivate('odkryj-btn-'+tab, 'odkryj-btn-');
+  ['articles','kultura','lyrics'].forEach(function(k){var b=document.getElementById('odkryj-btn-'+k);if(!b)return;if(k===tab){b.dataset.active='1';b.style.borderColor='var(--orange)';b.style.background='rgba(229,106,28,.08)';}else{delete b.dataset.active;b.style.borderColor='var(--border)';b.style.background='var(--white)';b.style.transform='none';}});
   if(tab==='kultura') odkryjLoadKultura();
   if(tab==='lyrics')  odkryjLoadLyrics();
 }
@@ -11309,7 +11301,7 @@ function dailyShowTab(tab){
   var panelC=document.getElementById('daily-panel-challenge');
   if(panelD) panelD.style.display = tab==='daily'     ? '' : 'none';
   if(panelC) panelC.style.display = tab==='challenge' ? '' : 'none';
-  tileActivate('daily-btn-'+tab,'daily-btn-');
+  ['daily','challenge'].forEach(function(k){var b=document.getElementById('daily-btn-'+k);if(!b)return;if(k===tab){b.dataset.active='1';b.style.borderColor='var(--orange)';b.style.background='rgba(229,106,28,.08)';}else{delete b.dataset.active;b.style.borderColor='var(--border)';b.style.background='var(--white)';b.style.transform='none';}});
   if(tab==='challenge'&&typeof initChallenge==='function') initChallenge();
 }
 
