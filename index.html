@@ -3272,26 +3272,26 @@ async function initToFixPage(){
   </div>
 </div>
 <!-- Odkryj Main Content -->
-<div id="odkryj-main" style="flex:1;min-width:0;min-height:100vh;padding:86px 32px 80px 32px;overflow-x:hidden">
+<div id="odkryj-main" style="flex:1;min-width:0;min-height:100vh;padding:76px 32px 80px 32px;overflow-x:hidden">
 <div style="max-width:960px;margin:0 auto">
 
   
 
   <!-- Panel: Odkryj świat -->
   <div id="odkryj-panel-articles">
-  <!-- Hero z globem 3D -->
-  <div style="display:flex;align-items:center;gap:32px;margin-bottom:16px;flex-wrap:wrap">
+  <!-- Hero -->
+  <div style="display:flex;align-items:center;gap:24px;margin-bottom:20px;flex-wrap:wrap">
     <div style="flex:1;min-width:200px">
-      <h3 style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:500;color:var(--navy);margin-bottom:8px">Odkryj świat</h3>
-      <p style="color:var(--dim2);font-size:15px;line-height:1.6">Artykuły, filmy i słownictwo dopasowane do Twojego poziomu i zainteresowań. Ucz się przez treści które kochasz.</p>
+      <h3 style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:500;color:var(--navy);margin:0 0 6px">Odkryj świat</h3>
+      <p style="color:var(--dim2);font-size:14px;line-height:1.55;margin:0">Artykuły, filmy i słownictwo dopasowane do Twojego poziomu i zainteresowań.</p>
     </div>
     <div style="flex-shrink:0">
-      <canvas id="odkryj-globe" width="200" height="200" style="display:block;cursor:grab"></canvas>
+      <canvas id="odkryj-globe" width="120" height="120" style="display:block;cursor:grab"></canvas>
     </div>
   </div>
 
   <!-- Wyszukiwarka -->
-  <div style="background:#fff;border:1.5px solid var(--border);border-radius:20px;padding:24px;margin-bottom:28px">
+  <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:24px">
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:0" id="odkryj-search-row">
       <input id="odkryj-input" class="fi" placeholder="Temat: sport, gotowanie, anime, technologia..." style="flex:1;min-width:200px">
       <select id="odkryj-lang" class="fi" style="width:160px;flex-shrink:0">
@@ -3305,7 +3305,7 @@ async function initToFixPage(){
         <option value="B1" selected>B1</option><option value="B2">B2</option>
         <option value="C1">C1</option>
       </select>
-      <button class="btn btn-orange" id="odkryj-btn" style="flex-shrink:0;padding:10px 24px">🔍 Odkryj</button>
+      <button class="btn btn-orange" id="odkryj-btn" style="flex-shrink:0;padding:10px 24px">Odkryj</button>
     </div>
     <!-- Szybkie tematy -->
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px" id="odkryj-quick-topics">
@@ -3315,9 +3315,9 @@ async function initToFixPage(){
 
   <!-- Wyniki - trzy sekcje -->
   <div id="odkryj-results">
-    <div style="text-align:center;padding:60px 20px">
-      <div style="font-size:48px;margin-bottom:16px">🌍</div>
-      <div style="font-size:16px;color:var(--dim2)">Wpisz temat i kliknij Odkryj</div>
+    <div style="text-align:center;padding:48px 20px;color:var(--dim2)">
+      <div style="width:48px;height:48px;border-radius:12px;background:rgba(26,35,64,.06);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:var(--navy)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></div>
+      <div style="font-size:15px">Wpisz temat i kliknij Odkryj</div>
     </div>
   </div>
 
@@ -4230,10 +4230,14 @@ function reloadDailyContent(){
   try{var sel=document.getElementById('daily-lang-select');if(sel)localStorage.setItem('daily_lang',sel.value);}catch(e){}
   _dailyLoaded=false;
   _dailyLoadedDate='';
-  // Reset state
-  _dailyDone={word:false,read:false,quiz:false};
-  _dailyXP=0;
-  var xpEl=document.getElementById('daily-xp');if(xpEl)xpEl.textContent='0 XP';
+  // Nie zeruj postępu dnia — odtwórz zapisany stan z localStorage
+  try{
+    var _t=new Date().toISOString().slice(0,10);
+    var _s=localStorage.getItem('daily_progress_'+_t);
+    if(_s){ var _p=JSON.parse(_s); _dailyDone=_p.done||{word:false,read:false,quiz:false}; _dailyXP=_p.xp||0; }
+    else { _dailyDone={word:false,read:false,quiz:false}; _dailyXP=0; }
+  }catch(e){ _dailyDone={word:false,read:false,quiz:false}; _dailyXP=0; }
+  var xpEl=document.getElementById('daily-xp');if(xpEl)xpEl.textContent=(_dailyXP||0)+' XP';
   // Reset word section
   var wLoad=document.getElementById('dc-word-loading');if(wLoad){wLoad.style.display='block';wLoad.textContent='Ładowanie...';}
   var wCont=document.getElementById('dc-word-content');if(wCont)wCont.style.display='none';
@@ -4265,6 +4269,27 @@ async function loadDailyContent(){
   loadDailyRead();
   loadDailyQuiz();
   updateDailyProgress();
+  // Po odświeżeniu odtwórz stan ukończonych zadań (utrzymuje 3/3 między wejściami)
+  setTimeout(restoreDailyDoneState, 600);
+  setTimeout(restoreDailyDoneState, 1800);
+}
+
+function restoreDailyDoneState(){
+  try{
+    var d = window._dailyDone || {};
+    if(d.word){
+      var we=document.getElementById('dc-word-done'); if(we) we.style.display='inline-flex';
+      var wb=document.getElementById('dc-word-btn'); if(wb) wb.style.display='none';
+    }
+    if(d.read){
+      var re=document.getElementById('dc-read-done'); if(re) re.style.display='inline-flex';
+      var rb=document.getElementById('dc-read-btn'); if(rb) rb.style.display='none';
+    }
+    if(d.quiz){
+      var qe=document.getElementById('dc-quiz-done2'); if(qe) qe.style.display='inline-flex';
+    }
+    updateDailyProgress();
+  }catch(e){}
 }
 
 function showDailyWordFallback(){
@@ -4529,6 +4554,33 @@ async function loadDailyRead(){
     try{localStorage.setItem(lsKey,JSON.stringify({title:title,body:body}));}catch(e){}
     displayArticle(title, body);
   }catch(e){
+    // Fallback 1: spróbuj wygenerować przez AI proxy
+    try{
+      var sess2=(await db.auth.getSession()).data.session;
+      var tok2=sess2?sess2.access_token:'';
+      var lvl=(typeof getCurrentLangLevel==='function'?getCurrentLangLevel():'B1');
+      var lname=({en:'angielskim',es:'hiszpańskim',nl:'niderlandzkim',jp:'japońskim'}[dLang]||dLang);
+      var prompt='Napisz krótką, ciekawą czytankę w języku '+lname+' na poziomie '+lvl+' na temat: "'+topic
+        +'". 150-220 słów. Odpowiedz TYLKO JSON bez backticks: {"title":"tytuł","content":"treść"}';
+      var rp=await fetch(AI_PROXY_URL,{method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok2,'apikey':APIKEY_CONST},
+        body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:700})});
+      if(rp.ok){
+        var dp=await rp.json();
+        var rawp=(typeof extractAIText==='function'?extractAIText(dp):'')||'';
+        var cp=rawp.replace(/```json|```/g,'').trim();
+        var f=cp.indexOf('{'),l=cp.lastIndexOf('}');
+        var pt=topic, pb='';
+        if(f>=0&&l>f){ try{ var pj=JSON.parse(cp.slice(f,l+1)); pt=pj.title||topic; pb=pj.content||pj.text||''; }catch(e4){} }
+        if(!pb&&cp) pb=cp;
+        if(pb){
+          try{ await db.from('daily_articles').upsert({topic:topic,language:dLang,level:lvl,title:pt,content:pb},{onConflict:'topic,language,level'}); }catch(e5){}
+          try{ localStorage.setItem(lsKey,JSON.stringify({title:pt,body:pb})); }catch(e6){}
+          displayArticle(pt,pb);
+          return;
+        }
+      }
+    }catch(eAI){}
     document.getElementById('dc-read-loading').style.display='none';
     document.getElementById('dc-read-content').style.display='flex';
     var isLimit=e.message==='rate_limit';
@@ -4908,9 +4960,9 @@ function renderDailyQuiz(quiz){
   container.innerHTML = (quiz.options || []).map(function(opt, i){
     var letters = ['A','B','C','D'];
     return '<button onclick="checkDailyQuizOpt(this,'+i+','+quiz.correct+')" class="dq-tile" '
-      + 'style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:84px;padding:16px 12px;background:var(--paper);border:1.5px solid var(--border2);border-radius:14px;cursor:pointer;font-size:13px;color:var(--navy);text-align:center;transition:.15s;font-family:DM Sans,sans-serif">'
-      + '<span style="width:26px;height:26px;border-radius:50%;background:#fff;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--orange);flex-shrink:0">'+letters[i]+'</span>'
-      + '<span style="line-height:1.35">'+opt+'</span>'
+      + 'style="display:flex;align-items:center;gap:10px;min-height:0;padding:10px 12px;background:var(--paper);border:1.5px solid var(--border2);border-radius:10px;cursor:pointer;font-size:13px;color:var(--navy);text-align:left;transition:.15s;font-family:DM Sans,sans-serif">'
+      + '<span style="width:22px;height:22px;border-radius:50%;background:#fff;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--orange);flex-shrink:0">'+letters[i]+'</span>'
+      + '<span style="line-height:1.3">'+opt+'</span>'
       + '</button>';
   }).join('');
 
@@ -6127,9 +6179,9 @@ async function analyzeLyrics(){
     var langNames={en:'English',es:'Spanish',fr:'French',de:'German',nl:'Dutch',jp:'Japanese',it:'Italian',pt:'Portuguese'};
     var genreNames={hiphop:'hip-hop/rap (WAŻNE: slang uliczny, double entendre, flow, rymy)',pop:'pop',rnb:'R&B/soul',rock:'rock',other:'music'};
 
-    // Podziel tekst na bloki max 60 linii (unikamy przekroczenia tokenów)
+    // Podziel tekst na mniejsze bloki (krótszy JSON = mniejsze ryzyko ucięcia)
     var allLines=text.split('\n').filter(function(l){return l.trim();});
-    var CHUNK=80;
+    var CHUNK=24;
     var chunks=[];
     for(var ci=0;ci<allLines.length;ci+=CHUNK){
       chunks.push(allLines.slice(ci,ci+CHUNK).join('\n'));
@@ -6139,29 +6191,16 @@ async function analyzeLyrics(){
     var tokL=(await db.auth.getSession()).data.session?.access_token||'';
 
     for(var chi=0;chi<chunks.length;chi++){
-      if(chunks.length>1) btn.textContent='🤖 AI analizuje tekst... ('+Math.round((chi+1)/chunks.length*100)+'%)';
-      var prompt='You are a world-class linguist, cultural critic, and musicologist specializing in '+langNames[lang]+' music.\n'
-        +'Your task: provide the deepest possible multi-layer analysis for each line of these song lyrics.\n'
-        +'For EACH line/verse provide ALL of these layers IN POLISH:\n'
-        +'1. Dosłowne znaczenie: co tekst mówi wprost\n'
-        +'2. Znaczenie ukryte: metafory, podteksty emocjonalne, psychologiczne, filozoficzne, alternatywne interpretacje\n'
-        +'3. Gry słowne: double meanings, homonimy, aliteracje, wieloznaczności, rymy znaczeniowe, idiomy, slang, insider language\n'
-        +'4. Kontekst kulturowy: odniesienia historyczne, polityczne, internetowe, religijne, społeczne, popkulturowe, regionalne\n'
-        +'5. Referencje: do innych piosenek/artystów/filmów/wydarzeń/memów — zaznacz pewność (wysoka/prawdopodobne/spekulacja)\n'
-        +'6. Symbolika: symbole, motywy, archetypy, kolory, liczby, miejsca\n'
-        +'7. Warstwa emocjonalna: jakie emocje, mechanizmy psychologiczne\n'
-        +'8. Co łatwo przeoczyć: hidden meanings, easter eggs, subtelności\n'
-        +'\nRules: Never skip lines. If something only works in the original language, explain exactly why.\n'
-        +(title?'Song/Artist: '+title+'\n':'')
-        +'Genre: '+genreNames[genre]+'\n'
-        +(chunks.length>1?'Part '+(chi+1)+' of '+chunks.length+':\n':'')
-        +'\nLyrics:\n'+chunks[chi]+'\n\n'
-        +'For EACH line provide:\n'
-        +'- annotation: 2-3 sentences IN POLISH explaining: slang meaning, cultural context (references to people/places/events), wordplay, double meanings, metaphors, regional dialect\n'
-        +'- words: 2-4 most interesting/difficult words with Polish translation + usage note\n'
-        +'Return ONLY valid JSON, no markdown, no explanation:\n'
-        +'{"lines":[{"text":"exact lyric line","annotation":"Polish explanation","words":[{"word":"word","translation":"pl tłumaczenie + kontekst"}]}]}\n'
-        +'Include ALL lines. Never skip empty or simple lines.';
+      if(chunks.length>1) btn.textContent='AI analizuje... ('+Math.round((chi+1)/chunks.length*100)+'%)';
+      var prompt='Jesteś lingwistą i znawcą kultury, ekspertem od '+langNames[lang]+' i gatunku '+genreNames[genre]+'.\n'
+        +(title?'Utwór: '+title+'\n':'')
+        +'Przeanalizuj każdą linijkę tekstu poniżej. Dla KAŻDEJ linijki podaj:\n'
+        +'- annotation: 2-3 zdania PO POLSKU wyjaśniające znaczenie, slang, kontekst kulturowy, gry słowne, metafory, ukryte znaczenia.\n'
+        +'- words: 2-4 najciekawsze/najtrudniejsze słowa z tej linijki, każde z polskim tłumaczeniem.\n'
+        +'NIE pomijaj żadnej linijki.\n\n'
+        +'Tekst:\n'+chunks[chi]+'\n\n'
+        +'Odpowiedz WYŁĄCZNIE poprawnym JSON, bez markdown, bez backticks:\n'
+        +'{"lines":[{"text":"dokładna linijka","annotation":"wyjaśnienie po polsku","words":[{"word":"słowo","translation":"tłumaczenie"}]}]}';
 
       var res=await fetch(AI_PROXY_URL,{
         method:'POST',
@@ -6175,6 +6214,16 @@ async function analyzeLyrics(){
       var chunkParsed=null;
       try{chunkParsed=JSON.parse(clean);}catch(e){}
       if(!chunkParsed){var m2=clean.match(/\{[\s\S]*\}/);if(m2){try{chunkParsed=JSON.parse(m2[0]);}catch(e){}}}
+      // Naprawa uciętego JSON: wytnij kompletne obiekty linii
+      if(!chunkParsed||!chunkParsed.lines){
+        try{
+          var objs=clean.match(/\{\s*"text"[\s\S]*?\}\s*\]\s*\}/g);
+          var partial=[];
+          var lineRe=/\{\s*"text"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"annotation"\s*:\s*"((?:[^"\\]|\\.)*)"/g, mm;
+          while((mm=lineRe.exec(clean))){ partial.push({text:JSON.parse('"'+mm[1]+'"'),annotation:JSON.parse('"'+mm[2]+'"'),words:[]}); }
+          if(partial.length) chunkParsed={lines:partial};
+        }catch(e){}
+      }
       if(chunkParsed&&chunkParsed.lines) allParsedLines=allParsedLines.concat(chunkParsed.lines);
       else {
         // Fallback: dodaj linie bez annotacji
@@ -11791,10 +11840,10 @@ async function doOdkryjSearch(){
   _odkryjRunning=true;
 
   var btn=document.getElementById('odkryj-btn');
-  if(btn){btn.disabled=true;btn.textContent='⏳ Szukam...';}
+  if(btn){btn.disabled=true;btn.textContent='Szukam...';}
 
   var res=document.getElementById('odkryj-results');
-  res.innerHTML='<div style="text-align:center;padding:40px 0"><div style="font-size:32px;margin-bottom:12px">⏳</div><div style="color:var(--dim2);font-size:14px">Generuję artykuł i szukam filmów...</div></div>';
+  res.innerHTML='<div style="text-align:center;padding:40px 0"><div style="color:var(--dim2);font-size:14px;padding:8px">Generuję artykuł i szukam filmów...</div></div>';
 
   try{
     var sess=(await db.auth.getSession()).data.session;
@@ -11819,7 +11868,7 @@ async function doOdkryjSearch(){
     // Nagłówek artykułu
     var artHeader=document.createElement('div');
     artHeader.style.cssText='font-size:13px;font-weight:500;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:12px;display:flex;align-items:center;gap:8px';
-    artHeader.innerHTML='📖 Czytanka <span style="font-weight:400;text-transform:none;letter-spacing:0">'+_odkryjLevel+' · '+getLangName(_odkryjLang)+'</span>';
+    artHeader.innerHTML='Czytanka <span style="font-weight:400;text-transform:none;letter-spacing:0">'+_odkryjLevel+' · '+getLangName(_odkryjLang)+'</span>';
     leftCol.appendChild(artHeader);
 
     if(articleResult.status==='fulfilled'&&articleResult.value){
@@ -11830,7 +11879,7 @@ async function doOdkryjSearch(){
       card.onmouseout=function(){this.style.borderColor='var(--border)';this.style.boxShadow='none';};
       card.innerHTML='<div style="font-size:20px;font-weight:500;color:var(--navy);margin-bottom:10px;font-family:DM Sans,sans-serif">'+art.title+'</div>'
         +'<div style="font-size:14px;color:var(--dim);line-height:1.8;margin-bottom:16px">'+art.preview+'</div>'
-        +'<button class="btn btn-orange" style="font-size:13px">📖 Czytaj dalej</button>';
+        +'<button class="btn btn-orange" style="font-size:13px">Czytaj dalej</button>';
       card.onclick=function(){openOdkryjArticle(art);};
       leftCol.appendChild(card);
     } else {
@@ -11956,15 +12005,37 @@ async function fetchOdkryjArticle(topic, lang, level, tok){
     }
   }catch(e){}
 
-  var res=await fetch(ODKRYJ_ARTICLE_URL,{
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':ODKRYJ_APIKEY},
-    body:JSON.stringify({topic:topic,lang:lang,level:level})
-  });
-  if(!res.ok)throw new Error('HTTP '+res.status);
-  var d=await res.json();
-  var title=d.title||topic;
-  var body=d.content||d.text||'';
+  var title='', body='';
+  try{
+    var res=await fetch(ODKRYJ_ARTICLE_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':ODKRYJ_APIKEY},
+      body:JSON.stringify({topic:topic,lang:lang,level:level})
+    });
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    var d=await res.json();
+    title=d.title||topic;
+    body=d.content||d.text||'';
+  }catch(eGen){
+    // Fallback: generuj artykuł przez AI proxy (super-endpoint)
+    var langName=(typeof getLangName==='function'?getLangName(lang):lang);
+    var prompt='Napisz ciekawy, angażujący artykuł edukacyjny w języku '+langName+' na poziomie '+level
+      +' na temat: "'+topic+'". Długość 200-300 słów. Naturalny język dopasowany do poziomu '+level+'.'
+      +' Odpowiedz TYLKO poprawnym JSON bez backticks: {"title":"tytuł w '+langName+'","content":"treść artykułu w '+langName+'"}';
+    var r2=await fetch(AI_PROXY_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:900})
+    });
+    if(!r2.ok) throw new Error('AI proxy '+r2.status);
+    var d2=await r2.json();
+    var raw=(typeof extractAIText==='function'?extractAIText(d2):'')||'';
+    var cleaned=raw.replace(/```json|```/g,'').trim();
+    var fb=cleaned.indexOf('{'),lb=cleaned.lastIndexOf('}');
+    if(fb>=0&&lb>fb){ try{ var pj=JSON.parse(cleaned.slice(fb,lb+1)); title=pj.title||topic; body=pj.content||pj.text||''; }catch(e3){} }
+    if(!body){ title=topic; body=cleaned; }
+  }
+  if(!body) throw new Error('Brak treści');
   // Zapisz do Supabase
   try{
     await db.from('daily_articles').upsert(
