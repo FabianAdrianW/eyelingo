@@ -2594,7 +2594,7 @@ window.loadMySets = async function loadMySets(){
     (_collections||[]).forEach(function(c){ var _b=(c.sets||[]).length; c.sets=(c.sets||[]).filter(function(s){return _valid.has(s.id);}); if(c.sets.length!==_b)_chg=true; });
     if(_chg && typeof saveCollections==='function') saveCollections(session.user.id);
     var username=session.user.user_metadata&&session.user.user_metadata.username||session.user.email||'';
-    _matSets=(data||[]).filter(function(s){ return !assignedIds.has(s.id); }).map(function(s){ return Object.assign({},s,{username,user_id:_matMyUid}); });
+    _matSets=(data||[]).map(function(s){ return Object.assign({},s,{username,user_id:_matMyUid}); });
     if(grid){ matRenderMine(); }
     var createBtn=document.getElementById('mat-create-btn');
     if(createBtn) createBtn.style.display='block';
@@ -8564,9 +8564,17 @@ function showTrybMiniStory(){
   box.style.display='block';
 }
 
+function trybReturnToSource(){
+  var src = window._trybSource;
+  if(src==='strefa'){ showPage('strefa'); return true; }
+  if(src==='community'){ showPage('community'); return true; }
+  return false;
+}
 function endSession(){
-  if(_trybSessionStats.total>0)showTrybSessionSummary();
-  else showTrybView('lobby');
+  if(_trybSessionStats.total>0){ showTrybSessionSummary(); return; }
+  // Brak postępu — wróć tam, skąd przyszedłeś (Strefa/Materiały), nie na landing Tryb Nauki
+  if(trybReturnToSource()) return;
+  showTrybView('lobby');
 }
 
 async function showTrybSessionSummary(){
@@ -9715,7 +9723,7 @@ function injectTrybPage(){
     +'<button onclick="trybBoostStruggling()" class="btn btn-orange">Wyślij na desktop</button></div>'
     +'<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
     +'<button onclick="showTrybModePicker()" class="btn btn-orange btn-lg">Powtórz</button>'
-    +'<button onclick="showPage(\'community\')" class="btn btn-navy">← Materiały</button>'
+    +'<button onclick="if(!trybReturnToSource())showPage(\'community\')" class="btn btn-navy">← Zakończ</button>'
     +'</div></div>'
     +'</div>';
   document.body.appendChild(div);
