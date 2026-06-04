@@ -1815,6 +1815,21 @@ const AI_PROXY_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/supe
 const APIKEY_CONST = 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const GENERATE_ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
 const TRANSLATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-sentence';
+// Uniwersalna ekstrakcja tekstu z odpowiedzi AI — obsługuje Gemini (candidates),
+// Anthropic (content[].text) oraz OpenAI (choices[].message.content).
+function extractAIText(d){
+  try{
+    if(!d) return '';
+    if(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0])
+      return d.candidates[0].content.parts[0].text||'';
+    if(Array.isArray(d.content)&&d.content[0]) return d.content[0].text||'';
+    if(typeof d.content==='string') return d.content;
+    if(d.choices&&d.choices[0]) return (d.choices[0].message&&d.choices[0].message.content)||d.choices[0].text||'';
+    if(typeof d.text==='string') return d.text;
+    if(typeof d.output_text==='string') return d.output_text;
+  }catch(e){}
+  return '';
+}
 const SEARCH_YOUTUBE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
 const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const DOWNLOAD_URL='#';
@@ -3046,6 +3061,7 @@ function setCard(s){
 .mat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
 .mat-card{background:#fff;border:1px solid rgba(26,35,64,.1);border-radius:16px;padding:18px;cursor:pointer;transition:.2s;display:flex;flex-direction:column;gap:10px}
 .mat-card:hover{border-color:var(--orange);box-shadow:0 4px 20px rgba(201,106,42,.12);transform:translateY(-2px)}
+.dq-tile:not(:disabled):hover{border-color:var(--orange);background:#fff;transform:translateY(-2px);box-shadow:0 4px 14px rgba(201,106,42,.10)}
 .mat-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .mat-card-name{font-weight:500;font-size:15px;color:var(--navy);line-height:1.3}
 .mat-card-meta{font-size:12px;color:var(--dim2);margin-top:3px}
@@ -4310,10 +4326,14 @@ async function loadDailyWord(){
       headers: {'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
       body: JSON.stringify({messages:[{role:'user',content:prompt}], max_tokens:600})
     });
+    if(!res.ok) throw new Error('AI proxy error '+res.status);
     var d = await res.json();
-    var raw = d?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+    var raw = extractAIText(d) || '[]';
     var cleaned = raw.replace(/```json|```/g,'').trim();
+    // Wyłuskaj tablicę JSON nawet jeśli model dodał tekst dookoła
+    if(!cleaned.startsWith('[')){ var _fa=cleaned.indexOf('['), _la=cleaned.lastIndexOf(']'); if(_fa>=0&&_la>_fa) cleaned=cleaned.slice(_fa,_la+1); }
     var words = JSON.parse(cleaned);
+    if(!words || !words.length){ showDailyWordFallback(); return; }
 
     // 3. Save to daily_words table
     try{
@@ -4838,8 +4858,9 @@ async function loadDailyQuiz(){
       body: JSON.stringify({messages:[{role:'user',content:prompt}], max_tokens:400})
     });
     var d = await res.json();
-    var raw = d?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    var raw = extractAIText(d) || '{}';
     var cleaned = raw.replace(/```json|```/g,'').trim();
+    if(!cleaned.startsWith('{')){ var _fo=cleaned.indexOf('{'), _lo=cleaned.lastIndexOf('}'); if(_fo>=0&&_lo>_fo) cleaned=cleaned.slice(_fo,_lo+1); }
     var quiz = JSON.parse(cleaned);
 
     // Save to cache
@@ -4876,13 +4897,13 @@ function renderDailyQuiz(quiz){
       + (quiz.question || '');
   }
 
-  container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px';
+  container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px';
   container.innerHTML = (quiz.options || []).map(function(opt, i){
     var letters = ['A','B','C','D'];
-    return '<button onclick="checkDailyQuizOpt(this,'+i+','+quiz.correct+')" '
-      + 'style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#fff;border:1.5px solid var(--border2);border-radius:10px;cursor:pointer;font-size:13px;color:var(--navy);text-align:left;transition:.15s;font-family:DM Sans,sans-serif">'
-      + '<span style="width:22px;height:22px;border-radius:50%;background:var(--paper2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--dim2);flex-shrink:0">'+letters[i]+'</span>'
-      + opt
+    return '<button onclick="checkDailyQuizOpt(this,'+i+','+quiz.correct+')" class="dq-tile" '
+      + 'style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:84px;padding:16px 12px;background:var(--paper);border:1.5px solid var(--border2);border-radius:14px;cursor:pointer;font-size:13px;color:var(--navy);text-align:center;transition:.15s;font-family:DM Sans,sans-serif">'
+      + '<span style="width:26px;height:26px;border-radius:50%;background:#fff;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--orange);flex-shrink:0">'+letters[i]+'</span>'
+      + '<span style="line-height:1.35">'+opt+'</span>'
       + '</button>';
   }).join('');
 
@@ -6116,8 +6137,9 @@ async function analyzeLyrics(){
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+tokL,'apikey':APIKEY_CONST},
         body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:4000})
       });
+      if(!res.ok) throw new Error('AI proxy '+res.status);
       var data=await res.json();
-      var raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
+      var raw=extractAIText(data)||'{}';
       var _bt='`';var clean=raw.replace(new RegExp(_bt+_bt+_bt+'json|'+_bt+_bt+_bt,'g'),'').trim();
       var chunkParsed=null;
       try{chunkParsed=JSON.parse(clean);}catch(e){}
@@ -10485,10 +10507,26 @@ function odkryjLoadKultura(){
           var tok2=sess2?sess2.access_token:'';
           
           // Get recent cultures to avoid repetition
-          var {data:history}=await db.from('culture_history').select('culture').order('date',{ascending:false}).limit(10);
-          var lastCultures=(history||[]).map(function(h){return h.culture;}).join(', ')||'brak';
-          
-          var prompt='Jesteś ekspertem kulturoznawstwa. DATA: '+today+'. Ostatnie kultury (unikaj): '+lastCultures+'. Napisz artykuł o kulturze świata. Odpowiedz WYŁĄCZNIE JSON: {"kultura":"nazwa","kraj":"kraj","naglowek":"tytul","podtytul":"podtytul","hook":"intro","akapity":["a1","a2","a3"],"ciekawostka":"ciekawostka","most":"podobienstwa z Polska","slowo":"slowo","slowo_fonetyka":"/wymowa/","slowo_znaczenie":"znaczenie","slowo_przyklad":"przyklad","quiz":[{"pytanie":"p","odpowiedzi":["A","B","C","D"],"poprawna":0,"wyjasnienie":"w","trudnosc":"latwe"},{"pytanie":"p2","odpowiedzi":["A","B","C","D"],"poprawna":1,"wyjasnienie":"w2","trudnosc":"srednie"}],"tagi":["t1","t2"],"poziom_trudnosci":"sredni","czy_dla_dzieci":true}'
+          // Zbierz ostatnie kultury z DWÓCH źródeł aby uniknąć powtórzeń:
+          // culture_history (jeśli istnieje) ORAZ samej tabeli culture_articles.
+          var seen={};
+          try{
+            var {data:history}=await db.from('culture_history').select('culture').order('date',{ascending:false}).limit(40);
+            (history||[]).forEach(function(h){ if(h.culture) seen[h.culture.toLowerCase()]=h.culture; });
+          }catch(eh){}
+          try{
+            var {data:artHist}=await db.from('culture_articles').select('culture,country').order('date',{ascending:false}).limit(40);
+            (artHist||[]).forEach(function(h){
+              if(h.culture) seen[h.culture.toLowerCase()]=h.culture;
+              if(h.country) seen[h.country.toLowerCase()]=h.country;
+            });
+          }catch(ea){}
+          var avoidList=Object.keys(seen).map(function(k){return seen[k];});
+          var lastCultures=avoidList.join(', ')||'brak';
+
+          var prompt='Jesteś ekspertem kulturoznawstwa. DATA: '+today+'. '
+            +'ZAKAZANE kultury i kraje (NIE WOLNO o nich pisać, wybierz CAŁKOWICIE INNĄ kulturę z innego regionu świata): '+lastCultures+'. '
+            +'Wybierz świeżą, nieoczywistą kulturę spoza powyższej listy. Napisz artykuł o kulturze świata. Odpowiedz WYŁĄCZNIE JSON: {"kultura":"nazwa","kraj":"kraj","naglowek":"tytul","podtytul":"podtytul","hook":"intro","akapity":["a1","a2","a3"],"ciekawostka":"ciekawostka","most":"podobienstwa z Polska","slowo":"slowo","slowo_fonetyka":"/wymowa/","slowo_znaczenie":"znaczenie","slowo_przyklad":"przyklad","quiz":[{"pytanie":"p","odpowiedzi":["A","B","C","D"],"poprawna":0,"wyjasnienie":"w","trudnosc":"latwe"},{"pytanie":"p2","odpowiedzi":["A","B","C","D"],"poprawna":1,"wyjasnienie":"w2","trudnosc":"srednie"}],"tagi":["t1","t2"],"poziom_trudnosci":"sredni","czy_dla_dzieci":true}'
 
           var res=await fetch(AI_PROXY_URL,{
             method:'POST',
@@ -10498,14 +10536,7 @@ function odkryjLoadKultura(){
           
           if(!res.ok) throw new Error('AI proxy error '+res.status);
           var aiData=await res.json();
-          // Extract text from response (handle different AI response formats)
-          var rawText='';
-          if(aiData.candidates&&aiData.candidates[0]&&aiData.candidates[0].content&&aiData.candidates[0].content.parts)
-            rawText=aiData.candidates[0].content.parts[0].text||'';
-          else if(aiData.content&&aiData.content[0])
-            rawText=aiData.content[0].text||'';
-          else if(aiData.choices&&aiData.choices[0])
-            rawText=aiData.choices[0].message&&aiData.choices[0].message.content||'';
+          var rawText=extractAIText(aiData)||'';
           
           // Parse JSON
           var cleaned=rawText.replace(/```json|```/g,'').trim();
