@@ -6954,70 +6954,59 @@ function filterTutors(){
 <style>
 /* ── Chat panel — 2-kolumnowy z historią ── */
 #tutor-chat-panel{
-  position:fixed;right:0;bottom:0;
-  width:560px;height:560px;
-  background:#fff;border-radius:20px 20px 0 0;
-  box-shadow:0 -8px 48px rgba(26,35,64,.18);
-  z-index:9998;display:none;flex-direction:column;
-  border:1.5px solid var(--border);border-bottom:none;
-  overflow:hidden;
+  display:none;flex-direction:column;
 }
 #tutor-chat-panel.open{display:flex}
 
-/* Header */
-.tcp-header{
-  background:var(--navy);padding:13px 16px;
-  display:flex;align-items:center;gap:10px;
-  flex-shrink:0;border-radius:20px 20px 0 0;
-}
-/* 2-kolumnowy layout */
-.tcp-body{display:flex;flex:1;overflow:hidden}
+/* Header (ukryty — używamy page-head) */
+.tcp-header{ display:none; }
+/* 2-kolumnowy layout pełnostronicowy */
+.tcp-body{display:flex;flex:1;overflow:hidden;border:.5px solid var(--border);border-radius:14px;background:#fff;min-height:560px}
 
 /* Lista konwersacji — lewa kolumna */
 .tcp-convs{
-  width:210px;flex-shrink:0;
-  border-right:1px solid var(--border);
+  width:260px;flex-shrink:0;
+  border-right:.5px solid var(--border);
   display:flex;flex-direction:column;
-  background:var(--paper2);
+  background:var(--paper);
 }
 .tcp-convs-title{
-  padding:10px 14px;font-size:11px;font-weight:500;
-  text-transform:uppercase;letter-spacing:.7px;
-  color:var(--dim2);border-bottom:1px solid var(--border);
-  flex-shrink:0;
+  padding:16px 16px 12px;font-size:11px;font-weight:500;
+  text-transform:uppercase;letter-spacing:1.2px;
+  color:var(--dim2);flex-shrink:0;
 }
-.tcp-convs-list{flex:1;overflow-y:auto}
+.tcp-convs-list{flex:1;overflow-y:auto;padding:0 8px 8px}
 .tcp-conv-item{
-  padding:10px 12px;display:flex;align-items:center;gap:9px;
-  cursor:pointer;border-bottom:1px solid rgba(26,35,64,.06);
-  transition:.15s;position:relative;
+  padding:10px 12px;display:flex;align-items:center;gap:10px;
+  cursor:pointer;border-radius:10px;margin-bottom:2px;
+  transition:.15s;position:relative;border:.5px solid transparent;
 }
-.tcp-conv-item:hover{background:rgba(201,106,42,.07)}
+.tcp-conv-item:hover{background:#fff;border-color:var(--border)}
 .tcp-conv-item.active{
-  background:rgba(201,106,42,.12);
-  border-left:3px solid var(--orange);
+  background:#fff;border-color:var(--orange);
 }
 .tcp-conv-avatar{
-  width:34px;height:34px;border-radius:50%;
+  width:38px;height:38px;border-radius:50%;
   background:var(--navy);flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
-  font-size:13px;font-weight:500;color:#fff;overflow:hidden;
+  font-size:14px;font-weight:500;color:#fff;overflow:hidden;
 }
-.tcp-conv-name{font-size:12px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcp-conv-name{font-size:13px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px}
 .tcp-conv-preview{font-size:11px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .tcp-conv-badge{
-  position:absolute;top:8px;right:8px;
-  background:#e53e3e;color:#fff;font-size:9px;font-weight:500;
-  min-width:14px;height:14px;border-radius:7px;
-  display:flex;align-items:center;justify-content:center;padding:0 3px;
+  position:absolute;top:50%;right:10px;transform:translateY(-50%);
+  background:var(--orange);color:#fff;font-size:9px;font-weight:500;
+  min-width:16px;height:16px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;padding:0 4px;
 }
 
 /* Aktywny chat — prawa kolumna */
 .tcp-chat{display:flex;flex-direction:column;flex:1;overflow:hidden}
-.tcp-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
-.tcp-bubble{max-width:75%;padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.5;word-break:break-word}
-.tcp-bubble.mine{background:var(--orange);color:#fff;align-self:flex-end;border-bottom-right-radius:3px}
-.tcp-bubble.theirs{background:var(--paper2);color:var(--navy);align-self:flex-start;border-bottom-left-radius:3px;border:1px solid var(--border)}
+.tcp-thread-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:.5px solid var(--border);flex-shrink:0}
+.tcp-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:10px;background:var(--paper)}
+.tcp-bubble{max-width:72%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;word-break:break-word}
+.tcp-bubble.mine{background:var(--navy);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.tcp-bubble.theirs{background:#fff;color:var(--navy);align-self:flex-start;border-bottom-left-radius:4px;border:.5px solid var(--border)}
 .tcp-time{font-size:10px;color:var(--dim2);padding:0 4px}
 .tcp-input-row{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;background:#fff}
 .tcp-input{flex:1;border:1.5px solid var(--border);border-radius:100px;padding:9px 16px;font-size:13px;font-family:DM Sans,sans-serif;outline:none;transition:.2s}
@@ -12626,6 +12615,7 @@ async function lexStartFromOnboarding(){
       user_level: 'unknown', user_goal: _lexObGoal,
       learning_style: 'mieszany', lesson_duration: _lexObDur,
       known_gaps: [], total_lessons: 0,
+      levels_by_lang: (_lexProfile && _lexProfile.levels_by_lang) || {},
       updated_at: new Date().toISOString()
     };
     var existing = null;
@@ -12730,7 +12720,7 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
     var isEval = lexCurrentLevel() === 'unknown';
     evalBadge.style.display = isEval ? 'block' : 'none';
     if(isEval && _lexCardNum <= 12){
-      evalBadge.textContent = '🎯 Ocena poziomu · pytanie ' + _lexCardNum + '/12';
+      evalBadge.textContent = 'Ocena poziomu · pytanie ' + _lexCardNum + '/12';
     }
   }
   // Update progress bar based on expected lesson length
@@ -12937,11 +12927,24 @@ function lexParseCard(text){
 
   // Gaps
   var gm = text.matchAll(/\[GAP\]([^\[]+)\[\/GAP\]/g);
+  var newGaps = [];
   for(var g of gm){
     var gap = g[1].trim();
-    if(!_lexGaps.includes(gap)) _lexGaps.push(gap);
+    if(!_lexGaps.includes(gap)){ _lexGaps.push(gap); }
+    newGaps.push(gap);
   }
+  card.newGaps = newGaps;
   lexUpdateGapsPanel();
+
+  // #7 Korekta [FIX] — pokaż obok tego, co napisał użytkownik
+  var fixM = text.match(/\[FIX\]([\s\S]*?)\[\/FIX\]/);
+  if(fixM){
+    card.fix = fixM[1].trim();
+    // Ostatnia odpowiedź użytkownika z historii
+    var lastUser = null;
+    for(var i=_lexHistory.length-1;i>=0;i--){ if(_lexHistory[i].type==='user' && _lexHistory[i].text!=='[NEXT]'){ lastUser=_lexHistory[i].text; break; } }
+    card.userAnswer = lastUser;
+  }
 
   // Level (placement result) — persist, by ewaluacja nie powtarzała się (#8)
   var lvlm = text.match(/\[LEVEL\]\s*([ABC][12])\s*\[\/LEVEL\]/i);
@@ -13120,6 +13123,9 @@ function lexAfterTyping(){
   if(_lexStreaming) return;
   if(!_lexCurrentCard) return;
 
+  // #2 + #7 — blok zwrotny: Twoja odpowiedź → poprawka → dlaczego ćwiczymy
+  lexRenderFeedbackBlock(_lexCurrentCard);
+
   // Show translate hint
   var hint = document.getElementById('lex-translate-hint');
   if(hint) hint.style.display = 'block';
@@ -13129,6 +13135,8 @@ function lexAfterTyping(){
 
   // Add translate whole card button
   lexAddTranslateCardBtn();
+  // #1 Automatyczne tłumaczenie pod tekstem Lexa (redukuje frustrację)
+  lexAutoTranslate();
 
   // Show appropriate answer zone
   var card = _lexCurrentCard;
@@ -13167,25 +13175,62 @@ function lexAddTranslateCardBtn(){
 
 var _lexCardTranslation = null;
 
-async function lexTranslateWholeCard(){
-  var btn = document.getElementById('lex-translate-card-btn');
-  if(!btn) return;
+function lexAddTranslateCardBtn(){
+  // Automatyczne tłumaczenie — bez przycisku (uruchamiane w lexAfterTyping)
+}
 
-  // If already translated, toggle
-  var existing = document.getElementById('lex-card-translation');
-  if(existing){
-    existing.style.display = existing.style.display === 'none' ? 'block' : 'none';
-    btn.innerHTML = existing.style.display === 'none' ? '🌐 Przetłumacz całą kartę' : '🙈 Ukryj tłumaczenie';
-    return;
+function lexRenderFeedbackBlock(card){
+  var old = document.getElementById('lex-feedback-block');
+  if(old) old.remove();
+  if(!card || (!card.fix && !(card.newGaps && card.newGaps.length))) return;
+  var cardEl = document.getElementById('lex-card-lex');
+  if(!cardEl || !cardEl.parentNode) return;
+
+  var html = '<div id="lex-feedback-block" style="background:#fff;border:.5px solid var(--border);border-left:3px solid var(--orange);border-radius:12px;padding:14px 16px;margin-bottom:12px">';
+  // #7 — Twoja odpowiedź vs poprawka
+  if(card.fix && card.userAnswer){
+    html += '<div style="display:flex;flex-direction:column;gap:8px">'
+      + '<div><div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:3px">Napisałeś</div>'
+      + '<div style="font-size:14px;color:var(--dim);line-height:1.5;text-decoration:line-through;text-decoration-color:rgba(201,106,42,.4)">'+lexEsc(card.userAnswer)+'</div></div>'
+      + '<div><div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.8px;color:var(--orange);margin-bottom:3px">Poprawnie</div>'
+      + '<div style="font-size:14px;color:var(--navy);font-weight:500;line-height:1.5">'+lexEsc(card.fix)+'</div></div>'
+      + '</div>';
+  } else if(card.fix){
+    html += '<div><div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.8px;color:var(--orange);margin-bottom:3px">Poprawnie</div>'
+      + '<div style="font-size:14px;color:var(--navy);font-weight:500;line-height:1.5">'+lexEsc(card.fix)+'</div></div>';
   }
+  // #2 — dlaczego ćwiczymy ten temat
+  if(card.newGaps && card.newGaps.length){
+    html += '<div style="margin-top:'+(card.fix?'10px':'0')+';padding-top:'+(card.fix?'10px':'0')+';'+(card.fix?'border-top:.5px solid var(--border);':'')+'display:flex;align-items:flex-start;gap:7px">'
+      + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.7" style="flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>'
+      + '<div style="font-size:12px;color:var(--dim);line-height:1.5">Ćwiczymy: <strong style="color:var(--navy);font-weight:500">'+lexEsc(card.newGaps.join(', '))+'</strong> — to tu pojawił się błąd, więc Lex zostaje przy tym temacie.</div>'
+      + '</div>';
+  }
+  html += '</div>';
+  cardEl.parentNode.insertBefore(htmlToEl(html), cardEl);
+}
+function lexEsc(s){ var d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+function htmlToEl(html){ var t=document.createElement('template'); t.innerHTML=html.trim(); return t.content.firstChild; }
 
-  btn.innerHTML = '⏳ Tłumaczę...';
-  btn.disabled = true;
+async function lexAutoTranslate(){
+  if(!_lexCurrentCard) return;
+  var cardEl = document.getElementById('lex-card-lex');
+  if(!cardEl) return;
+  // Już przetłumaczone dla tej karty?
+  var existing = document.getElementById('lex-card-translation');
+  if(existing) existing.remove();
 
-  var rawText = _lexCurrentCard && _lexCurrentCard.raw ? _lexCurrentCard.raw : '';
-  // Strip markers
+  var rawText = _lexCurrentCard.raw || '';
   var clean = rawText.replace(/\[MC\][\s\S]*?\[\/MC\]/g,'').replace(/\[FIG\][\s\S]*?\[\/FIG\]/g,'')
-    .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g,'').replace(/\[[A-Z/]+\]/g,'').trim();
+    .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g,'').replace(/\[[A-Z/]+\][\s\S]*?\[\/[A-Z]+\]/g,'').replace(/\[[A-Z/]+\]/g,'').trim();
+  if(!clean) return;
+
+  // Placeholder (kursywa, dyskretnie)
+  var trDiv = document.createElement('div');
+  trDiv.id = 'lex-card-translation';
+  trDiv.style.cssText = 'margin-top:8px;font-size:13px;color:var(--dim2);line-height:1.55;font-style:italic';
+  trDiv.textContent = 'Tłumaczę...';
+  cardEl.appendChild(trDiv);
 
   try{
     var sess = (await db.auth.getSession()).data.session;
@@ -13194,30 +13239,18 @@ async function lexTranslateWholeCard(){
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
       body: JSON.stringify({
-        messages:[{role:'user', content:'Przetłumacz poniższy tekst na polski. Zwróć TYLKO tłumaczenie, bez komentarzy:\n\n' + clean}],
+        messages:[{role:'user', content:'Przetłumacz poniższy tekst na naturalny polski. Zwróć TYLKO tłumaczenie, bez komentarzy:\n\n' + clean}],
         max_tokens: 400
       })
     });
     var d = await res.json();
-    var translation = d && d.candidates && d.candidates[0] && d.candidates[0].content
-      && d.candidates[0].content.parts && d.candidates[0].content.parts[0]
-      && d.candidates[0].content.parts[0].text || '';
-
-    var cardEl = document.getElementById('lex-card-lex');
-    if(cardEl && translation){
-      var trDiv = document.createElement('div');
-      trDiv.id = 'lex-card-translation';
-      trDiv.style.cssText = 'margin-top:12px;padding:12px 14px;background:var(--paper);border-radius:10px;font-size:13px;color:var(--dim);line-height:1.6;border-left:3px solid var(--orange)';
-      var trContent = translation.replace(/\n/g,'<br>');
-      trDiv.innerHTML = '<div style="font-size:10px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🇵🇱 Tłumaczenie</div>' + trContent;
-      cardEl.insertBefore(trDiv, btn);
+    var translation = (typeof extractAIText==='function' ? extractAIText(d) : '') || '';
+    if(translation){
+      trDiv.innerHTML = translation.replace(/\n/g,'<br>');
+    } else {
+      trDiv.remove();
     }
-    btn.innerHTML = '🙈 Ukryj tłumaczenie';
-    btn.disabled = false;
-  }catch(e){
-    btn.innerHTML = '🌐 Przetłumacz całą kartę';
-    btn.disabled = false;
-  }
+  }catch(e){ trDiv.remove(); }
 }
 
 // ── Word translation (click-to-translate) ────────────────
@@ -13450,6 +13483,8 @@ function lexNextCardWithAnswer(answer, isCorrect){
   if(trBtn) trBtn.remove();
   var trDiv = document.getElementById('lex-card-translation');
   if(trDiv) trDiv.remove();
+  var fbBlock = document.getElementById('lex-feedback-block');
+  if(fbBlock) fbBlock.remove();
   lexRequestNextCard(answer, []);
 }
 
