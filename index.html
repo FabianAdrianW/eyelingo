@@ -3291,15 +3291,10 @@ async function initToFixPage(){
   <!-- Panel: Odkryj świat -->
   <div id="odkryj-panel-articles">
   <!-- Hero -->
-  <div class="page-head page-head-row">
-    <div>
-      <div class="ph-eyebrow">Eksploracja</div>
-      <h3 class="ph-title">Odkryj świat</h3>
-      <p class="ph-sub">Artykuły, filmy i słownictwo dopasowane do Twojego poziomu i zainteresowań.</p>
-    </div>
-    <div style="flex-shrink:0">
-      <canvas id="odkryj-globe" width="120" height="120" style="display:block;cursor:grab"></canvas>
-    </div>
+  <div class="page-head">
+    <div class="ph-eyebrow">Eksploracja</div>
+    <h3 class="ph-title">Odkryj świat</h3>
+    <p class="ph-sub">Artykuły, filmy i słownictwo dopasowane do Twojego poziomu i zainteresowań.</p>
   </div>
 
   <!-- Wyszukiwarka -->
@@ -3607,28 +3602,45 @@ async function initToFixPage(){
 <!-- ═══ AI NAUCZYCIEL (chat embedded) ═══ -->
 <div id="page-chat" class="page" style="display:none"><!-- stara strona ukryta, logika przeniesiona do teacher --></div>
 
-<div id="page-teacher" class="page" style="min-height:100vh;padding:88px 40px 64px 40px;background:var(--paper);overflow-x:hidden">
-<div style="width:100%">
-  <!-- Kafelki -->
-  <div style="max-width:960px;margin:0">
+<div id="page-teacher" class="page" style="min-height:100vh;padding:0;background:var(--paper);overflow-x:hidden">
+<div style="display:flex;gap:0;align-items:flex-start;width:100%">
+
+  <!-- LEFT SIDEBAR -->
+  <div id="teacher-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
+    <div style="padding:88px 0 64px 16px;min-width:200px">
+      <!-- Tryb -->
+      <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Tryb</div>
+      <div id="teacher-nav-chat" onclick="teacherShowTab('chat')" style="background:var(--white);border:.5px solid var(--orange);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;margin-right:16px;transition:.2s">
+        <div style="display:flex;align-items:center;gap:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg>
+          <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">AI Partner</div>
+        </div>
+        <div style="font-size:11px;color:var(--dim2);margin-top:3px">Swobodna rozmowa</div>
+      </div>
+      <div id="teacher-nav-teacher" onclick="teacherShowTab('teacher')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;margin-right:16px;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)'}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>
+          <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Nauczyciel PRO</div>
+        </div>
+        <div style="font-size:11px;color:var(--dim2);margin-top:3px">Ustrukturyzowane lekcje</div>
+      </div>
+
+      <!-- Historia rozmów -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:24px 16px 12px 4px">
+        <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2)">Historia rozmów</div>
+        <button onclick="teacherNewConversation()" style="background:var(--orange);border:none;color:#fff;width:24px;height:24px;border-radius:50%;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;flex-shrink:0" title="Nowa rozmowa">+</button>
+      </div>
+      <div id="teacher-history-list" style="display:flex;flex-direction:column;gap:6px;padding-right:16px"></div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="teacher-main" style="flex:1;min-width:0;padding:88px 40px 64px 40px">
 
   <div class="page-head">
     <div class="ph-eyebrow">Tutor AI</div>
-    <h2 class="ph-title">Nauczyciel AI <span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span></h2>
-    <p class="ph-sub">Wybierz tryb rozmowy z AI</p>
-  </div>
-
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">
-    <button onclick="teacherShowTab('chat')" id="teacher-btn-chat" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:16px;background:#fff;border:1.5px solid var(--orange);border-radius:14px;cursor:pointer;text-align:left;transition:all .2s">
-      <span style="display:inline-flex"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg></span>
-      <span style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">AI Partner</span>
-      <span style="font-size:12px;color:var(--dim2);line-height:1.4">Swobodna rozmowa — AI dostosowuje się do Twojego poziomu</span>
-    </button>
-    <button onclick="teacherShowTab('teacher')" id="teacher-btn-teacher" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:16px;background:#fff;border:1.5px solid var(--border);border-radius:14px;cursor:pointer;text-align:left;transition:all .2s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="if(document.getElementById('teacher-btn-teacher').style.borderWidth!=='2px')this.style.borderColor='var(--border)'">
-      <span style="display:inline-flex"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></span>
-      <span style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">Nauczyciel PRO</span>
-      <span style="font-size:12px;color:var(--dim2);line-height:1.4">Ustrukturyzowane lekcje z AI nauczycielem języka</span>
-    </button>
+    <h2 class="ph-title" id="teacher-main-title">Nauczyciel AI <span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span></h2>
+    <p class="ph-sub" id="teacher-main-sub">Swobodna rozmowa z AI dopasowana do Twojego poziomu</p>
   </div>
 
   <div id="teacher-panel-chat">
@@ -3699,7 +3711,6 @@ async function initToFixPage(){
 
     </div><!-- /chat-grid-layout -->
   </div><!-- /teacher-panel-chat -->
-  </div><!-- /padded wrapper -->
 
   <!-- ═══ LEX AI TEACHER — FULL WIDTH — KARTA PO KARCIE ═══ -->
   <div id="teacher-panel-teacher" style="display:none">
@@ -3914,7 +3925,8 @@ async function initToFixPage(){
 
   </div><!-- /teacher-panel-teacher -->
 
-</div><!-- /full-width -->
+</div><!-- /teacher-main -->
+</div><!-- /flex -->
 </div><!-- /page-teacher -->
 
 <!-- ═══ ANALIZA LYRICS ═══ -->
@@ -5876,6 +5888,14 @@ function chatReset(){
   showChatHints();
 }
 
+function chatRenderHistory(){
+  var msgs=document.getElementById('chat-messages');
+  if(msgs) msgs.innerHTML='';
+  (_chatHistory||[]).forEach(function(m){
+    appendChatMsg(m.role==='user'?'user':'ai', m.content);
+  });
+}
+
 // ── Renderowanie odpowiedzi AI z podświetleniem fiszek ──
 function _escFcRegex(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
 
@@ -6143,6 +6163,7 @@ async function chatSend(){
 
     _chatHistory.push({role:'assistant',content:reply});
     typing.remove();
+    if(typeof teacherSaveConversation==='function') teacherSaveConversation();
 
     appendChatMsg('ai',reply);
 
@@ -11512,17 +11533,85 @@ function teacherShowTab(tab){
   var panelT=document.getElementById('teacher-panel-teacher');
   if(panelC) panelC.style.display = tab==='chat'    ? '' : 'none';
   if(panelT) panelT.style.display = tab==='teacher' ? '' : 'none';
-  var btnC=document.getElementById('teacher-btn-chat');
-  var btnT=document.getElementById('teacher-btn-teacher');
-  if(btnC){ btnC.style.border = tab==='chat'    ? '2px solid var(--orange)' : '1.5px solid var(--border)'; }
-  if(btnT){ btnT.style.border = tab==='teacher' ? '2px solid var(--orange)' : '1.5px solid var(--border)'; }
+  // Nawigacja w sidebarze (wzorzec z Materiałów)
+  var navC=document.getElementById('teacher-nav-chat');
+  var navT=document.getElementById('teacher-nav-teacher');
+  if(navC){ if(tab==='chat'){ navC.dataset.active='1'; navC.style.borderColor='var(--orange)'; navC.style.background='var(--paper2)'; } else { delete navC.dataset.active; navC.style.borderColor='var(--border)'; navC.style.background='var(--white)'; } }
+  if(navT){ if(tab==='teacher'){ navT.dataset.active='1'; navT.style.borderColor='var(--orange)'; navT.style.background='var(--paper2)'; } else { delete navT.dataset.active; navT.style.borderColor='var(--border)'; navT.style.background='var(--white)'; } }
+  // Tytuł strony
+  var title=document.getElementById('teacher-main-title');
+  var sub=document.getElementById('teacher-main-sub');
+  var pro='<span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span>';
+  if(tab==='chat'){ if(title)title.innerHTML='AI Partner'; if(sub)sub.textContent='Swobodna rozmowa z AI dopasowana do Twojego poziomu'; }
+  else { if(title)title.innerHTML='Nauczyciel AI '+pro; if(sub)sub.textContent='Ustrukturyzowane lekcje z AI nauczycielem języka'; }
   if(tab==='chat' && typeof initChat==='function') initChat();
   if(tab==='teacher') lexInit();
+  if(typeof teacherRenderHistory==='function') teacherRenderHistory();
 }
 
 function teacherLoadChat(){
   // Chat UI is already embedded in teacher-panel-chat
   if(typeof initChat==='function') initChat();
+}
+
+// ── Historia rozmów (localStorage) ──────────────────────────
+function teacherGetHistory(){
+  try{ return JSON.parse(localStorage.getItem('teacher_conversations')||'[]'); }catch(e){ return []; }
+}
+function teacherSetHistory(list){
+  try{ localStorage.setItem('teacher_conversations', JSON.stringify(list.slice(0,50))); }catch(e){}
+}
+function teacherRenderHistory(){
+  var box=document.getElementById('teacher-history-list'); if(!box) return;
+  var list=teacherGetHistory();
+  if(!list.length){
+    box.innerHTML='<div style="font-size:11px;color:var(--dim2);padding:6px 8px;line-height:1.5">Brak rozmów. Kliknij + aby zacząć nową.</div>';
+    return;
+  }
+  box.innerHTML=list.map(function(c){
+    var active=(c.id===window._teacherActiveConv)?'border-color:var(--orange);background:var(--paper2)':'border-color:var(--border);background:var(--white)';
+    var date=new Date(c.updated||c.created).toLocaleDateString('pl-PL',{day:'numeric',month:'short'});
+    var icon=c.mode==='teacher'
+      ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.6"><path d="M22 10 12 5 2 10l10 5 10-5z"></path></svg>'
+      : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.6"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg>';
+    return '<div onclick="teacherLoadConversation(\''+c.id+'\')" style="border:.5px solid '+active+';border-radius:10px;padding:10px 12px;cursor:pointer;transition:.15s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="if(\''+c.id+'\'!==window._teacherActiveConv)this.style.borderColor=\'var(--border)\'">'
+      +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'+icon+'<div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(c.title||'Rozmowa')+'</div></div>'
+      +'<div style="font-size:11px;color:var(--dim2)">'+date+'</div></div>';
+  }).join('');
+}
+function teacherNewConversation(){
+  window._teacherActiveConv=null;
+  if(typeof _chatHistory!=='undefined') _chatHistory=[];
+  if(typeof chatReset==='function') chatReset();
+  teacherRenderHistory();
+}
+function teacherSaveConversation(){
+  if(typeof _chatHistory==='undefined' || !_chatHistory.length) return;
+  var firstUser=_chatHistory.find(function(m){return m.role==='user';});
+  if(!firstUser) return;
+  var title=firstUser.content.slice(0,40)+(firstUser.content.length>40?'…':'');
+  var list=teacherGetHistory();
+  var mode=(document.getElementById('teacher-panel-teacher')&&document.getElementById('teacher-panel-teacher').style.display!=='none')?'teacher':'chat';
+  if(!window._teacherActiveConv){ window._teacherActiveConv='conv_'+Date.now(); }
+  var existing=list.find(function(c){return c.id===window._teacherActiveConv;});
+  var data={id:window._teacherActiveConv,title:title,mode:mode,messages:_chatHistory.slice(),updated:Date.now(),created:existing?existing.created:Date.now()};
+  list=list.filter(function(c){return c.id!==window._teacherActiveConv;});
+  list.unshift(data);
+  teacherSetHistory(list);
+  teacherRenderHistory();
+}
+function teacherLoadConversation(id){
+  var list=teacherGetHistory();
+  var conv=list.find(function(c){return c.id===id;});
+  if(!conv) return;
+  window._teacherActiveConv=id;
+  teacherShowTab(conv.mode==='teacher'?'teacher':'chat');
+  if(conv.mode!=='teacher' && typeof _chatHistory!=='undefined'){
+    _chatHistory=conv.messages.slice();
+    if(typeof chatRenderHistory==='function') chatRenderHistory();
+    else if(typeof renderChatMessages==='function') renderChatMessages();
+  }
+  teacherRenderHistory();
 }
 
 </script>
