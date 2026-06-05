@@ -3682,6 +3682,8 @@ async function initToFixPage(){
 
       <!-- Sekcje PRO (Nauczyciel) -->
       <div id="teacher-sb-pro" style="display:none">
+        <!-- Kontynuuj ostatnią lekcję -->
+        <div id="lex-sb-resume" style="margin:18px 16px 4px 4px;padding-right:16px;display:none"></div>
         <!-- Luki -->
         <div style="margin:24px 16px 10px 4px;font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2)">Luki do nadrobienia</div>
         <div id="lex-sb-gaps" style="display:flex;flex-direction:column;gap:6px;padding-right:16px"></div>
@@ -8004,6 +8006,8 @@ function showTrybView(v){
   if(lobby)lobby.style.display=v==='lobby'?'block':'none';
   if(session)session.style.display=v==='session'?'block':'none';
   if(summary)summary.style.display=v==='summary'?'block':'none';
+  if(v==='summary' && typeof trybClearSnapshot==='function') trybClearSnapshot();
+  if(v==='lobby' && typeof trybRenderResume==='function') trybRenderResume();
 }
 
 async function loadTrybStats(){
@@ -8208,6 +8212,7 @@ function startTrybMode(mode){
 function loadTrybFlipCard(direction){
   var card = _trybCards[_trybIdx];
   if(!card){ showTrybSessionSummary(); return; }
+  if(typeof trybSaveSnapshot==='function') trybSaveSnapshot();
   _trybFlipRevealed = false;
 
   // Flip back to front (CSS transition handles smoothness)
@@ -13669,14 +13674,39 @@ function lexNextCardWithAnswer(answer, isCorrect){
 // ── Sidebar PRO: ładowanie danych ──
 var _lexNotebookIdx = 0;
 async function lexLoadSidebar(){
-  lexRenderSidebarGaps();
   try{
-    var sess=(await db.auth.getSession()).data.session; if(!sess) return;
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){ lexRenderSidebarGaps(); return; }
+    // Odśwież profil (luki) z bazy — sidebar musi pokazywać aktualny stan
+    try{ var {data:prof}=await db.from('lex_profiles').select('*').eq('user_id',sess.user.id).maybeSingle(); if(prof) _lexProfile=prof; }catch(e){}
+    lexRenderSidebarGaps();
+    lexRenderSidebarResume();
     var {data:lessons}=await db.from('lex_lessons').select('id,title,board,vocabulary,gaps_found,ended_at,created_at,level').eq('user_id',sess.user.id).eq('completed',true).order('ended_at',{ascending:false}).limit(30);
     _lexLessonsCache=lessons||[];
     _lexNotebookIdx=0;
     lexRenderNotebook();
     lexRenderLessonHistory();
+  }catch(e){ lexRenderSidebarGaps(); }
+}
+
+async function lexRenderSidebarResume(){
+  var box=document.getElementById('lex-sb-resume'); if(!box) return;
+  box.style.display='none';
+  try{
+    var sess=(await db.auth.getSession()).data.session; if(!sess) return;
+    var {data:rows}=await db.from('lex_lessons').select('id,level,messages,created_at,title')
+      .eq('user_id',sess.user.id).eq('completed',false)
+      .order('created_at',{ascending:false}).limit(5);
+    if(!rows||!rows.length) return;
+    var r=rows.find(function(x){return x.messages && x.messages.length>=2;});
+    if(!r) return;
+    _lexResumeData=r;
+    var when=r.created_at?new Date(r.created_at).toLocaleDateString('pl-PL',{day:'numeric',month:'short'}):'';
+    box.style.display='block';
+    box.innerHTML='<button onclick="lexResumeLesson()" style="width:100%;text-align:left;background:var(--paper2);border:.5px solid var(--orange);border-radius:12px;padding:11px 13px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:10px">'
+      +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>'
+      +'<span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:500;color:var(--navy)">Kontynuuj ostatnią lekcję</span>'
+      +'<span style="display:block;font-size:11px;color:var(--dim2)">'+(r.messages.length)+' wiadomości · '+(r.level||'?')+' · '+when+'</span></span></button>';
   }catch(e){}
 }
 
@@ -14230,6 +14260,59 @@ async function lexInit(){
 })();
 </script>
 
+
+<!-- ═══ EYELINGO — Strefa Nauki: wznów przerwaną sesję ═══ -->
+<script>
+(function(){
+  if(window.trybSaveSnapshot) return;
+  var KEY='strefa_last_session';
+  function escSnap(s){ return String(s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  window.trybSaveSnapshot=function(){
+    try{
+      var sessEl=document.getElementById('tryb-session');
+      if(!sessEl || getComputedStyle(sessEl).display==='none') return;
+      if(!Array.isArray(window._trybCards) || !window._trybCards.length) return;
+      var idx=window._trybIdx||0;
+      if(idx<=0 || idx>=window._trybCards.length) return;
+      var remaining=window._trybCards.slice(idx).map(function(c){return {word:c.word||'',translation:c.translation||''};}).filter(function(c){return c.word&&c.translation;});
+      if(!remaining.length) return;
+      localStorage.setItem(KEY, JSON.stringify({remaining:remaining, name:window._trybExternalName||'Sesja nauki', total:window._trybCards.length, done:idx, ts:Date.now()}));
+    }catch(e){}
+  };
+  window.trybClearSnapshot=function(){ try{ localStorage.removeItem(KEY); }catch(e){} };
+  function getSnap(){
+    try{ var s=localStorage.getItem(KEY); if(!s) return null; var d=JSON.parse(s);
+      if(!d||!d.remaining||!d.remaining.length) return null;
+      if(Date.now()-(d.ts||0) > 7*24*3600*1000){ localStorage.removeItem(KEY); return null; }
+      return d;
+    }catch(e){ return null; }
+  }
+  window.trybResumeSession=function(){
+    var d=getSnap(); if(!d) return;
+    window._trybExternalCards=d.remaining;
+    window._trybExternalName=d.name;
+    trybClearSnapshot();
+    if(typeof showPage==='function') showPage('tryb');
+    setTimeout(function(){ if(typeof startSession==='function') startSession('set_external'); }, 150);
+  };
+  window.trybRenderResume=function(){
+    var lobby=document.getElementById('tryb-lobby'); if(!lobby) return;
+    var old=document.getElementById('tryb-resume-card'); if(old) old.remove();
+    var d=getSnap(); if(!d) return;
+    var card=document.createElement('div');
+    card.id='tryb-resume-card';
+    card.style.cssText='background:var(--paper2);border:.5px solid var(--orange);border-radius:14px;padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:14px';
+    card.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;color:var(--navy)">Wznów ostatnią sesję</div>'
+      +'<div style="font-size:12px;color:var(--dim2)">'+escSnap(d.name)+' · zostało '+d.remaining.length+' z '+(d.total||d.remaining.length)+' kart</div></div>'
+      +'<button onclick="trybResumeSession()" style="background:var(--orange);color:#fff;border:none;border-radius:100px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap">Wznów →</button>';
+    lobby.insertBefore(card, lobby.firstChild);
+  };
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') window.trybSaveSnapshot(); });
+  window.addEventListener('pagehide', function(){ window.trybSaveSnapshot(); });
+  window.addEventListener('beforeunload', function(){ window.trybSaveSnapshot(); });
+})();
+</script>
 
 <!-- ═══ EYELINGO — Tworzenie zestawu fiszek z AI (3 tryby + podgląd) ═══ -->
 <style id="el-aiset">
