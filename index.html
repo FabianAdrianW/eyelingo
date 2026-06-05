@@ -2228,6 +2228,7 @@ function showPage(name){
     loadCollections();
     switchMatTab('mine');
   }
+  if(name==='messages'){ if(typeof loadTcpConvList==='function') loadTcpConvList(); if(typeof tcpRenderMyIdentity==='function') tcpRenderMyIdentity(); }
   if(name==='strefa') strefaSidebarMode('tryb');
   if(name==='ranking'){
     if(typeof loadRanking==='function') loadRanking();
@@ -7016,7 +7017,7 @@ function filterTutors(){
 <style>
 /* ── Chat panel — 2-kolumnowy z historią ── */
 #tutor-chat-panel{
-  display:none;flex-direction:column;
+  display:none;flex-direction:column;width:100%;
 }
 #tutor-chat-panel.open{display:flex}
 
@@ -7159,42 +7160,52 @@ function filterTutors(){
 </style>
 
 <!-- ── Chat Panel HTML (przepisany) ── -->
-<div id="tutor-chat-panel">
-  <!-- Header -->
-  <div class="tcp-header">
-    <div id="tcp-avatar" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">💬</div>
-    <div style="flex:1;min-width:0">
-      <div id="tcp-name" style="font-size:14px;font-weight:500;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Wiadomości</div>
-      <div id="tcp-status" style="font-size:11px;color:rgba(255,255,255,.5)">Twoje rozmowy z lektorami</div>
+<div id="page-messages" class="page page-content" style="min-height:100vh;background:var(--paper)">
+  <div class="page-head page-head-row">
+    <div>
+      <div class="ph-eyebrow">Społeczność</div>
+      <h2 class="ph-title">Wiadomości</h2>
+      <p class="ph-sub" id="messages-me-sub">Twoje rozmowy z lektorami</p>
     </div>
-    <button onclick="closeTutorChat()" style="background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:22px;padding:4px;line-height:1;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;transition:.15s" onmouseover="this.style.background='rgba(255,255,255,.1)'" onmouseout="this.style.background='none'">×</button>
   </div>
 
-  <!-- 2-kolumnowy body -->
-  <div class="tcp-body">
-    <!-- Lewa: lista konwersacji -->
-    <div class="tcp-convs">
-      <div class="tcp-convs-title">Rozmowy</div>
-      <div class="tcp-convs-list" id="tcp-conv-list">
-        <div class="tcp-empty" style="padding:16px">
-          <span style="font-size:24px">💬</span>
-          <span style="font-size:12px">Brak rozmów</span>
-        </div>
-      </div>
+  <div id="tutor-chat-panel" class="open">
+    <!-- Header (ukryty — page-head) -->
+    <div class="tcp-header">
+      <div id="tcp-avatar"></div>
+      <div style="flex:1;min-width:0"><div id="tcp-name"></div><div id="tcp-status"></div></div>
     </div>
-    <!-- Prawa: aktywny chat -->
-    <div class="tcp-chat">
-      <div id="tcp-messages" class="tcp-messages">
-        <div class="tcp-empty">
-          <span style="font-size:36px">👋</span>
-          <span>Wybierz rozmowę lub kliknij<br>ikonę 💬 przy lektorze</span>
+
+    <!-- 2-kolumnowy body -->
+    <div class="tcp-body">
+      <!-- Lewa: lista konwersacji -->
+      <div class="tcp-convs">
+        <div class="tcp-convs-title">Rozmowy</div>
+        <div class="tcp-convs-list" id="tcp-conv-list">
+          <div class="tcp-empty" style="padding:16px;color:var(--dim2);font-size:12px">Brak rozmów</div>
         </div>
       </div>
-      <div class="tcp-input-row" id="tcp-input-row" style="display:none">
-        <input id="tcp-input" class="tcp-input" placeholder="Napisz wiadomość..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg2();}">
-        <button class="tcp-send" onclick="sendChatMsg2()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-        </button>
+      <!-- Prawa: aktywny chat -->
+      <div class="tcp-chat">
+        <div id="tcp-thread-head" class="tcp-thread-head" style="display:none">
+          <div id="tcp-thread-avatar" style="width:38px;height:38px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:500;flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div id="tcp-thread-name" style="font-size:14px;font-weight:500;color:var(--navy);display:flex;align-items:center;gap:6px"></div>
+            <div id="tcp-thread-status" style="font-size:11px;color:var(--dim2)"></div>
+          </div>
+        </div>
+        <div id="tcp-messages" class="tcp-messages">
+          <div class="tcp-empty" style="margin:auto;text-align:center;color:var(--dim2)">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--border2)" stroke-width="1.4" style="margin-bottom:10px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            <div style="font-size:13px">Wybierz rozmowę z listy</div>
+          </div>
+        </div>
+        <div class="tcp-input-row" id="tcp-input-row" style="display:none;padding:14px 18px;border-top:.5px solid var(--border);gap:8px;align-items:center">
+          <input id="tcp-input" class="tcp-input" placeholder="Napisz wiadomość..." style="flex:1;padding:11px 14px;border:.5px solid var(--border2);border-radius:100px;font-size:14px;font-family:DM Sans,sans-serif;outline:none;background:#fff" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg2();}">
+          <button class="tcp-send" onclick="sendChatMsg2()" style="width:42px;height:42px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -7242,10 +7253,19 @@ async function _tcpGetMyId(){
   return _tcp.myId;
 }
 
+async function tcpRenderMyIdentity(){
+  var sub=document.getElementById('messages-me-sub'); if(!sub) return;
+  try{
+    var myId=await _tcpGetMyId(); if(!myId){ sub.textContent='Twoje rozmowy z lektorami'; return; }
+    var {data:p}=await db.from('profiles').select('username').eq('user_id',myId).maybeSingle();
+    var uname=(p&&p.username&&p.username.trim())||'';
+    sub.textContent = uname ? ('Piszesz jako: '+uname) : 'Twoje rozmowy z lektorami';
+  }catch(e){ sub.textContent='Twoje rozmowy z lektorami'; }
+}
+
 // ── Otwórz chat ──
 async function openTutorChat(tutorId, tutorName){
-  var panel=document.getElementById('tutor-chat-panel');
-  panel.classList.add('open');
+  showPage('messages');
   _tcp.open=true;
 
   // Zapisz kontakt
@@ -7270,19 +7290,14 @@ async function openTutorChat(tutorId, tutorName){
 }
 
 function closeTutorChat(){
-  document.getElementById('tutor-chat-panel').classList.remove('open');
   _tcp.open=false;
   if(_tcp.realtimeSub){try{db.removeChannel(_tcp.realtimeSub);}catch(e){}_tcp.realtimeSub=null;}
 }
 
 function toggleChatPanel(){
-  if(_tcp.open){ closeTutorChat(); }
-  else {
-    var panel=document.getElementById('tutor-chat-panel');
-    panel.classList.add('open');
-    _tcp.open=true;
-    loadTcpConvList();
-  }
+  showPage('messages');
+  _tcp.open=true;
+  loadTcpConvList();
 }
 
 // ── Lista konwersacji (lewa kolumna) ──
@@ -7297,7 +7312,7 @@ async function loadTcpConvList(){
       .order('created_at',{ascending:false})
       .limit(200);
     if(!msgs||!msgs.length){
-      listEl.innerHTML='<div class="tcp-empty" style="padding:16px;font-size:12px"><span style="font-size:22px">💬</span><span>Brak rozmów.<br>Kliknij ikonę przy lektorze.</span></div>';
+      listEl.innerHTML='<div class="tcp-empty" style="padding:16px;font-size:12px;color:var(--dim2);line-height:1.5">Brak rozmów. Kliknij ikonę wiadomości przy lektorze, aby zacząć.</div>';
       return;
     }
     // Grupuj po rozmówcy
@@ -7333,10 +7348,12 @@ async function loadTcpConvList(){
       });
     }
     listEl.innerHTML='';
+    _tcp.meta = _tcp.meta || {};
     otherIds.forEach(function(otherId){
       var conv=convMap[otherId];
       var name=nameMap[otherId]||'Nieznany użytkownik';
       var isLektor=roleMap[otherId]||false;
+      _tcp.meta[otherId]={name:name,isLektor:isLektor,langs:(roleMap[otherId+'_langs']||[])};
       var preview=(conv.lastMsg.content||'').slice(0,32)+(conv.lastMsg.content&&conv.lastMsg.content.length>32?'…':'');
       var item=document.createElement('div');
       item.className='tcp-conv-item'+(otherId===_tcp.activeTutorId?' active':'');
@@ -7367,10 +7384,23 @@ async function activateTcpConv(tutorId, tutorName){
   _tcp.activeTutorId=tutorId;
   _tcp.activeTutorName=tutorName||'Lektor';
 
-  // Aktualizuj header
-  document.getElementById('tcp-name').textContent=_tcp.activeTutorName;
-  document.getElementById('tcp-status').textContent='Rozmowa z lektorem';
-  document.getElementById('tcp-avatar').textContent=(_tcp.activeTutorName[0]||'👤').toUpperCase();
+  // Nagłówek wątku z tożsamością
+  var meta=(_tcp.meta&&_tcp.meta[tutorId])||{name:_tcp.activeTutorName,isLektor:false,langs:[]};
+  var headEl=document.getElementById('tcp-thread-head');
+  var nameEl=document.getElementById('tcp-thread-name');
+  var statusEl=document.getElementById('tcp-thread-status');
+  var avEl=document.getElementById('tcp-thread-avatar');
+  var langNames={en:'angielskiego',es:'hiszpańskiego',nl:'holenderskiego',jp:'japońskiego',de:'niemieckiego',fr:'francuskiego'};
+  if(headEl) headEl.style.display='flex';
+  if(meta.isLektor){
+    if(avEl){ avEl.style.background='var(--orange)'; avEl.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>'; }
+    if(nameEl) nameEl.innerHTML=escH(meta.name)+' <span style="font-size:9px;background:var(--orange);color:#fff;padding:1px 6px;border-radius:4px;font-weight:500">LEKTOR</span>';
+    if(statusEl) statusEl.textContent='Lektor'+(meta.langs.length?' '+(langNames[meta.langs[0]]||''):'');
+  } else {
+    if(avEl){ avEl.style.background='var(--navy)'; avEl.textContent=(meta.name[0]||'?').toUpperCase(); }
+    if(nameEl) nameEl.textContent=meta.name;
+    if(statusEl) statusEl.textContent='Uczeń';
+  }
 
   // Podświetl aktywną konwersację
   document.querySelectorAll('.tcp-conv-item').forEach(function(el){
