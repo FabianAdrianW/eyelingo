@@ -1255,6 +1255,7 @@ window.switchMatTab = function(tab){
   if(voices) voices.style.display='none';
   if(colView) colView.style.display='none';
   if(createBtn) createBtn.style.display='none';
+  var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='none';
   var srcf=document.getElementById('mat-source-filter');
   if(srcf) srcf.style.display='none';
   var search=document.getElementById('mat-search');
@@ -1264,6 +1265,7 @@ window.switchMatTab = function(tab){
     if(sub) sub.textContent='Twoje fiszki i zestawy';
     if(grid){ grid.style.display='grid'; }
     if(createBtn&&window._matMyUid) createBtn.style.display='block';
+    var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display=(window._matMyUid?'inline-flex':'none');
     if(srcf) srcf.style.display='flex';
     if(typeof loadMySets==='function') loadMySets();
     else setTimeout(function(){ if(typeof loadMySets==='function') loadMySets(); }, 300);
@@ -2644,6 +2646,7 @@ window.loadMySets = async function loadMySets(){
     if(grid){ matRenderMine(); }
     var createBtn=document.getElementById('mat-create-btn');
     if(createBtn) createBtn.style.display='block';
+    var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='inline-flex';
   }catch(e){
     if(grid) grid.innerHTML='<div class="mat-empty">Błąd: '+(e.message||e)+'</div>';
   }
@@ -2769,6 +2772,7 @@ function setCard(s){
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <input id="mat-search" class="fi" placeholder="Szukaj..." style="width:200px;font-size:13px" oninput="filterMat(this.value)">
+          <button id="mat-create-ai-btn" class="btn btn-navy" onclick="openCreateSetAI()" style="display:none;white-space:nowrap;align-items:center;gap:6px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"></path></svg>Stwórz z AI</button>
           <button id="mat-create-btn" class="btn btn-orange" onclick="openCreateSet()" style="display:none;white-space:nowrap">+ Nowy zestaw</button>
         </div>
       </div>
@@ -3560,9 +3564,9 @@ async function initToFixPage(){
           <div style="background:var(--paper2);border-radius:12px;border:1px solid var(--border);overflow:hidden">
             <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Tłumaczenie</div>
             <div id="dc-read-sidebar" style="padding:14px;min-height:80px">
-              <div style="font-size:13px;color:var(--dim2);line-height:1.6">
-                Najedź na słowo, aby zobaczyć tłumaczenie<br>
-                Kliknij zdanie, aby przetłumaczyć całe
+              <div style="font-size:13px;color:var(--dim2);line-height:1.7">
+                <strong style="color:var(--navy);font-weight:500">Kliknij słowo</strong> — tłumaczenie i wymowa.<br>
+                W okienku przełączysz na <strong style="color:var(--navy);font-weight:500">całe zdanie</strong>.
               </div>
             </div>
           </div>
@@ -4576,7 +4580,7 @@ async function loadDailyRead(){
     document.getElementById('dc-read-title').textContent=title;
     var wc=Math.ceil((cleanBody.split(' ').length||1)/200);
     document.getElementById('dc-read-time').textContent=Math.max(1,wc)+' min';
-    document.getElementById('dc-read-body').innerHTML=buildArticleHTML(cleanBody, dLang);
+    window.tlPrepare(document.getElementById('dc-read-body'), cleanBody, dLang);
     addArticleAudioBtn(cleanBody, dLang);
   }
 
@@ -7042,7 +7046,7 @@ function filterTutors(){
 /* Header (ukryty — używamy page-head) */
 .tcp-header{ display:none; }
 /* 2-kolumnowy layout pełnostronicowy */
-.tcp-body{display:flex;flex:1;overflow:hidden;border:.5px solid var(--border);border-radius:14px;background:#fff;min-height:560px}
+.tcp-body{display:flex;flex:1;overflow:hidden;border:.5px solid var(--border);border-radius:14px;background:#fff;min-height:560px;max-width:1040px;margin-inline:auto;width:100%}
 
 /* Lista konwersacji — lewa kolumna */
 .tcp-convs{
@@ -7084,11 +7088,20 @@ function filterTutors(){
 /* Aktywny chat — prawa kolumna */
 .tcp-chat{display:flex;flex-direction:column;flex:1;overflow:hidden}
 .tcp-thread-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:.5px solid var(--border);flex-shrink:0}
-.tcp-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:10px;background:var(--paper)}
-.tcp-bubble{max-width:72%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;word-break:break-word}
-.tcp-bubble.mine{background:var(--navy);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
-.tcp-bubble.theirs{background:#fff;color:var(--navy);align-self:flex-start;border-bottom-left-radius:4px;border:.5px solid var(--border)}
-.tcp-time{font-size:10px;color:var(--dim2);padding:0 4px}
+.tcp-messages{flex:1;overflow-y:auto;padding:18px 18px 8px;display:flex;flex-direction:column;gap:2px;background:var(--paper)}
+.tcp-thread-inner-cap{max-width:640px;margin-inline:auto;width:100%;display:flex;flex-direction:column;gap:2px}
+.tcp-bubble{max-width:78%;padding:9px 13px;border-radius:16px;font-size:14px;line-height:1.45;word-break:break-word}
+.tcp-bubble.mine{background:var(--navy);color:#fff;align-self:flex-end}
+.tcp-bubble.theirs{background:#fff;color:var(--navy);align-self:flex-start;border:.5px solid var(--border)}
+.tcp-bubble.grp-first{margin-top:8px}
+.tcp-bubble.mine.grp-first{border-top-right-radius:16px}
+.tcp-bubble.mine:not(.grp-last){border-bottom-right-radius:5px}
+.tcp-bubble.mine:not(.grp-first){border-top-right-radius:5px}
+.tcp-bubble.theirs:not(.grp-last){border-bottom-left-radius:5px}
+.tcp-bubble.theirs:not(.grp-first){border-top-left-radius:5px}
+.tcp-time{font-size:10px;color:var(--dim2);padding:0 6px;margin-bottom:6px}
+.tcp-time.mine{align-self:flex-end}
+.tcp-time.theirs{align-self:flex-start}
 .tcp-input-row{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;background:#fff}
 .tcp-input{flex:1;border:1.5px solid var(--border);border-radius:100px;padding:9px 16px;font-size:13px;font-family:DM Sans,sans-serif;outline:none;transition:.2s}
 .tcp-input:focus{border-color:var(--orange)}
@@ -7462,19 +7475,42 @@ async function loadTcpMessages(tutorId){
 function renderTcpMessages(msgs,myId){
   var el=document.getElementById('tcp-messages');
   if(!msgs.length){
-    el.innerHTML='<div class="tcp-empty"><span style="font-size:32px">👋</span><span>Napisz pierwszą wiadomość!</span></div>';
+    el.innerHTML='<div class="tcp-empty" style="margin:auto;text-align:center;color:var(--dim2)"><div style="font-size:13px">Napisz pierwszą wiadomość</div></div>';
     return;
   }
   el.innerHTML='';
-  msgs.forEach(function(m){
+  msgs.forEach(function(m,idx){
     var mine=m.sender_id===myId;
+    var prev=msgs[idx-1], next=msgs[idx+1];
+    var firstOfGroup=!prev||prev.sender_id!==m.sender_id;
+    var lastOfGroup=!next||next.sender_id!==m.sender_id;
     var time=new Date(m.created_at).toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
-    var wrap=document.createElement('div');
-    wrap.style.cssText='display:flex;flex-direction:column;align-items:'+(mine?'flex-end':'flex-start')+';gap:2px';
-    wrap.innerHTML='<div class="tcp-bubble '+(mine?'mine':'theirs')+'">'+escH(m.content||'')+'</div>'
-      +'<span class="tcp-time">'+time+'</span>';
-    el.appendChild(wrap);
+    var bub=document.createElement('div');
+    bub.className='tcp-bubble '+(mine?'mine':'theirs')+(firstOfGroup?' grp-first':'')+(lastOfGroup?' grp-last':'');
+    bub.title=time;
+    bub.innerHTML=escH(m.content||'');
+    el.appendChild(bub);
+    if(lastOfGroup){
+      var t=document.createElement('span');
+      t.className='tcp-time '+(mine?'mine':'theirs');
+      t.textContent=time;
+      el.appendChild(t);
+    }
   });
+  el.scrollTop=el.scrollHeight;
+}
+
+// Dołącz pojedynczy dymek (wysyłka / realtime) — własna grupa
+function tcpAppendBubble(content, mine){
+  var el=document.getElementById('tcp-messages'); if(!el) return;
+  var empty=el.querySelector('.tcp-empty'); if(empty)empty.remove();
+  var time=new Date().toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
+  var bub=document.createElement('div');
+  bub.className='tcp-bubble '+(mine?'mine':'theirs')+' grp-first grp-last';
+  bub.title=time; bub.innerHTML=escH(content||'');
+  el.appendChild(bub);
+  var t=document.createElement('span'); t.className='tcp-time '+(mine?'mine':'theirs'); t.textContent=time;
+  el.appendChild(t);
   el.scrollTop=el.scrollHeight;
 }
 
@@ -7488,19 +7524,7 @@ async function sendChatMsg2(){
   input.value='';
   try{
     await db.from('tutor_messages').insert({sender_id:myId,receiver_id:_tcp.activeTutorId,content:content});
-    // Dodaj bąbelek lokalnie
-    var el=document.getElementById('tcp-messages');
-    var time=new Date().toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
-    var wrap=document.createElement('div');
-    wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-end;gap:2px';
-    wrap.innerHTML='<div class="tcp-bubble mine">'+escH(content)+'</div>'
-      +'<span class="tcp-time">'+time+'</span>';
-    // Usuń empty state jeśli istnieje
-    var empty=el.querySelector('.tcp-empty');
-    if(empty)empty.remove();
-    el.appendChild(wrap);
-    el.scrollTop=el.scrollHeight;
-    // Odśwież listę konwersacji
+    tcpAppendBubble(content, true);
     setTimeout(loadTcpConvList,300);
   }catch(e){showToast('Błąd wysyłania','error');}
 }
@@ -7516,13 +7540,7 @@ function subscribeTcpRealtime(tutorId){
         if(m.sender_id!==tutorId)return;
         var el=document.getElementById('tcp-messages');
         if(!el)return;
-        var time=new Date(m.created_at).toLocaleTimeString('pl',{hour:'2-digit',minute:'2-digit'});
-        var wrap=document.createElement('div');
-        wrap.style.cssText='display:flex;flex-direction:column;align-items:flex-start;gap:2px';
-        wrap.innerHTML='<div class="tcp-bubble theirs">'+escH(m.content||'')+'</div>'
-          +'<span class="tcp-time">'+time+'</span>';
-        el.appendChild(wrap);
-        el.scrollTop=el.scrollHeight;
+        tcpAppendBubble(m.content||'', false);
         updateChatBadge();
         loadTcpConvList();
       })
@@ -9009,6 +9027,7 @@ function openCollectionView(colIdx){
   if(sub) sub.textContent = (col.sets&&col.sets.length||0) + ' zestawów';
   if(grid) grid.style.display = 'none';
   if(createBtn) createBtn.style.display = 'none';
+  var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='none';
   if(colView) colView.style.display = 'block';
   if(!colSets) return;
 
@@ -12461,7 +12480,7 @@ function openOdkryjArticle(art){
   if(!modal||!content)return;
   content.innerHTML='<div style="padding:28px">'
     +'<h2 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:20px">'+art.title+'</h2>'
-    +'<div class="article-reader" id="odkryj-article-body">'+buildOdkryjArticleHTML(art.content,_odkryjLang)+'</div>'
+    +'<div class="article-reader tl" id="odkryj-article-body" data-tl-lang="'+_odkryjLang+'">'+window.tlBuildHTML(art.content,_odkryjLang)+'</div>'
     +'<div id="odkryj-sent-analysis"></div>'
     +'<div id="odkryj-audio-wrap"></div>'
     +'</div>';
@@ -14212,6 +14231,123 @@ async function lexInit(){
 </script>
 
 
+<!-- ═══ EYELINGO — Tworzenie zestawu fiszek z AI (3 tryby + podgląd) ═══ -->
+<style id="el-aiset">
+.ai-lab{font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px}
+.ai-mode-tab{flex:1;padding:9px 8px;border-radius:10px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif;border:1px solid var(--border2);background:transparent;color:var(--dim2);transition:.15s}
+</style>
+<script>
+(function(){
+  if(window.openCreateSetAI) return;
+  function val(id){ var e=document.getElementById(id); return e?(e.value||''):''; }
+  function tabCss(on){ return on?'flex:1;padding:9px 8px;border-radius:10px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif;border:1px solid var(--navy);background:var(--navy);color:#fff;font-weight:500':'flex:1;padding:9px 8px;border-radius:10px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif;border:1px solid var(--border2);background:transparent;color:var(--dim2)'; }
+
+  window._aiSetMode='topic';
+
+  window.openCreateSetAI=function(){
+    var modal=document.getElementById('mat-modal');
+    var title=document.getElementById('mat-modal-title');
+    var body=document.getElementById('mat-modal-body');
+    if(!modal||!body) return;
+    if(title) title.textContent='Stwórz zestaw z AI';
+    var langOpts=[['en','Angielski'],['es','Hiszpański'],['de','Niemiecki'],['fr','Francuski'],['nl','Holenderski'],['jp','Japoński']].map(function(o){return '<option value="'+o[0]+'">'+o[1]+'</option>';}).join('');
+    body.innerHTML=''
+     +'<div style="display:flex;gap:6px;margin-bottom:16px">'
+       +'<button type="button" class="ai-mode-tab" data-m="topic" onclick="_aiSetModeUI(\'topic\')">Z tematu</button>'
+       +'<button type="button" class="ai-mode-tab" data-m="paste" onclick="_aiSetModeUI(\'paste\')">Wklej słowa</button>'
+       +'<button type="button" class="ai-mode-tab" data-m="text" onclick="_aiSetModeUI(\'text\')">Z tekstu</button>'
+     +'</div>'
+     +'<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
+       +'<div style="flex:1;min-width:130px"><label class="ai-lab">Język</label><select id="ai-set-lang" class="fi" style="width:100%">'+langOpts+'</select></div>'
+       +'<div id="ai-level-wrap" style="flex:1;min-width:110px"><label class="ai-lab">Poziom</label><select id="ai-set-level" class="fi" style="width:100%"><option>A1</option><option>A2</option><option selected>B1</option><option>B2</option><option>C1</option></select></div>'
+       +'<div id="ai-count-wrap" style="width:110px"><label class="ai-lab">Liczba słów</label><input id="ai-set-count" class="fi" type="number" min="3" max="40" value="15" style="width:100%;box-sizing:border-box"></div>'
+     +'</div>'
+     +'<div id="ai-mode-topic"><label class="ai-lab">Temat</label><input id="ai-set-topic" class="fi" placeholder="np. słownictwo w restauracji, rozmowa o pracę" style="width:100%;box-sizing:border-box"></div>'
+     +'<div id="ai-mode-paste" style="display:none"><label class="ai-lab">Słowa (po polsku lub w języku docelowym, jedno na linię)</label><textarea id="ai-set-paste" class="fi" rows="6" placeholder="kot&#10;pies&#10;dzień dobry" style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>'
+     +'<div id="ai-mode-text" style="display:none"><label class="ai-lab">Tekst — AI wybierze najważniejsze słowa</label><textarea id="ai-set-text" class="fi" rows="6" placeholder="Wklej fragment tekstu lub artykułu..." style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>'
+     +'<div id="ai-gen-msg" style="font-size:12px;color:var(--dim2);min-height:16px;margin-top:10px"></div>'
+     +'<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">'
+       +'<button onclick="closeMatModal()" style="padding:10px 20px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif">Anuluj</button>'
+       +'<button id="ai-gen-btn" class="btn btn-navy" onclick="aiGenerateSetPreview()">Generuj zestaw</button>'
+     +'</div>';
+    modal.style.display='flex';
+    window._aiSetModeUI('topic');
+  };
+
+  window._aiSetModeUI=function(m){
+    window._aiSetMode=m;
+    ['topic','paste','text'].forEach(function(x){ var el=document.getElementById('ai-mode-'+x); if(el) el.style.display=(x===m?'block':'none'); });
+    document.querySelectorAll('.ai-mode-tab').forEach(function(t){ t.style.cssText=tabCss(t.dataset.m===m); });
+    var lvl=document.getElementById('ai-level-wrap'); if(lvl) lvl.style.display=(m==='topic')?'block':'none';
+    var cnt=document.getElementById('ai-count-wrap'); if(cnt) cnt.style.display=(m==='paste')?'none':'block';
+  };
+
+  window.aiGenerateSetPreview=async function(){
+    var lang=val('ai-set-lang'), mode=window._aiSetMode;
+    var count=Math.max(3,Math.min(40,parseInt(val('ai-set-count')||'15',10)||15));
+    var msg=document.getElementById('ai-gen-msg'), btn=document.getElementById('ai-gen-btn');
+    var langName={en:'English',es:'Spanish',de:'German',fr:'French',nl:'Dutch',jp:'Japanese'}[lang]||'English';
+    var prompt='', defaultName='';
+    if(mode==='topic'){
+      var topic=val('ai-set-topic').trim(); if(!topic){msg.textContent='Podaj temat.';return;}
+      var level=val('ai-set-level');
+      prompt='Wygeneruj dokładnie '+count+' przydatnych słów lub krótkich wyrażeń w języku '+langName+' na poziomie '+level+' na temat: "'+topic+'".';
+      defaultName=topic.charAt(0).toUpperCase()+topic.slice(1,40);
+    } else if(mode==='paste'){
+      var raw=val('ai-set-paste').trim(); if(!raw){msg.textContent='Wklej słowa.';return;}
+      prompt='Użytkownik podał listę słów (mogą być po polsku lub po '+langName+'):\n'+raw+'\nDla każdego utwórz parę: "word" w języku '+langName+', "translation" po polsku. Jeśli słowo jest po polsku, przetłumacz je na '+langName+' (jako "word"), a "translation" to polski oryginał.';
+      defaultName=langName+' — moje słowa';
+    } else {
+      var text=val('ai-set-text').trim(); if(!text){msg.textContent='Wklej tekst.';return;}
+      prompt='Z poniższego tekstu wybierz '+count+' najważniejszych lub najtrudniejszych słów/wyrażeń w języku '+langName+' i podaj ich polskie tłumaczenia.\nTekst:\n'+text.slice(0,2000);
+      defaultName=langName+' — z tekstu';
+    }
+    prompt+='\n\nOdpowiedz WYŁĄCZNIE tablicą JSON, bez backticków i komentarzy, w formacie: [{"word":"...","translation":"..."}]';
+    btn.disabled=true; var oldT=btn.textContent; btn.textContent='Generuję…'; msg.textContent='AI tworzy fiszki…';
+    try{
+      var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:1600})});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      var d=await res.json();
+      var rawTxt=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
+      var a=rawTxt.indexOf('['), b=rawTxt.lastIndexOf(']'), cards=[];
+      if(a>=0&&b>a){ try{ var arr=JSON.parse(rawTxt.slice(a,b+1)); cards=arr.map(function(c){return {word:String(c.word||c.term||'').trim(), translation:String(c.translation||c.tr||c.pl||'').trim()};}).filter(function(c){return c.word&&c.translation;}); }catch(e){} }
+      if(!cards.length){ msg.textContent='Nie udało się wygenerować. Spróbuj ponownie.'; btn.disabled=false; btn.textContent=oldT; return; }
+      _aiRenderSetEditor(defaultName, cards);
+    }catch(e){ msg.textContent='Błąd generowania: '+(e.message||e); btn.disabled=false; btn.textContent=oldT; }
+  };
+
+  window._aiRenderSetEditor=function(name, cards){
+    var body=document.getElementById('mat-modal-body'), title=document.getElementById('mat-modal-title');
+    if(!body) return;
+    if(title) title.textContent='Podgląd zestawu — '+cards.length+' fiszek';
+    body.innerHTML='';
+    var d=document.createElement('div');
+    d.innerHTML='<div style="font-size:12px;color:var(--dim2);margin-bottom:12px">Sprawdź i popraw fiszki, a potem zapisz.</div>'
+      +'<div style="margin-bottom:14px"><label class="ai-lab">Nazwa zestawu</label><input id="new-set-name" class="fi" style="width:100%;box-sizing:border-box"></div>';
+    var hdr=document.createElement('div'); hdr.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:8px;margin-bottom:6px';
+    hdr.innerHTML='<div class="ai-lab" style="margin:0">Słowo</div><div class="ai-lab" style="margin:0">Tłumaczenie</div><div></div>';
+    d.appendChild(hdr);
+    var rowsDiv=document.createElement('div'); rowsDiv.id='new-set-rows'; rowsDiv.style.cssText='display:flex;flex-direction:column;gap:5px;max-height:320px;overflow-y:auto;margin-bottom:8px';
+    d.appendChild(rowsDiv);
+    var addBtn=document.createElement('button'); addBtn.textContent='+ Dodaj wiersz';
+    addBtn.style.cssText='background:transparent;border:1.5px dashed var(--border2);border-radius:10px;padding:8px;width:100%;cursor:pointer;font-size:13px;color:var(--dim2);font-family:DM Sans,sans-serif';
+    addBtn.onclick=function(){ window.addNewSetRow(true); };
+    d.appendChild(addBtn);
+    var footer=document.createElement('div'); footer.style.cssText='display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:.5px solid var(--border)';
+    footer.innerHTML='<button onclick="openCreateSetAI()" style="padding:10px 16px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif;font-size:13px">← Generuj ponownie</button>';
+    var saveBtn=document.createElement('button'); saveBtn.className='btn btn-orange'; saveBtn.textContent='Zapisz zestaw';
+    saveBtn.onclick=function(){ window.saveNewSet(); };
+    footer.appendChild(saveBtn); d.appendChild(footer);
+    body.appendChild(d);
+    document.getElementById('new-set-name').value=name||'';
+    cards.forEach(function(){ window.addNewSetRow(); });
+    var rows=document.querySelectorAll('#new-set-rows > div');
+    cards.forEach(function(c,i){ if(!rows[i])return; var ins=rows[i].querySelectorAll('input'); if(ins[0])ins[0].value=c.word; if(ins[1])ins[1].value=c.translation; });
+  };
+})();
+</script>
+
 <!-- ═══════════════════════════════════════════════════════════════════
      EYELINGO — UNIWERSALNY SYSTEM TŁUMACZEŃ (translate layer)
      1 klik = słowo, podwójny klik = całe zdanie. Popover z tłumaczeniem
@@ -14260,29 +14396,54 @@ async function lexInit(){
 
   window.tlClosePopover = function(){ if(window._tlPop){ try{window._tlPop.remove();}catch(e){} window._tlPop=null; } };
 
-  window.tlShowPopover = function(anchor, original, lang, isSentence){
+  // Popover z trybem: słowo <-> całe zdanie. ctx = {word, sentence, lang}
+  window.tlShowPopover = function(anchor, ctx){
     window.tlClosePopover();
+    var lang=ctx.lang||'en';
     var pop=document.createElement('div');
     pop.className='tl-popover';
-    pop.style.cssText='position:absolute;z-index:5000;max-width:340px;min-width:160px;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 30px rgba(26,35,64,.18);padding:12px 14px;font-family:DM Sans,sans-serif';
+    pop.style.cssText='position:absolute;z-index:5000;max-width:340px;min-width:180px;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 30px rgba(26,35,64,.18);padding:12px 14px;font-family:DM Sans,sans-serif';
     pop.onclick=function(e){ e.stopPropagation(); };
-    pop.innerHTML='<div style="font-size:14px;font-weight:500;color:var(--navy);line-height:1.4;margin-bottom:3px">'+esc(original)+'</div>'
-      +'<div class="tl-pop-tr" style="font-size:13px;color:var(--orange);line-height:1.45;min-height:18px">Tłumaczę…</div>';
-    var audioBtn=document.createElement('button');
-    audioBtn.style.cssText='margin-top:10px;display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif';
-    audioBtn.innerHTML=PLAY+'<span style="margin-left:4px">'+(isSentence?'Odtwórz zdanie':'Odtwórz słowo')+'</span>';
-    audioBtn.onclick=function(e){ e.stopPropagation(); if(typeof window.ttsPlayPause==='function') window.ttsPlayPause(audioBtn, original, (typeof window.ttsLangCode==='function'?window.ttsLangCode(lang):'en-GB'), isSentence?0.9:0.75, isSentence?'Odtwórz zdanie':'Odtwórz słowo'); };
-    pop.appendChild(audioBtn);
+    var bodyEl=document.createElement('div');
+    var btnRow=document.createElement('div');
+    btnRow.style.cssText='display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap';
+    pop.appendChild(bodyEl); pop.appendChild(btnRow);
     document.body.appendChild(pop);
-    var r=anchor.getBoundingClientRect();
-    var pw=pop.offsetWidth, ph=pop.offsetHeight;
-    var left=r.left+window.scrollX;
-    left=Math.max(window.scrollX+8, Math.min(left, window.scrollX+window.innerWidth-pw-12));
-    var top=r.bottom+window.scrollY+6;
-    if(top+ph > window.scrollY+window.innerHeight-8){ top=r.top+window.scrollY-ph-6; } // odwróć w górę gdy brak miejsca
-    pop.style.left=left+'px'; pop.style.top=top+'px';
+    function reposition(){
+      var r=anchor.getBoundingClientRect();
+      var pw=pop.offsetWidth, ph=pop.offsetHeight;
+      var left=Math.max(window.scrollX+8, Math.min(r.left+window.scrollX, window.scrollX+window.innerWidth-pw-12));
+      var top=r.bottom+window.scrollY+6;
+      if(top+ph > window.scrollY+window.innerHeight-8) top=r.top+window.scrollY-ph-6;
+      pop.style.left=left+'px'; pop.style.top=top+'px';
+    }
+    function render(mode){
+      var isSent=(mode==='sentence');
+      var original=isSent?ctx.sentence:ctx.word;
+      bodyEl.innerHTML='<div style="font-size:14px;font-weight:500;color:var(--navy);line-height:1.4;margin-bottom:3px">'+esc(original)+'</div>'
+        +'<div class="tl-pop-tr" style="font-size:13px;color:var(--orange);line-height:1.45;min-height:18px">Tłumaczę…</div>';
+      btnRow.innerHTML='';
+      var audioBtn=document.createElement('button');
+      audioBtn.style.cssText='display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif';
+      audioBtn.innerHTML=PLAY+'<span style="margin-left:4px">'+(isSent?'Zdanie':'Słowo')+'</span>';
+      audioBtn.onclick=function(e){ e.stopPropagation(); if(typeof window.ttsPlayPause==='function') window.ttsPlayPause(audioBtn, original, (typeof window.ttsLangCode==='function'?window.ttsLangCode(lang):'en-GB'), isSent?0.9:0.75, isSent?'Zdanie':'Słowo'); };
+      btnRow.appendChild(audioBtn);
+      if(ctx.sentence && ctx.sentence!==ctx.word){
+        var tg=document.createElement('button');
+        tg.style.cssText='display:inline-flex;align-items:center;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:transparent;font-size:12px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif';
+        tg.textContent=isSent?'Tylko słowo':'Całe zdanie';
+        tg.onclick=function(e){ e.stopPropagation(); render(isSent?'word':'sentence'); setTimeout(reposition,0); };
+        btnRow.appendChild(tg);
+      }
+      var rid=(pop._req=(pop._req||0)+1);
+      window.tlTranslate(original, lang).then(function(tr){
+        if(window._tlPop!==pop || pop._req!==rid) return;
+        var t=bodyEl.querySelector('.tl-pop-tr'); if(t) t.textContent=tr;
+      });
+    }
     window._tlPop=pop;
-    window.tlTranslate(original, lang).then(function(tr){ var t=pop.querySelector('.tl-pop-tr'); if(t&&window._tlPop===pop) t.textContent=tr; });
+    render('word');
+    reposition();
   };
 
   // Budowanie HTML: zdania (.tl-s) i słowa (.tl-w)
@@ -14313,30 +14474,22 @@ async function lexInit(){
     return c?c.dataset.tlLang:'en';
   }
 
-  // 1 klik = słowo
+  // Tknięcie słowa → popover (tłumaczenie słowa, w środku przycisk "Całe zdanie")
   document.addEventListener('click', function(e){
     if(e.target.closest && e.target.closest('.tl-popover')) return;
     var w=e.target.closest && e.target.closest('.tl-w');
     if(w && w.closest('.tl')){
       var word=w.textContent.trim().replace(/[^\p{L}\p{N}''-]/gu,'');
-      if(word){ window.tlShowPopover(w, word, langOf(w), false); e.stopPropagation(); return; }
+      var sEl=w.closest('.tl-s');
+      var sentence=sEl?(sEl.dataset.s||sEl.textContent||'').trim():'';
+      document.querySelectorAll('.tl-s.tl-active').forEach(function(x){x.classList.remove('tl-active');});
+      if(sEl) sEl.classList.add('tl-active');
+      if(word){ window.tlShowPopover(w, {word:word, sentence:sentence, lang:langOf(w)}); e.stopPropagation(); return; }
     }
     window.tlClosePopover();
+    document.querySelectorAll('.tl-s.tl-active').forEach(function(x){x.classList.remove('tl-active');});
   });
-  // podwójny klik = całe zdanie
-  document.addEventListener('dblclick', function(e){
-    var s=e.target.closest && e.target.closest('.tl-s');
-    if(s && s.closest('.tl')){
-      document.querySelectorAll('.tl-s.tl-active').forEach(function(x){x.classList.remove('tl-active');});
-      s.classList.add('tl-active');
-      var sentence=(s.dataset.s||s.textContent||'').trim();
-      window.tlShowPopover(s, sentence, langOf(s), true);
-      e.preventDefault(); e.stopPropagation();
-    }
-  });
-  // zamknij popover na scroll/escape
-  window.addEventListener('scroll', function(){ window.tlClosePopover(); }, true);
-  document.addEventListener('keydown', function(e){ if(e.key==='Escape') window.tlClosePopover(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ window.tlClosePopover(); document.querySelectorAll('.tl-s.tl-active').forEach(function(x){x.classList.remove('tl-active');}); } });
 })();
 </script>
 
