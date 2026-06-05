@@ -1285,23 +1285,25 @@ window.switchMatTab = function(tab){
 // ═══ GLOBAL STUBS — loaded first, before all other scripts ═══
 // Version: 2026-05-26-v4
 // Restore today's progress from localStorage
-(function(){
+// Per-language daily progress (klucz = data + język)
+window._dailyProgKey = function(){
+  var lang='en';
+  try{ var sel=document.getElementById('daily-lang-select'); lang=(sel&&sel.value)||localStorage.getItem('daily_lang')||'en'; }catch(e){}
+  return 'daily_progress_'+new Date().toISOString().slice(0,10)+'_'+lang;
+};
+window._dailyLoadProgress = function(){
   try{
-    var today = new Date().toISOString().slice(0,10);
-    var saved = localStorage.getItem('daily_progress_'+today);
-    if(saved){
-      var p = JSON.parse(saved);
-      window._dailyDone = p.done || {word:false, read:false, quiz:false};
-      window._dailyXP = p.xp || 0;
-    } else {
-      window._dailyDone = {word:false, read:false, quiz:false};
-      window._dailyXP = 0;
-    }
-  }catch(e){
-    window._dailyDone = {word:false, read:false, quiz:false};
-    window._dailyXP = 0;
-  }
-})();
+    var s=localStorage.getItem(window._dailyProgKey());
+    if(s){ var p=JSON.parse(s); window._dailyDone=p.done||{word:false,read:false,quiz:false}; window._dailyXP=p.xp||0; }
+    else { window._dailyDone={word:false,read:false,quiz:false}; window._dailyXP=0; }
+  }catch(e){ window._dailyDone={word:false,read:false,quiz:false}; window._dailyXP=0; }
+  return window._dailyDone;
+};
+window._dailySaveProgress = function(){
+  try{ localStorage.setItem(window._dailyProgKey(), JSON.stringify({done:window._dailyDone||{word:false,read:false,quiz:false}, xp:window._dailyXP||0})); }catch(e){}
+};
+window._dailyDone = window._dailyDone || {word:false, read:false, quiz:false};
+window._dailyXP = window._dailyXP || 0;
 window._challengeTimer = window._challengeTimer || null;
 window.updateDailyProgress = function(){
   try{
@@ -1311,7 +1313,7 @@ window.updateDailyProgress = function(){
     el=document.getElementById('daily-progress-label'); if(el) el.textContent=done+' z 3 aktywności ukończone';
     el=document.getElementById('daily-progress-bar'); if(el) el.style.width=Math.round((done/3)*100)+'%';
     el=document.getElementById('daily-xp'); if(el) el.textContent=(window._dailyXP||0)+' XP';
-    try{ var today=new Date().toISOString().slice(0,10); localStorage.setItem('daily_progress_'+today, JSON.stringify({done:window._dailyDone,xp:window._dailyXP||0})); }catch(e2){}
+    window._dailySaveProgress();
   }catch(e){}
 };
 window.dailyWordDone = function(){
@@ -3740,7 +3742,7 @@ async function initToFixPage(){
         </div>
         <div style="margin-bottom:14px">
           <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px" for="chat-level">Poziom</label>
-          <select id="chat-level" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
+          <select id="chat-level" onchange="chatLevelChanged()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
             <option value="A1">A1 – Początkujący</option>
             <option value="A2">A2 – Podstawowy</option>
             <option value="B1" selected>B1 – Średniozaawansowany</option>
@@ -3851,6 +3853,7 @@ async function initToFixPage(){
           <div id="lex-eval-badge" style="display:none;font-size:11px;padding:3px 10px;background:#e0f2fe;border:1px solid #0ea5e9;border-radius:100px;color:#0369a1">Ocena poziomu</div>
           <span id="lex-score-badge" style="display:none"></span>
           <button id="lex-speech-toggle" onclick="lexToggleSpeech()" style="font-size:16px;padding:4px 8px;background:transparent;border:1px solid var(--border2);border-radius:100px;cursor:pointer" title="Włącz/wyłącz czytanie"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>
+          <button id="lex-audiolang-btn" onclick="lexToggleAudioLang()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Audio: PL</button>
           <button onclick="lexToggleBoard()" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"></path><path d="M8 21h8M12 17v4"></path></svg>Tablica</button>
           <button onclick="lexEndLesson()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">Zakończ</button>
         </div>
@@ -4283,14 +4286,16 @@ var _challengeTimer = null;
 
 function updateDailyProgress(){
   try{
-    var done = (_dailyDone.word?1:0) + (_dailyDone.read?1:0) + (_dailyDone.quiz?1:0);
+    var dd = window._dailyDone || {word:false,read:false,quiz:false};
+    var done = (dd.word?1:0) + (dd.read?1:0) + (dd.quiz?1:0);
     var total = 3;
     var label = document.getElementById('daily-progress-label');
     var bar = document.getElementById('daily-progress-bar');
     var xpEl = document.getElementById('daily-xp');
     if(label) label.textContent = done + ' z ' + total + ' aktywności ukończone';
     if(bar) bar.style.width = Math.round((done/total)*100) + '%';
-    if(xpEl) xpEl.textContent = _dailyXP + ' XP';
+    if(xpEl) xpEl.textContent = (window._dailyXP||0) + ' XP';
+    if(typeof window._dailySaveProgress==='function') window._dailySaveProgress();
   }catch(e){}
 }
 
@@ -4311,6 +4316,8 @@ function initDaily(){
   setInterval(updateDailyCountdown, 60000);
   // Przywróć wybrany język z localStorage
   try{var savedLang=localStorage.getItem('daily_lang');if(savedLang){var sel=document.getElementById('daily-lang-select');if(sel)sel.value=savedLang;}}catch(e){}
+  // Wczytaj postęp dnia dla wybranego języka
+  if(typeof window._dailyLoadProgress==='function'){ window._dailyLoadProgress(); _dailyDone=window._dailyDone; _dailyXP=window._dailyXP; }
   // Ładuj content tylko raz dziennie (nie przy każdym wejściu na zakładkę)
   if(!_dailyLoaded || _dailyLoadedDate !== today){
     _dailyLoaded=true;
@@ -4326,14 +4333,9 @@ function reloadDailyContent(){
   try{var sel=document.getElementById('daily-lang-select');if(sel)localStorage.setItem('daily_lang',sel.value);}catch(e){}
   _dailyLoaded=false;
   _dailyLoadedDate='';
-  // Nie zeruj postępu dnia — odtwórz zapisany stan z localStorage
-  try{
-    var _t=new Date().toISOString().slice(0,10);
-    var _s=localStorage.getItem('daily_progress_'+_t);
-    if(_s){ var _p=JSON.parse(_s); _dailyDone=_p.done||{word:false,read:false,quiz:false}; _dailyXP=_p.xp||0; }
-    else { _dailyDone={word:false,read:false,quiz:false}; _dailyXP=0; }
-  }catch(e){ _dailyDone={word:false,read:false,quiz:false}; _dailyXP=0; }
-  window._dailyDone=_dailyDone; window._dailyXP=_dailyXP;
+  // Nie zeruj postępu dnia — odtwórz zapisany stan z localStorage (per-język)
+  if(typeof window._dailyLoadProgress==='function') window._dailyLoadProgress();
+  _dailyDone=window._dailyDone; _dailyXP=window._dailyXP;
   var xpEl=document.getElementById('daily-xp');if(xpEl)xpEl.textContent=(_dailyXP||0)+' XP';
   // Reset word section
   var wLoad=document.getElementById('dc-word-loading');if(wLoad){wLoad.style.display='block';wLoad.textContent='Ładowanie...';}
@@ -4775,10 +4777,10 @@ function renderSentenceSidebar(sb, sentence, translation, lang){
 
   var audioBtn=document.createElement('button');
   audioBtn.style.cssText='width:100%;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:12px;font-weight:500;color:var(--navy);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px;transition:.15s;font-family:DM Sans,sans-serif';
-  audioBtn.textContent='🔊 Odtwórz zdanie';
+  audioBtn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;height:13px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg><span style="margin-left:6px">Odtwórz zdanie</span>';
   audioBtn.onmouseover=function(){this.style.borderColor='var(--orange)';};
   audioBtn.onmouseout=function(){this.style.borderColor='var(--border)';};
-  audioBtn.onclick=(function(s,l){return function(){playSentenceAudio(s,l);};})(sentence, lang);
+  audioBtn.onclick=(function(s,l){return function(){ window.ttsPlayPause(audioBtn, s, window.ttsLangCode(l), 0.9, 'Odtwórz zdanie'); };})(sentence, lang);
   sb.appendChild(audioBtn);
 
   var h2=document.createElement('div');
@@ -4883,90 +4885,70 @@ async function showWordTooltip(el, word, lang){
 }
 
 // Audio TTS - czytanie artykułu
+// ── Uniwersalne sterowanie TTS z pauzą/wznowieniem ──
+// Odtwórz → Pauza → Wznów. Jeden aktywny przycisk na raz.
+window.ttsPlayPause = function(btn, text, langCode, rate, labelPlay){
+  if(typeof speechSynthesis==='undefined' || !btn) return;
+  labelPlay = labelPlay || 'Odtwórz';
+  rate = rate || 0.9;
+  langCode = langCode || 'en-GB';
+  var PLAY='<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;height:13px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>';
+  var PAUSE='<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;height:13px;flex-shrink:0"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+  function lbl(icon,txt){ btn.innerHTML=icon+'<span style="margin-left:6px">'+txt+'</span>'; }
+  var syn=window.speechSynthesis;
+  // Ten przycisk już steruje odtwarzaniem → pauza / wznowienie
+  if(btn._ttsActive){
+    if(!btn._ttsPaused){ try{syn.pause();}catch(e){} btn._ttsPaused=true; lbl(PLAY,'Wznów'); }
+    else { try{syn.resume();}catch(e){} btn._ttsPaused=false; lbl(PAUSE,'Pauza'); }
+    return;
+  }
+  // Start nowego odtwarzania — zresetuj poprzedni aktywny przycisk
+  if(window._ttsActiveBtn && window._ttsActiveBtn!==btn && window._ttsActiveBtn._ttsFinish){ window._ttsActiveBtn._ttsFinish(); }
+  try{syn.cancel();}catch(e){}
+  var clean=(text||'').replace(/<[^>]+>/g,' ').replace(/&[a-z]+;/g,' ').replace(/\s+/g,' ').trim();
+  if(!clean) return;
+  var chunks=clean.match(/[^.!?。！？]+[.!?。！？]+\s*/g)||[clean];
+  var voices=syn.getVoices();
+  var base=langCode.split('-')[0];
+  var voice=voices.find(function(v){return v.lang===langCode&&/Google/.test(v.name);})
+    ||voices.find(function(v){return v.lang===langCode;})
+    ||voices.find(function(v){return v.lang.indexOf(base)===0;});
+  var i=0;
+  btn._ttsActive=true; btn._ttsPaused=false; window._ttsActiveBtn=btn;
+  function finish(){ btn._ttsActive=false; btn._ttsPaused=false; if(window._ttsActiveBtn===btn) window._ttsActiveBtn=null; lbl(PLAY,labelPlay); }
+  btn._ttsFinish=finish;
+  function next(){
+    if(!btn._ttsActive) return;
+    if(i>=chunks.length){ finish(); return; }
+    var u=new SpeechSynthesisUtterance(chunks[i].trim());
+    u.lang=langCode; u.rate=rate; u.pitch=1.0; if(voice) u.voice=voice;
+    u.onend=function(){ i++; next(); };
+    u.onerror=function(){ i++; next(); };
+    syn.speak(u);
+  }
+  lbl(PAUSE,'Pauza');
+  next();
+};
+// Mapa kodów głosu TTS dla języków
+window.ttsLangCode = function(lang){
+  return {en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP',de:'de-DE',fr:'fr-FR',it:'it-IT',pt:'pt-PT'}[lang]||'en-GB';
+};
+
 function addArticleAudioBtn(text, lang){
   var existing=document.getElementById('dc-read-audio-wrap');
   if(existing)existing.remove();
   var wrap=document.createElement('div');
   wrap.id='dc-read-audio-wrap';
   wrap.style.cssText='display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)';
-
-  var langCode={en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP'}[lang]||'en-GB';
-  var isPlaying=false;
-  var utt=null;
-  var _stopped=false;
-
+  var langCode=window.ttsLangCode(lang);
   var btn=document.createElement('button');
   btn.className='btn btn-navy';
-  btn.style.cssText='font-size:13px;padding:8px 16px;display:flex;align-items:center;gap:6px';
-  btn.innerHTML='🔊 Przeczytaj artykuł';
-
-  var progress=document.createElement('div');
-  progress.style.cssText='font-size:12px;color:var(--dim2)';
-
-  btn.onclick=function(){
-    if(isPlaying){
-      _stopped=true;
-      speechSynthesis.cancel();
-      isPlaying=false;
-      btn.innerHTML='🔊 Przeczytaj artykuł';
-      progress.textContent='';
-      return;
-    }
-    // Wybierz najlepszy głos
-    var voices=speechSynthesis.getVoices();
-    var preferred=voices.find(function(v){return v.lang===langCode&&v.name.includes('Google');})
-      ||voices.find(function(v){return v.lang===langCode&&v.localService;})
-      ||voices.find(function(v){return v.lang.startsWith(langCode.split('-')[0]);});
-
-    // Podziel tekst na fragmenty (przeglądarka ma limit ~200 słów)
-    var cleanText=text.replace(/<[^>]+>/g,'').replace(/&\w+;/g,' ');
-    var chunks=cleanText.match(/[^.!?]+[.!?]+\s*/g)||[cleanText];
-    var chunkIdx=0;
-    _stopped=false;
-
-    function speakNext(){
-      if(_stopped){
-        isPlaying=false;
-        btn.innerHTML='🔊 Przeczytaj artykuł';
-        progress.textContent='';
-        return;
-      }
-      if(chunkIdx>=chunks.length){
-        isPlaying=false;
-        btn.innerHTML='🔊 Przeczytaj artykuł';
-        progress.textContent='Ukończono ✓';
-        return;
-      }
-      utt=new SpeechSynthesisUtterance(chunks[chunkIdx].trim());
-      utt.lang=langCode;
-      utt.rate=0.88;
-      utt.pitch=1.0;
-      if(preferred)utt.voice=preferred;
-      utt.onend=function(){
-        if(_stopped)return;
-        chunkIdx++;
-        progress.textContent=(chunkIdx)+'/'+chunks.length+' zdań';
-        speakNext();
-      };
-      utt.onerror=function(){
-        if(_stopped)return;
-        chunkIdx++;
-        speakNext();
-      };
-      speechSynthesis.speak(utt);
-      chunkIdx++;
-    }
-
-    isPlaying=true;
-    btn.innerHTML='⏹️ Zatrzymaj';
-    progress.textContent='Czytam...';
-    speechSynthesis.cancel();
-    setTimeout(speakNext,100);
-  };
-
+  btn.style.cssText='font-size:13px;padding:8px 16px;display:flex;align-items:center';
+  btn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;height:13px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg><span style="margin-left:6px">Przeczytaj artykuł</span>';
+  btn.onclick=function(){ window.ttsPlayPause(btn, text, langCode, 0.88, 'Przeczytaj artykuł'); };
   wrap.appendChild(btn);
-  wrap.appendChild(progress);
-  document.getElementById('dc-read-body').parentElement.appendChild(wrap);
+  var bodyEl=document.getElementById('dc-read-body');
+  if(bodyEl&&bodyEl.parentElement) bodyEl.parentElement.appendChild(wrap);
 }
 
 
@@ -5938,6 +5920,13 @@ function setChatLevel(level, el){
   else if(level==='beginner'){ var hints=document.querySelector('input[name="chat-mode"][value="hints"]'); if(hints) hints.checked=true; }
 }
 
+function chatLevelChanged(){
+  var lvl=((document.getElementById('chat-level')||{}).value)||'B1';
+  var hasUserTurn=(_chatHistory||[]).some(function(m){return m.role==='user';});
+  if(hasUserTurn) chatReset();
+  if(typeof showToast==='function') showToast('Poziom rozmowy: '+lvl,'success');
+}
+
 function chatReset(){
   _chatHistory=[];
   var msgs=document.getElementById('chat-messages');
@@ -6190,7 +6179,7 @@ async function chatSend(){
     var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
     var topic=document.getElementById('chat-topic').value;
     var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
-    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
+    var langNames={en:'English',es:'Spanish',fr:'French',de:'German',nl:'Dutch',jp:'Japanese',it:'Italian',pt:'Portuguese'};
     var topicNames={daily:'everyday life',travel:'travel and trips',work:'work and career',tech:'technology and gadgets',movies:'movies and TV series',music:'music and artists',games:'video games',anime:'anime and manga',sport:'sports',food:'cooking and food',custom:'a topic of their choice',free:'any topic'};
     var cefr=((document.getElementById('chat-level')||{}).value)||'B1';
     var levelInstructions={
@@ -10928,46 +10917,40 @@ function kkRenderFull(wrap, d, color){
       +'<h2 style="font-family:DM Sans,sans-serif;font-size:clamp(18px,3vw,24px);font-weight:500;color:#fff;line-height:1.25;margin-bottom:8px">'+d.headline+'</h2>'
       +'<div style="font-size:13px;color:rgba(255,255,255,0.55);font-style:italic;line-height:1.5">'+( d.subline||'')+'</div>'
     +'</div>'
-    // STREAK
-    +'<div id="kk-streak-bar-odkryj" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:14px">'
-      +'<span style="font-size:18px">🔥</span>'
-      +'<div><div style="font-size:13px;color:var(--dim)">Seria czytania: <strong id="kk-streak-num-odkryj" style="color:var(--navy)">1 dzień</strong></div>'
-      +'<div style="font-size:11px;color:var(--dim2)" id="kk-streak-sub-odkryj"></div></div>'
-    +'</div>'
     // INTRO
     +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:10px">'
-      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">⚡ Intro</div>'
+      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">Intro</div>'
       +'<div style="font-size:15px;line-height:1.75;color:var(--navy);border-left:3px solid var(--orange);padding-left:12px">'+( d.hook||'')+'</div>'
     +'</div>'
     // KONTEKST
     +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:10px">'
-      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">🌐 Kontekst kulturowy</div>'
+      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">Kontekst kulturowy</div>'
       +(( d.paragraphs||[]).map(function(p){return'<p style="font-size:15px;line-height:1.75;color:var(--navy);margin-bottom:12px">'+p+'</p>';}).join(''))
     +'</div>'
     // CIEKAWOSTKA
     +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:10px">'
-      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">💡 Tego nie wiesz</div>'
+      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">Tego nie wiesz</div>'
       +'<div style="background:var(--paper);border-radius:10px;padding:12px"><p style="font-size:14px;line-height:1.7;color:var(--navy);margin:0">'+( d.fact||'')+'</p></div>'
     +'</div>'
     // MOST
     +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:10px">'
-      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">🤝 Bliżej niż myślisz</div>'
+      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:8px">Bliżej niż myślisz</div>'
       +'<p style="font-size:15px;line-height:1.75;color:var(--navy);margin:0">'+( d.bridge||'')+'</p>'
     +'</div>'
     // SŁOWO DNIA
     +'<div style="background:'+color+';border-radius:14px;padding:18px;margin-bottom:14px">'
-      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.5);margin-bottom:10px">🔤 Słowo dnia</div>'
+      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.5);margin-bottom:10px">Słowo dnia</div>'
       +'<div style="font-family:DM Sans,sans-serif;font-size:32px;font-weight:500;color:#fff;letter-spacing:-0.5px;margin-bottom:4px">'+( d.word||'')+'</div>'
       +'<div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:8px">'+( d.word_phonetic||'')+'</div>'
       +'<div style="font-size:13px;color:rgba(255,255,255,0.8);line-height:1.6;margin-bottom:6px">'+( d.word_meaning||'')+'</div>'
       +'<div style="font-size:12px;color:rgba(255,255,255,0.5);font-style:italic">'+( d.word_example||'')+'</div>'
-      +'<button onclick="kkSpeak()" style="display:inline-flex;align-items:center;gap:5px;margin-top:10px;background:rgba(255,255,255,0.12);border:0.5px solid rgba(255,255,255,0.2);border-radius:100px;padding:5px 12px;font-size:11px;color:rgba(255,255,255,0.8);cursor:pointer">🔊 Posłuchaj</button>'
+      +'<button onclick="kkSpeak()" style="display:inline-flex;align-items:center;gap:5px;margin-top:10px;background:rgba(255,255,255,0.12);border:0.5px solid rgba(255,255,255,0.2);border-radius:100px;padding:5px 12px;font-size:11px;color:rgba(255,255,255,0.8);cursor:pointer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg>Posłuchaj</button>'
     +'</div>'
     // TAGI
     +'<div id="kk-tags-odkryj" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px"></div>'
     // QUIZ BUTTON
-    +'<button onclick="kkStartQuizOdkryj()" style="width:100%;padding:13px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:14px;font-weight:500;cursor:pointer;margin-bottom:8px;font-family:DM Sans,sans-serif>🎯 Quiz kulturowy (3 pytania)</button>'
-    +'<button onclick="kkAddFlashcardOdkryj()" style="width:100%;padding:11px;background:transparent;color:var(--dim);border:1.5px dashed var(--border2);border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif>＋ Dodaj słowo dnia do fiszek</button>'
+    +'<button onclick="kkStartQuizOdkryj()" style="width:100%;padding:13px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:14px;font-weight:500;cursor:pointer;margin-bottom:8px;font-family:DM Sans,sans-serif">Quiz kulturowy (3 pytania)</button>'
+    +'<button onclick="kkAddFlashcardOdkryj()" style="width:100%;padding:11px;background:transparent;color:var(--dim);border:1.5px dashed var(--border2);border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">+ Dodaj słowo dnia do fiszek</button>'
     // QUIZ AREA
     +'<div id="kk-quiz-odkryj" style="display:none;margin-top:16px">'
       +'<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px">'
@@ -10981,7 +10964,7 @@ function kkRenderFull(wrap, d, color){
     +'</div>'
     // ARCHIWUM
     +'<div style="margin-top:20px">'
-      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">📅 Poprzednie artykuły</div>'
+      +'<div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim2);margin-bottom:10px">Poprzednie artykuły</div>'
       +'<div id="kk-archive-odkryj"></div>'
     +'</div>';
 
@@ -10994,9 +10977,7 @@ function kkRenderFull(wrap, d, color){
     tagsWrap.appendChild(s);
   });
 
-  // Streak
-  kkUpdateStreakOdkryj(d.date);
-  // Archive
+    // Archive
   kkLoadArchiveOdkryj(d.date);
 }
 
@@ -12269,7 +12250,7 @@ async function doOdkryjSearch(){
 }
 
 function getLangName(lang){
-  return{en:'Angielski',es:'Hiszpański',nl:'Holenderski',jp:'Japoński'}[lang]||lang;
+  return{en:'Angielski',es:'Hiszpański',nl:'Holenderski',jp:'Japoński',de:'Niemiecki',fr:'Francuski',it:'Włoski',pt:'Portugalski'}[lang]||lang;
 }
 
 async function fetchOdkryjArticle(topic, lang, level, tok){
@@ -12285,34 +12266,40 @@ async function fetchOdkryjArticle(topic, lang, level, tok){
   }catch(e){}
 
   var title='', body='';
+  // 1) Edge Function generate-article
   try{
     var res=await fetch(ODKRYJ_ARTICLE_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':ODKRYJ_APIKEY},
       body:JSON.stringify({topic:topic,lang:lang,level:level})
     });
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    var d=await res.json();
-    title=d.title||topic;
-    body=d.content||d.text||'';
-  }catch(eGen){
-    // Fallback: generuj artykuł przez AI proxy (super-endpoint)
-    var langName=(typeof getLangName==='function'?getLangName(lang):lang);
-    var prompt='Napisz ciekawy, angażujący artykuł edukacyjny w języku '+langName+' na poziomie '+level
-      +' na temat: "'+topic+'". Długość 200-300 słów. Naturalny język dopasowany do poziomu '+level+'.'
-      +' Odpowiedz TYLKO poprawnym JSON bez backticks: {"title":"tytuł w '+langName+'","content":"treść artykułu w '+langName+'"}';
-    var r2=await fetch(AI_PROXY_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-      body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:900})
-    });
-    if(!r2.ok) throw new Error('AI proxy '+r2.status);
-    var d2=await r2.json();
-    var raw=(typeof extractAIText==='function'?extractAIText(d2):'')||'';
-    var cleaned=raw.replace(/```json|```/g,'').trim();
-    var fb=cleaned.indexOf('{'),lb=cleaned.lastIndexOf('}');
-    if(fb>=0&&lb>fb){ try{ var pj=JSON.parse(cleaned.slice(fb,lb+1)); title=pj.title||topic; body=pj.content||pj.text||''; }catch(e3){} }
-    if(!body){ title=topic; body=cleaned; }
+    if(res.ok){
+      var d=await res.json();
+      title=d.title||topic;
+      body=d.content||d.text||d.article||'';
+    }
+  }catch(eGen){}
+  // 2) Fallback przez AI proxy (super-endpoint) — gdy Edge Function nie dał treści
+  if(!body){
+    try{
+      var langName=(typeof getLangName==='function'?getLangName(lang):lang);
+      var prompt='Napisz ciekawy, angażujący artykuł edukacyjny w języku '+langName+' na poziomie '+level
+        +' na temat: "'+topic+'". Długość 200-300 słów. Naturalny język dopasowany do poziomu '+level+'.'
+        +' Odpowiedz TYLKO poprawnym JSON bez backticks: {"title":"tytuł w '+langName+'","content":"treść artykułu w '+langName+'"}';
+      var r2=await fetch(AI_PROXY_URL,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+        body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:900})
+      });
+      if(r2.ok){
+        var d2=await r2.json();
+        var raw=(typeof extractAIText==='function'?extractAIText(d2):'')||'';
+        var cleaned=raw.replace(/```json|```/g,'').trim();
+        var fb=cleaned.indexOf('{'),lb=cleaned.lastIndexOf('}');
+        if(fb>=0&&lb>fb){ try{ var pj=JSON.parse(cleaned.slice(fb,lb+1)); title=pj.title||topic; body=pj.content||pj.text||''; }catch(e3){} }
+        if(!body){ title=title||topic; body=cleaned; }
+      }
+    }catch(e4){}
   }
   if(!body) throw new Error('Brak treści');
   // Zapisz do Supabase
@@ -12536,29 +12523,12 @@ async function analyzeOdkryjSentence(el, sentence){
 function addOdkryjAudioBtn(text, lang){
   var wrap=document.getElementById('odkryj-audio-wrap');
   if(!wrap)return;
-  var langCode={en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP'}[lang]||'en-GB';
-  var isPlaying=false;
+  var langCode=window.ttsLangCode(lang);
   var btn=document.createElement('button');
   btn.className='btn btn-navy';
-  btn.style.cssText='font-size:13px;padding:8px 16px;margin-top:16px;display:flex;align-items:center;gap:6px';
-  btn.innerHTML='🔊 Przeczytaj artykuł';
-  btn.onclick=function(){
-    if(isPlaying){speechSynthesis.cancel();isPlaying=false;btn.innerHTML='🔊 Przeczytaj artykuł';return;}
-    var cleanText=text.replace(/<[^>]+>/g,'');
-    var chunks=cleanText.match(/[^.!?]+[.!?]+\s*/g)||[cleanText];
-    var voices=speechSynthesis.getVoices();
-    var preferred=voices.find(function(v){return v.lang===langCode&&v.name.includes('Google');})||voices.find(function(v){return v.lang.startsWith(lang);});
-    var idx=0;
-    function next(){
-      if(idx>=chunks.length){isPlaying=false;btn.innerHTML='🔊 Przeczytaj artykuł';return;}
-      var u=new SpeechSynthesisUtterance(chunks[idx].trim());
-      u.lang=langCode;u.rate=0.88;if(preferred)u.voice=preferred;
-      u.onend=function(){idx++;next();};
-      speechSynthesis.speak(u);idx++;
-    }
-    isPlaying=true;btn.innerHTML='⏹️ Zatrzymaj';
-    speechSynthesis.cancel();next();
-  };
+  btn.style.cssText='font-size:13px;padding:8px 16px;margin-top:16px;display:flex;align-items:center';
+  btn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;height:13px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg><span style="margin-left:6px">Przeczytaj artykuł</span>';
+  btn.onclick=function(){ window.ttsPlayPause(btn, text, langCode, 0.88, 'Przeczytaj artykuł'); };
   wrap.appendChild(btn);
 }
 
@@ -13175,35 +13145,14 @@ var _lexTypewriterDone = false;
 
 function lexTypewriterStart(text){
   _lexTypewriterFull = text;
-  _lexTypewriterPos = 0;
-  _lexTypewriterDone = false;
+  _lexTypewriterPos = (text||'').length;
+  _lexTypewriterDone = true;
   clearInterval(_lexTypewriterTimer);
-  // Start speaking immediately as typewriter begins
+  // Pokaż całość od razu — bez powolnego "pisania"
+  var el = document.getElementById('lex-card-text');
+  if(el) el.innerHTML = lexFormatCardText(text);
   lexSpeak(text);
-  // Pre-format the full text once
-  var formatted = lexFormatCardText(text);
-  // Build char array from formatted HTML — but type raw text, show formatted at word boundaries
-  _lexTypewriterTimer = setInterval(function(){
-    if(_lexTypewriterPos >= text.length){
-      clearInterval(_lexTypewriterTimer);
-      _lexTypewriterDone = true;
-      var el = document.getElementById('lex-card-text');
-      if(el) el.innerHTML = lexFormatCardText(text);
-      lexAfterTyping();
-      return;
-    }
-    _lexTypewriterPos += 2; // 2 chars at a time
-    // Only update display at word/sentence boundaries to avoid broken HTML
-    var visible = text.slice(0, _lexTypewriterPos);
-    // Find last safe boundary (space, newline, punctuation)
-    var boundary = _lexTypewriterPos;
-    var boundaryChars = ' \n,.!?:;)]}';
-    for(var b = _lexTypewriterPos; b > Math.max(0, _lexTypewriterPos-5); b--){
-      if(boundaryChars.indexOf(text[b]) >= 0){ boundary = b+1; break; }
-    }
-    var el = document.getElementById('lex-card-text');
-    if(el) el.innerHTML = lexFormatCardText(text.slice(0, boundary));
-  }, _lexTypewriterSpeed);
+  lexAfterTyping();
 }
 
 function lexTypewriterUpdate(text){
@@ -13220,33 +13169,64 @@ function lexTypewriterUpdate(text){
 var _lexSpeechEnabled = true;
 var _lexSpeechUtterance = null;
 var _lexLastSpokenText = '';
+var _lexAudioLang = 'pl'; // 'pl' = lekcja po polsku (obce słowa w jęz. docelowym) | albo kod jęz. docelowego = całość w jęz. uczonym
+try{ var _al=localStorage.getItem('lex_audio_lang'); if(_al) _lexAudioLang=_al; }catch(e){}
+
+function _lexSpeakSeg(syn, txt, langCode){
+  var t=(txt||'').replace(/\*\*/g,'').replace(/\s+/g,' ').trim();
+  if(!t) return;
+  var u=new SpeechSynthesisUtterance(t.slice(0,300));
+  u.lang=langCode; u.rate=0.9; u.pitch=1.0;
+  var base=langCode.split('-')[0];
+  var voices=syn.getVoices();
+  var v=voices.find(function(x){return x.lang===langCode&&/Google/.test(x.name);})||voices.find(function(x){return x.lang===langCode;})||voices.find(function(x){return x.lang.indexOf(base)===0;});
+  if(v) u.voice=v;
+  syn.speak(u);
+}
 
 function lexSpeak(text){
   if(!_lexSpeechEnabled || !window.speechSynthesis || !text) return;
-  // Cancel any ongoing speech
-  window.speechSynthesis.cancel();
+  var syn=window.speechSynthesis;
+  syn.cancel();
   _lexLastSpokenText = text;
-  // Clean text - remove markers and HTML
+  // Usuń markery i HTML, zachowaj **...** do wykrycia obcych słów
   var clean = text
     .replace(/\[MC\][\s\S]*?\[\/MC\]/g,'')
     .replace(/\[FIG\][\s\S]*?\[\/FIG\]/g,'')
     .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g,'')
     .replace(/\[[A-Z\/]+\][^\[]*/g,'')
     .replace(/<[^>]+>/g,'')
-    .replace(/\*\*/g,'').replace(/\*/g,'')
     .replace(/---/g,'')
-    .trim()
-    .slice(0, 300); // max 300 chars for TTS
-
+    .trim();
   if(!clean) return;
-  var utt = new SpeechSynthesisUtterance(clean);
-  // Set language based on selected learning language
-  var langMap = {en:'en-US', es:'es-ES', nl:'nl-NL', jp:'ja-JP'};
-  utt.lang = langMap[_lexLang] || 'en-US';
-  utt.rate = 0.85;
-  utt.pitch = 1.0;
-  _lexSpeechUtterance = utt;
-  window.speechSynthesis.speak(utt);
+  var tgt = (typeof window.ttsLangCode==='function') ? window.ttsLangCode(_lexLang) : 'en-US';
+  if(_lexAudioLang===_lexLang){
+    // Całość w języku uczonym
+    _lexSpeakSeg(syn, clean, tgt);
+  } else {
+    // Lekcja po polsku; obce słowa zapisane jako **słowo** czytane w języku docelowym
+    var parts = clean.split(/(\*\*[^*]+\*\*)/g);
+    parts.forEach(function(seg){
+      if(!seg) return;
+      if(/^\*\*[^*]+\*\*$/.test(seg)) _lexSpeakSeg(syn, seg, tgt);
+      else _lexSpeakSeg(syn, seg, 'pl-PL');
+    });
+  }
+}
+
+function lexUpdateAudioLangBtn(){
+  var btn=document.getElementById('lex-audiolang-btn');
+  if(!btn) return;
+  btn.textContent = (_lexAudioLang==='pl') ? 'Audio: PL' : 'Audio: '+String(_lexLang||'').toUpperCase();
+  btn.title = (_lexAudioLang==='pl')
+    ? 'Lekcja czytana po polsku, obce słowa w języku uczonym. Kliknij, aby czytać całość w języku uczonym.'
+    : 'Całość czytana w języku uczonym. Kliknij, aby wrócić do polskiego.';
+}
+function lexToggleAudioLang(){
+  _lexAudioLang = (_lexAudioLang==='pl') ? (_lexLang||'en') : 'pl';
+  try{ localStorage.setItem('lex_audio_lang', _lexAudioLang); }catch(e){}
+  lexUpdateAudioLangBtn();
+  if(_lexLastSpokenText) lexSpeak(_lexLastSpokenText);
 }
 
 function lexReplayAudio(){
@@ -13273,6 +13253,7 @@ function lexSkipTyping(){
 function lexAfterTyping(){
   if(_lexStreaming) return;
   if(!_lexCurrentCard) return;
+  if(typeof lexUpdateAudioLangBtn==='function') lexUpdateAudioLangBtn();
 
   // #2 + #7 — blok zwrotny: Twoja odpowiedź → poprawka → dlaczego ćwiczymy
   lexRenderFeedbackBlock(_lexCurrentCard);
