@@ -14195,3 +14195,121 @@ async function lexInit(){
 })();
 </script>
 
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     EYELINGO — WARSTWA RESPONSYWNA v1
+     Wyłącznie skalowanie + layout. Bez zmian kolorów, typografii docelowej
+     ani Design Bible. Blok celowo na końcu dokumentu → ostatni w kaskadzie.
+       (1) globalny kontener treści ~1400px, wyśrodkowany
+       (2) siatki kafelków pozostają auto-fill/minmax (dokładają kolumny)
+       (3) treść czytana (czytanka, Lex, artykuły) ~720px
+       (4) płynne odstępy/typografia przez clamp()
+       (5) pełna obsługa telefonu i tabletu (769–1023 + domknięcia)
+     Aby wycofać: usuń ten cały blok <style id="el-responsive">.
+     ═══════════════════════════════════════════════════════════════════ -->
+<style id="el-responsive">
+:root{
+  --el-shell: 1400px;   /* maks. szerokość bloku treści aplikacji */
+  --el-read:  720px;    /* miara czytania: czytanka / Lex / artykuły */
+}
+
+/* ── (4) Płynne odstępy strony (≥601px; ≤600 zostaje pod istniejącymi regułami) ── */
+@media (min-width:601px){
+  :root{
+    --page-side: clamp(20px, 3.2vw, 48px);
+    --page-top:  clamp(76px, 7vw, 92px);
+  }
+}
+
+/* ── (4) Płynny tytuł podstrony (mobilne !important nadal wygrywa ≤600) ── */
+.page-head .ph-title{ font-size: clamp(24px, 3.2vw, 32px); }
+
+/* ════════════════════════════════════════════════════════════
+   (1) GLOBALNY KONTENER 1400 — wyśrodkowanie bloku sidebar+main
+   Stosowane od 1024px w górę (poniżej działa istniejący stack mobilny).
+   ════════════════════════════════════════════════════════════ */
+@media (min-width:1024px){
+  /* Strony, gdzie #page-* sam jest kontenerem flex (Odkryj, Daily) */
+  #page-odkryj.active,
+  #page-daily.active{
+    max-width: var(--el-shell);
+    margin-inline: auto;
+  }
+  /* Strony z wewnętrznym wrapperem flex (Strefa, Społeczność, Teacher/Lex) */
+  #page-strefa.active   > div:first-child,
+  #page-community.active > div:first-child,
+  #page-teacher          > div:first-child{
+    max-width: var(--el-shell);
+    margin-inline: auto;
+    width: 100%;
+  }
+  /* Strony .page-content bez sidebara (Lektorzy, Wiadomości) */
+  #page-tutors.page-content,
+  #page-messages.page-content{
+    max-width: var(--el-shell);
+    margin-inline: auto;
+  }
+  /* Płynny padding poziomy kolumn głównych (zamiast sztywnych 40px) */
+  #mat-main-content,
+  #strefa-main-col,
+  #odkryj-main,
+  #daily-main,
+  #teacher-main{
+    padding-left:  clamp(24px, 3vw, 48px) !important;
+    padding-right: clamp(24px, 3vw, 48px) !important;
+  }
+}
+
+/* Bardzo szerokie ekrany: utrzymaj nagłówki/sekcje landingu wyśrodkowane
+   (sekcje już mają max-width — to tylko zabezpieczenie przed rozjazdem) */
+@media (min-width:1600px){
+  #page-home section > *{ margin-left:auto; margin-right:auto; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   (3) MIARA CZYTANIA ~720px — czytanka, rozmowa z Lexem, artykuły
+   ════════════════════════════════════════════════════════════ */
+/* Rozmowa z Lexem: wątek wiadomości wyśrodkowany i ograniczony */
+#chat-messages{
+  width: 100%;
+  max-width: var(--el-read);
+  margin-inline: auto;
+}
+/* Daily — pełna czytanka: tekst do 720, panel słowa 280, całość wyśrodkowana */
+@media (min-width:1024px){
+  #dc-read-layout{
+    grid-template-columns: minmax(0, var(--el-read)) 280px !important;
+    justify-content: center;
+  }
+}
+/* Daily — czytanka i objaśnienia: komfortowa miara tekstu */
+#dc-read-body{ max-width: var(--el-read); }
+#kk-expl-odkryj{ max-width: var(--el-read); margin-inline: auto; }
+
+/* ════════════════════════════════════════════════════════════
+   (5) TABLET 769–1023 — węższy sidebar, spójny padding
+   ════════════════════════════════════════════════════════════ */
+@media (min-width:769px) and (max-width:1023px){
+  #strefa-sidebar, #odkryj-sidebar, #daily-sidebar,
+  #mat-sidebar,    #teacher-sidebar{
+    width: 200px !important;
+  }
+  #mat-main-content, #strefa-main-col, #odkryj-main,
+  #daily-main, #teacher-main{
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   (5) DOMKNIĘCIA TELEFONU/TABLETU dla czytania
+   (uzupełniają istniejące reguły ≤768/≤600)
+   ════════════════════════════════════════════════════════════ */
+@media (max-width:768px){
+  /* Pełna czytanka: panel słowa pod tekstem, nie obok */
+  #dc-read-layout{ grid-template-columns: 1fr !important; }
+  #dc-read-body{ max-width: 100%; }
+  /* Wątek Lexa pełna szerokość na wąskich ekranach */
+  #chat-messages{ max-width: 100%; }
+}
+</style>
