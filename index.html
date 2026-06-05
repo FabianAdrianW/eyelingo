@@ -14213,6 +14213,134 @@ async function lexInit(){
 
 
 <!-- ═══════════════════════════════════════════════════════════════════
+     EYELINGO — UNIWERSALNY SYSTEM TŁUMACZEŃ (translate layer)
+     1 klik = słowo, podwójny klik = całe zdanie. Popover z tłumaczeniem
+     i audio (słowo / zdanie) przez window.ttsPlayPause.
+     Użycie na dowolnej powierzchni:
+       el.classList.add('tl'); el.dataset.tlLang='en';
+       el.innerHTML = window.tlBuildHTML(text, 'en');
+     ═══════════════════════════════════════════════════════════════════ -->
+<style id="el-translate">
+.tl .tl-w{cursor:pointer;border-radius:3px;transition:background .12s;padding:0 1px}
+.tl .tl-w:hover{background:rgba(201,106,42,.16)}
+.tl .tl-s{transition:background .12s;border-radius:4px}
+.tl .tl-s.tl-active{background:rgba(201,106,42,.10)}
+.tl-popover{animation:tlPop .14s ease}
+@keyframes tlPop{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.tl-hint{font-size:11px;color:var(--dim2);margin-top:4px}
+</style>
+<script>
+(function(){
+  if(window.tlBuildHTML) return; // już zainicjalizowane
+  window._tlCache = {};
+  var LANG_NAMES = {en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French',it:'Italian',pt:'Portuguese'};
+  function esc(s){ return (typeof escH==='function')?escH(s):String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  // Tłumaczenie tekstu na polski (z cache) przez AI proxy
+  window.tlTranslate = async function(text, lang){
+    text=(text||'').trim();
+    if(!text) return '';
+    var key=lang+'::'+text;
+    if(window._tlCache[key]) return window._tlCache[key];
+    try{
+      var sess=(await db.auth.getSession()).data.session;
+      var tok=sess?sess.access_token:'';
+      var langName=LANG_NAMES[lang]||'English';
+      var prompt='Translate this '+langName+' text to Polish. Return ONLY the Polish translation, no quotes, nothing else.\nText: "'+text+'"';
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:200})});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      var d=await res.json();
+      var tr=((typeof extractAIText==='function'?extractAIText(d):'')||'').trim().replace(/^["'`]+|["'`]+$/g,'');
+      if(tr){ window._tlCache[key]=tr; return tr; }
+    }catch(e){}
+    return '(nie udało się przetłumaczyć)';
+  };
+
+  var PLAY='<svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>';
+
+  window.tlClosePopover = function(){ if(window._tlPop){ try{window._tlPop.remove();}catch(e){} window._tlPop=null; } };
+
+  window.tlShowPopover = function(anchor, original, lang, isSentence){
+    window.tlClosePopover();
+    var pop=document.createElement('div');
+    pop.className='tl-popover';
+    pop.style.cssText='position:absolute;z-index:5000;max-width:340px;min-width:160px;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 30px rgba(26,35,64,.18);padding:12px 14px;font-family:DM Sans,sans-serif';
+    pop.onclick=function(e){ e.stopPropagation(); };
+    pop.innerHTML='<div style="font-size:14px;font-weight:500;color:var(--navy);line-height:1.4;margin-bottom:3px">'+esc(original)+'</div>'
+      +'<div class="tl-pop-tr" style="font-size:13px;color:var(--orange);line-height:1.45;min-height:18px">Tłumaczę…</div>';
+    var audioBtn=document.createElement('button');
+    audioBtn.style.cssText='margin-top:10px;display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif';
+    audioBtn.innerHTML=PLAY+'<span style="margin-left:4px">'+(isSentence?'Odtwórz zdanie':'Odtwórz słowo')+'</span>';
+    audioBtn.onclick=function(e){ e.stopPropagation(); if(typeof window.ttsPlayPause==='function') window.ttsPlayPause(audioBtn, original, (typeof window.ttsLangCode==='function'?window.ttsLangCode(lang):'en-GB'), isSentence?0.9:0.75, isSentence?'Odtwórz zdanie':'Odtwórz słowo'); };
+    pop.appendChild(audioBtn);
+    document.body.appendChild(pop);
+    var r=anchor.getBoundingClientRect();
+    var pw=pop.offsetWidth, ph=pop.offsetHeight;
+    var left=r.left+window.scrollX;
+    left=Math.max(window.scrollX+8, Math.min(left, window.scrollX+window.innerWidth-pw-12));
+    var top=r.bottom+window.scrollY+6;
+    if(top+ph > window.scrollY+window.innerHeight-8){ top=r.top+window.scrollY-ph-6; } // odwróć w górę gdy brak miejsca
+    pop.style.left=left+'px'; pop.style.top=top+'px';
+    window._tlPop=pop;
+    window.tlTranslate(original, lang).then(function(tr){ var t=pop.querySelector('.tl-pop-tr'); if(t&&window._tlPop===pop) t.textContent=tr; });
+  };
+
+  // Budowanie HTML: zdania (.tl-s) i słowa (.tl-w)
+  window.tlBuildHTML = function(text, lang){
+    text=(text||'').replace(/```json|```/g,'').trim();
+    var sentences=text.match(/[^.!?。！？\n]+[.!?。！？]+|[^.!?。！？\n]+(?=\n|$)/g)||[text];
+    return sentences.map(function(sent){
+      var trimmed=sent.trim(); if(!trimmed) return '';
+      var safe=trimmed.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+      var words=trimmed.split(/(\s+)/).map(function(tok){
+        if(/^\s*$/.test(tok)) return tok;
+        return '<span class="tl-w">'+esc(tok)+'</span>';
+      }).join('');
+      return '<span class="tl-s" data-s="'+safe+'">'+words+'</span> ';
+    }).join('');
+  };
+
+  // Przygotuj kontener (klasa + język + treść)
+  window.tlPrepare = function(el, text, lang){
+    if(!el) return;
+    el.classList.add('tl');
+    el.dataset.tlLang=lang||'en';
+    el.innerHTML=window.tlBuildHTML(text, lang||'en');
+  };
+
+  function langOf(node){
+    var c=node.closest && node.closest('[data-tl-lang]');
+    return c?c.dataset.tlLang:'en';
+  }
+
+  // 1 klik = słowo
+  document.addEventListener('click', function(e){
+    if(e.target.closest && e.target.closest('.tl-popover')) return;
+    var w=e.target.closest && e.target.closest('.tl-w');
+    if(w && w.closest('.tl')){
+      var word=w.textContent.trim().replace(/[^\p{L}\p{N}''-]/gu,'');
+      if(word){ window.tlShowPopover(w, word, langOf(w), false); e.stopPropagation(); return; }
+    }
+    window.tlClosePopover();
+  });
+  // podwójny klik = całe zdanie
+  document.addEventListener('dblclick', function(e){
+    var s=e.target.closest && e.target.closest('.tl-s');
+    if(s && s.closest('.tl')){
+      document.querySelectorAll('.tl-s.tl-active').forEach(function(x){x.classList.remove('tl-active');});
+      s.classList.add('tl-active');
+      var sentence=(s.dataset.s||s.textContent||'').trim();
+      window.tlShowPopover(s, sentence, langOf(s), true);
+      e.preventDefault(); e.stopPropagation();
+    }
+  });
+  // zamknij popover na scroll/escape
+  window.addEventListener('scroll', function(){ window.tlClosePopover(); }, true);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') window.tlClosePopover(); });
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
      EYELINGO — WARSTWA RESPONSYWNA v1
      Wyłącznie skalowanie + layout. Bez zmian kolorów, typografii docelowej
      ani Design Bible. Blok celowo na końcu dokumentu → ostatni w kaskadzie.
