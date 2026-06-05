@@ -1199,7 +1199,8 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
   #mat-sidebar, #strefa-sidebar, #odkryj-sidebar, #daily-sidebar, #teacher-sidebar,
   #lex-side-panel { height: -webkit-fill-available; }
 }
-input, textarea { -webkit-appearance: none; appearance: none; }
+input:not([type="checkbox"]):not([type="radio"]), textarea { -webkit-appearance: none; appearance: none; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--orange); width: 16px; height: 16px; cursor: pointer; }
 button { -webkit-tap-highlight-color: transparent; }
 * { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
@@ -2850,11 +2851,11 @@ function setCard(s){
       <option value="de">🇩🇪 Niemiecki</option>
       <option value="fr">🇫🇷 Francuski</option>
     </select>
-    <select id="tutor-filter-level" onchange="filterTutors()" style="padding:9px 12px;border-radius:8px;border:0.5px solid var(--border2);font-size:13px;background:var(--paper);color:var(--navy);font-family:DM Sans,sans-serif">
-      <option value="">Wszystkie poziomy</option>
-      <option value="A1">A1</option><option value="A2">A2</option>
-      <option value="B1">B1</option><option value="B2">B2</option>
-      <option value="C1">C1</option><option value="C2">C2</option>
+    <select id="tutor-sort" onchange="filterTutors()" style="padding:9px 12px;border-radius:8px;border:0.5px solid var(--border2);font-size:13px;background:var(--paper);color:var(--navy);font-family:DM Sans,sans-serif">
+      <option value="rating">Najlepiej oceniani</option>
+      <option value="reviews">Najwięcej opinii</option>
+      <option value="price_asc">Cena: od najniższej</option>
+      <option value="price_desc">Cena: od najwyższej</option>
     </select>
     <select id="tutor-filter-price" onchange="filterTutors()" style="padding:9px 12px;border-radius:8px;border:0.5px solid var(--border2);font-size:13px;background:var(--paper);color:var(--navy);font-family:DM Sans,sans-serif">
       <option value="">Każda cena</option>
@@ -2934,7 +2935,7 @@ function setCard(s){
 
     <!-- Video URL -->
     <div>
-      <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:6px">Link do videoprezentacji (YouTube)</label>
+      <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:6px">Autoprezentacja — link do filmu (YouTube)</label>
       <input id="tutor-video" type="url" placeholder="https://youtube.com/watch?v=..." style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:14px;font-family:DM Sans,sans-serif">
     </div>
 
@@ -6987,9 +6988,24 @@ async function loadTutors(){
   listEl.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center;grid-column:1/-1">Ładowanie lektorów...</div>';
   try{
     var{data:tutors}=await db.from('tutors')
-      .select('*').eq('is_active',true)
-      .order('rating_avg',{ascending:false});
-    _allTutors=tutors||[];
+      .select('*').eq('is_active',true);
+    tutors=tutors||[];
+    // Przelicz oceny i liczbę opinii po stronie klienta (wyklucz recenzje wystawione samemu sobie)
+    try{
+      var tIds=tutors.map(function(t){return t.id;});
+      if(tIds.length){
+        var {data:allRevs}=await db.from('tutor_reviews').select('tutor_id,user_id,rating').in('tutor_id',tIds);
+        var revsByTutor={};
+        (allRevs||[]).forEach(function(r){ (revsByTutor[r.tutor_id]=revsByTutor[r.tutor_id]||[]).push(r); });
+        tutors.forEach(function(t){
+          var revs=(revsByTutor[t.id]||[]).filter(function(r){return r.user_id!==t.user_id;});
+          t.rating_count=revs.length;
+          t.rating_avg=revs.length?Math.round((revs.reduce(function(s,r){return s+(r.rating||0);},0)/revs.length)*10)/10:0;
+        });
+      }
+    }catch(e){ console.warn('[loadTutors reviews]', e.message); }
+    tutors.sort(function(a,b){ return (b.rating_avg||0)-(a.rating_avg||0); });
+    _allTutors=tutors;
     renderTutors(_allTutors);
   }catch(e){
     var el2=document.getElementById('tutors-list');
@@ -6999,12 +7015,11 @@ async function loadTutors(){
 
 function filterTutors(){
   var lang=(document.getElementById('tutor-filter-lang')||{}).value||'';
-  var level=(document.getElementById('tutor-filter-level')||{}).value||'';
   var maxPrice=parseInt((document.getElementById('tutor-filter-price')||{}).value||'0',10);
+  var sort=(document.getElementById('tutor-sort')||{}).value||'rating';
   var q=((document.getElementById('tutor-search')||{}).value||'').toLowerCase().trim();
   var filtered=_allTutors.filter(function(t){
     if(lang&&!(t.languages||[]).includes(lang))return false;
-    if(level&&!(t.levels||[]).includes(level))return false;
     if(maxPrice&&(t.price_per_hour||0)>maxPrice)return false;
     if(q){
       var hay=((t.display_name||'')+' '+(t.bio||'')+' '+(t.headline||'')).toLowerCase();
@@ -7012,7 +7027,17 @@ function filterTutors(){
     }
     return true;
   });
-  filtered.sort(function(a,b){ return (b.rating_avg||0)-(a.rating_avg||0); });
+  filtered.sort(function(a,b){
+    if(sort==='reviews') return (b.rating_count||0)-(a.rating_count||0) || (b.rating_avg||0)-(a.rating_avg||0);
+    if(sort==='price_asc'||sort==='price_desc'){
+      var pa=a.price_per_hour||0, pb=b.price_per_hour||0;
+      if(!pa&&!pb) return (b.rating_avg||0)-(a.rating_avg||0);
+      if(!pa) return 1;
+      if(!pb) return -1;
+      return sort==='price_asc' ? pa-pb : pb-pa;
+    }
+    return (b.rating_avg||0)-(a.rating_avg||0) || (b.rating_count||0)-(a.rating_count||0);
+  });
   renderTutors(filtered);
 }
 
@@ -7559,11 +7584,12 @@ async function submitRateModal(){
   }catch(e){}
   try{
     await db.from('tutor_reviews').upsert({tutor_id:_trm.tutorId,user_id:sess.user.id,rating:_trm.val,comment:comment},{onConflict:'tutor_id,user_id'});
-    var {data:revs}=await db.from('tutor_reviews').select('rating').eq('tutor_id',_trm.tutorId);
-    if(revs&&revs.length){
-      var avg=revs.reduce(function(s,r){return s+r.rating;},0)/revs.length;
-      await db.from('tutors').update({rating_avg:Math.round(avg*10)/10,rating_count:revs.length}).eq('id',_trm.tutorId);
-    }
+    var {data:tOwner}=await db.from('tutors').select('user_id').eq('id',_trm.tutorId).maybeSingle();
+    var ownerId=tOwner?tOwner.user_id:null;
+    var {data:revs}=await db.from('tutor_reviews').select('rating,user_id').eq('tutor_id',_trm.tutorId);
+    var valid=(revs||[]).filter(function(r){return r.user_id!==ownerId;});
+    var newAvg=valid.length?Math.round((valid.reduce(function(s,r){return s+(r.rating||0);},0)/valid.length)*10)/10:0;
+    await db.from('tutors').update({rating_avg:newAvg,rating_count:valid.length}).eq('id',_trm.tutorId);
     document.getElementById('trm-msg').innerHTML='<span style="color:#16a34a">✅ Dziękujemy za opinię!</span>';
     setTimeout(closeRateModal,1500);
     if(typeof loadTutors==='function')loadTutors();
@@ -7836,7 +7862,7 @@ function renderTutors(tutors){
         var vid=ytMatch[1];
         vWrap.style.background='#000';
         vWrap.innerHTML='<img src="https://img.youtube.com/vi/'+vid+'/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover;opacity:.65">'
-          +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer" onclick="event.stopPropagation();playYTEmbed(this.parentNode)" data-vid="'+vid+'">'
+          +'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer" onclick="event.stopPropagation();playYTEmbed(this)" data-vid="'+vid+'">'
           +'<div style="width:28px;height:28px;background:rgba(255,0,0,.9);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="10" height="10" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"></polygon></svg></div>'
           +'<span style="font-size:10px;color:#fff;font-weight:500;text-shadow:0 1px 3px rgba(0,0,0,.6)">Autoprezentacja</span>'
           +'</div>';
@@ -10002,9 +10028,14 @@ async function viewTutor(tutorId){
     var {data:t}=await db.from('tutors').select('*').eq('id',tutorId).maybeSingle();
     if(!t){contentEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--dim2)">Nie znaleziono lektora</div>';return;}
 
-    var {data:reviews}=await db.from('tutor_reviews')
+    var {data:allReviews}=await db.from('tutor_reviews')
       .select('rating,comment,created_at,user_id')
-      .eq('tutor_id',tutorId).order('created_at',{ascending:false}).limit(10);
+      .eq('tutor_id',tutorId).order('created_at',{ascending:false});
+    // Wyklucz recenzje wystawione samemu sobie i policz realne wartości
+    var reviews=(allReviews||[]).filter(function(r){return r.user_id!==t.user_id;});
+    var realCount=reviews.length;
+    var realAvg=realCount?Math.round((reviews.reduce(function(s,r){return s+(r.rating||0);},0)/realCount)*10)/10:0;
+    reviews=reviews.slice(0,10);
 
     if(reviews&&reviews.length){
       var uids=reviews.map(function(r){return r.user_id;});
@@ -10068,9 +10099,9 @@ async function viewTutor(tutorId){
     // Gwiazdki + opinie
     var ratingLine=document.createElement('div');
     ratingLine.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap';
-    ratingLine.innerHTML=renderStarsDisplay(t.rating_avg||0)
-      +'<span style="font-size:13px;font-weight:500;color:var(--dim2)">'+(t.rating_avg||0).toFixed(1)+'</span>'
-      +'<span style="font-size:13px;color:var(--dim2)">('+(t.rating_count||0)+' opinii)</span>'
+    ratingLine.innerHTML=renderStarsDisplay(realAvg)
+      +'<span style="font-size:13px;font-weight:500;color:var(--dim2)">'+realAvg.toFixed(1)+'</span>'
+      +'<span style="font-size:13px;color:var(--dim2)">('+realCount+(realCount===1?' opinia':(realCount>=2&&realCount<=4?' opinie':' opinii'))+')</span>'
       +'<span style="margin:0 4px;color:var(--border2)">·</span>'
       +(t.languages||[]).map(function(l){
         return'<span style="font-size:11px;font-weight:500;background:var(--navy);color:#fff;padding:2px 8px;border-radius:100px">'+(langFlags[l]||'')+'&nbsp;'+(langNames[l]||l)+'</span>';
@@ -10104,7 +10135,7 @@ async function viewTutor(tutorId){
 
     // Opinie
     var revSec=document.createElement('div');
-    revSec.innerHTML='<div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:10px">Opinie ('+(reviews?reviews.length:0)+')</div>';
+    revSec.innerHTML='<div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:10px">Opinie ('+realCount+')</div>';
     if(reviews&&reviews.length){
       reviews.forEach(function(r){
         var rc=document.createElement('div');
@@ -10176,7 +10207,7 @@ async function viewTutor(tutorId){
     // Video
     var vbox=document.createElement('div');
     if(t.video_url){
-      var ytMatch=t.video_url.match(/(?:youtu\.be\/|[?&]v=)([^&]+)/);
+      var ytMatch=t.video_url.match(/(?:youtu\.be\/|[?&]v=)([^&\/?]+)/);
       if(ytMatch&&ytMatch[1]){
         vbox.style.cssText='position:relative;padding-top:56.25%;background:#000;cursor:pointer;flex-shrink:0';
         vbox.dataset.vid=ytMatch[1];
