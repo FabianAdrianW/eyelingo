@@ -13869,8 +13869,10 @@ function lexFormatCardText(text){
     .replace(/\[RECOMMEND\][\s\S]*?\[\/RECOMMEND\]/gi, '')
     .replace(/\[CARD\][\s\S]*?\[\/CARD\]/gi, '')
     .replace(/\[CORE\][\s\S]*?\[\/CORE\]/gi, '')
-    .replace(/\[WORD\]([^|]+)\|([^|]+)\|[^\[]+\[\/WORD\]/g,
-      '<strong style="color:var(--orange)">$1</strong> <sup style="font-size:10px;color:var(--dim2)">$2</sup>')
+    .replace(/\[WORD\]([^|]+)\|([^|]+)\|[^\[]+\[\/WORD\]/g, function(m,w,tr){
+      var a=String(w).trim().replace(/"/g,'&quot;');
+      return '<strong class="lex-tl" data-tlx="'+a+'" style="color:var(--orange)">'+w.trim()+'</strong> <sup style="font-size:10px;color:var(--dim2)">'+tr.trim()+'</sup>';
+    })
     .replace(/\[FIX\]([\s\S]*?)\[\/FIX\]/g, '<span style="background:rgba(201,106,42,.14);color:var(--orange);font-weight:500;padding:1px 5px;border-radius:5px">$1</span>')
     // Strip code blocks entirely
     .replace(/```[\s\S]*?```/g, '')
@@ -13880,7 +13882,10 @@ function lexFormatCardText(text){
     // Horizontal rules
     .replace(/^[-*_]{3,}$/gm, '<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">')
     // Bold and italic
-    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*\*([^*\n]+)\*\*/g, function(m,x){
+      var a=String(x).trim().replace(/"/g,'&quot;');
+      return '<strong class="lex-tl" data-tlx="'+a+'">'+x+'</strong>';
+    })
     .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
     // Newlines
     .replace(/\n\n/g, '<br><br>')
@@ -14447,6 +14452,8 @@ async function lexInit(){
 .tl-popover{animation:tlPop .14s ease}
 @keyframes tlPop{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 .tl-hint{font-size:11px;color:var(--dim2);margin-top:4px}
+.lex-tl{cursor:pointer;border-bottom:1.5px dotted rgba(201,106,42,.55);transition:background .12s;border-radius:2px}
+.lex-tl:hover{background:rgba(201,106,42,.14)}
 </style>
 <script>
 (function(){
@@ -14560,6 +14567,12 @@ async function lexInit(){
   // Tknięcie słowa → popover (tłumaczenie słowa, w środku przycisk "Całe zdanie")
   document.addEventListener('click', function(e){
     if(e.target.closest && e.target.closest('.tl-popover')) return;
+    // Obce fragmenty Lexa (mieszany PL + jęz. obcy) — tłumacz całą frazę
+    var lx=e.target.closest && e.target.closest('.lex-tl');
+    if(lx){
+      var phrase=(lx.getAttribute('data-tlx')||lx.textContent||'').trim();
+      if(phrase){ window.tlShowPopover(lx, {word:phrase, sentence:'', lang:(window._lexLang||'en')}); e.stopPropagation(); return; }
+    }
     var w=e.target.closest && e.target.closest('.tl-w');
     if(w && w.closest('.tl')){
       var word=w.textContent.trim().replace(/[^\p{L}\p{N}''-]/gu,'');
