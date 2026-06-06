@@ -2240,7 +2240,7 @@ function showPage(name){
     else setTimeout(function(){ if(typeof loadRanking==='function') loadRanking(); },300);
   }
   if(name==='tofix') initToFixPage();
-  if(name==='strefa'){ initStrefa(); strefaShowTab('tryb'); }
+  if(name==='strefa'){ initStrefa(); strefaShowTab('tryb'); setTimeout(function(){ if(typeof strefaRenderContinue==='function') strefaRenderContinue(); },60); }
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
   if(name==='daily'){ setTimeout(function(){ var ind=document.getElementById('daily-loading-indicator'); if(ind) ind.style.display='none'; initDaily(); dailyShowTab('daily'); }, 50); }
   if(name==='teacher'){ setTimeout(function(){ teacherShowTab('chat'); }, 50); }
@@ -3255,6 +3255,9 @@ async function initToFixPage(){
     <aside id="strefa-sidebar" style="width:220px;flex-shrink:0;border-right:.5px solid var(--border);padding:88px 0 64px 0">
       <div id="strefa-sidebar-inner" style="padding:0 16px">
         <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Katalog</div>
+
+        <!-- Wznów przerwaną sesję — pojawia się tylko gdy istnieje zapis -->
+        <div id="sb-continue-wrap"></div>
 
         <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:.2s;margin-bottom:16px" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
           <div style="width:30px;height:30px;border-radius:8px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -8051,6 +8054,15 @@ async function loadDueCardsForTryb(){
   }catch(e){return[];}
 }
 
+// ── TRYB NAUKI — powrót do wyboru zestawu (Strefa Nauki) ──
+function trybBackToStrefa(){
+  if(window.speechSynthesis) try{ window.speechSynthesis.cancel(); }catch(e){}
+  if(typeof trybSaveSnapshot==='function') trybSaveSnapshot();
+  window._trybExternalCards=null;
+  if(typeof showPage==='function') showPage('strefa');
+}
+window.trybBackToStrefa=trybBackToStrefa;
+
 // ── TRYB NAUKI — MODE PICKER ──────────────────────────
 function showTrybModePicker(){
   showTrybView('session');
@@ -8071,6 +8083,18 @@ function showTrybModePicker(){
   var picker = document.createElement('div');
   picker.id = 'tryb-mode-picker';
   picker.style.cssText = 'padding:10px 0;animation:lexFadeIn .3s ease';
+
+  // Pasek powrotu — użytkownik zawsze może wybrać inny zestaw
+  var topBar = document.createElement('div');
+  topBar.style.cssText = 'display:flex;justify-content:flex-start;margin-bottom:6px';
+  var chooseBtn = document.createElement('button');
+  chooseBtn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:100px;border:.5px solid var(--border2);background:transparent;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s';
+  chooseBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Wybierz inny zestaw';
+  chooseBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.color='var(--navy)'; };
+  chooseBtn.onmouseout = function(){ this.style.borderColor='var(--border2)'; this.style.color='var(--dim)'; };
+  chooseBtn.onclick = trybBackToStrefa;
+  topBar.appendChild(chooseBtn);
+  picker.appendChild(topBar);
 
   // Header
   var hdr = document.createElement('div');
@@ -8192,6 +8216,16 @@ function startTrybMode(mode){
     } else {
       sessionHdr.appendChild(backBtn);
     }
+
+    // Przycisk „Wybierz inny zestaw" — sprawczość użytkownika także w trakcie trybu
+    var existingSet = document.getElementById('tryb-choose-set');
+    if(existingSet) existingSet.remove();
+    var setBtn = document.createElement('button');
+    setBtn.id = 'tryb-choose-set';
+    setBtn.style.cssText = 'padding:7px 14px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:4px';
+    setBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg> Wybierz inny zestaw';
+    setBtn.onclick = trybBackToStrefa;
+    backBtn.parentNode.insertBefore(setBtn, backBtn.nextSibling);
   }
 
   // Show card scene
@@ -13232,29 +13266,74 @@ function lexSpeak(text){
   var syn=window.speechSynthesis;
   syn.cancel();
   _lexLastSpokenText = text;
-  // Usuń markery i HTML, zachowaj **...** do wykrycia obcych słów
-  var clean = text
-    .replace(/\[MC\][\s\S]*?\[\/MC\]/g,'')
-    .replace(/\[FIG\][\s\S]*?\[\/FIG\]/g,'')
-    .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g,'')
-    .replace(/\[[A-Z\/]+\][^\[]*/g,'')
-    .replace(/<[^>]+>/g,'')
-    .replace(/---/g,'')
-    .trim();
-  if(!clean) return;
+  var FS='\u0001'; // sentinel oddzielający fragmenty obcojęzyczne
+
+  var s = String(text)
+    // bloki ćwiczeń / markery — nie czytamy
+    .replace(/\[MC\][\s\S]*?\[\/MC\]/g,' ')
+    .replace(/\[FIG\][\s\S]*?\[\/FIG\]/g,' ')
+    .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g,' ')
+    .replace(/\[INFO\][\s\S]*?\[\/INFO\]/g,' ')
+    .replace(/\[GAP\][\s\S]*?\[\/GAP\]/g,' ')
+    .replace(/\[LEVEL\][\s\S]*?\[\/LEVEL\]/gi,' ')
+    .replace(/\[RECOMMEND\][\s\S]*?\[\/RECOMMEND\]/gi,' ')
+    .replace(/\[CARD\][\s\S]*?\[\/CARD\]/gi,' ')
+    .replace(/\[CORE\][\s\S]*?\[\/CORE\]/gi,' ')
+    .replace(/```[\s\S]*?```/g,' ')
+    // słowa obce: [WORD]obce|polskie|...[/WORD] → czytamy tylko część obcą w jęz. docelowym
+    .replace(/\[WORD\]([^|\]]+)\|[^\[]*\[\/WORD\]/g, function(m,w){ return FS + w.trim() + FS; })
+    // [FIX]...[/FIX] — poprawka czytana po polsku (zostaw treść)
+    .replace(/\[FIX\]([\s\S]*?)\[\/FIX\]/g, ' $1 ')
+    .replace(/\[END\]/g,' ')
+    // pozostałe znaczniki [XYZ] / [/XYZ] usuń, ale ZOSTAW tekst po nich (polskie zdanie!)
+    .replace(/\[\/?[A-Z]+\]/g,' ')
+    // **obce** → fragment obcojęzyczny
+    .replace(/\*\*([^*\n]+)\*\*/g, function(m,x){ return FS + x.trim() + FS; })
+    .replace(/\*([^*\n]+)\*/g, '$1')
+    // czyść HTML i ozdobniki
+    .replace(/<[^>]+>/g,' ')
+    .replace(/[#`]/g,' ')
+    .replace(/-{3,}/g,' ');
+
   var tgt = (typeof window.ttsLangCode==='function') ? window.ttsLangCode(_lexLang) : 'en-US';
-  if(_lexAudioLang===_lexLang){
-    // Całość w języku uczonym
-    _lexSpeakSeg(syn, clean, tgt);
-  } else {
-    // Lekcja po polsku; obce słowa zapisane jako **słowo** czytane w języku docelowym
-    var parts = clean.split(/(\*\*[^*]+\*\*)/g);
-    parts.forEach(function(seg){
-      if(!seg) return;
-      if(/^\*\*[^*]+\*\*$/.test(seg)) _lexSpeakSeg(syn, seg, tgt);
-      else _lexSpeakSeg(syn, seg, 'pl-PL');
+  var readAllInTarget = (_lexAudioLang===_lexLang);
+
+  // Uporządkowana lista fragmentów wg kolejności w tekście
+  var parts = s.split(FS);
+  var queue = [];
+  parts.forEach(function(seg, i){
+    var txt=(seg||'').replace(/\s+/g,' ').trim();
+    if(!txt) return;
+    var isForeign = (i % 2 === 1); // fragmenty między sentinelami = słowa obce
+    queue.push({ t:txt, lang: readAllInTarget ? tgt : (isForeign ? tgt : 'pl-PL') });
+  });
+  if(!queue.length) return;
+
+  // Scal sąsiednie fragmenty w tym samym języku (płynniejsze, naturalne czytanie)
+  var merged=[];
+  queue.forEach(function(q){
+    var last=merged[merged.length-1];
+    if(last && last.lang===q.lang){ last.t += ' ' + q.t; }
+    else merged.push({ t:q.t, lang:q.lang });
+  });
+
+  // Potnij długie fragmenty na zdania (<~260 znaków) — SpeechSynthesis nie ucina treści
+  function chunkText(t){
+    t=t.trim();
+    if(t.length<=260) return [t];
+    var sents=t.split(/(?<=[.!?…])\s+/), out=[], cur='';
+    sents.forEach(function(sn){
+      if((cur+' '+sn).trim().length>260){ if(cur) out.push(cur.trim()); cur=sn; }
+      else cur=(cur?cur+' ':'')+sn;
     });
+    if(cur.trim()) out.push(cur.trim());
+    var fin=[]; out.forEach(function(c){ while(c.length>290){ fin.push(c.slice(0,290)); c=c.slice(290); } if(c) fin.push(c); });
+    return fin;
   }
+
+  merged.forEach(function(q){
+    chunkText(q.t).forEach(function(c){ _lexSpeakSeg(syn, c, q.lang); });
+  });
 }
 
 function lexUpdateAudioLangBtn(){
@@ -14580,10 +14659,28 @@ async function lexInit(){
     window._trybExternalCards=d.remaining;
     window._trybExternalName=d.name;
     trybClearSnapshot();
+    if(typeof window.strefaRenderContinue==='function') window.strefaRenderContinue();
     if(typeof showPage==='function') showPage('tryb');
     setTimeout(function(){ if(typeof startSession==='function') startSession('set_external'); }, 150);
   };
+  // Kafelek „Kontynuuj" w sidebarze Strefy Nauki — wraca do ostatniej przerwanej sesji
+  window.strefaRenderContinue=function(){
+    var wrap=document.getElementById('sb-continue-wrap'); if(!wrap) return;
+    var d=getSnap();
+    if(!d){ wrap.innerHTML=''; return; }
+    var done=(d.total||d.remaining.length)-d.remaining.length;
+    wrap.innerHTML='<div id="sb-continue-tile" onclick="trybResumeSession()" title="Wróć do ostatniej przerwanej sesji nauki"'
+      +' style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;border:.5px solid var(--orange);background:var(--paper2);transition:.2s;margin-bottom:12px"'
+      +' onmouseover="this.style.background=\'#fff\'" onmouseout="this.style.background=\'var(--paper2)\'">'
+      +'<div style="width:30px;height:30px;border-radius:8px;background:rgba(201,106,42,.12);color:var(--orange);display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+      +'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20"></polygon></svg></div>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:13px;font-weight:500;color:var(--navy)">Kontynuuj naukę</div>'
+      +'<div style="font-size:11px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escSnap(d.name)+' · zostało '+d.remaining.length+'</div>'
+      +'</div></div>';
+  };
   window.trybRenderResume=function(){
+    if(typeof window.strefaRenderContinue==='function') window.strefaRenderContinue();
     var lobby=document.getElementById('tryb-lobby'); if(!lobby) return;
     var old=document.getElementById('tryb-resume-card'); if(old) old.remove();
     var d=getSnap(); if(!d) return;
@@ -14621,12 +14718,14 @@ async function lexInit(){
     var body=document.getElementById('mat-modal-body');
     if(!modal||!body) return;
     if(title) title.textContent='Stwórz zestaw z AI';
+    window._aiImageData=null; window._aiImageName='';
     var langOpts=[['en','Angielski'],['es','Hiszpański'],['de','Niemiecki'],['fr','Francuski'],['nl','Holenderski'],['jp','Japoński']].map(function(o){return '<option value="'+o[0]+'">'+o[1]+'</option>';}).join('');
     body.innerHTML=''
      +'<div style="display:flex;gap:6px;margin-bottom:16px">'
        +'<button type="button" class="ai-mode-tab" data-m="topic" onclick="_aiSetModeUI(\'topic\')">Z tematu</button>'
        +'<button type="button" class="ai-mode-tab" data-m="paste" onclick="_aiSetModeUI(\'paste\')">Wklej słowa</button>'
        +'<button type="button" class="ai-mode-tab" data-m="text" onclick="_aiSetModeUI(\'text\')">Z tekstu</button>'
+       +'<button type="button" class="ai-mode-tab" data-m="image" onclick="_aiSetModeUI(\'image\')">Ze zdjęcia</button>'
      +'</div>'
      +'<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
        +'<div style="flex:1;min-width:130px"><label class="ai-lab">Język</label><select id="ai-set-lang" class="fi" style="width:100%">'+langOpts+'</select></div>'
@@ -14636,6 +14735,21 @@ async function lexInit(){
      +'<div id="ai-mode-topic"><label class="ai-lab">Temat</label><input id="ai-set-topic" class="fi" placeholder="np. słownictwo w restauracji, rozmowa o pracę" style="width:100%;box-sizing:border-box"></div>'
      +'<div id="ai-mode-paste" style="display:none"><label class="ai-lab">Słowa (po polsku lub w języku docelowym, jedno na linię)</label><textarea id="ai-set-paste" class="fi" rows="6" placeholder="kot&#10;pies&#10;dzień dobry" style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>'
      +'<div id="ai-mode-text" style="display:none"><label class="ai-lab">Tekst — AI wybierze najważniejsze słowa</label><textarea id="ai-set-text" class="fi" rows="6" placeholder="Wklej fragment tekstu lub artykułu..." style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>'
+     +'<div id="ai-mode-image" style="display:none">'
+       +'<label class="ai-lab">Zdjęcie — AI rozpozna obiekty i utworzy fiszki</label>'
+       +'<div id="ai-img-drop" onclick="document.getElementById(\'ai-img-file\').click()"'
+         +' style="border:1.5px dashed var(--border-strong);border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;transition:.15s;background:var(--paper)">'
+         +'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:8px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'
+         +'<div style="font-size:13px;color:var(--navy);font-weight:500">Przeciągnij zdjęcie tutaj</div>'
+         +'<div style="font-size:12px;color:var(--dim2);margin-top:2px">lub kliknij, aby wybrać plik (JPG, PNG)</div>'
+       +'</div>'
+       +'<input id="ai-img-file" type="file" accept="image/*" style="display:none" onchange="_aiImagePicked(this.files&&this.files[0])">'
+       +'<div id="ai-img-preview" style="display:none;margin-top:12px;align-items:center;gap:12px">'
+         +'<img id="ai-img-thumb" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:10px;border:.5px solid var(--border)">'
+         +'<div style="flex:1;min-width:0"><div id="ai-img-name" style="font-size:13px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>'
+         +'<button onclick="_aiImageClear()" style="background:none;border:none;color:var(--orange);font-size:12px;cursor:pointer;padding:2px 0;font-family:DM Sans,sans-serif">Usuń zdjęcie</button></div>'
+       +'</div>'
+     +'</div>'
      +'<div id="ai-gen-msg" style="font-size:12px;color:var(--dim2);min-height:16px;margin-top:10px"></div>'
      +'<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">'
        +'<button onclick="closeMatModal()" style="padding:10px 20px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif">Anuluj</button>'
@@ -14647,14 +14761,48 @@ async function lexInit(){
 
   window._aiSetModeUI=function(m){
     window._aiSetMode=m;
-    ['topic','paste','text'].forEach(function(x){ var el=document.getElementById('ai-mode-'+x); if(el) el.style.display=(x===m?'block':'none'); });
+    ['topic','paste','text','image'].forEach(function(x){ var el=document.getElementById('ai-mode-'+x); if(el) el.style.display=(x===m?'block':'none'); });
     document.querySelectorAll('.ai-mode-tab').forEach(function(t){ t.style.cssText=tabCss(t.dataset.m===m); });
     var lvl=document.getElementById('ai-level-wrap'); if(lvl) lvl.style.display=(m==='topic')?'block':'none';
     var cnt=document.getElementById('ai-count-wrap'); if(cnt) cnt.style.display=(m==='paste')?'none':'block';
+    if(m==='image') _aiWireDrop();
   };
+
+  // ── Obsługa zdjęcia (wybór pliku + drag&drop) ──
+  window._aiImageData=null; window._aiImageName='';
+  function _aiReadFile(file){
+    if(!file || !/^image\//.test(file.type)){ var msg=document.getElementById('ai-gen-msg'); if(msg) msg.textContent='Wybierz plik graficzny (JPG lub PNG).'; return; }
+    var rd=new FileReader();
+    rd.onload=function(){
+      window._aiImageData=rd.result; window._aiImageName=file.name||'zdjęcie';
+      var prev=document.getElementById('ai-img-preview'); var thumb=document.getElementById('ai-img-thumb'); var nm=document.getElementById('ai-img-name'); var drop=document.getElementById('ai-img-drop');
+      if(thumb) thumb.src=rd.result;
+      if(nm) nm.textContent=window._aiImageName;
+      if(prev) prev.style.display='flex';
+      if(drop){ drop.style.borderColor='var(--success)'; }
+      var msg=document.getElementById('ai-gen-msg'); if(msg) msg.textContent='';
+    };
+    rd.readAsDataURL(file);
+  }
+  window._aiImagePicked=function(file){ _aiReadFile(file); };
+  window._aiImageClear=function(){
+    window._aiImageData=null; window._aiImageName='';
+    var prev=document.getElementById('ai-img-preview'); if(prev) prev.style.display='none';
+    var f=document.getElementById('ai-img-file'); if(f) f.value='';
+    var drop=document.getElementById('ai-img-drop'); if(drop) drop.style.borderColor='var(--border-strong)';
+  };
+  function _aiWireDrop(){
+    var drop=document.getElementById('ai-img-drop');
+    if(!drop || drop.dataset.wired) return;
+    drop.dataset.wired='1';
+    ['dragenter','dragover'].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); drop.style.borderColor='var(--orange)'; drop.style.background='#fffaf7'; }); });
+    ['dragleave','drop'].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); drop.style.borderColor='var(--border-strong)'; drop.style.background='var(--paper)'; }); });
+    drop.addEventListener('drop',function(e){ var dt=e.dataTransfer; if(dt&&dt.files&&dt.files[0]) _aiReadFile(dt.files[0]); });
+  }
 
   window.aiGenerateSetPreview=async function(){
     var lang=val('ai-set-lang'), mode=window._aiSetMode;
+    if(mode==='image'){ return window._aiGenerateFromImage(); }
     var count=Math.max(3,Math.min(40,parseInt(val('ai-set-count')||'15',10)||15));
     var msg=document.getElementById('ai-gen-msg'), btn=document.getElementById('ai-gen-btn');
     var langName={en:'English',es:'Spanish',de:'German',fr:'French',nl:'Dutch',jp:'Japanese'}[lang]||'English';
@@ -14686,6 +14834,34 @@ async function lexInit(){
       if(!cards.length){ msg.textContent='Nie udało się wygenerować. Spróbuj ponownie.'; btn.disabled=false; btn.textContent=oldT; return; }
       _aiRenderSetEditor(defaultName, cards);
     }catch(e){ msg.textContent='Błąd generowania: '+(e.message||e); btn.disabled=false; btn.textContent=oldT; }
+  };
+
+  window._aiGenerateFromImage=async function(){
+    var lang=val('ai-set-lang');
+    var count=Math.max(3,Math.min(40,parseInt(val('ai-set-count')||'15',10)||15));
+    var msg=document.getElementById('ai-gen-msg'), btn=document.getElementById('ai-gen-btn');
+    var langName={en:'English',es:'Spanish',de:'German',fr:'French',nl:'Dutch',jp:'Japanese'}[lang]||'English';
+    if(!window._aiImageData){ if(msg) msg.textContent='Najpierw dodaj zdjęcie.'; return; }
+    var prompt='Przeanalizuj to zdjęcie. Rozpoznaj do '+count+' najważniejszych, wyraźnie widocznych obiektów, przedmiotów lub pojęć. '
+      +'Dla każdego utwórz fiszkę: "word" = nazwa w języku '+langName+', "translation" = polskie tłumaczenie. '
+      +'Pomiń rzeczy niejednoznaczne lub ledwo widoczne. '
+      +'Odpowiedz WYŁĄCZNIE tablicą JSON, bez backticków i komentarzy, w formacie: [{"word":"...","translation":"..."}]';
+    btn.disabled=true; var oldT=btn.textContent; btn.textContent='Analizuję…'; if(msg) msg.textContent='AI rozpoznaje obiekty na zdjęciu…';
+    try{
+      var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
+      var content=[
+        {type:'text', text:prompt},
+        {type:'image_url', image_url:{url:window._aiImageData}}
+      ];
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:content}],max_tokens:1600})});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      var d=await res.json();
+      var rawTxt=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
+      var a=rawTxt.indexOf('['), b=rawTxt.lastIndexOf(']'), cards=[];
+      if(a>=0&&b>a){ try{ var arr=JSON.parse(rawTxt.slice(a,b+1)); cards=arr.map(function(c){return {word:String(c.word||c.term||'').trim(), translation:String(c.translation||c.tr||c.pl||'').trim()};}).filter(function(c){return c.word&&c.translation;}); }catch(e){} }
+      if(!cards.length){ if(msg) msg.textContent='Nie udało się rozpoznać obiektów. Spróbuj wyraźniejszego zdjęcia.'; btn.disabled=false; btn.textContent=oldT; return; }
+      _aiRenderSetEditor(langName+' — ze zdjęcia', cards);
+    }catch(e){ if(msg) msg.textContent='Błąd analizy zdjęcia: '+(e.message||e); btn.disabled=false; btn.textContent=oldT; }
   };
 
   window._aiRenderSetEditor=function(name, cards){
