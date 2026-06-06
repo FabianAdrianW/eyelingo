@@ -1883,17 +1883,68 @@ const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const DOWNLOAD_URL='#';
 // Initialize Supabase with retry if CDN loaded slowly
 var db;
+// ── IZOLACJA DANYCH PER-USER (Logic Bible §0) ──
+// Każdy klucz localStorage z danymi usera MUSI być namespace'owany jego user.id.
+window._uid = null;
+function uidNow(){ return window._uid || ''; }
+function uk(base){ return base+'_'+uidNow(); }
+// Usuwa per-user dane z localStorage przy wylogowaniu, by następny user na tej samej
+// przeglądarce ich nie dziedziczył. Kolekcji NIE czyścimy (są tylko w localStorage —
+// czyszczenie = utrata danych; docelowo idą do DB z RLS).
+function clearUserLocalData(){
+  try{
+    for(var i=localStorage.length-1;i>=0;i--){
+      var k=localStorage.key(i);
+      if(!k) continue;
+      if(k==='teacher_conversations' || k.indexOf('teacher_conversations_')===0 || k.indexOf('chat_usage')===0){
+        localStorage.removeItem(k);
+      }
+    }
+  }catch(e){}
+}
+// Stare, NIENAMESPACE'OWANE klucze wyciekały między kontami na tej samej przeglądarce.
+// Usuwamy je raz — nowe zapisy są już per-user (klucz zawiera user.id).
+function killLegacyLeakKeys(){
+  try{
+    ['teacher_conversations','eyelingo_lang_levels','kk_streak','kk_last_read'].forEach(function(k){ localStorage.removeItem(k); });
+    for(var i=localStorage.length-1;i>=0;i--){
+      var key=localStorage.key(i);
+      if(key && (key.indexOf('quiz_done_2')===0 || key.indexOf('daily_quiz_ans_2')===0)) localStorage.removeItem(key);
+    }
+  }catch(e){}
+}
+// Po ustaleniu/zmianie usera przeładuj stan zależny od konta z jego namespace'a.
+function reloadUserScopedState(){
+  try{ if(typeof loadLangLevels==='function'){ loadLangLevels(); if(typeof syncLevelSelector==='function') syncLevelSelector(); } }catch(e){}
+}
 (function initDB(){
   if(typeof supabase !== 'undefined'){
     var _c=supabase.createClient||supabase.default&&supabase.default.createClient;
     if(_c) db=_c(SUPABASE_URL,SUPABASE_KEY);
+  }
+  if(db && !window._authHooked){
+    window._authHooked = true;
+    try{
+      db.auth.getSession().then(function(r){
+        try{ window._uid = (r&&r.data&&r.data.session) ? r.data.session.user.id : null; }catch(e){}
+        killLegacyLeakKeys();
+        reloadUserScopedState();
+      });
+      db.auth.onAuthStateChange(function(event, session){
+        window._uid = session ? session.user.id : null;
+        killLegacyLeakKeys();
+        if(event==='SIGNED_OUT') clearUserLocalData();
+        reloadUserScopedState();
+      });
+    }catch(e){}
   }
   if(!db){
     // CDN not loaded yet - retry in 100ms
     setTimeout(initDB, 100);
   }
 })();
-function getChatUsageToday(){try{return parseInt(localStorage.getItem('chat_usage_'+new Date().toISOString().slice(0,10))||'0');}catch(e){return 0;}}
+function chatUsageKey(){ return 'chat_usage_'+uidNow()+'_'+new Date().toISOString().slice(0,10); }
+function getChatUsageToday(){try{return parseInt(localStorage.getItem(chatUsageKey())||'0');}catch(e){return 0;}}
 // Global escH helper — available in all script blocks
 window.escH = function(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
 // ── renderStarsDisplay — global ──
@@ -3730,26 +3781,6 @@ async function initToFixPage(){
           </select>
         </div>
         <div style="margin-bottom:14px">
-          <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px" for="chat-topic">Temat</label>
-          <select id="chat-topic" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
-            <option value="daily">Codzienne życie</option>
-            <option value="travel">Podróże</option>
-            <option value="work">Praca i kariera</option>
-            <option value="tech">Technologia</option>
-            <option value="movies">Filmy i seriale</option>
-            <option value="music">Muzyka</option>
-            <option value="games">Gry video</option>
-            <option value="anime">Anime i manga</option>
-            <option value="sport">Sport</option>
-            <option value="food">Gotowanie i jedzenie</option>
-            <option value="custom">Własny temat</option>
-          </select>
-        </div>
-        <div id="chat-custom-topic-wrap" style="display:none;margin-bottom:14px">
-          <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px" for="chat-custom-topic">Wpisz temat</label>
-          <input id="chat-custom-topic" type="text" placeholder="np. planowanie wakacji" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
-        </div>
-        <div style="margin-bottom:14px">
           <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px" for="chat-level">Poziom</label>
           <select id="chat-level" onchange="chatLevelChanged()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
             <option value="A1">A1 – Początkujący</option>
@@ -3818,23 +3849,23 @@ async function initToFixPage(){
       <div style="max-width:520px;margin:0 auto;padding:32px 0;text-align:center">
         <div id="lex-ob-lang-flag" style="font-size:40px;margin-bottom:12px">🇬🇧</div>
         <h3 style="font-family:DM Sans,sans-serif;font-size:22px;font-weight:500;color:var(--navy);margin-bottom:6px" id="lex-ob-title">Angielski</h3>
-        <p style="font-size:14px;color:var(--dim);margin-bottom:28px">Powiedz mi o sobie — dostosuję lekcje do Ciebie</p>
+        <p style="font-size:14px;color:var(--dim);margin-bottom:28px" id="lex-ob-sub">Powiedz mi o sobie — dostosuję lekcje do Ciebie</p>
         <div style="text-align:left;display:flex;flex-direction:column;gap:16px">
           <div>
             <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Twój cel</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <button onclick="lexObSelect(this,'goal','ogólny')" class="lex-ob-opt lex-ob-active" style="padding:10px;border-radius:10px;border:2px solid var(--orange);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Ogólny</button>
-              <button onclick="lexObSelect(this,'goal','biznes')" class="lex-ob-opt" style="padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Biznes</button>
-              <button onclick="lexObSelect(this,'goal','podróże')" class="lex-ob-opt" style="padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Podróże</button>
-              <button onclick="lexObSelect(this,'goal','egzamin')" class="lex-ob-opt" style="padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Egzamin</button>
+              <button onclick="lexObSelect(this,'goal','ogólny')" data-goal="ogólny" class="lex-ob-opt lex-ob-active" style="padding:10px;border-radius:10px;border:2px solid var(--orange);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Ogólny</button>
+              <button onclick="lexObSelect(this,'goal','biznes')" data-goal="biznes" class="lex-ob-opt" style="padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Biznes</button>
+              <button onclick="lexObSelect(this,'goal','podróże')" data-goal="podróże" class="lex-ob-opt" style="padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Podróże</button>
+              <button onclick="lexObSelect(this,'goal','egzamin')" data-goal="egzamin" class="lex-ob-opt" style="padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Egzamin</button>
             </div>
           </div>
           <div>
             <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Czas lekcji</label>
             <div style="display:flex;gap:8px">
-              <button onclick="lexObSelect(this,'dur',10)" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">10 min</button>
-              <button onclick="lexObSelect(this,'dur',25)" class="lex-dur-opt lex-ob-active" style="flex:1;padding:10px;border-radius:10px;border:2px solid var(--orange);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">25 min</button>
-              <button onclick="lexObSelect(this,'dur',40)" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">40 min</button>
+              <button onclick="lexObSelect(this,'dur',10)" data-dur="10" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">10 min</button>
+              <button onclick="lexObSelect(this,'dur',25)" data-dur="25" class="lex-dur-opt lex-ob-active" style="flex:1;padding:10px;border-radius:10px;border:2px solid var(--orange);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">25 min</button>
+              <button onclick="lexObSelect(this,'dur',40)" data-dur="40" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">40 min</button>
             </div>
           </div>
         </div>
@@ -4159,7 +4190,7 @@ var LANG_LEVELS = {en:'B1', es:'B1', nl:'B1', jp:'A1'};
 
 function loadLangLevels(){
   try {
-    var saved = localStorage.getItem('eyelingo_lang_levels');
+    var saved = uidNow() ? localStorage.getItem(uk('eyelingo_lang_levels')) : null;
     if(saved) LANG_LEVELS = JSON.parse(saved);
   } catch(e){}
 }
@@ -4169,7 +4200,7 @@ function saveLangLevel(){
   var level = document.getElementById('daily-level-select')?.value;
   if(!lang || !level) return;
   LANG_LEVELS[lang] = level;
-  try { localStorage.setItem('eyelingo_lang_levels', JSON.stringify(LANG_LEVELS)); } catch(e){}
+  try { if(uidNow()) localStorage.setItem(uk('eyelingo_lang_levels'), JSON.stringify(LANG_LEVELS)); } catch(e){}
   // Save to Supabase profile if logged in
   saveLangLevelsToProfile();
 }
@@ -4262,7 +4293,7 @@ function saveAllLevels(){
     var sel = document.getElementById('lvl-modal-'+l);
     if(sel) LANG_LEVELS[l] = sel.value;
   });
-  try { localStorage.setItem('eyelingo_lang_levels', JSON.stringify(LANG_LEVELS)); } catch(e){}
+  try { if(uidNow()) localStorage.setItem(uk('eyelingo_lang_levels'), JSON.stringify(LANG_LEVELS)); } catch(e){}
   saveLangLevelsToProfile();
   syncLevelSelector();
   document.getElementById('level-settings-modal').style.display='none';
@@ -4309,10 +4340,10 @@ function updateDailyProgress(){
 }
 
 function getQuizDoneToday(){
-  try{return localStorage.getItem('quiz_done_'+new Date().toISOString().slice(0,10))||'';}catch(e){return '';}
+  try{return localStorage.getItem(uk('quiz_done')+'_'+new Date().toISOString().slice(0,10))||'';}catch(e){return '';}
 }
 function setQuizDoneToday(lang){
-  try{localStorage.setItem('quiz_done_'+new Date().toISOString().slice(0,10),lang);}catch(e){}
+  try{localStorage.setItem(uk('quiz_done')+'_'+new Date().toISOString().slice(0,10),lang);}catch(e){}
 }
 
 function initDaily(){
@@ -5062,7 +5093,7 @@ function renderDailyQuiz(quiz){
   try{
     var lang=(document.getElementById('daily-lang-select')||{}).value||'en';
     var today=new Date().toISOString().slice(0,10);
-    var saved=localStorage.getItem('daily_quiz_ans_'+today+'_'+lang);
+    var saved=localStorage.getItem(uk('daily_quiz_ans')+'_'+today+'_'+lang);
     if(saved!==null && saved!==''){
       applyDailyQuizAnswer(parseInt(saved,10), quiz.correct);
     }
@@ -5094,7 +5125,7 @@ function checkDailyQuizOpt(btn, idx, correct){
   try{
     var lang=(document.getElementById('daily-lang-select')||{}).value||'en';
     var today=new Date().toISOString().slice(0,10);
-    localStorage.setItem('daily_quiz_ans_'+today+'_'+lang, String(idx));
+    localStorage.setItem(uk('daily_quiz_ans')+'_'+today+'_'+lang, String(idx));
   }catch(e){}
   applyDailyQuizAnswer(idx, correct);
   window._dailyXP = (window._dailyXP||0) + (idx===correct?25:10);
@@ -5832,14 +5863,25 @@ var _chatPersonas={
   jp:{name:'Yuki',desc:'ネイティブスピーカー · 東京',greeting:'こんにちは！ゆきです。一緒に日本語を練習しましょう。何について話したいですか？'}
 };
 
+function chatLangLevel(){
+  try{ return (typeof LANG_LEVELS!=='undefined' && LANG_LEVELS[_chatLang]) || 'B1'; }catch(e){ return 'B1'; }
+}
+function chatSyncLevelBadge(){
+  var sel=document.getElementById('chat-level');
+  var lvl=(sel&&sel.value)||'B1';
+  var langCode={en:'EN',es:'ES',nl:'NL',jp:'JP'}[_chatLang]||'EN';
+  var tagEl=document.getElementById('chat-persona-tags');
+  if(tagEl) tagEl.innerHTML='<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:#e6f1fb;color:#0c447c;font-weight:500">'+langCode+' · '+lvl+'</span>';
+}
 function chatUpdatePersona(){
   _chatLang=document.getElementById('chat-lang').value;
   var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
   document.getElementById('chat-persona-name').textContent=p.name;
   document.getElementById('chat-persona-desc').textContent=p.desc;
-  var langTag={en:'EN · B1→B2',es:'ES · A2→B1',nl:'NL · A1→A2',jp:'JP · N5→N4'}[_chatLang]||'EN';
-  document.getElementById('chat-persona-tags').innerHTML=
-    '<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:#e6f1fb;color:#0c447c;font-weight:500">'+langTag+'</span>';
+  // Poziom Alexa = realny poziom usera dla tego języka (nie sztywne B1); da się go zmienić selektorem.
+  var lvlSel=document.getElementById('chat-level');
+  if(lvlSel) lvlSel.value=chatLangLevel();
+  chatSyncLevelBadge();
   var langPlaceholder={en:'Napisz po angielsku...',es:'Escribe en español...',nl:'Schrijf in het Nederlands...',jp:'日本語で書いてください...'};
   var inp=document.getElementById('chat-input');
   if(inp) inp.placeholder=langPlaceholder[_chatLang]||'Napisz...';
@@ -5931,6 +5973,7 @@ function setChatLevel(level, el){
 
 function chatLevelChanged(){
   var lvl=((document.getElementById('chat-level')||{}).value)||'B1';
+  chatSyncLevelBadge();
   var hasUserTurn=(_chatHistory||[]).some(function(m){return m.role==='user';});
   if(hasUserTurn) chatReset();
   if(typeof showToast==='function') showToast('Poziom rozmowy: '+lvl,'success');
@@ -6084,11 +6127,11 @@ function chatUseHint(text){
 const CHAT_DAILY_LIMIT = 15;
 
 function getChatUsageToday(){
-  try{ return parseInt(localStorage.getItem('chat_usage_'+new Date().toISOString().slice(0,10))||'0'); }
+  try{ return parseInt(localStorage.getItem(chatUsageKey())||'0'); }
   catch(e){return 0;}
 }
 function incrementChatUsage(){
-  try{ var key='chat_usage_'+new Date().toISOString().slice(0,10); var n=getChatUsageToday()+1; localStorage.setItem(key,String(n)); return n; }
+  try{ var key=chatUsageKey(); var n=getChatUsageToday()+1; localStorage.setItem(key,String(n)); return n; }
   catch(e){return 1;}
 }
 function updateChatLimitUI(){
@@ -6186,10 +6229,8 @@ async function chatSend(){
     var vocabList=[];
 
     var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
-    var topic=document.getElementById('chat-topic').value;
     var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
     var langNames={en:'English',es:'Spanish',fr:'French',de:'German',nl:'Dutch',jp:'Japanese',it:'Italian',pt:'Portuguese'};
-    var topicNames={daily:'everyday life',travel:'travel and trips',work:'work and career',tech:'technology and gadgets',movies:'movies and TV series',music:'music and artists',games:'video games',anime:'anime and manga',sport:'sports',food:'cooking and food',custom:'a topic of their choice',free:'any topic'};
     var cefr=((document.getElementById('chat-level')||{}).value)||'B1';
     var levelInstructions={
       A1:'CEFR A1. Very simple words, short sentences (max 8 words), speak slowly. Add a Polish gloss in parentheses for any non-basic word. Gently correct mistakes.',
@@ -6202,8 +6243,8 @@ async function chatSend(){
     var levelInst=levelInstructions[cefr]||levelInstructions['B1'];
 
     var systemPrompt='You are '+p.name+', a friendly native '+langNames[_chatLang]+' speaker from '+p.desc.split('·')[1].trim()+'. '
-      +'CONVERSATION TOPIC: '+(topicNames[topic]||'everyday life')+'. '
-      +'YOUR FIRST PRIORITY: respond genuinely and substantively to what the user actually said, on their chosen topic, at their level. If they ask for a story, tell a real, interesting story. '
+      +'This is a FREE, OPEN conversation: follow the user\'s lead and talk about whatever they bring up. Do NOT impose, suggest, or steer toward any preset topic — let the conversation flow naturally from what they say. '
+      +'YOUR FIRST PRIORITY: respond genuinely and substantively to what the user actually said, at their level. If they ask for a story, tell a real, interesting story. '
       +'LEVEL (strict, do not drift below it): '+levelInst+' '
       +(mode==='brave'?('Respond ONLY in '+langNames[_chatLang]+'. If the user writes in Polish, gently nudge them back to '+langNames[_chatLang]+'. '):('Respond in '+langNames[_chatLang]+'. '))
       +(targetWords.length?('SECONDARY and OPTIONAL — the user is practising these words: '+targetWords.join(', ')+'. ONLY if one fits naturally in an otherwise on-topic reply, use it and wrap THAT word in **double asterisks**. Never force them, never steer the conversation toward them, never use more than two per reply. A natural, on-topic, level-appropriate answer ALWAYS beats inserting a practice word. '):'')
@@ -11042,14 +11083,14 @@ function kkRenderFull(wrap, d, color){
 
 function kkUpdateStreakOdkryj(todayDate){
   try{
-    var last=localStorage.getItem('kk_last_read');
-    var count=parseInt(localStorage.getItem('kk_streak')||'0',10);
+    var last=localStorage.getItem(uk('kk_last_read'));
+    var count=parseInt(localStorage.getItem(uk('kk_streak'))||'0',10);
     var yesterday=new Date(Date.now()-86400000).toISOString().split('T')[0];
     if(last===todayDate){}
     else if(last===yesterday){count+=1;}
     else{count=1;}
-    localStorage.setItem('kk_last_read',todayDate);
-    localStorage.setItem('kk_streak',String(count));
+    localStorage.setItem(uk('kk_last_read'),todayDate);
+    localStorage.setItem(uk('kk_streak'),String(count));
     var sn=document.getElementById('kk-streak-num-odkryj');
     var ss=document.getElementById('kk-streak-sub-odkryj');
     if(sn)sn.textContent=count+(count===1?' dzień':' dni');
@@ -11718,11 +11759,14 @@ function teacherLoadChat(){
 }
 
 // ── Historia rozmów (localStorage) ──────────────────────────
+function teacherHistoryKey(){ return 'teacher_conversations_'+uidNow(); }
 function teacherGetHistory(){
-  try{ return JSON.parse(localStorage.getItem('teacher_conversations')||'[]'); }catch(e){ return []; }
+  if(!uidNow()) return [];
+  try{ return JSON.parse(localStorage.getItem(teacherHistoryKey())||'[]'); }catch(e){ return []; }
 }
 function teacherSetHistory(list){
-  try{ localStorage.setItem('teacher_conversations', JSON.stringify(list.slice(0,50))); }catch(e){}
+  if(!uidNow()) return;
+  try{ localStorage.setItem(teacherHistoryKey(), JSON.stringify(list.slice(0,50))); }catch(e){}
 }
 function teacherRenderHistory(){
   var box=document.getElementById('teacher-history-list'); if(!box) return;
@@ -12740,6 +12784,7 @@ function lexShowScreen(id){
 
 // ── Language selection ────────────────────────────────────
 function lexSelectLanguage(code, name){
+  window._lexNextTopic = null;
   _lexLang = code;
   var info = LEX_LANG_MAP[code] || {name: name, native: name, flag: '🌐'};
   _lexLangName = info.name;
@@ -12756,11 +12801,34 @@ function lexSelectLanguage(code, name){
   if(badge) badge.textContent = '· ' + info.flag + ' ' + info.native;
 
   if(_lexProfile && _lexProfile.user_name){
-    // Skip onboarding for returning users
-    lexStartLesson();
+    // Returning user — i tak pokazujemy ekran celu/czasu (czas wybierany za KAŻDYM razem),
+    // ale z pre-wypełnionymi ostatnimi wyborami. Poziom i luki zostają nietknięte.
+    lexGoToSetup();
   } else {
+    lexPrefillSetup();
     lexShowScreen('lex-onboarding');
   }
+}
+
+// Pre-wypełnia ekran celu/czasu ostatnimi wyborami usera (lub domyślnymi).
+function lexPrefillSetup(){
+  var goal = (_lexProfile && _lexProfile.user_goal) || _lexObGoal || 'ogólny';
+  var dur = (_lexProfile && _lexProfile.lesson_duration) || _lexObDur || 25;
+  _lexObGoal = goal; _lexObDur = dur;
+  document.querySelectorAll('.lex-ob-opt').forEach(function(b){
+    b.style.border = (b.getAttribute('data-goal')===goal) ? '2px solid var(--orange)' : '1.5px solid var(--border2)';
+  });
+  document.querySelectorAll('.lex-dur-opt').forEach(function(b){
+    b.style.border = (String(b.getAttribute('data-dur'))===String(dur)) ? '2px solid var(--orange)' : '1.5px solid var(--border2)';
+  });
+}
+
+// Pokazuje ekran wyboru celu/czasu przed każdą lekcją (zachowuje ewentualny _lexNextTopic).
+function lexGoToSetup(){
+  lexPrefillSetup();
+  var sub = document.getElementById('lex-ob-sub');
+  if(sub) sub.textContent = (_lexProfile && _lexProfile.user_name) ? 'Wybierz cel i czas tej lekcji' : 'Powiedz mi o sobie — dostosuję lekcje do Ciebie';
+  lexShowScreen('lex-onboarding');
 }
 
 // ── Onboarding selectors ──────────────────────────────────
@@ -12778,32 +12846,39 @@ function lexObSelect(btn, type, val){
 
 function lexStartLessonOnGap(){
   if(_lexTopGap){ window._lexNextTopic = _lexTopGap; }
-  lexStartLesson();
+  lexGoToSetup();
 }
 
 async function lexStartFromOnboarding(){
   try{
     var sess = (await db.auth.getSession()).data.session;
     if(!sess) return;
-    var userName = sess.user.email ? sess.user.email.split('@')[0] : 'Uczniu';
-    try{
-      var {data: p} = await db.from('profiles').select('username').eq('user_id', sess.user.id).single();
-      if(p && p.username) userName = p.username;
-    }catch(e){}
+    if(_lexProfile && _lexProfile.user_name){
+      // Returning user — cel/czas dotyczą TEJ lekcji. NIE resetujemy poziomu ani luk.
+      _lexProfile.user_goal = _lexObGoal;
+      _lexProfile.lesson_duration = _lexObDur;
+      try{ await db.from('lex_profiles').update({user_goal:_lexObGoal, lesson_duration:_lexObDur, updated_at:new Date().toISOString()}).eq('user_id', sess.user.id); }catch(e){}
+    } else {
+      var userName = sess.user.email ? sess.user.email.split('@')[0] : 'Uczniu';
+      try{
+        var {data: p} = await db.from('profiles').select('username').eq('user_id', sess.user.id).single();
+        if(p && p.username) userName = p.username;
+      }catch(e){}
 
-    var profileData = {
-      user_id: sess.user.id, user_name: userName,
-      user_level: 'unknown', user_goal: _lexObGoal,
-      learning_style: 'mieszany', lesson_duration: _lexObDur,
-      known_gaps: [], total_lessons: 0,
-      levels_by_lang: (_lexProfile && _lexProfile.levels_by_lang) || {},
-      updated_at: new Date().toISOString()
-    };
-    var existing = null;
-    try{ var r = await db.from('lex_profiles').select('id').eq('user_id', sess.user.id).maybeSingle(); existing = r.data; }catch(e){ existing = null; }
-    if(existing){ await db.from('lex_profiles').update(profileData).eq('user_id', sess.user.id); }
-    else { await db.from('lex_profiles').insert(profileData); }
-    _lexProfile = profileData;
+      var profileData = {
+        user_id: sess.user.id, user_name: userName,
+        user_level: 'unknown', user_goal: _lexObGoal,
+        learning_style: 'mieszany', lesson_duration: _lexObDur,
+        known_gaps: [], total_lessons: 0,
+        levels_by_lang: (_lexProfile && _lexProfile.levels_by_lang) || {},
+        updated_at: new Date().toISOString()
+      };
+      var existing = null;
+      try{ var r = await db.from('lex_profiles').select('id').eq('user_id', sess.user.id).maybeSingle(); existing = r.data; }catch(e){ existing = null; }
+      if(existing){ await db.from('lex_profiles').update(profileData).eq('user_id', sess.user.id); }
+      else { await db.from('lex_profiles').insert(profileData); }
+      _lexProfile = profileData;
+    }
   }catch(e){ console.error('Lex onboarding save:', e); }
   lexStartLesson();
 }
@@ -13823,7 +13898,7 @@ function lexRenderSidebarGaps(){
 
 function lexStartLessonOnGapTopic(topic){
   window._lexNextTopic = topic;
-  lexStartLesson();
+  lexGoToSetup();
 }
 
 // #3 Zeszyt — przewijane kartki lekcji
