@@ -1269,7 +1269,9 @@ window.switchMatTab = function(tab){
     if(srcf) srcf.style.display='flex';
     if(typeof loadMySets==='function') loadMySets();
     else setTimeout(function(){ if(typeof loadMySets==='function') loadMySets(); }, 300);
+    if(typeof window.matRenderContinue==='function') window.matRenderContinue();
   } else if(tab==='community'){
+    var _mc0=document.getElementById('mat-continue-wrap'); if(_mc0) _mc0.innerHTML='';
     if(title) title.textContent='Społeczność';
     if(sub) sub.textContent='Zestawy innych użytkowników';
     if(grid){ grid.style.display='grid'; }
@@ -1896,7 +1898,7 @@ function clearUserLocalData(){
     for(var i=localStorage.length-1;i>=0;i--){
       var k=localStorage.key(i);
       if(!k) continue;
-      if(k==='teacher_conversations' || k.indexOf('teacher_conversations_')===0 || k.indexOf('chat_usage')===0){
+      if(k==='teacher_conversations' || k.indexOf('teacher_conversations_')===0 || k.indexOf('chat_usage')===0 || k.indexOf('strefa_last_session')===0){
         localStorage.removeItem(k);
       }
     }
@@ -1906,7 +1908,7 @@ function clearUserLocalData(){
 // Usuwamy je raz — nowe zapisy są już per-user (klucz zawiera user.id).
 function killLegacyLeakKeys(){
   try{
-    ['teacher_conversations','eyelingo_lang_levels','kk_streak','kk_last_read'].forEach(function(k){ localStorage.removeItem(k); });
+    ['teacher_conversations','eyelingo_lang_levels','kk_streak','kk_last_read','strefa_last_session','lex_audio_lang','lex_speech'].forEach(function(k){ localStorage.removeItem(k); });
     for(var i=localStorage.length-1;i>=0;i--){
       var key=localStorage.key(i);
       if(key && (key.indexOf('quiz_done_2')===0 || key.indexOf('daily_quiz_ans_2')===0)) localStorage.removeItem(key);
@@ -2842,6 +2844,9 @@ function setCard(s){
         <button class="mat-srcf" data-src="lex" onclick="matFilterSource('lex',this)">Z lekcji Lexa</button>
         <button class="mat-srcf" data-src="alex" onclick="matFilterSource('alex',this)">Z rozmów z Alexem</button>
       </div>
+
+      <!-- 9.4 Kontynuuj ostatnią sesję nauki -->
+      <div id="mat-continue-wrap" style="margin-bottom:14px"></div>
 
       <!-- Count -->
       <div id="mat-count" style="font-size:13px;color:var(--dim2);margin-bottom:14px"></div>
@@ -3893,7 +3898,7 @@ async function initToFixPage(){
           <div id="lex-eval-badge" style="display:none;font-size:11px;padding:3px 10px;background:#e0f2fe;border:1px solid #0ea5e9;border-radius:100px;color:#0369a1">Ocena poziomu</div>
           <span id="lex-score-badge" style="display:none"></span>
           <button id="lex-speech-toggle" onclick="lexToggleSpeech()" style="font-size:16px;padding:4px 8px;background:transparent;border:1px solid var(--border2);border-radius:100px;cursor:pointer" title="Włącz/wyłącz czytanie"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>
-          <button id="lex-audiolang-btn" onclick="lexToggleAudioLang()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Audio: PL</button>
+          <button id="lex-audiolang-btn" onclick="lexToggleAudioLang()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Lekcja: PL</button>
           <button onclick="lexToggleBoard()" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"></path><path d="M8 21h8M12 17v4"></path></svg>Tablica</button>
           <button onclick="lexEndLesson()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">Zakończ</button>
         </div>
@@ -12757,6 +12762,10 @@ async function lexInit(){
     _lexProfile = prof;
   }catch(e){ _lexProfile = null; }
 
+  // Per-user preferencje Lexa (język prowadzenia + audio on/off) — namespace user.id
+  try{ var _al=localStorage.getItem(uk('lex_audio_lang')); if(_al) _lexAudioLang=_al; }catch(e){}
+  try{ var _sp2=localStorage.getItem(uk('lex_speech')); if(_sp2==='0') _lexSpeechEnabled=false; else if(_sp2==='1') _lexSpeechEnabled=true; }catch(e){}
+
   // Show correct screen
   if(!_lexProfile || !_lexProfile.user_name){
     lexShowScreen('lex-lang-select');
@@ -12767,8 +12776,7 @@ async function lexInit(){
   lexCheckResumable();
 }
 
-// Load speech preference on init
-try{ var sp = localStorage.getItem('lex_speech'); if(sp === '0') _lexSpeechEnabled = false; }catch(e){}
+// (preferencje Lexa ładowane per-user w lexInit)
 
 function lexShowScreen(id){
   if(typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
@@ -13138,9 +13146,17 @@ function lexBuildSystemPrompt(flashcardSets){
   var name = prof.user_name || '';
   var gaps = (prof.known_gaps || []).slice(0,5);
 
+  // 9.5 — język PROWADZENIA lekcji: 'pl' = narracja po polsku (słowa obce w jęz. uczonym),
+  // albo kod jęz. uczonego = cała lekcja w jęz. uczonym. Ćwiczenia ZAWSZE w jęz. uczonym.
+  var conductTarget = (typeof _lexAudioLang!=='undefined' && _lexAudioLang===_lexLang);
+  var conductLang = conductTarget ? _lexLangNative : 'Polish';
+  var rule1 = conductTarget
+    ? '1. ALWAYS communicate IN ' + _lexLangNative + '. For B1+ keep explanations in the target language too; use Polish ONLY for a single-word gloss in parentheses, never whole sentences. NEVER use emoji or emoticons anywhere — keep a calm, professional, pedagogical tone.\n'
+    : '1. Conduct and EXPLAIN the whole lesson in Polish (the student reads Polish). Whenever you use a ' + _lexLangNative + ' word, phrase or example sentence, wrap it in **double asterisks** so it is shown and pronounced in ' + _lexLangNative + '. Exercises, MC options and the student\'s expected answers ALWAYS stay in ' + _lexLangNative + '. NEVER use emoji or emoticons anywhere — keep a calm, professional, pedagogical tone.\n';
+
   return 'You are Lex, an expert language teacher. You teach ONLY the ' + _lexLangNative + ' language.\n'
     + 'CRITICAL RULES:\n'
-    + '1. ALWAYS communicate IN ' + _lexLangNative + '. For B1+ keep explanations in the target language too; use Polish ONLY for a single-word gloss in parentheses, never whole sentences. NEVER use emoji or emoticons anywhere — keep a calm, professional, pedagogical tone.\n'
+    + rule1
     + '2. Each response = ONE card = ONE clear thought or exercise. Be concise.\n'
     + '3. Student: ' + (name || 'learner') + ', level: ' + level + ', goal: ' + goal + ', lesson: ' + dur + ' min\n'
     + '4. If level is "unknown" — run the placement as a NATURAL WRITTEN CONVERSATION, NOT a quiz: ask open [CONV] questions (their day, opinions, plans, a short story), escalating difficulty A1->C1. After EACH student answer detect grammar errors (tense, pronoun, agreement, word order, prepositions) and emit a [GAP]krotka nazwa po polsku[/GAP] for each error type, then a one-sentence encouraging correction. Use [CONV] cards, NOT [MC], during placement. Aim for 8-10 exchanges. Do NOT conclude before 10 answers. The moment you conclude the level, add the marker [LEVEL]X[/LEVEL] exactly once (X = A1/A2/B1/B2/C1/C2).\n'
@@ -13157,8 +13173,9 @@ function lexBuildSystemPrompt(flashcardSets){
     + 'GAP: [GAP]nazwa luki PO POLSKU, konkretna (np. czas przeszły Preterito, rodzajniki, odmiana ser/estar)[/GAP] gdy wykryjesz błąd. FIX: poprawioną wersję zdania/frazy/wyrazu ZAWSZE owiń w [FIX]...[/FIX]. LEVEL: [LEVEL]B1[/LEVEL] raz, gdy ustalisz poziom. RECOMMEND: kończąc test, jako metodyk wskaż JEDNĄ lukę od której najlepiej zacząć i owiń w [RECOMMEND]nazwa luki po polsku[/RECOMMEND]. CARD: KAŻDE poprawione słowo lub zwrot dodaj też jako [CARD]poprawne|tłumaczenie_PL[/CARD] — trafi do fiszek usera\\n'
     + 'END: [END] po ~' + Math.round(dur * 1.5) + ' wymianach\\n'
     + 'CORE (do zeszytu ucznia): gdy uczysz reguły gramatycznej lub kluczowego słowa/zwrotu, dodaj wpis [CORE]typ|treść|przykład[/CORE] gdzie typ=rule lub word. Dla rule: treść=krótka reguła PO POLSKU (np. "3 os. l.poj.: dodajemy -s/-es"), przykład=zdanie wzorcowe. Dla word: treść=słowo + tłumaczenie PL, przykład=użycie. Dodawaj 1-3 wpisy CORE na lekcję, tylko najważniejsze. Pisz zwięźle.\\n'
+    + 'KEY (do zapamiętania, wyróżnienie pomarańczowe): najważniejszą rzecz w danej karcie — to, co uczeń MA ZAPAMIĘTAĆ (reguła, wniosek, kluczowy zwrot) — owiń w [KEY]...[/KEY]. Maksymalnie JEDEN [KEY] na kartę, często zero. Używaj bardzo oszczędnie — to ma być akcent, nie zakreślacz na pół karty.\\n'
     + 'LESSON FLOW ' + dur + ' min:\\n'
-    + (level === 'unknown' ? '→ Przywitaj po ' + _lexLangNative + ', swobodna rozmowa pisana (CONV) jako diagnostyka, wyłapuj [GAP], 8-10 wymian, zakończ [LEVEL]\\n' : '→ Krótkie powitanie po ' + _lexLangNative + '\\n')
+    + (level === 'unknown' ? '→ Przywitaj po ' + conductLang + ', swobodna rozmowa pisana (CONV) jako diagnostyka, wyłapuj [GAP], 8-10 wymian, zakończ [LEVEL]\\n' : '→ Krótkie powitanie po ' + conductLang + '\\n')
     + '→ HPPP: Hook → Present → Practice → Produce\\n'
     + '→ Zakończ [END]\\n'
     + 'Jedna myśl na kartę. Zawsze kończ ćwiczeniem lub [INFO].';
@@ -13321,8 +13338,8 @@ function lexTypewriterUpdate(text){
 var _lexSpeechEnabled = true;
 var _lexSpeechUtterance = null;
 var _lexLastSpokenText = '';
-var _lexAudioLang = 'pl'; // 'pl' = lekcja po polsku (obce słowa w jęz. docelowym) | albo kod jęz. docelowego = całość w jęz. uczonym
-try{ var _al=localStorage.getItem('lex_audio_lang'); if(_al) _lexAudioLang=_al; }catch(e){}
+var _lexAudioLang = 'pl'; // 'pl' = lekcja prowadzona po polsku (słowa obce w jęz. uczonym) | kod jęz. uczonego = całość w jęz. uczonym
+// (wartość per-user wczytywana w lexInit z klucza namespace'owanego user.id)
 
 function _lexSpeakSeg(syn, txt, langCode){
   var t=(txt||'').replace(/\*\*/g,'').replace(/\s+/g,' ').trim();
@@ -13414,14 +13431,14 @@ function lexSpeak(text){
 function lexUpdateAudioLangBtn(){
   var btn=document.getElementById('lex-audiolang-btn');
   if(!btn) return;
-  btn.textContent = (_lexAudioLang==='pl') ? 'Audio: PL' : 'Audio: '+String(_lexLang||'').toUpperCase();
+  btn.textContent = (_lexAudioLang==='pl') ? 'Lekcja: PL' : 'Lekcja: '+String(_lexLang||'').toUpperCase();
   btn.title = (_lexAudioLang==='pl')
-    ? 'Lekcja czytana po polsku, obce słowa w języku uczonym. Kliknij, aby czytać całość w języku uczonym.'
-    : 'Całość czytana w języku uczonym. Kliknij, aby wrócić do polskiego.';
+    ? 'Lex prowadzi i czyta lekcję po polsku; słowa w języku uczonym pokazuje i wymawia w tym języku. Kliknij, aby prowadzić całą lekcję w języku uczonym. Zmiana działa od następnej wypowiedzi Lexa.'
+    : 'Lex prowadzi całą lekcję w języku uczonym. Kliknij, aby wrócić do prowadzenia po polsku. Zmiana działa od następnej wypowiedzi Lexa.';
 }
 function lexToggleAudioLang(){
   _lexAudioLang = (_lexAudioLang==='pl') ? (_lexLang||'en') : 'pl';
-  try{ localStorage.setItem('lex_audio_lang', _lexAudioLang); }catch(e){}
+  try{ localStorage.setItem(uk('lex_audio_lang'), _lexAudioLang); }catch(e){}
   lexUpdateAudioLangBtn();
   if(_lexLastSpokenText) lexSpeak(_lexLastSpokenText);
 }
@@ -13435,7 +13452,7 @@ function lexToggleSpeech(){
   var btn = document.getElementById('lex-speech-toggle');
   if(btn) btn.innerHTML = _lexSpeechEnabled ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="m23 9-6 6"></path><path d="m17 9 6 6"></path></svg>';
   if(!_lexSpeechEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
-  try{ localStorage.setItem('lex_speech', _lexSpeechEnabled ? '1' : '0'); }catch(e){}
+  try{ localStorage.setItem(uk('lex_speech'), _lexSpeechEnabled ? '1' : '0'); }catch(e){}
 }
 
 function lexSkipTyping(){
@@ -13459,12 +13476,9 @@ function lexAfterTyping(){
   var hint = document.getElementById('lex-translate-hint');
   if(hint) hint.style.display = 'none';
 
-  // (Tłumaczenie na kliknięcie wyłączone — jest auto-tłumaczenie pod każdą linijką)
-
-  // Add translate whole card button
-  lexAddTranslateCardBtn();
-  // #1 Automatyczne tłumaczenie pod tekstem Lexa (redukuje frustrację)
-  lexAutoTranslate();
+  // Tłumaczenie jak w Porcji dnia: słowa/zdania obcojęzyczne są interaktywne
+  // (klik = tłumaczenie + wymowa słowa i zdania) dzięki lexFormatCardText → tlBuildHTML.
+  // NIE robimy już całościowego tłumaczenia kursywą.
 
   // Show appropriate answer zone
   var card = _lexCurrentCard;
@@ -14047,6 +14061,8 @@ function lexFormatCardText(text){
       return '<strong class="lex-tl" data-tlx="'+a+'" style="color:var(--orange)">'+w.trim()+'</strong> <sup style="font-size:10px;color:var(--dim2)">'+tr.trim()+'</sup>';
     })
     .replace(/\[FIX\]([\s\S]*?)\[\/FIX\]/g, '<span style="background:rgba(201,106,42,.14);color:var(--orange);font-weight:500;padding:1px 5px;border-radius:5px">$1</span>')
+    // [KEY] — najważniejsze do zapamiętania → pomarańczowe wyróżnienie (Design Bible: single accent, oszczędnie)
+    .replace(/\[KEY\]([\s\S]*?)\[\/KEY\]/g, '<span class="lex-key" style="background:rgba(232,112,26,.12);color:var(--orange);font-weight:500;padding:1px 6px;border-radius:6px">$1</span>')
     // Strip code blocks entirely
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`[^`]+`/g, function(m){ return '<code style="background:var(--paper);padding:1px 5px;border-radius:4px;font-size:13px">' + m.slice(1,-1) + '</code>'; })
@@ -14707,7 +14723,7 @@ async function lexInit(){
 <script>
 (function(){
   if(window.trybSaveSnapshot) return;
-  var KEY='strefa_last_session';
+  function keyNow(){ return 'strefa_last_session_'+(window._uid||''); }
   function escSnap(s){ return String(s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   window.trybSaveSnapshot=function(){
     try{
@@ -14718,17 +14734,18 @@ async function lexInit(){
       if(idx<=0 || idx>=window._trybCards.length) return;
       var remaining=window._trybCards.slice(idx).map(function(c){return {word:c.word||'',translation:c.translation||''};}).filter(function(c){return c.word&&c.translation;});
       if(!remaining.length) return;
-      localStorage.setItem(KEY, JSON.stringify({remaining:remaining, name:window._trybExternalName||'Sesja nauki', total:window._trybCards.length, done:idx, ts:Date.now()}));
+      localStorage.setItem(keyNow(), JSON.stringify({remaining:remaining, name:window._trybExternalName||'Sesja nauki', total:window._trybCards.length, done:idx, ts:Date.now()}));
     }catch(e){}
   };
-  window.trybClearSnapshot=function(){ try{ localStorage.removeItem(KEY); }catch(e){} };
+  window.trybClearSnapshot=function(){ try{ localStorage.removeItem(keyNow()); }catch(e){} };
   function getSnap(){
-    try{ var s=localStorage.getItem(KEY); if(!s) return null; var d=JSON.parse(s);
+    try{ var s=localStorage.getItem(keyNow()); if(!s) return null; var d=JSON.parse(s);
       if(!d||!d.remaining||!d.remaining.length) return null;
-      if(Date.now()-(d.ts||0) > 7*24*3600*1000){ localStorage.removeItem(KEY); return null; }
+      if(Date.now()-(d.ts||0) > 7*24*3600*1000){ localStorage.removeItem(keyNow()); return null; }
       return d;
     }catch(e){ return null; }
   }
+  window.trybGetSnapshot=function(){ return getSnap(); };
   window.trybResumeSession=function(){
     var d=getSnap(); if(!d) return;
     window._trybExternalCards=d.remaining;
@@ -14771,6 +14788,20 @@ async function lexInit(){
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') window.trybSaveSnapshot(); });
   window.addEventListener('pagehide', function(){ window.trybSaveSnapshot(); });
   window.addEventListener('beforeunload', function(){ window.trybSaveSnapshot(); });
+
+  // 9.4 — „Kontynuuj ostatnią sesję" w Twoje zestawy
+  window.matRenderContinue=function(){
+    var wrap=document.getElementById('mat-continue-wrap'); if(!wrap) return;
+    var d=getSnap();
+    if(!d){ wrap.innerHTML=''; return; }
+    wrap.innerHTML='<div onclick="trybResumeSession()" title="Wróć do ostatniej przerwanej sesji nauki"'
+      +' style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:14px;cursor:pointer;border:.5px solid var(--orange);background:var(--paper2);transition:.2s"'
+      +' onmouseover="this.style.background=\'#fff\'" onmouseout="this.style.background=\'var(--paper2)\'">'
+      +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;color:var(--navy)">Kontynuuj ostatnią sesję</div>'
+      +'<div style="font-size:12px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escSnap(d.name)+' · zostało '+d.remaining.length+' z '+(d.total||d.remaining.length)+' kart</div></div>'
+      +'<span style="color:var(--orange);font-size:13px;font-weight:500;white-space:nowrap">Wznów →</span></div>';
+  };
 })();
 </script>
 
