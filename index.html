@@ -4661,7 +4661,7 @@ async function loadDailyRead(){
     var{data:dbCached}=await db.from('daily_articles')
       .select('title,content').eq('topic',topic).eq('language',dLang).eq('level','B1').limit(1);
     var dc=Array.isArray(dbCached)?dbCached[0]:dbCached;
-    if(dc&&dc.title){
+    if(dc&&dc.title&&!(typeof _isBadArticle==='function'&&_isBadArticle(dc.title,dc.content))){
       try{localStorage.setItem(lsKey,JSON.stringify({title:dc.title,body:dc.content}));}catch(e){}
       displayArticle(dc.title,dc.content);
       return;
@@ -4695,12 +4695,14 @@ async function loadDailyRead(){
     }
     var title=d.title||topic;
     var body=rawText;
-    // Zapisz do Supabase permanentnie
+    // Zapisz do Supabase permanentnie (tylko poprawną treść)
     try{
-      await db.from('daily_articles').upsert(
-        {topic:topic,language:dLang,level:(typeof getCurrentLangLevel==='function'?getCurrentLangLevel():'B1'),title:title,content:body},
-        {onConflict:'topic,language,level'}
-      );
+      if(!(typeof _isBadArticle==='function'&&_isBadArticle(title,body))){
+        await db.from('daily_articles').upsert(
+          {topic:topic,language:dLang,level:(typeof getCurrentLangLevel==='function'?getCurrentLangLevel():'B1'),title:title,content:body},
+          {onConflict:'topic,language,level'}
+        );
+      }
     }catch(e){}
     // Zapisz do localStorage
     try{localStorage.setItem(lsKey,JSON.stringify({title:title,body:body}));}catch(e){}
@@ -12374,13 +12376,19 @@ function getLangName(lang){
   return{en:'Angielski',es:'Hiszpański',nl:'Holenderski',jp:'Japoński',de:'Niemiecki',fr:'Francuski',it:'Włoski',pt:'Portugalski'}[lang]||lang;
 }
 
+function _isBadArticle(title, content){
+  var t=((title||'')+' '+(content||'')).toLowerCase();
+  if(/błąd generowania|nie udało się wygenerować|spróbuj ponownie/.test(t)) return true;
+  if(String(content||'').trim().length < 80) return true;
+  return false;
+}
 async function fetchOdkryjArticle(topic, lang, level, tok){
   // Sprawdź Supabase cache
   try{
     var{data:cached}=await db.from('daily_articles')
       .select('title,content').eq('topic',topic).eq('language',lang).eq('level',level).limit(1);
     var c=Array.isArray(cached)?cached[0]:cached;
-    if(c&&c.title){
+    if(c&&c.title&&!_isBadArticle(c.title,c.content)){
       var preview=c.content.slice(0,280)+'...';
       return{title:c.title,content:c.content,preview:preview};
     }
@@ -12432,12 +12440,14 @@ async function fetchOdkryjArticle(topic, lang, level, tok){
     if(!body && lastErr) throw new Error(lastErr);
   }
   if(!body) throw new Error('Brak treści z AI');
-  // Zapisz do Supabase
+  // Zapisz do Supabase (tylko poprawną treść — nigdy błędu)
   try{
-    await db.from('daily_articles').upsert(
-      {topic:topic,language:lang,level:level,title:title,content:body},
-      {onConflict:'topic,language,level'}
-    );
+    if(!_isBadArticle(title,body)){
+      await db.from('daily_articles').upsert(
+        {topic:topic,language:lang,level:level,title:title,content:body},
+        {onConflict:'topic,language,level'}
+      );
+    }
   }catch(e){}
   return{title:title,content:body,preview:body.slice(0,280)+'...'};
 }
@@ -13167,7 +13177,9 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
 function lexBuildSystemPrompt(flashcardSets){
   var prof = _lexProfile || {};
   var dur = prof.lesson_duration || _lexObDur || 25;
-  var level = prof.user_level || 'unknown';
+  // Poziom = ten sam źródłosłów co badge ewaluacji i zapis ([LEVEL]) — per język.
+  // Wcześniej czytano prof.user_level (zawsze 'unknown'), przez co diagnostyka powtarzała się w kółko.
+  var level = (typeof lexCurrentLevel==='function') ? lexCurrentLevel() : (prof.user_level || 'unknown');
   var goal = prof.user_goal || _lexObGoal || 'ogólny';
   if(window._lexLessonFocus) goal = window._lexLessonFocus;
   var name = prof.user_name || '';
@@ -13272,7 +13284,8 @@ function lexParseCard(text){
       if(!_lexProfile) _lexProfile = {};
       _lexProfile.levels_by_lang = _lexProfile.levels_by_lang || {};
       _lexProfile.levels_by_lang[_lexLang] = lvl;
-      (async function(){ try{ var s=(await db.auth.getSession()).data.session; if(s) await db.from('lex_profiles').update({levels_by_lang: _lexProfile.levels_by_lang, updated_at: new Date().toISOString()}).eq('user_id', s.user.id); }catch(e){} })();
+      _lexProfile.user_level = lvl;
+      (async function(){ try{ var s=(await db.auth.getSession()).data.session; if(s) await db.from('lex_profiles').update({levels_by_lang: _lexProfile.levels_by_lang, user_level: lvl, updated_at: new Date().toISOString()}).eq('user_id', s.user.id); }catch(e){} })();
     }
   }
 
