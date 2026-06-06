@@ -6296,8 +6296,9 @@ async function analyzeLyrics(){
       var prompt='Jesteś lingwistą i znawcą kultury, ekspertem od '+langNames[lang]+' i gatunku '+genreNames[genre]+'.\n'
         +(title?'Utwór: '+title+'\n':'')
         +'Przeanalizuj każdą linijkę tekstu poniżej. Dla KAŻDEJ linijki podaj:\n'
-        +'- annotation: 2-3 zdania PO POLSKU wyjaśniające znaczenie, slang, kontekst kulturowy, gry słowne, metafory, ukryte znaczenia.\n'
-        +'- words: 2-4 najciekawsze/najtrudniejsze słowa z tej linijki, każde z polskim tłumaczeniem.\n'
+        +'- annotation: 1-2 zdania PO POLSKU, KONKRETNIE i RZECZOWO. Wyjaśnij tylko to, co realnie trzeba zrozumieć: dosłowne znaczenie, slang/idiom, grę słów lub odniesienie kulturowe. Tłumacz TYLKO to, co nieoczywiste.\n'
+        +'- words: 2-4 najtrudniejsze/najciekawsze słowa z tej linijki, każde z polskim tłumaczeniem.\n'
+        +'ZASADY: pisz zwięźle i do sedna. ZAKAZ ogólników i lania wody — NIE pisz zdań o "budowaniu emocjonalnej więzi", "atmosferze", "rezonowaniu ze słuchaczem", "uniwersalnym przesłaniu", "głębokich emocjach" itp. Jeśli linijka jest prosta i oczywista, annotation = krótkie dosłowne znaczenie albo pusty string.\n'
         +'NIE pomijaj żadnej linijki.\n\n'
         +'Tekst:\n'+chunks[chi]+'\n\n'
         +'Odpowiedz WYŁĄCZNIE poprawnym JSON, bez markdown, bez backticks:\n'
@@ -12169,7 +12170,12 @@ async function doOdkryjSearch(){
     } else {
       var errDiv=document.createElement('div');
       errDiv.style.cssText='color:var(--dim2);font-size:13px;padding:20px;background:var(--paper2);border-radius:12px;margin-bottom:24px';
-      errDiv.textContent='Nie udało się wygenerować artykułu. Spróbuj ponownie.';
+      var why=(articleResult.status==='rejected'&&articleResult.reason&&articleResult.reason.message)?(' ('+articleResult.reason.message+')'):'';
+      errDiv.innerHTML='Nie udało się wygenerować artykułu'+escH(why)+'.<br>';
+      var retryBtn=document.createElement('button');
+      retryBtn.className='btn btn-orange'; retryBtn.style.cssText='font-size:13px;margin-top:10px'; retryBtn.textContent='Spróbuj ponownie';
+      retryBtn.onclick=doOdkryjSearch;
+      errDiv.appendChild(retryBtn);
       leftCol.appendChild(errDiv);
     }
 
@@ -12305,27 +12311,36 @@ async function fetchOdkryjArticle(topic, lang, level, tok){
   }catch(eGen){}
   // 2) Fallback przez AI proxy (super-endpoint) — gdy Edge Function nie dał treści
   if(!body){
-    try{
-      var langName=(typeof getLangName==='function'?getLangName(lang):lang);
-      var prompt='Napisz ciekawy, angażujący artykuł edukacyjny w języku '+langName+' na poziomie '+level
-        +' na temat: "'+topic+'". Długość 200-300 słów. Naturalny język dopasowany do poziomu '+level+'.'
-        +' Odpowiedz TYLKO poprawnym JSON bez backticks: {"title":"tytuł w '+langName+'","content":"treść artykułu w '+langName+'"}';
-      var r2=await fetch(AI_PROXY_URL,{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-        body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:900})
-      });
-      if(r2.ok){
-        var d2=await r2.json();
-        var raw=(typeof extractAIText==='function'?extractAIText(d2):'')||'';
-        var cleaned=raw.replace(/```json|```/g,'').trim();
-        var fb=cleaned.indexOf('{'),lb=cleaned.lastIndexOf('}');
-        if(fb>=0&&lb>fb){ try{ var pj=JSON.parse(cleaned.slice(fb,lb+1)); title=pj.title||topic; body=pj.content||pj.text||''; }catch(e3){} }
-        if(!body){ title=title||topic; body=cleaned; }
+    var langName=(typeof getLangName==='function'?getLangName(lang):lang);
+    var lastErr='';
+    async function _proxyText(pr, mt){
+      var r=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:pr}],max_tokens:mt||900})});
+      if(!r.ok) throw new Error('proxy '+r.status);
+      var dd=await r.json();
+      var t=(typeof extractAIText==='function'?extractAIText(dd):'')||'';
+      if(!t){
+        t=(dd&&(dd.content||dd.text||(dd.choices&&dd.choices[0]&&dd.choices[0].message&&dd.choices[0].message.content)||(dd.candidates&&dd.candidates[0]&&dd.candidates[0].content&&dd.candidates[0].content.parts&&dd.candidates[0].content.parts[0]&&dd.candidates[0].content.parts[0].text)))||'';
       }
-    }catch(e4){}
+      return (typeof t==='string'?t:String(t||'')).trim();
+    }
+    // 2a) z JSON
+    try{
+      var raw=await _proxyText('Napisz ciekawy, angażujący artykuł edukacyjny w języku '+langName+' na poziomie '+level+' na temat: "'+topic+'". Długość 200-300 słów. Odpowiedz TYLKO poprawnym JSON bez backticków: {"title":"tytuł","content":"treść"}', 1000);
+      var cleaned=raw.replace(/```json|```/g,'').trim();
+      var fb=cleaned.indexOf('{'),lb=cleaned.lastIndexOf('}');
+      if(fb>=0&&lb>fb){ try{ var pj=JSON.parse(cleaned.slice(fb,lb+1)); title=pj.title||topic; body=pj.content||pj.text||''; }catch(e3){} }
+      if(!body && cleaned){ title=title||topic; body=cleaned; }
+    }catch(e4){ lastErr=e4.message||String(e4); }
+    // 2b) prosty tekst, jeśli nadal pusto
+    if(!body){
+      try{
+        var plain=await _proxyText('Napisz krótki (150-220 słów), konkretny artykuł edukacyjny w języku '+langName+' na poziomie '+level+' na temat: "'+topic+'". Sam tekst, bez nagłówków i komentarzy.', 800);
+        if(plain){ title=topic; body=plain.replace(/```/g,'').trim(); }
+      }catch(e5){ lastErr=e5.message||String(e5); }
+    }
+    if(!body && lastErr) throw new Error(lastErr);
   }
-  if(!body) throw new Error('Brak treści');
+  if(!body) throw new Error('Brak treści z AI');
   // Zapisz do Supabase
   try{
     await db.from('daily_articles').upsert(
@@ -13881,10 +13896,11 @@ function lexFormatCardText(text){
     .replace(/^#{1,6}\s+/gm, '')
     // Horizontal rules
     .replace(/^[-*_]{3,}$/gm, '<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">')
-    // Bold and italic
+    // Bold = fragment w języku uczonym → interaktywny jak w artykule (zaznacza, audio, tłumaczenie na żądanie)
     .replace(/\*\*([^*\n]+)\*\*/g, function(m,x){
-      var a=String(x).trim().replace(/"/g,'&quot;');
-      return '<strong class="lex-tl" data-tlx="'+a+'">'+x+'</strong>';
+      var lang=(window._lexLang||'en');
+      var inner=(typeof window.tlBuildHTML==='function')? window.tlBuildHTML(String(x).trim(), lang) : String(x).trim();
+      return '<span class="tl lex-foreign" data-tl-lang="'+lang+'">'+inner+'</span>';
     })
     .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
     // Newlines
@@ -14454,6 +14470,8 @@ async function lexInit(){
 .tl-hint{font-size:11px;color:var(--dim2);margin-top:4px}
 .lex-tl{cursor:pointer;border-bottom:1.5px dotted rgba(201,106,42,.55);transition:background .12s;border-radius:2px}
 .lex-tl:hover{background:rgba(201,106,42,.14)}
+.lex-foreign{font-weight:500;color:var(--navy)}
+.lex-foreign .tl-w{font-weight:500}
 </style>
 <script>
 (function(){
