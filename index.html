@@ -3873,6 +3873,14 @@ async function initToFixPage(){
               <button onclick="lexObSelect(this,'dur',40)" data-dur="40" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">40 min</button>
             </div>
           </div>
+          <div>
+            <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Język prowadzenia lekcji</label>
+            <div style="display:flex;gap:8px">
+              <button onclick="lexObSelectLessonLang('pl')" id="lex-ob-langpl" class="lex-llang-opt" style="flex:1;padding:10px;border-radius:10px;border:2px solid var(--orange);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Polski</button>
+              <button onclick="lexObSelectLessonLang('target')" id="lex-ob-langtgt" class="lex-llang-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">Język uczony</button>
+            </div>
+            <div style="font-size:11px;color:var(--dim2);margin-top:6px;line-height:1.4">Po polsku: Lex tłumaczy po polsku, a słowa w języku uczonym pokazuje i wymawia w tym języku.</div>
+          </div>
         </div>
         <button onclick="lexStartFromOnboarding()" style="width:100%;margin-top:24px;padding:14px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">
           Zaczynamy →
@@ -12829,6 +12837,25 @@ function lexPrefillSetup(){
   document.querySelectorAll('.lex-dur-opt').forEach(function(b){
     b.style.border = (String(b.getAttribute('data-dur'))===String(dur)) ? '2px solid var(--orange)' : '1.5px solid var(--border2)';
   });
+  lexSyncLessonLangBtns();
+}
+
+// Język prowadzenia lekcji na ekranie startu (PL ↔ język uczony)
+function lexSyncLessonLangBtns(){
+  var info = (typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[_lexLang]) || null;
+  var tgtBtn = document.getElementById('lex-ob-langtgt');
+  var plBtn = document.getElementById('lex-ob-langpl');
+  if(tgtBtn && info) tgtBtn.textContent = info.name.charAt(0).toUpperCase() + info.name.slice(1);
+  var targetActive = (typeof _lexAudioLang!=='undefined' && _lexAudioLang===_lexLang);
+  if(plBtn) plBtn.style.border = targetActive ? '1.5px solid var(--border2)' : '2px solid var(--orange)';
+  if(tgtBtn) tgtBtn.style.border = targetActive ? '2px solid var(--orange)' : '1.5px solid var(--border2)';
+}
+
+function lexObSelectLessonLang(which){
+  _lexAudioLang = (which==='target') ? (_lexLang||'en') : 'pl';
+  try{ if(typeof uk==='function') localStorage.setItem(uk('lex_audio_lang'), _lexAudioLang); }catch(e){}
+  lexSyncLessonLangBtns();
+  if(typeof lexUpdateAudioLangBtn==='function') lexUpdateAudioLangBtn();
 }
 
 // Pokazuje ekran wyboru celu/czasu przed każdą lekcją (zachowuje ewentualny _lexNextTopic).
