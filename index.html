@@ -12818,8 +12818,12 @@ async function lexStartLesson(){
   // Load flashcard sets
   var sets = await lexLoadFlashcardSets();
 
-  // First card — Lex opens the lesson
-  await lexRequestNextCard(null, sets);
+  // First card — ewaluacja: pisana rozmowa (wykrywanie luk); lekcja: 4 ćwiczenia na porcję
+  if(lexCurrentLevel()==='unknown'){
+    await lexRequestNextCard(null, sets);
+  } else {
+    await lexxStartPortions(sets);
+  }
 }
 
 // ── Flashcard loading ─────────────────────────────────────
@@ -14281,6 +14285,269 @@ async function lexInit(){
 })();
 </script>
 
+
+<!-- ═══ EYELINGO — Lex: silnik 4 ćwiczeń na porcję (lekcja) ═══ -->
+<style id="el-lexx">
+.lexx-ex{background:#fff;border:.5px solid var(--border);border-radius:16px;padding:18px 18px 16px;margin-bottom:12px}
+.lexx-ex-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.lexx-badge{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--orange);background:rgba(201,106,42,.1);padding:2px 8px;border-radius:100px}
+.lexx-prompt{font-size:14px;font-weight:500;color:var(--navy);line-height:1.5}
+.lexx-q{font-size:15px;color:var(--navy);line-height:1.6;margin:10px 0}
+.lexx-opt{display:block;width:100%;text-align:left;padding:11px 14px;border:1.5px solid var(--border2);border-radius:12px;background:transparent;font-size:14px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;margin-bottom:8px;transition:.12s}
+.lexx-opt:hover{border-color:var(--orange)}
+.lexx-opt.sel{border-color:var(--navy);background:var(--paper2)}
+.lexx-opt.ok{border-color:var(--success);background:var(--success-bg);color:var(--success-dark)}
+.lexx-opt.bad{border-color:#d9534f;background:#fdecea;color:#a9342f}
+.lexx-input{width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid var(--border2);border-radius:12px;font-size:14px;font-family:DM Sans,sans-serif;outline:none}
+.lexx-input:focus{border-color:var(--orange)}
+.lexx-check{margin-top:12px;padding:9px 20px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif}
+.lexx-check[disabled]{opacity:.5;cursor:default}
+.lexx-fb{margin-top:12px;font-size:13px;line-height:1.55;padding:11px 14px;border-radius:12px;display:none}
+.lexx-fb.ok{background:var(--success-bg);color:var(--success-dark);border-left:3px solid var(--success)}
+.lexx-fb.bad{background:#fdecea;color:#a9342f;border-left:3px solid #d9534f}
+.lexx-fb.neutral{background:var(--paper2);color:var(--dim);border-left:3px solid var(--orange)}
+.lexx-next{width:100%;padding:14px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;margin-top:6px}
+.lexx-next[disabled]{opacity:.45;cursor:default}
+.lexx-items{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.lexx-chip{display:inline-flex;align-items:center;gap:6px;background:var(--paper2);border:.5px solid var(--border);border-radius:100px;padding:5px 12px;font-size:13px}
+</style>
+<script>
+(function(){
+  if(window.lexxStartPortions) return;
+  var LN={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French',it:'Italian',pt:'Portuguese'};
+  function esc(s){ return (typeof escH==='function')?escH(s):String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function norm(s){ return String(s==null?'':s).toLowerCase().trim().replace(/[.,!?;:¡¿"'`]/g,'').replace(/\s+/g,' ').normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+  function lang(){ return window._lexLang||'en'; }
+  function langName(){ return LN[lang()]||'English'; }
+
+  window._lexxPortionNum = 0;
+  window._lexxPortionTarget = 5;
+  window._lexxData = null;
+  window._lexxDone = [];
+
+  // ── Generowanie porcji ──
+  window.lexxStartPortions = async function(sets){
+    window._lexxPortionNum = 0;
+    var dur = (window._lexProfile && _lexProfile.lesson_duration) || window._lexObDur || 25;
+    window._lexxPortionTarget = Math.max(3, Math.round(dur/5));
+    await lexxGeneratePortion();
+  };
+
+  function lexxLoading(msg){
+    var zone=document.getElementById('lex-answer-zone'); if(!zone) return;
+    Array.prototype.forEach.call(zone.children,function(c){ c.style.display='none'; });
+    var w=document.getElementById('lexx-wrap'); if(!w){ w=document.createElement('div'); w.id='lexx-wrap'; zone.appendChild(w); }
+    w.style.display='block';
+    w.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2);font-size:13px">'+esc(msg||'Lex przygotowuje ćwiczenia…')+'</div>';
+    var ct=document.getElementById('lex-card-text'); if(ct) ct.innerHTML='<span style="color:var(--dim2)">…</span>';
+  }
+
+  window.lexxGeneratePortion = async function(){
+    window._lexxPortionNum++;
+    lexxLoading();
+    var focus = window._lexLessonFocus || '';
+    var lvl = (typeof lexCurrentLevel==='function'?lexCurrentLevel():(window._lexObLevel||'B1'))||'B1';
+    var recentGaps = '';
+    try{
+      var g=(window._lexProfile&&_lexProfile.known_gaps)||[];
+      recentGaps = g.filter(function(x){return x&&x.status!=='known';}).slice(0,3).map(function(x){return x.topic;}).join('; ');
+    }catch(e){}
+    var pn = window._lexxPortionNum;
+    var fourth = (pn % 3 === 0) ? 'produce' : 'transform';
+    var prompt =
+      'Jesteś Lex — metodyczny nauczyciel języka '+langName()+'. Uczeń jest na poziomie '+lvl+'. '
+      +'Język wyjaśnień: POLSKI. '
+      +(focus? ('Temat lekcji: "'+focus+'". '):'Dobierz praktyczny, przydatny temat porcji. ')
+      +(recentGaps? ('Uwzględnij braki ucznia: '+recentGaps+'. '):'')
+      +'To porcja nr '+pn+'. Zbuduj JEDNĄ porcję materiału skupioną na 3-5 słowach/jednej strukturze, i przećwicz JE pod różnym kątem w 4 ćwiczeniach.\n'
+      +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
+      +'{'
+      +'"focus":"krótki temat porcji po polsku",'
+      +'"intro":"1-2 zdania po polsku wprowadzające; słowa docelowe w języku '+langName()+' ujmij w **gwiazdki**",'
+      +'"items":[{"word":"słowo w '+langName()+'","translation":"po polsku"}],'
+      +'"exercises":['
+      +'{"type":"mc","prompt":"Wybierz poprawną odpowiedź","question":"pytanie (po polsku lub z frazą w '+langName()+')","options":["a","b","c","d"],"answer":0,"explain":"krótkie wyjaśnienie po polsku"},'
+      +'{"type":"cloze","prompt":"Uzupełnij lukę","sentence":"zdanie w '+langName()+' z ___ w miejscu luki","answer":"słowo do luki","hint":"krótka podpowiedź po polsku","explain":"wyjaśnienie po polsku"},'
+      +'{"type":"translate","prompt":"Przetłumacz na '+langName()+'","source":"krótka fraza po polsku","answer":"wzorcowe tłumaczenie w '+langName()+'","explain":"wyjaśnienie po polsku"},'
+      +(fourth==='produce'
+        ? '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po polsku co ma zawierać"}'
+        : '{"type":"transform","prompt":"Przekształć","source":"forma wyjściowa w '+langName()+'","instruction":"co zmienić (po polsku, np. na liczbę mnogą/czas przeszły)","answer":"poprawna forma w '+langName()+'","explain":"wyjaśnienie po polsku"}')
+      +']}';
+    try{
+      var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:1400})});
+      if(!res.ok) throw new Error('proxy '+res.status);
+      var d=await res.json();
+      var raw=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
+      var a=raw.indexOf('{'), b=raw.lastIndexOf('}');
+      var data=null; if(a>=0&&b>a){ try{ data=JSON.parse(raw.slice(a,b+1)); }catch(e){} }
+      if(!data||!data.exercises||!data.exercises.length) throw new Error('Pusta porcja');
+      window._lexxData=data;
+      try{ if(data.items&&Array.isArray(window._lexVocab)) data.items.forEach(function(it){ if(it&&it.word&&it.translation) window._lexVocab.push({word:it.word,translation:it.translation}); }); }catch(e){}
+      lexxRenderPortion(data);
+    }catch(e){
+      var w=document.getElementById('lexx-wrap');
+      if(w) w.innerHTML='<div class="lexx-fb bad" style="display:block">Nie udało się przygotować ćwiczeń ('+esc(e.message||e)+').</div>'
+        +'<button class="lexx-check" onclick="lexxGeneratePortion()" style="margin-top:10px">Spróbuj ponownie</button>';
+    }
+  };
+
+  function lexxRenderPortion(data){
+    window._lexxDone = (data.exercises||[]).map(function(){return false;});
+    // Intro w karcie Lexa
+    var ct=document.getElementById('lex-card-text');
+    if(ct){
+      var introHtml=(typeof lexFormatCardText==='function')? lexFormatCardText(data.intro||'') : esc(data.intro||'');
+      ct.innerHTML=introHtml;
+    }
+    var cn=document.getElementById('lex-card-num'); if(cn) cn.textContent='Porcja '+window._lexxPortionNum;
+    if(typeof lexUpdateAudioLangBtn==='function') lexUpdateAudioLangBtn();
+    // Pasek postępu (porcje)
+    var pb=document.getElementById('lex-progress-bar'); if(pb) pb.style.width=Math.min(100,Math.round((window._lexxPortionNum-1)/window._lexxPortionTarget*100))+'%';
+    // Strefa ćwiczeń
+    var zone=document.getElementById('lex-answer-zone');
+    Array.prototype.forEach.call(zone.children,function(c){ if(c.id!=='lexx-wrap') c.style.display='none'; });
+    var w=document.getElementById('lexx-wrap'); if(!w){ w=document.createElement('div'); w.id='lexx-wrap'; zone.appendChild(w); }
+    w.style.display='block'; w.innerHTML='';
+    // Słowa porcji (klikalne + audio)
+    if(data.items&&data.items.length){
+      var box=document.createElement('div'); box.className='lexx-ex'; box.style.paddingBottom='14px';
+      var h='<div class="lexx-ex-head"><span class="lexx-badge">Słowa porcji</span><span style="font-size:13px;color:var(--dim2)">'+esc(data.focus||'')+'</span></div>';
+      var chips='<div class="lexx-items">'+data.items.map(function(it){
+        return '<span class="lexx-chip"><span class="tl lexx-fw" data-tl-lang="'+lang()+'">'+(typeof window.tlBuildHTML==='function'?window.tlBuildHTML(String(it.word||''),lang()):esc(it.word))+'</span><span style="color:var(--dim2)">— '+esc(it.translation||'')+'</span></span>';
+      }).join('')+'</div>';
+      box.innerHTML=h+chips; w.appendChild(box);
+    }
+    (data.exercises||[]).forEach(function(ex,i){ w.appendChild(lexxRenderExercise(ex,i)); });
+    // Dalej
+    var nx=document.createElement('button'); nx.className='lexx-next'; nx.id='lexx-next'; nx.disabled=true;
+    nx.textContent=(window._lexxPortionNum>=window._lexxPortionTarget)?'Zakończ lekcję':'Następna porcja →';
+    nx.onclick=lexxNext;
+    w.appendChild(nx);
+  }
+
+  function badge(t){ var b={mc:'Multiwybór',cloze:'Uzupełnij lukę',translate:'Tłumaczenie',produce:'Twoje zdanie',transform:'Przekształć'}; return b[t]||'Ćwiczenie'; }
+
+  function lexxRenderExercise(ex,i){
+    var box=document.createElement('div'); box.className='lexx-ex'; box.dataset.i=i;
+    var head='<div class="lexx-ex-head"><span class="lexx-badge">'+(i+1)+' · '+badge(ex.type)+'</span></div>';
+    var body='', inputHtml='';
+    if(ex.type==='mc'){
+      body='<div class="lexx-q">'+esc(ex.question||ex.prompt||'')+'</div>';
+      inputHtml='<div class="lexx-opts">'+(ex.options||[]).map(function(o,k){
+        return '<button type="button" class="lexx-opt" data-k="'+k+'" onclick="lexxPick('+i+','+k+')">'+esc(o)+'</button>';
+      }).join('')+'</div>';
+    } else if(ex.type==='cloze'){
+      body='<div class="lexx-prompt">'+esc(ex.prompt||'Uzupełnij lukę')+'</div><div class="lexx-q">'+esc(ex.sentence||'')+'</div>'
+        +(ex.hint?'<div style="font-size:12px;color:var(--dim2)">Podpowiedź: '+esc(ex.hint)+'</div>':'');
+      inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Wpisz brakujące słowo">';
+    } else if(ex.type==='translate'){
+      body='<div class="lexx-prompt">'+esc(ex.prompt||('Przetłumacz na '+langName()))+'</div><div class="lexx-q">'+esc(ex.source||'')+'</div>';
+      inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoje tłumaczenie">';
+    } else if(ex.type==='transform'){
+      body='<div class="lexx-prompt">'+esc(ex.prompt||'Przekształć')+'</div><div class="lexx-q">'+esc(ex.source||'')+'</div>'
+        +(ex.instruction?'<div style="font-size:12px;color:var(--dim2)">'+esc(ex.instruction)+'</div>':'');
+      inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Poprawna forma">';
+    } else { // produce
+      body='<div class="lexx-prompt">'+esc(ex.prompt||'Ułóż własne zdanie')+'</div>'
+        +(ex.target?'<div class="lexx-q">Użyj: <strong>'+esc(ex.target)+'</strong></div>':'')
+        +(ex.hint?'<div style="font-size:12px;color:var(--dim2)">'+esc(ex.hint)+'</div>':'');
+      inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="2" placeholder="Napisz własne zdanie..."></textarea>';
+    }
+    box.innerHTML=head+body+inputHtml
+      +'<button class="lexx-check" id="lexx-chk-'+i+'" onclick="lexxCheck('+i+')">Sprawdź</button>'
+      +'<div class="lexx-fb" id="lexx-fb-'+i+'"></div>';
+    return box;
+  }
+
+  window.lexxPick=function(i,k){
+    var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(!box) return;
+    if(box.dataset.checked) return;
+    box.querySelectorAll('.lexx-opt').forEach(function(o){ o.classList.toggle('sel', o.dataset.k==String(k)); });
+    box._pick=k;
+  };
+
+  function showFb(i, kind, html){
+    var fb=document.getElementById('lexx-fb-'+i); if(!fb) return;
+    fb.className='lexx-fb '+kind; fb.style.display='block'; fb.innerHTML=html;
+  }
+  function markDone(i){
+    window._lexxDone[i]=true;
+    var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(box) box.dataset.checked='1';
+    var chk=document.getElementById('lexx-chk-'+i); if(chk){ chk.disabled=true; chk.textContent='Sprawdzone'; }
+    if(window._lexxDone.every(Boolean)){ var nx=document.getElementById('lexx-next'); if(nx) nx.disabled=false; }
+  }
+  function feedGap(topic){
+    try{ if(topic && Array.isArray(window._lexGaps)) window._lexGaps.push(topic); }catch(e){}
+  }
+
+  window.lexxCheck=async function(i){
+    var ex=(window._lexxData&&window._lexxData.exercises||[])[i]; if(!ex) return;
+    var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(box&&box.dataset.checked) return;
+    if(ex.type==='mc'){
+      var pick=box?box._pick:undefined;
+      if(pick===undefined){ showFb(i,'neutral','Wybierz odpowiedź.'); return; }
+      var correct=(pick===ex.answer);
+      box.querySelectorAll('.lexx-opt').forEach(function(o){
+        if(o.dataset.k==String(ex.answer)) o.classList.add('ok');
+        if(o.dataset.k==String(pick)&&!correct) o.classList.add('bad');
+      });
+      showFb(i, correct?'ok':'bad', (correct?'Dobrze! ':'Nie tym razem. ')+esc(ex.explain||''));
+      if(!correct) feedGap(window._lexxData.focus||ex.question);
+      markDone(i); return;
+    }
+    if(ex.type==='cloze'||ex.type==='transform'){
+      var v=(document.getElementById('lexx-in-'+i)||{}).value||'';
+      if(!v.trim()){ showFb(i,'neutral','Wpisz odpowiedź.'); return; }
+      var ok=norm(v)===norm(ex.answer);
+      showFb(i, ok?'ok':'bad', ok?('Dobrze! '+esc(ex.explain||'')):('Poprawnie: <strong>'+esc(ex.answer)+'</strong>. '+esc(ex.explain||'')));
+      if(!ok) feedGap(window._lexxData.focus||ex.prompt);
+      markDone(i); return;
+    }
+    // translate / produce → ocena AI
+    var val=(document.getElementById('lexx-in-'+i)||{}).value||'';
+    if(!val.trim()){ showFb(i,'neutral','Najpierw napisz odpowiedź.'); return; }
+    var chk=document.getElementById('lexx-chk-'+i); if(chk){ chk.disabled=true; chk.textContent='Sprawdzam…'; }
+    var verdict=await lexxAIEval(ex, val);
+    showFb(i, verdict.ok?'ok':'bad', esc(verdict.comment||(verdict.ok?'Dobrze!':'Spróbuj inaczej.'))
+      + (ex.answer&&!verdict.ok? ' <span style="color:var(--dim2)">(wzór: '+esc(ex.answer)+')</span>':''));
+    if(!verdict.ok) feedGap(verdict.gap||window._lexxData.focus||ex.prompt);
+    if(chk){ chk.textContent='Sprawdzone'; }
+    markDone(i);
+  };
+
+  window.lexxAIEval=async function(ex, answer){
+    try{
+      var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
+      var task = ex.type==='translate'
+        ? ('Zadanie: przetłumacz na '+langName()+' frazę: "'+(ex.source||'')+'". Wzorcowe tłumaczenie: "'+(ex.answer||'')+'". Odpowiedź ucznia: "'+answer+'".')
+        : ('Zadanie: ułóż poprawne zdanie w '+langName()+' używając "'+(ex.target||'')+'". Odpowiedź ucznia: "'+answer+'".');
+      var prompt='Jesteś nauczycielem '+langName()+'. '+task+'\n'
+        +'Oceń odpowiedź ucznia. Bądź wyrozumiały dla drobnych literówek i alternatywnych poprawnych form. '
+        +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po polsku: co dobrze, co poprawić","gap":"jeśli błąd — krótki temat braku, inaczej pusty"}';
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:300})});
+      if(!res.ok) throw new Error('proxy '+res.status);
+      var d=await res.json();
+      var raw=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
+      var a=raw.indexOf('{'), b=raw.lastIndexOf('}');
+      if(a>=0&&b>a){ var j=JSON.parse(raw.slice(a,b+1)); return {ok:!!j.ok, comment:j.comment||'', gap:j.gap||''}; }
+      throw new Error('parse');
+    }catch(e){
+      // Fallback bez AI: zaakceptuj, łagodny komentarz
+      return {ok:true, comment:'Zapisane. (Nie udało się pobrać oceny AI — sprawdź sam z wzorem.)', gap:''};
+    }
+  };
+
+  window.lexxNext=function(){
+    if(window.speechSynthesis) try{speechSynthesis.cancel();}catch(e){}
+    if(window._lexxPortionNum>=window._lexxPortionTarget){
+      if(typeof lexEndLesson==='function') lexEndLesson();
+      return;
+    }
+    lexxGeneratePortion();
+  };
+})();
+</script>
 
 <!-- ═══ EYELINGO — Strefa Nauki: wznów przerwaną sesję ═══ -->
 <script>
