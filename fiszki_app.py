@@ -239,14 +239,70 @@ def try_restore_session() -> bool:
     if not saved:
         return False
     try:
-        resp = supabase.auth.set_session(saved["access_token"], saved["refresh_token"])
-        if resp.session:
-            save_session(resp.session)
-            return True
+        # 1) Ustaw zapisaną sesję w kliencie
+        supabase.auth.set_session(saved["access_token"], saved["refresh_token"])
+        # 2) Wymuś odświeżenie — zapisany access_token mógł wygasnąć.
+        #    Bez tego get_user() w wątkach roboczych zwraca None
+        #    ('NoneType' object has no attribute 'user') do czasu re-logowania.
+        sess = None
+        try:
+            resp = supabase.auth.refresh_session(saved["refresh_token"])
+            sess = getattr(resp, "session", None)
+        except Exception:
+            sess = None
+        # 3) Fallback — pobierz bieżącą sesję, jeśli refresh nic nie zwrócił
+        if sess is None:
+            try:
+                cur = supabase.auth.get_session()
+                sess = getattr(cur, "session", cur)
+            except Exception:
+                sess = None
+        if sess and getattr(sess, "access_token", None):
+            save_session(sess)
+            # 4) Weryfikacja: użytkownik musi być realnie dostępny
+            if current_user() is not None:
+                return True
     except Exception:
         pass
     clear_session()
     return False
+
+
+def current_user():
+    """Zwraca obiekt użytkownika lub None.
+
+    Odporne na wygasły access_token: przy braku użytkownika
+    próbuje raz odświeżyć sesję i ponawia. Dzięki temu wątki robocze
+    nie wywracają się na 'NoneType' object has no attribute 'user'.
+    """
+    try:
+        resp = supabase.auth.get_user()
+        if resp and getattr(resp, "user", None):
+            return resp.user
+    except Exception:
+        pass
+    try:
+        supabase.auth.refresh_session()
+        resp = supabase.auth.get_user()
+        if resp and getattr(resp, "user", None):
+            return resp.user
+    except Exception:
+        pass
+    return None
+
+
+def current_uid():
+    u = current_user()
+    if u is None:
+        raise RuntimeError("Sesja wygasła — zaloguj się ponownie.")
+    return u.id
+
+
+def current_email():
+    u = current_user()
+    if u is None:
+        raise RuntimeError("Sesja wygasła — zaloguj się ponownie.")
+    return u.email
 
 
 # ──────────────────────────────────────────────────────
@@ -785,7 +841,7 @@ class MarkAllKnownWorker(QThread):
                 "p_lang": self.lang, "p_level": self.level, "p_cat": self.cat
             }).execute()
             cards = resp.data or []
-            user_id = supabase.auth.get_user().user.id
+            user_id = current_uid()
             from datetime import date, timedelta
             next_review = (date.today() + timedelta(days=90)).isoformat()
             for c in cards:
@@ -829,7 +885,7 @@ class TestCardsWorker(QThread):
             except Exception:
                 due_cards = []
             try:
-                prog_resp = supabase.table("word_progress")                    .select("flashcard_id,repetitions,ease_factor")                    .eq("user_id", supabase.auth.get_user().user.id).execute()
+                prog_resp = supabase.table("word_progress")                    .select("flashcard_id,repetitions,ease_factor")                    .eq("user_id", current_uid()).execute()
                 prog = {r["flashcard_id"]: r for r in (prog_resp.data or [])}
             except Exception:
                 prog = {}
@@ -904,14 +960,9 @@ class OnboardingWindow(_DraggableWindow):
             "body": "Angielski, Hiszpański, Japoński, Niderlandzki — każdy z 6 poziomami od A1 do C2. Więcej języków już wkrótce.",
         },
         {
-            "icon": "🏺",
-            "title": "Zbieraj złoto",
-            "body": "Za każdą fiszkę dostajesz złoto. Za złoto odblokowujesz poziomy. Utrzymuj streak — ucz się każdego dnia.",
-        },
-        {
             "icon": "✏️",
             "title": "Własne zestawy",
-            "body": "Stwórz własne fiszki i udostępnij je społeczności. Inni mogą je lajkować — a Ty dostajesz złoto za popularność!",
+            "body": "Stwórz własne fiszki z dowolnego materiału — Eyelingo pokaże je w tle podczas pracy, dokładnie wtedy, gdy mózg najlepiej je przyswaja.",
         },
         {
             "icon": "🚀",
@@ -1221,14 +1272,15 @@ class LoginWindow(_DraggableWindow):
         save_session(session)
         self.hide()
         try:
-            user = supabase.auth.get_user()
-            ph_identify(user.user.id, user.user.email)
-            ph_capture("user_logged_in")
-            # Zapisz pseudonim przy rejestracji
-            if self._mode == "register" and hasattr(self, '_username') and self._username:
-                supabase.from_("profiles").update({
-                    "username": self._username
-                }).eq("user_id", user.user.id).execute()
+            user = current_user()
+            if user:
+                ph_identify(user.id, user.email)
+                ph_capture("user_logged_in")
+                # Zapisz pseudonim przy rejestracji
+                if self._mode == "register" and hasattr(self, '_username') and self._username:
+                    supabase.from_("profiles").update({
+                        "username": self._username
+                    }).eq("user_id", user.id).execute()
         except Exception:
             pass
         self.logged_in.emit(session)
@@ -1266,13 +1318,10 @@ class FlashcardOverlay(QWidget):
         self.lang  = "en"
         self.level = "A1"
         self.cat   = ""
-        self._gold        = 0
         self._cards_shown = 0
-        self._minutes_active = 0
         self._init_window()
         self._init_ui()
         self._init_timer()
-        self._init_gold_timer()
         self._apply_click_through()
 
     def _init_window(self):
@@ -1293,7 +1342,7 @@ class FlashcardOverlay(QWidget):
         lay.setContentsMargins(14, 8, 14, 8)
         lay.setSpacing(3)
 
-        # górny pasek: info + złoto
+        # górny pasek: info + postęp
         top = QWidget()
         top.setStyleSheet("background:transparent;")
         top_lay = QHBoxLayout(top)
@@ -1304,32 +1353,13 @@ class FlashcardOverlay(QWidget):
         self.lbl_info.setFont(QFont("Segoe UI", 8))
         self.lbl_info.setStyleSheet("color:rgba(255,255,255,160); background:transparent;")
 
-        self.lbl_gold = QLabel("🏺 0")
-        self.lbl_gold.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        self.lbl_gold.setStyleSheet("color:rgba(255,215,0,220); background:transparent;")
-        self.lbl_gold.setAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.lbl_streak = QLabel("")
-        self.lbl_streak.setFont(QFont("Segoe UI", 8))
-        self.lbl_streak.setStyleSheet("color:rgba(255,160,50,220); background:transparent;")
-        self.lbl_streak.setAlignment(Qt.AlignmentFlag.AlignRight)
-
         self.lbl_known = QLabel("")
         self.lbl_known.setFont(QFont("Segoe UI", 8))
         self.lbl_known.setStyleSheet("color:rgba(100,220,150,220); background:transparent;")
         self.lbl_known.setAlignment(Qt.AlignmentFlag.AlignRight)
 
-        streak_gold = QWidget()
-        streak_gold.setStyleSheet("background:transparent;")
-        sg_lay = QVBoxLayout(streak_gold)
-        sg_lay.setContentsMargins(0,0,0,0)
-        sg_lay.setSpacing(0)
-        sg_lay.addWidget(self.lbl_gold)
-        sg_lay.addWidget(self.lbl_streak)
-        sg_lay.addWidget(self.lbl_known)
-
         top_lay.addWidget(self.lbl_info)
-        top_lay.addWidget(streak_gold)
+        top_lay.addWidget(self.lbl_known)
 
         self.lbl_word = QLabel("")
         self.lbl_word.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
@@ -1408,37 +1438,6 @@ class FlashcardOverlay(QWidget):
         ms = int(APP_SETTINGS.get("display_time", 8) * 1000)
         self.timer.start(ms)
 
-    def _init_gold_timer(self):
-        # co minutę +1 złoto za czas
-        self.gold_timer = QTimer(self)
-        self.gold_timer.timeout.connect(self._on_minute)
-        self.gold_timer.start(60000)
-
-    def _on_minute(self):
-        self._minutes_active += 1
-        self._add_gold(gold_cards=0, gold_minutes=1)
-
-    def _add_gold(self, gold_cards=0, gold_minutes=0):
-        total = gold_cards + gold_minutes
-        if total <= 0:
-            return
-        self._gold += total
-        self.lbl_gold.setText(f"🏺 {self._gold}")
-        # zapisz do Supabase
-        self._gold_worker = AddGoldWorker(gold_cards, gold_minutes)
-        self._gold_worker.done.connect(lambda g: self.lbl_gold.setText(f"🏺 {g}"))
-        self._gold_worker.start()
-
-    def set_gold(self, gold):
-        self._gold = gold
-        self.lbl_gold.setText(f"🏺 {gold}")
-
-    def set_streak(self, days):
-        if days > 1:
-            self.lbl_streak.setText(f"🔥 {days} dni")
-        else:
-            self.lbl_streak.setText("")
-
     def set_known_words(self, count):
         if count > 0:
             self.lbl_known.setText(f"✓ {count} słów")
@@ -1449,9 +1448,6 @@ class FlashcardOverlay(QWidget):
         if self.cards:
             self.index = (self.index + 1) % len(self.cards)
             self._cards_shown += 1
-            # co 5 fiszek +1 złoto
-            if self._cards_shown % 5 == 0:
-                self._add_gold(gold_cards=1, gold_minutes=0)
             self._update()
 
     def _get_word_font_size(self, word: str) -> int:
@@ -2051,13 +2047,6 @@ class LanguageWindow(_DraggableWindow):
         btn_settings.clicked.connect(lambda: self.on_selected("settings"))
         inner_l.addWidget(btn_settings)
 
-        btn_shop = QPushButton("🏺  Sklep złota")
-        btn_shop.setStyleSheet(STY_GOLD)
-        btn_shop.setFont(QFont("Segoe UI", 12))
-        btn_shop.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_shop.clicked.connect(lambda: self.on_selected("shop"))
-        inner_l.addWidget(btn_shop)
-
         btn_test = QPushButton("📝  Zrób test")
         btn_test.setStyleSheet(STY_GREEN)
         btn_test.setFont(QFont("Segoe UI", 12))
@@ -2089,8 +2078,7 @@ class SaveSetWorker(QThread):
 
     def run(self):
         try:
-            user = supabase.auth.get_user()
-            user_id = user.user.id
+            user_id = current_uid()
 
             # zapisz zestaw
             resp = supabase.table("user_sets").insert({
@@ -2122,8 +2110,7 @@ class LoadSetsWorker(QThread):
 
     def run(self):
         try:
-            user = supabase.auth.get_user()
-            user_id = user.user.id
+            user_id = current_uid()
             resp = supabase.table("user_sets").select("id,name,is_public,likes_count").eq("user_id", user_id).execute()
             self.done.emit(resp.data or [])
         except Exception as e:
@@ -2188,7 +2175,7 @@ class ImportSetWorker(QThread):
 
     def run(self):
         try:
-            uid = supabase.auth.get_user().user.id
+            uid = current_uid()
             # Sprawdź czy już zaimportowany
             existing = supabase.table("user_sets").select("id").eq("user_id", uid).eq("name", self.set_name).execute()
             if existing.data:
@@ -2902,7 +2889,7 @@ class BuyLevelWorker(QThread):
 
     def run(self):
         try:
-            uid = supabase.auth.get_user().user.id
+            uid = current_uid()
             key = f"{self.lang_code}_{self.level_code}"
             # Pobierz złoto z learning_stats
             stats = supabase.from_("learning_stats").select("gold").eq("user_id", uid).single().execute()
@@ -2975,7 +2962,7 @@ class StatsWorker(QThread):
 
     def run(self):
         try:
-            uid = supabase.auth.get_user().user.id
+            uid = current_uid()
             stats = supabase.from_("learning_stats").select(
                 "gold,cards_seen,minutes_active,streak_days,last_active"
             ).eq("user_id", uid).single().execute()
@@ -3105,9 +3092,7 @@ class StatsWindow(_DraggableWindow):
         self.stats_lay.addWidget(self._stat_row("🏆", "Status konta", prem_text, prem_color))
 
         # Statystyki
-        self.stats_lay.addWidget(self._stat_row("🏺", "Złoto", f"{gold:,}".replace(",", " "), "rgba(210,175,0,220)"))
         self.stats_lay.addWidget(self._stat_row("📚", "Poznane słowa", f"{cards:,}".replace(",", " ")))
-        self.stats_lay.addWidget(self._stat_row("🔥", "Streak", f"{streak} dni z rzędu", "rgba(255,140,50,220)"))
 
         hours = minutes // 60
         mins = minutes % 60
@@ -3133,8 +3118,7 @@ class SettingsWindow(_DraggableWindow):
 
     def run(self):
         try:
-            user = supabase.auth.get_user()
-            uid  = user.user.id
+            uid  = current_uid()
             resp = supabase.table("learning_stats").select("gold").eq("user_id", uid).execute()
             gold = resp.data[0]["gold"] if resp.data else 0
             resp2 = supabase.table("profiles").select("is_premium").eq("user_id", uid).execute()
@@ -3354,13 +3338,6 @@ class PurchaseWindow(_DraggableWindow):
                 }}
             """
 
-        self.btn_gold = QPushButton("🏺  Zapłać złotem  ·  7 500 złota")
-        self.btn_gold.setStyleSheet(_sty("rgba(210,175,0,220)", "rgba(50,42,20,180)"))
-        self.btn_gold.setFont(QFont("Segoe UI", 12))
-        self.btn_gold.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_gold.clicked.connect(self._pay_gold)
-        il.addWidget(self.btn_gold)
-
         self.btn_once = QPushButton("💳  Kup jednorazowo  ·  19,99 zł")
         self.btn_once.setStyleSheet(_sty("rgba(80,140,230,220)", "rgba(30,50,90,180)"))
         self.btn_once.setFont(QFont("Segoe UI", 12))
@@ -3393,9 +3370,7 @@ class PurchaseWindow(_DraggableWindow):
         parts = price_key.split("_")
         self._lang_code  = parts[0] if len(parts) >= 2 else ""
         self._lvl_code   = parts[1] if len(parts) >= 2 else ""
-        self.lbl_info.setText(f"{lang_label}  ·  Poziom {level_label}  ·  masz {gold:,} złota".replace(",", " "))
-        can_gold = gold >= 7500
-        self.btn_gold.setEnabled(can_gold)
+        self.lbl_info.setText(f"{lang_label}  ·  Poziom {level_label}")
         self.lbl_msg.setText("")
         self.lbl_msg.setStyleSheet("color:rgba(255,100,100,220);background:transparent;")
         self.show(); self.raise_(); self.activateWindow()
@@ -3405,7 +3380,7 @@ class PurchaseWindow(_DraggableWindow):
             self.lbl_msg.setText("Niewystarczająca ilość złota.")
             return
         try:
-            uid = supabase.auth.get_user().user.id
+            uid = current_uid()
             # Pobierz levels_bought z profiles
             profile = supabase.from_("profiles").select("levels_bought").eq("user_id", uid).single().execute()
             current = profile.data.get("levels_bought") or []
@@ -4559,7 +4534,6 @@ class TrayApp:
         menu = QMenu()
         menu.addAction("🌍  Zmień język / poziom / kategorię").triggered.connect(self._show_lang)
         menu.addAction("🏆  Aktywuj Premium").triggered.connect(self._show_premium)
-        menu.addAction("🏪  Sklep złota").triggered.connect(self._show_shop)
         menu.addAction("📊  Statystyki").triggered.connect(self._show_stats)
         menu.addAction("📝  Zrób test").triggered.connect(self._start_test)
         menu.addAction("⚙️  Ustawienia").triggered.connect(lambda: (self.win_settings.show(), self.win_settings.raise_()))
@@ -4595,7 +4569,7 @@ class TrayApp:
     def _show_purchase_subscription(self):
         """Otwórz okno zakupu subskrypcji."""
         try:
-            user_email = supabase.auth.get_user().user.email
+            user_email = current_email()
         except Exception:
             user_email = ""
         gold = getattr(self, '_gold', 0)
@@ -4755,10 +4729,6 @@ class TrayApp:
         self.win_stats.activateWindow()
 
     def _on_level_bought(self, level_code, gold_left):
-        # Daj 1500 złota za zakup poziomu
-        self._add_gold_worker = AddGoldWorker(1500, 0)
-        self._add_gold_worker.done.connect(lambda g: self.overlay.set_gold(g))
-        self._add_gold_worker.start()
         # Odśwież profil po chwili
         QTimer.singleShot(1500, self.load_user_stats)
 
@@ -4772,9 +4742,6 @@ class TrayApp:
         self._profile_worker = ProfileWorker()
         self._profile_worker.done.connect(self._on_profile_loaded)
         self._profile_worker.start()
-        self._streak_worker = StreakWorker()
-        self._streak_worker.done.connect(self.overlay.set_streak)
-        self._streak_worker.start()
 
     def _on_profile_loaded(self, profile):
         gold          = profile.get("gold", 0)
@@ -4792,8 +4759,6 @@ class TrayApp:
         self._gold          = gold
         self._is_premium    = is_premium
         self._levels_bought = levels_bought
-        self.overlay.set_gold(gold)
-        self.overlay.set_streak(streak)
         lang  = self.overlay.lang or "en"
         level = self.overlay.level or "A1"
         cat   = self.overlay.cat or None
@@ -4826,7 +4791,7 @@ class TrayApp:
         lang_label_str = next((l["label"] for l in LANGUAGES if l["code"] == lang_code), lang_code)
         gold = self._gold if hasattr(self, "_gold") else 0
         try:
-            user_email = supabase.auth.get_user().user.email
+            user_email = current_email()
         except Exception:
             user_email = ""
         self.win_purchase.show_for(price_key, lvl_code, lang_label_str, gold, user_email)
@@ -4840,7 +4805,6 @@ class TrayApp:
             self._gold          = gold
             self._is_premium    = is_premium
             self._levels_bought = levels_bought
-            self.overlay.set_gold(gold)
             self.win_lvl.set_premium(is_premium)
             self.win_lvl.set_bought_levels(levels_bought)
             self.win_shop.update_profile(gold, is_premium, levels_bought)
@@ -4908,7 +4872,7 @@ class TrayApp:
         is_premium = getattr(self, '_is_premium', False)
         # Sprawdź ile zestawów ma użytkownik
         try:
-            uid = supabase.auth.get_user().user.id
+            uid = current_uid()
             resp = supabase.from_("user_sets").select("id").eq("user_id", uid).execute()
             count = len(resp.data) if resp.data else 0
         except Exception:
@@ -5276,9 +5240,10 @@ def main():
 
     if try_restore_session():
         try:
-            user = supabase.auth.get_user()
-            ph_identify(user.user.id, user.user.email)
-            ph_capture("app_opened", {"session": "restored"})
+            user = current_user()
+            if user:
+                ph_identify(user.id, user.email)
+                ph_capture("app_opened", {"session": "restored"})
         except Exception:
             pass
         on_logged_in(None)
