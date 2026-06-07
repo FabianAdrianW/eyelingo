@@ -13160,6 +13160,12 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
 
   // Parse response for exercise type, vocab, gaps
   _lexCurrentCard = lexParseCard(fullResponse);
+  // Tryb lekcji strukturalnej: blok = wprowadzenie + 4 zadania (gdy poziom ustalony)
+  _lexBlock = null;
+  if(lexCurrentLevel() !== 'unknown' && /\[TASK\]/i.test(fullResponse) && !/\[END\]/.test(fullResponse)){
+    var _tasks = lexParseTasks(fullResponse);
+    if(_tasks.length){ _lexBlock = { tasks: _tasks, idx: 0, results: [] }; _lexCurrentCard.block = true; }
+  }
   _lexStreaming = false;
   lexSaveProgress();
 
@@ -13193,31 +13199,42 @@ function lexBuildSystemPrompt(flashcardSets){
     ? '1. ALWAYS communicate IN ' + _lexLangNative + '. For B1+ keep explanations in the target language too; use Polish ONLY for a single-word gloss in parentheses, never whole sentences. NEVER use emoji or emoticons anywhere — keep a calm, professional, pedagogical tone.\n'
     : '1. Conduct and EXPLAIN the whole lesson in Polish (the student reads Polish). Whenever you use a ' + _lexLangNative + ' word, phrase or example sentence, wrap it in **double asterisks** so it is shown and pronounced in ' + _lexLangNative + '. Exercises, MC options and the student\'s expected answers ALWAYS stay in ' + _lexLangNative + '. NEVER use emoji or emoticons anywhere — keep a calm, professional, pedagogical tone.\n';
 
-  return 'You are Lex, an expert language teacher. You teach ONLY the ' + _lexLangNative + ' language.\n'
+  var isEval = (level === 'unknown');
+  var nBlocks = (dur === 10) ? 3 : (dur === 25) ? 6 : 9;
+
+  var common = 'You are Lex, an expert language teacher. You teach ONLY the ' + _lexLangNative + ' language.\n'
     + 'CRITICAL RULES:\n'
     + rule1
-    + '2. Each response = ONE card = ONE clear thought or exercise. Be concise.\n'
     + '3. Student: ' + (name || 'learner') + ', level: ' + level + ', goal: ' + goal + ', lesson: ' + dur + ' min\n'
-    + '4. If level is "unknown" — run the placement as a NATURAL WRITTEN CONVERSATION, NOT a quiz: ask open [CONV] questions (their day, opinions, plans, a short story), escalating difficulty A1->C1. After EACH student answer detect grammar errors (tense, pronoun, agreement, word order, prepositions) and emit a [GAP]krotka nazwa po polsku[/GAP] for each error type, then a one-sentence encouraging correction. Use [CONV] cards, NOT [MC], during placement. Aim for 8-10 exchanges. Do NOT conclude before 10 answers. The moment you conclude the level, add the marker [LEVEL]X[/LEVEL] exactly once (X = A1/A2/B1/B2/C1/C2).\n'
-    + '5. After each student answer, give brief encouraging feedback (1 sentence), then move to next step.\n'
-    + '\n'
-    + 'EXERCISE FORMATS — end EVERY response with ONE:\\n'
-    + '[MC]\\nQ: pytanie PO ' + _lexLangNative + '\\nA: poprawna\\nB: błędna\\nC: błędna\\nD: błędna\\nANS: A\\n[/MC]\\n'
-    + '[FIG]\\nSentence: zdanie z ___ PO ' + _lexLangNative + '\\nAnswer: słowo\\nHint: po polsku\\n[/FIG]\\n'
-    + '[CONV]\\nTask: po polsku: co student ma napisać po ' + _lexLangName + '\\n[/CONV]\\n'
-    + '[INFO]\\n(brak ćwiczenia)\\n[/INFO]\\n'
-    + 'KRYTYCZNE: NIE używaj markdown headers (#, ##). NIE używaj bloków kodu (```). NIE pisz tagów HTML (<br>, <p> itp). NIE pisz \\n dosłownie. Używaj zwykłych enterów. Pisz czysty tekst.\\n'
-    + 'KRYTYCZNE: Ćwiczenia i pytania MC ZAWSZE po ' + _lexLangNative + '. Student odpowiada ZAWSZE po ' + _lexLangNative + '.\\n'
-    + 'VOCAB: [WORD]słowo_po_' + _lexLangNative + '|tłumaczenie_PL|przykład[/WORD]\\n'
-    + 'GAP: [GAP]nazwa luki PO POLSKU, konkretna (np. czas przeszły Preterito, rodzajniki, odmiana ser/estar)[/GAP] gdy wykryjesz błąd. FIX: poprawioną wersję zdania/frazy/wyrazu ZAWSZE owiń w [FIX]...[/FIX]. LEVEL: [LEVEL]B1[/LEVEL] raz, gdy ustalisz poziom. RECOMMEND: kończąc test, jako metodyk wskaż JEDNĄ lukę od której najlepiej zacząć i owiń w [RECOMMEND]nazwa luki po polsku[/RECOMMEND]. CARD: KAŻDE poprawione słowo lub zwrot dodaj też jako [CARD]poprawne|tłumaczenie_PL[/CARD] — trafi do fiszek usera\\n'
-    + 'END: [END] po ~' + Math.round(dur * 1.5) + ' wymianach\\n'
-    + 'CORE (do zeszytu ucznia): gdy uczysz reguły gramatycznej lub kluczowego słowa/zwrotu, dodaj wpis [CORE]typ|treść|przykład[/CORE] gdzie typ=rule lub word. Dla rule: treść=krótka reguła PO POLSKU (np. "3 os. l.poj.: dodajemy -s/-es"), przykład=zdanie wzorcowe. Dla word: treść=słowo + tłumaczenie PL, przykład=użycie. Dodawaj 1-3 wpisy CORE na lekcję, tylko najważniejsze. Pisz zwięźle.\\n'
-    + 'KEY (do zapamiętania, wyróżnienie pomarańczowe): najważniejszą rzecz w danej karcie — to, co uczeń MA ZAPAMIĘTAĆ (reguła, wniosek, kluczowy zwrot) — owiń w [KEY]...[/KEY]. Maksymalnie JEDEN [KEY] na kartę, często zero. Używaj bardzo oszczędnie — to ma być akcent, nie zakreślacz na pół karty.\\n'
-    + 'LESSON FLOW ' + dur + ' min:\\n'
-    + (level === 'unknown' ? '→ Przywitaj po ' + conductLang + ', swobodna rozmowa pisana (CONV) jako diagnostyka, wyłapuj [GAP], 8-10 wymian, zakończ [LEVEL]\\n' : '→ Krótkie powitanie po ' + conductLang + '\\n')
-    + '→ HPPP: Hook → Present → Practice → Produce\\n'
-    + '→ Zakończ [END]\\n'
-    + 'Jedna myśl na kartę. Zawsze kończ ćwiczeniem lub [INFO].';
+    + 'KRYTYCZNE: NIE używaj markdown headers (#, ##). NIE używaj bloków kodu (```). NIE pisz tagów HTML. NIE pisz \\n dosłownie — używaj zwykłych enterów. Pisz czysty tekst.\n'
+    + 'VOCAB: [WORD]słowo_po_' + _lexLangNative + '|tłumaczenie_PL|przykład[/WORD]\n'
+    + 'CORE (do zeszytu ucznia): reguła/kluczowe słowo → [CORE]typ|treść|przykład[/CORE], typ=rule lub word, treść PO POLSKU. 1-3 na lekcję, zwięźle.\n'
+    + 'KEY (wyróżnienie pomarańczowe): najważniejszą rzecz do ZAPAMIĘTANIA w danej karcie owiń w [KEY]...[/KEY]. Max JEDEN na kartę, często zero. Oszczędnie.\n';
+
+  if(isEval){
+    return common
+      + '2. Each response = ONE card = ONE clear thought or exercise. Be concise.\n'
+      + '4. Poziom NIEUSTALONY — przeprowadź placement jako NATURALNĄ ROZMOWĘ PISANĄ (nie quiz): otwarte pytania [CONV] (dzień, opinie, plany, krótka historyjka), stopniuj trudność A1->C1. Po KAŻDEJ odpowiedzi wykryj błędy gramatyczne i wypisz [GAP]krótka nazwa po polsku[/GAP] dla każdego typu błędu + jednozdaniowa zachęcająca korekta. Używaj [CONV], NIE [MC]. Cel: 8-10 wymian. NIE kończ przed 10 odpowiedziami. W momencie ustalenia poziomu dodaj DOKŁADNIE raz [LEVEL]X[/LEVEL] (X = A1/A2/B1/B2/C1/C2).\n'
+      + '5. Po każdej odpowiedzi krótki, zachęcający feedback (1 zdanie).\n'
+      + 'FORMAT (zakończ odpowiedź jednym):\n'
+      + '[CONV]\nTask: po polsku: co student ma napisać po ' + _lexLangName + '\n[/CONV]\n'
+      + 'GAP: [GAP]nazwa luki PO POLSKU[/GAP] gdy wykryjesz błąd. FIX: poprawioną wersję owiń w [FIX]...[/FIX]. RECOMMEND: kończąc test wskaż JEDNĄ lukę od której zacząć: [RECOMMEND]nazwa po polsku[/RECOMMEND]. CARD: poprawione słowo/zwrot dodaj jako [CARD]poprawne|tłumaczenie_PL[/CARD].\n'
+      + 'LESSON FLOW: Przywitaj po ' + conductLang + ', rozmowa diagnostyczna (CONV), 8-10 wymian, zakończ [LEVEL].';
+  }
+
+  // STRUKTURALNA LEKCJA (poziom ustalony) — blok = wprowadzenie + 4 zadania
+  return common
+    + '2. STRUKTURALNA LEKCJA. Poziom ucznia jest USTALONY (' + level + ') — NIE rób już diagnostyki ani [CONV]. KAŻDA Twoja odpowiedź = JEDEN blok lekcji o jednym, wąskim temacie:\n'
+    + '   (a) 2-4 zdania wprowadzenia/wyjaśnienia tematu po ' + conductLang + ' (słowa w ' + _lexLangNative + ' owijaj w **...**).\n'
+    + '   (b) Następnie DOKŁADNIE 4 zadania, każde w osobnym znaczniku [TASK]...[/TASK]. Typy MIESZANE i WSZYSTKIE samosprawdzalne (mc, fig, trans). KAŻDE zadanie MUSI mieć ANS i WHY (jedno zdanie po polsku — co zapamiętać).\n'
+    + 'FORMATY ZADAŃ (użyj 4, mieszając typy, np. mc, fig, trans, mc):\n'
+    + '[TASK]\nTYPE: mc\nQ: pytanie po ' + _lexLangNative + '\nA: opcja\nB: opcja\nC: opcja\nD: opcja\nANS: A\nWHY: po polsku, co zapamiętać\n[/TASK]\n'
+    + '[TASK]\nTYPE: fig\nQ: zdanie po ' + _lexLangNative + ' z luką ___\nANS: brakujące słowo\nHINT: krótka podpowiedź po polsku\nWHY: ...\n[/TASK]\n'
+    + '[TASK]\nTYPE: trans\nQ: krótkie zdanie PO POLSKU do przetłumaczenia\nANS: wzorcowe tłumaczenie po ' + _lexLangNative + '\nWHY: ...\n[/TASK]\n'
+    + 'Treści ćwiczeń po ' + _lexLangNative + ' (wyjątek: w trans Q jest po polsku). NIE używaj [MC]/[FIG]/[CONV] — w trybie lekcji TYLKO [TASK].\n'
+    + 'GAP: gdy temat dotyka znanej luki ucznia, możesz dodać [GAP]nazwa po polsku[/GAP]. CARD: kluczowe słowo/zwrot dodaj jako [CARD]słowo|tłumaczenie_PL[/CARD].\n'
+    + 'ADAPTACJA: gdy uczeń przyśle wiadomość [BLOCK_DONE] z wynikiem — pochwal jednym zdaniem i dostosuj następny blok (były błędy → weź ten temat ponownie inaczej; 4/4 → podnieś trudność lub nowy aspekt), po czym podaj kolejny blok 4 zadań.\n'
+    + 'LESSON FLOW ' + dur + ' min: krótkie powitanie po ' + conductLang + ', potem ' + nBlocks + ' bloków po 4 zadania (HPPP: Hook→Present→Practice→Produce). Po ~' + nBlocks + ' blokach zakończ lekcję znacznikiem [END].';
 }
 
 // ── Parse card response ───────────────────────────────────
@@ -13525,7 +13542,12 @@ function lexAfterTyping(){
   if(card.type === 'end'){
     lexShowSummary();
     return;
-  } else if(card.type === 'mc'){
+  }
+  if(_lexBlock && _lexBlock.tasks && _lexBlock.tasks.length){
+    lexShowBlockTask(0);
+    return;
+  }
+  if(card.type === 'mc'){
     lexShowMC(card);
   } else if(card.type === 'fig'){
     lexShowFIG(card);
@@ -13858,6 +13880,7 @@ function lexShowFIG(card){
 }
 
 function lexSubmitText(){
+  if(_lexBlock){ lexBlockSubmitInput(); return; }
   var inp = document.getElementById('lex-text-input');
   if(!inp || !inp.value.trim()) return;
   var answer = inp.value.trim();
@@ -13882,7 +13905,140 @@ function lexSubmitConv(){
 }
 
 function lexNextCard(){
+  if(_lexBlock){
+    lexBlockClearFeedback();
+    if(_lexBlock.idx < _lexBlock.tasks.length - 1){ lexShowBlockTask(_lexBlock.idx + 1); return; }
+    // Blok ukończony → podsumowanie wyników → poproś o następny blok
+    var r = _lexBlock.results || [];
+    var ok = r.filter(function(x){ return x.correct; }).length;
+    var errs = r.filter(function(x){ return !x.correct; }).map(function(x){ return x.q; }).slice(0,4);
+    var summary = '[BLOCK_DONE] poprawne ' + ok + '/' + r.length + (errs.length ? ('; błędy w: ' + errs.join(' | ')) : '; bez błędów');
+    _lexBlock = null;
+    lexNextCardWithAnswer(summary, null);
+    return;
+  }
   lexNextCardWithAnswer('[NEXT]', null);
+}
+
+// ── Lekcja strukturalna: blok 4 zadań z natychmiastowym feedbackiem ──
+var _lexBlock = null;
+
+function lexParseTasks(text){
+  var tasks = [];
+  var re = /\[TASK\]([\s\S]*?)\[\/TASK\]/gi, m;
+  while((m = re.exec(text))){
+    var t = {type:'mc', q:'', options:[], ans:'', hint:'', why:''};
+    m[1].split('\n').map(function(l){ return l.trim(); }).filter(Boolean).forEach(function(l){
+      if(/^TYPE:/i.test(l)) t.type = l.slice(5).trim().toLowerCase();
+      else if(/^Q:/i.test(l)) t.q = l.slice(2).trim();
+      else if(/^[A-D]:/.test(l)) t.options.push({letter:l[0], text:l.slice(2).trim()});
+      else if(/^ANS:/i.test(l)) t.ans = l.slice(4).trim();
+      else if(/^HINT:/i.test(l)) t.hint = l.slice(5).trim();
+      else if(/^WHY:/i.test(l)) t.why = l.slice(4).trim();
+    });
+    if(t.type !== 'mc' && t.type !== 'fig' && t.type !== 'trans') t.type = (t.options.length ? 'mc' : 'fig');
+    if(t.q) tasks.push(t);
+  }
+  return tasks.slice(0,4);
+}
+
+function lexBlockClearFeedback(){
+  var fb = document.getElementById('lex-block-feedback');
+  if(fb) fb.remove();
+}
+
+function lexBlockProgress(i, n){
+  var phaseEl = document.getElementById('lex-phase');
+  if(phaseEl){ phaseEl.style.display='inline'; phaseEl.textContent = 'Zadanie ' + (i+1) + '/' + n; }
+}
+
+function lexShowBlockTask(i){
+  var b = _lexBlock; if(!b || !b.tasks[i]) return;
+  b.idx = i;
+  lexBlockClearFeedback();
+  lexBlockProgress(i, b.tasks.length);
+  var t = b.tasks[i];
+  if(t.type === 'mc'){
+    lexSetAnswerType('choice');
+    var promptEl = document.getElementById('lex-choice-prompt');
+    if(promptEl) promptEl.textContent = t.q || 'Wybierz poprawną odpowiedź:';
+    var grid = document.getElementById('lex-choice-grid');
+    if(!grid) return;
+    grid.innerHTML = '';
+    grid.style.gridTemplateColumns = window.innerWidth < 500 ? '1fr' : '1fr 1fr';
+    var opts = t.options.slice();
+    opts.sort(function(){ return Math.random() - 0.5; });
+    opts.forEach(function(opt){
+      var btn = document.createElement('button');
+      btn.className = 'lex-choice-btn';
+      btn.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:14px 16px;background:#fff;border:2px solid var(--border2);border-radius:14px;cursor:pointer;font-size:14px;color:var(--navy);font-family:DM Sans,sans-serif;text-align:left;width:100%;transition:all .15s;line-height:1.4';
+      btn.dataset.letter = opt.letter;
+      btn.innerHTML = '<span style="width:26px;height:26px;border-radius:50%;background:var(--paper2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:var(--dim2);flex-shrink:0">' + opt.letter + '</span>' + lexEsc(opt.text);
+      btn.onclick = function(){ lexBlockAnswerMC(this, t); };
+      btn.onmouseover = function(){ if(!this.dataset.answered) this.style.borderColor = 'var(--orange)'; };
+      btn.onmouseout = function(){ if(!this.dataset.answered) this.style.borderColor = 'var(--border2)'; };
+      grid.appendChild(btn);
+    });
+  } else {
+    lexSetAnswerType('text');
+    var prompt = document.getElementById('lex-text-prompt');
+    var inp = document.getElementById('lex-text-input');
+    if(prompt) prompt.textContent = (t.type === 'trans') ? ('Przetłumacz na ' + _lexLangNative + ': ' + t.q) : (t.q + (t.hint ? ' (' + t.hint + ')' : ''));
+    if(inp){ inp.disabled = false; inp.value = ''; inp.placeholder = (t.type === 'trans') ? ('Tłumaczenie po ' + _lexLangNative + '...') : 'Uzupełnij...'; setTimeout(function(){ inp.focus(); }, 100); }
+  }
+}
+
+function _lexNorm(s){ return String(s||'').toLowerCase().normalize('NFC').replace(/[.,!?;:"'()¿¡]/g,'').replace(/\s+/g,' ').trim(); }
+
+function lexBlockAnswerMC(btn, t){
+  var grid = document.getElementById('lex-choice-grid');
+  var btns = grid.querySelectorAll('button');
+  btns.forEach(function(b){ b.disabled = true; b.dataset.answered = '1'; b.style.cursor = 'default'; b.onmouseover = null; });
+  var correctLetter = String(t.ans||'').trim().charAt(0).toUpperCase();
+  var isCorrect = btn.dataset.letter === correctLetter;
+  if(isCorrect){
+    btn.style.background = '#eaf3de'; btn.style.borderColor = '#639922'; btn.style.color = '#3b6d11';
+    _lexScore += 10; lexUpdateScore();
+  } else {
+    btn.style.background = '#fcebeb'; btn.style.borderColor = '#e24b4a'; btn.style.color = '#a32d2d';
+    btns.forEach(function(b){ if(b.dataset.letter === correctLetter){ b.style.background = '#eaf3de'; b.style.borderColor = '#639922'; b.style.color = '#3b6d11'; } });
+  }
+  _lexBlock.results.push({type:t.type, correct:isCorrect, q:t.q});
+  lexBlockShowFeedback(t, isCorrect);
+}
+
+function lexBlockSubmitInput(){
+  var b = _lexBlock; if(!b) return;
+  var t = b.tasks[b.idx];
+  var inp = document.getElementById('lex-text-input');
+  if(!inp || !inp.value.trim()) return;
+  var ans = inp.value.trim();
+  var isCorrect = _lexNorm(ans) === _lexNorm(t.ans);
+  inp.disabled = true;
+  if(isCorrect){ _lexScore += 10; lexUpdateScore(); }
+  _lexBlock.results.push({type:t.type, correct:isCorrect, q:t.q, user:ans});
+  lexBlockShowFeedback(t, isCorrect);
+}
+
+function lexBlockShowFeedback(t, isCorrect){
+  lexBlockClearFeedback();
+  var zone = document.getElementById('lex-answer-zone');
+  if(!zone) return;
+  var fb = document.createElement('div');
+  fb.id = 'lex-block-feedback';
+  fb.style.cssText = 'background:var(--paper2);border-left:3px solid ' + (isCorrect ? '#639922' : 'var(--orange)') + ';border-radius:10px;padding:12px 14px;font-size:13px';
+  var head = isCorrect ? '<span style="color:#3b6d11;font-weight:600">Dobrze!</span>' : '<span style="color:var(--orange);font-weight:600">Prawie!</span>';
+  var ansLine = '';
+  if(!isCorrect && (t.type === 'fig' || t.type === 'trans')) ansLine = '<div style="font-size:13px;color:var(--navy);margin-top:4px">Poprawnie: <strong style="color:var(--orange)">' + lexEsc(t.ans) + '</strong></div>';
+  else if(t.type === 'trans' && isCorrect) ansLine = '<div style="font-size:12px;color:var(--dim);margin-top:4px">Wzorzec: ' + lexEsc(t.ans) + '</div>';
+  var why = t.why ? '<div style="font-size:12px;color:var(--dim);margin-top:6px;line-height:1.5">' + lexEsc(t.why) + '</div>' : '';
+  fb.innerHTML = head + ansLine + why;
+  // Wstaw feedback NAD przyciskiem, NIE chowając odpowiedzianego zadania
+  var fbZone = document.getElementById('lex-type-feedback');
+  if(fbZone){ zone.insertBefore(fb, fbZone); fbZone.style.display = 'block'; }
+  else { zone.appendChild(fb); }
+  var nb = document.getElementById('lex-next-btn');
+  if(nb) nb.textContent = (_lexBlock.idx >= _lexBlock.tasks.length - 1) ? 'Dalej →' : 'Następne zadanie →';
 }
 
 function lexNextCardWithAnswer(answer, isCorrect){
@@ -13895,6 +14051,8 @@ function lexNextCardWithAnswer(answer, isCorrect){
   if(trDiv) trDiv.remove();
   var fbBlock = document.getElementById('lex-feedback-block');
   if(fbBlock) fbBlock.remove();
+  var fbBlock2 = document.getElementById('lex-block-feedback');
+  if(fbBlock2) fbBlock2.remove();
   lexRequestNextCard(answer, []);
 }
 
@@ -14088,6 +14246,7 @@ function lexFormatCardText(text){
       return qLine ? '\n\n' + qLine.replace('Q:','').trim() : '';
     })
     .replace(/\[FIG\][\s\S]*?\[\/FIG\]/g, '')
+    .replace(/\[TASK\][\s\S]*?\[\/TASK\]/gi, '')
     .replace(/\[CONV\][\s\S]*?\[\/CONV\]/g, '')
     .replace(/\[INFO\][\s\S]*?\[\/INFO\]/g, '')
     .replace(/\[GAP\][^\[]+\[\/GAP\]/g, '')
