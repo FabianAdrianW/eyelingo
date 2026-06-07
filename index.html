@@ -4695,6 +4695,8 @@ async function loadDailyRead(){
     }
     var title=d.title||topic;
     var body=rawText;
+    // generate-article może zwrócić 200 z błędem jako treść → wymuś fallback (AI proxy)
+    if(typeof _isBadArticle==='function' && _isBadArticle(title, body)) throw new Error('empty_or_error');
     // Zapisz do Supabase permanentnie (tylko poprawną treść)
     try{
       if(!(typeof _isBadArticle==='function'&&_isBadArticle(title,body))){
@@ -12406,6 +12408,9 @@ async function fetchOdkryjArticle(topic, lang, level, tok){
       var d=await res.json();
       title=d.title||topic;
       body=d.content||d.text||d.article||'';
+      // generate-article potrafi zwrócić 200 z payloadem błędu ("Błąd generowania") —
+      // potraktuj to jako brak treści, by zadziałał fallback przez super-endpoint.
+      if(_isBadArticle(title, body)){ title=''; body=''; }
     }
   }catch(eGen){}
   // 2) Fallback przez AI proxy (super-endpoint) — gdy Edge Function nie dał treści
@@ -14066,7 +14071,7 @@ async function lexLoadSidebar(){
     try{ var {data:prof}=await db.from('lex_profiles').select('*').eq('user_id',sess.user.id).maybeSingle(); if(prof) _lexProfile=prof; }catch(e){}
     lexRenderSidebarGaps();
     lexRenderSidebarResume();
-    var {data:lessons}=await db.from('lex_lessons').select('id,title,board,vocabulary,gaps_found,ended_at,created_at,level').eq('user_id',sess.user.id).eq('completed',true).order('ended_at',{ascending:false}).limit(30);
+    var {data:lessons}=await db.from('lex_lessons').select('*').eq('user_id',sess.user.id).eq('completed',true).order('created_at',{ascending:false}).limit(30);
     _lexLessonsCache=lessons||[];
     _lexNotebookIdx=0;
     lexRenderNotebook();
@@ -14079,7 +14084,7 @@ async function lexRenderSidebarResume(){
   box.style.display='none';
   try{
     var sess=(await db.auth.getSession()).data.session; if(!sess) return;
-    var {data:rows}=await db.from('lex_lessons').select('id,level,messages,created_at,title')
+    var {data:rows}=await db.from('lex_lessons').select('*')
       .eq('user_id',sess.user.id).eq('completed',false)
       .order('created_at',{ascending:false}).limit(5);
     if(!rows||!rows.length) return;
@@ -14403,7 +14408,7 @@ async function lexCheckResumable(){
   banner.style.display='none';
   try{
     var sess=(await db.auth.getSession()).data.session; if(!sess) return;
-    var {data:rows}=await db.from('lex_lessons').select('id,level,messages,created_at')
+    var {data:rows}=await db.from('lex_lessons').select('*')
       .eq('user_id',sess.user.id).eq('completed',false)
       .order('created_at',{ascending:false}).limit(5);
     if(!rows||!rows.length) return;
