@@ -2869,7 +2869,7 @@ function setCard(s){
 
       <!-- Collection view (inside a collection) -->
       <div id="mat-collection-view" style="display:none">
-        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+        <div id="mat-colview-createrow" style="display:flex;justify-content:flex-end;margin-bottom:16px">
           <button onclick="openCreateSetInCollection()" class="btn btn-orange" style="font-size:13px;padding:8px 16px">+ Nowy zestaw</button>
         </div>
         <div id="mat-collection-sets" class="mat-grid"><div class="mat-empty">Brak zestawów w tym katalogu</div></div>
@@ -5297,14 +5297,14 @@ async function updatePowtorkiTile(){
     var sess=(await db.auth.getSession()).data.session;
     if(!sess) return;
     var today=new Date().toISOString().split('T')[0];
-    var {data:due}=await db.from('word_progress')
-      .select('id',{count:'exact',head:true})
-      .eq('user_id',sess.user.id)
-      .lte('next_review',today);
-    var cnt=(due&&typeof due==='number')?due:(due&&due.length)||0;
-    // Try count approach
-    var {count}=await db.from('word_progress').select('*',{count:'exact',head:true}).eq('user_id',sess.user.id).lte('next_review',today);
-    cnt=count||0;
+    // Liczba powtórek z uniwersalnego store (własne + eyelingo)
+    var cnt=await usrsDueCount();
+    if(!cnt){
+      try{
+        var {count}=await db.from('word_progress').select('*',{count:'exact',head:true}).eq('user_id',sess.user.id).lte('next_review',today);
+        cnt=count||0;
+      }catch(e){}
+    }
     if(cnt>0){
       tile.style.background='linear-gradient(135deg,#e8701a,#f08020)';
       tile.style.opacity='1';
@@ -8135,7 +8135,52 @@ async function startSession(mode){
 
 function shuffleArr(arr){for(var i=arr.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=arr[i];arr[i]=arr[j];arr[j]=t;}return arr;}
 
+// ── Uniwersalny SRS (web) — działa dla WSZYSTKICH zestawów (własne + eyelingo) ──
+// Postęp trzymany per-konto w localStorage, kluczowany treścią słowa (źródło-niezależnie),
+// więc nie zależy od schematu bazy. Powtórki wracają tylko dla słów, które wciąż są
+// w bieżących zestawach użytkownika — usunięcie zestawu sprawia, że jego słowa nie wracają.
+function _usrsKey(uid){ return 'usrs_'+uid; }
+function _usrsLoad(uid){ try{ return JSON.parse(localStorage.getItem(_usrsKey(uid))||'{}'); }catch(e){ return {}; } }
+function _usrsSaveAll(uid,obj){ try{ localStorage.setItem(_usrsKey(uid),JSON.stringify(obj)); }catch(e){} }
+function _usrsCK(word,tr){ return String(word||'').trim().toLowerCase()+'|'+String(tr||'').trim().toLowerCase(); }
+async function _usrsUid(){ try{ var s=(await db.auth.getSession()).data.session; return s?s.user.id:null; }catch(e){ return null; } }
+async function usrsRecord(card,newSRS){
+  try{
+    var uid=await _usrsUid(); if(!uid||!card||!newSRS) return;
+    var w=card.word||card.front||''; var tr=card.translation||card.back||'';
+    if(!w&&!tr) return;
+    var store=_usrsLoad(uid);
+    store[_usrsCK(w,tr)]={ef:newSRS.ease_factor,interval:newSRS.interval_days,reps:newSRS.repetitions,due:newSRS.next_review,word:w,translation:tr,fc:(card.id!=null?card.id:null)};
+    _usrsSaveAll(uid,store);
+  }catch(e){}
+}
+async function _usrsCurrentCustomKeys(uid){
+  var set={};
+  try{
+    var {data}=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',uid);
+    (data||[]).forEach(function(s){ (s.user_set_cards||[]).forEach(function(c){ set[_usrsCK(c.word,c.translation)]=1; }); });
+  }catch(e){}
+  return set;
+}
+async function usrsDueList(limit){
+  var uid=await _usrsUid(); if(!uid) return [];
+  var store=_usrsLoad(uid); var today=new Date().toISOString().slice(0,10);
+  var due=Object.keys(store).map(function(k){return store[k];}).filter(function(r){return r&&r.due&&r.due<=today;});
+  if(!due.length) return [];
+  var cur=await _usrsCurrentCustomKeys(uid);
+  // eyelingo (fc != null) zawsze dostępne; własne tylko jeśli wciąż w zestawach
+  due=due.filter(function(r){ return r.fc!=null || cur[_usrsCK(r.word,r.translation)]; });
+  due.sort(function(a,b){ return a.due<b.due?-1:(a.due>b.due?1:0); });
+  return due.slice(0,limit||50).map(function(r){ return {id:(r.fc!=null?r.fc:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ef||2.5,repetitions:r.reps||0,interval_days:r.interval||1}; });
+}
+async function usrsDueCount(){ try{ var l=await usrsDueList(9999); return l.length; }catch(e){ return 0; } }
+
 async function loadDueCardsForTryb(){
+  try{
+    // Priorytet: uniwersalny store (obejmuje własne + eyelingo)
+    var u=await usrsDueList(50);
+    if(u&&u.length) return u;
+  }catch(e){}
   try{
     var sess=(await db.auth.getSession()).data.session;if(!sess)return[];
     var today=new Date().toISOString().slice(0,10);
@@ -8590,6 +8635,7 @@ function loadTrybMCCard(){
       btn.onclick = function(){
         if(btn.dataset.answered) return;
         var isCorrect = opt === correctAnswer;
+        try{ var _ns=sm2Local(card,isCorrect?4:1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); }catch(_e){}
         grid.querySelectorAll('button').forEach(function(b){
           b.dataset.answered = '1'; b.disabled = true; b.onmouseover = null;
           if(b.textContent === correctAnswer){ b.style.background='#eaf3de'; b.style.color='#3b6d11'; b.style.borderColor='#639922'; }
@@ -8681,6 +8727,7 @@ function loadTrybMemorizeMCPhase(){
       btn.onclick=function(){
         if(btn.dataset.answered)return;
         var isCorrect=opt===correctAnswer;
+        try{ var _ns=sm2Local(card,isCorrect?4:1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); }catch(_e){}
         grid.querySelectorAll('button').forEach(function(b){
           b.dataset.answered='1';b.disabled=true;
           if(b.textContent===correctAnswer){b.style.background='#eaf3de';b.style.color='#3b6d11';b.style.borderColor='#639922';}
@@ -8875,6 +8922,7 @@ async function rateCard(btnRating){
   var quality=Math.max(0,(qMap[eff]||0)-_trybHintPenalty);
   var newSRS=sm2Local(card,quality);
   await saveTrybSRS(card,newSRS);
+  usrsRecord(card,newSRS);
   var xpTable={1:0,2:3,3:7,4:10};
   var xp=xpTable[eff]||0;
   if(_trybChallengeMode)xp=Math.round(xp*1.25);
@@ -9198,10 +9246,12 @@ function openCollectionView(colIdx){
   if(title) title.textContent = col.name;
   if(sub) sub.textContent = (col.sets&&col.sets.length||0) + ' zestawów';
   if(grid) grid.style.display = 'none';
-  if(createBtn) createBtn.style.display = 'none';
+  if(createBtn) createBtn.style.display = 'block';
   var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='inline-flex';
   // Nowe zestawy (AI i zwykłe) tworzone wewnątrz katalogu trafiają do tego katalogu.
   window._createSetTargetCollection = colIdx;
+  // Ukryj zduplikowany przycisk „+ Nowy zestaw" wewnątrz widoku — używamy górnego paska (jak w „Wszystkie zestawy").
+  var _cvRow=document.getElementById('mat-colview-createrow'); if(_cvRow) _cvRow.style.display='none';
   if(colView) colView.style.display = 'block';
   if(!colSets) return;
 
