@@ -3407,7 +3407,7 @@ async function initToFixPage(){
   <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:24px">
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:0" id="odkryj-search-row">
       <input id="odkryj-input" class="fi" placeholder="Temat: sport, gotowanie, anime, technologia..." style="flex:1;min-width:200px">
-      <select id="odkryj-lang" class="fi" style="width:160px;flex-shrink:0">
+      <select id="odkryj-lang" class="fi" style="width:160px;flex-shrink:0" onchange="window.EyelingoLang&&EyelingoLang.set(this.value,'odkryj-lang')">
         <option value="en">🇬🇧 Angielski</option>
         <option value="es">🇪🇸 Hiszpański</option>
         <option value="nl">🇳🇱 Holenderski</option>
@@ -4368,8 +4368,8 @@ function initDaily(){
   document.getElementById('daily-date').textContent = d.toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   updateDailyCountdown();
   setInterval(updateDailyCountdown, 60000);
-  // Przywróć wybrany język z localStorage
-  try{var savedLang=localStorage.getItem('daily_lang');if(savedLang){var sel=document.getElementById('daily-lang-select');if(sel)sel.value=savedLang;}}catch(e){}
+  // Przywróć wybrany język — wspólny dla sekcji (globalny)
+  try{var sel=document.getElementById('daily-lang-select');if(sel)sel.value=(window.EyelingoLang?EyelingoLang.get():(localStorage.getItem('daily_lang')||'en'));}catch(e){}
   // Wczytaj postęp dnia dla wybranego języka
   if(typeof window._dailyLoadProgress==='function'){ window._dailyLoadProgress(); _dailyDone=window._dailyDone; _dailyXP=window._dailyXP; }
   // Ładuj content tylko raz dziennie (nie przy każdym wejściu na zakładkę)
@@ -4380,11 +4380,33 @@ function initDaily(){
   }
 }
 
+// ── Globalny język sekcji (Porcja dnia, Odkryj, ...) ──
+// Jedno źródło prawdy: zmiana w jednej sekcji propaguje się na pozostałe.
+// Per-sekcja nadal można zmienić — ostatni wybór staje się globalny.
+window.EyelingoLang = (function(){
+  var KEY='eyelingo_global_lang';
+  function get(){
+    try{ return localStorage.getItem(KEY) || localStorage.getItem('daily_lang') || 'en'; }catch(e){ return 'en'; }
+  }
+  function set(lang, fromId){
+    if(!lang) return;
+    try{ localStorage.setItem(KEY, lang); localStorage.setItem('daily_lang', lang); }catch(e){}
+    var d=document.getElementById('daily-lang-select'); if(d && d.value!==lang) d.value=lang;
+    var o=document.getElementById('odkryj-lang'); if(o && o.value!==lang) o.value=lang;
+    // Odśwież Porcję dnia, jeśli jest już wczytana, a zmiana przyszła z innej sekcji
+    if(fromId!=='daily-lang-select' && window._dailyLoaded && typeof reloadDailyContent==='function'){
+      try{ reloadDailyContent(); }catch(e){}
+    }
+  }
+  function apply(id){ var el=document.getElementById(id); if(el) el.value=get(); }
+  return {get:get,set:set,apply:apply};
+})();
+
 function reloadDailyContent(){
   // Clear all caches for new language
   window._dailyWordsData = null;
   window._dailyQuizExpl = null;
-  try{var sel=document.getElementById('daily-lang-select');if(sel)localStorage.setItem('daily_lang',sel.value);}catch(e){}
+  try{var sel=document.getElementById('daily-lang-select');if(sel){localStorage.setItem('daily_lang',sel.value); if(window.EyelingoLang) EyelingoLang.set(sel.value,'daily-lang-select');}}catch(e){}
   _dailyLoaded=false;
   _dailyLoadedDate='';
   // Nie zeruj postępu dnia — odtwórz zapisany stan z localStorage (per-język)
@@ -4482,13 +4504,18 @@ async function loadDailyWord(){
     var sess = (await db.auth.getSession()).data.session;
     var tok = sess ? sess.access_token : '';
 
-    // 1. Check if today's words already exist in DB for this language
-    var {data: cached} = await db
-      .from('daily_words')
-      .select('*')
-      .eq('date', today)
-      .eq('language', lang)
-      .maybeSingle();
+    // 1. Check if today's words already exist in DB for this language.
+    //    W osobnym try — błąd cache (brak tabeli/RLS) NIE może blokować generacji AI.
+    var cached = null;
+    try{
+      var _c = await db
+        .from('daily_words')
+        .select('*')
+        .eq('date', today)
+        .eq('language', lang)
+        .maybeSingle();
+      cached = _c && _c.data;
+    }catch(_ce){ cached = null; }
 
     if(cached && cached.words && cached.words.length && cached.date === today){
       renderDailyWords(cached.words, lang);
@@ -4531,6 +4558,7 @@ async function loadDailyWord(){
     renderDailyWords(words, lang);
 
   }catch(e){
+    console.warn('[loadDailyWord] generacja nie powiodła się, pokazuję fallback:', e);
     showDailyWordFallback();
   }
 }
@@ -5646,7 +5674,7 @@ async function strefaLoadEyelingoSet(langCode,langLabel,flag,lvl,catId,catLabel)
   try{
     var {data:langRow}=await db.from('languages').select('id').eq('code',langCode).single();
     var {data:lvlRow}=await db.from('levels').select('id').eq('code',lvl).maybeSingle();
-    var q=db.from('flashcards').select('word,translation').eq('language_id',langRow.id).eq('category_id',catId);
+    var q=db.from('flashcards').select('id,word,translation').eq('language_id',langRow.id).eq('category_id',catId);
     if(lvlRow) q=q.eq('level_id',lvlRow.id);
     var {data:cards}=await q.limit(200);
     if(!cards||!cards.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak fiszek</div>';return;}
@@ -5679,7 +5707,7 @@ async function strefaLoadEyelingoSet(langCode,langLabel,flag,lvl,catId,catLabel)
     startBtn.className='btn btn-orange btn-lg';
     startBtn.textContent='▶ Zacznij naukę';
     startBtn.onclick=(function(cc,sn){ return function(){
-      _trybExternalCards=cc.map(function(c){return {word:c.word||'',translation:c.translation||''};});
+      _trybExternalCards=cc.map(function(c){return {word:c.word||'',translation:c.translation||'',flashcard_id:c.id};});
       _trybExternalName=sn;
       window._trybSource='strefa';
       RewardSystem&&RewardSystem.load();
@@ -8093,7 +8121,7 @@ async function startSession(mode){
   if(hdr)hdr.textContent=_trybChallengeMode?'Tryb Wyzwania aktywny':'Sesja nauki';
   if(mode==='set_external'&&_trybExternalCards){
     _trybSetCards=_trybExternalCards.slice();
-    _trybCards=shuffleArr(_trybExternalCards.slice()).map(function(c){return{word:c.word||c.front||'',translation:c.translation||c.back||'',emoji:'',example:'',etymology:'',ease_factor:2.5,repetitions:0,interval_days:1,id:null};});
+    _trybCards=shuffleArr(_trybExternalCards.slice()).map(function(c){return{word:c.word||c.front||'',translation:c.translation||c.back||'',emoji:'',example:'',etymology:'',ease_factor:2.5,repetitions:0,interval_days:1,id:(c.flashcard_id!=null?c.flashcard_id:null)};});
     if(hdr)hdr.textContent=(typeof stripEmoji==='function'?stripEmoji(_trybExternalName||'Zestaw'):(_trybExternalName||'Zestaw'))+(_trybChallengeMode?' · Wyzwanie':'');
   }else{
     _trybCards=await loadDueCardsForTryb();_trybSetCards=_trybCards.slice();
@@ -8110,9 +8138,23 @@ function shuffleArr(arr){for(var i=arr.length-1;i>0;i--){var j=Math.floor(Math.r
 async function loadDueCardsForTryb(){
   try{
     var sess=(await db.auth.getSession()).data.session;if(!sess)return[];
-    var {data}=await db.rpc('get_due_cards_all',{p_lang:'en',p_limit:50});
-    if(!data||!data.length)return[];
-    return data.map(function(d){return{id:d.flashcard_id||d.id,word:d.word||d.front||'',translation:d.translation||d.back||'',emoji:d.emoji||'',example:d.example_sentence||d.example||'',etymology:d.etymology||'',ease_factor:d.ease_factor||2.5,repetitions:d.repetitions||0,interval_days:d.interval_days||1};});
+    var today=new Date().toISOString().slice(0,10);
+    var lang=(window._trybStudyLang||window._trybLang||'en');
+    // 1) Spróbuj RPC po stronie serwera (jeśli istnieje)
+    try{
+      var {data}=await db.rpc('get_due_cards_all',{p_lang:lang,p_limit:50});
+      if(data&&data.length){
+        return data.map(function(d){return{id:d.flashcard_id||d.id,word:d.word||d.front||'',translation:d.translation||d.back||'',emoji:d.emoji||'',example:d.example_sentence||d.example||'',etymology:d.etymology||'',ease_factor:d.ease_factor||2.5,repetitions:d.repetitions||0,interval_days:d.interval_days||1};});
+      }
+    }catch(rpcErr){ /* brak/awaria RPC — użyj zapytania bezpośredniego niżej */ }
+    // 2) Fallback bezpośredni na word_progress (działa bez RPC)
+    var {data:wp}=await db.from('word_progress')
+      .select('flashcard_id,ease_factor,repetitions,interval_days,next_review,flashcards(word,translation)')
+      .eq('user_id',sess.user.id)
+      .lte('next_review',today)
+      .limit(50);
+    if(!wp||!wp.length)return[];
+    return wp.filter(function(r){return r.flashcards;}).map(function(r){return{id:r.flashcard_id,word:(r.flashcards.word)||'',translation:(r.flashcards.translation)||'',emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1};});
   }catch(e){return[];}
 }
 
@@ -12221,6 +12263,8 @@ var _odkryjLevel='B1';
 var _odkryjRunning=false;
 
 function initOdkryj(){
+  // Wspólny język sekcji (globalny)
+  try{ if(window.EyelingoLang) EyelingoLang.apply('odkryj-lang'); }catch(e){}
   // Szybkie tematy
   var qt=document.getElementById('odkryj-quick-topics');
   if(qt&&!qt.dataset.built){
