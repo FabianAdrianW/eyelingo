@@ -1243,6 +1243,7 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 // Global function shims - ensure these are available before page loads
 window.switchMatTab = function(tab){
   window._matTab = tab;
+  window._createSetTargetCollection = null;
   // Update tabs
   document.querySelectorAll('.mat-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===tab); });
   var createBtn=document.getElementById('mat-create-btn');
@@ -4447,19 +4448,22 @@ function restoreDailyDoneState(){
 function showDailyWordFallback(){
   var lang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
   var fallbacks={
-    en:[{w:'serendipity',t:'szczęśliwy traf',s:'It was pure **serendipity** that we met.'},{w:'endeavor',t:'dążenie, staranie',s:'His **endeavor** paid off in the end.'}],
-    es:[{w:'madrugada',t:'świt, wczesny ranek',s:'Llegué en la **madrugada**.'},{w:'añoranza',t:'tęsknota',s:'Siento **añoranza** por mi hogar.'}],
-    nl:[{w:'gezellig',t:'przytulny, miły',s:'Het is zo **gezellig** hier.'},{w:'uitwaaien',t:'wyjść na świeże powietrze',s:'Ik ga even **uitwaaien**.'}],
-    jp:[{w:'木漏れ日',t:'światło przebijające przez liście',s:'**木漏れ日**が美しいですね。'},{w:'侘び寂び',t:'piękno niedoskonałości',s:'**侘び寂び**の美学が好きです。'}],
-    de:[{w:'Fernweh',t:'tęsknota za podróżami',s:'Ich habe starkes **Fernweh**.'},{w:'Weltschmerz',t:'ból egzystencjalny',s:'Er leidet an **Weltschmerz**.'}],
-    fr:[{w:'depaysement',t:'uczucie bycia za granica',s:'Je aime le depaysement des voyages.'},{w:'flaner',t:'beztrosko spacerowac',s:'Je aime flaner dans les rues de Paris.'}]
+    en:[{w:'serendipity',t:'szczęśliwy traf',s:'It was pure **serendipity** that we met.'},{w:'endeavor',t:'dążenie, staranie',s:'His **endeavor** paid off in the end.'},{w:'eloquent',t:'elokwentny, wymowny',s:'She gave an **eloquent** speech.'},{w:'resilience',t:'odporność psychiczna',s:'Her **resilience** inspired everyone.'},{w:'meticulous',t:'skrupulatny',s:'He is **meticulous** about details.'},{w:'wanderlust',t:'żądza podróży',s:'Her **wanderlust** took her around the world.'},{w:'nuance',t:'niuans, subtelność',s:'Every word carries a **nuance**.'}],
+    es:[{w:'madrugada',t:'świt, wczesny ranek',s:'Llegué en la **madrugada**.'},{w:'añoranza',t:'tęsknota',s:'Siento **añoranza** por mi hogar.'},{w:'sobremesa',t:'rozmowa po posiłku',s:'La **sobremesa** duró horas.'},{w:'duende',t:'magia, czar',s:'El cante tiene **duende**.'},{w:'apapachar',t:'czule przytulać',s:'Quiero **apapachar** a mi perro.'},{w:'estrenar',t:'użyć po raz pierwszy',s:'Voy a **estrenar** mis zapatos.'},{w:'friolero',t:'wrażliwy na zimno',s:'Soy muy **friolero** en invierno.'}],
+    nl:[{w:'gezellig',t:'przytulny, miły',s:'Het is zo **gezellig** hier.'},{w:'uitwaaien',t:'wyjść na świeże powietrze',s:'Ik ga even **uitwaaien**.'},{w:'lekker',t:'smaczny, przyjemny',s:'Dat was een **lekker** etentje.'},{w:'borrel',t:'spotkanie przy drinku',s:'We hebben een **borrel** na het werk.'},{w:'voorpret',t:'radość z oczekiwania',s:'De **voorpret** is het beste deel.'},{w:'natafelen',t:'rozmowa po jedzeniu',s:'We bleven lang **natafelen**.'},{w:'knus',t:'przytulny',s:'Wat een **knus** huisje.'}],
+    jp:[{w:'木漏れ日',t:'światło przebijające przez liście',s:'**木漏れ日**が美しいですね。'},{w:'侘び寂び',t:'piękno niedoskonałości',s:'**侘び寂び**の美学が好きです。'},{w:'懐かしい',t:'nostalgiczny',s:'この歌は**懐かしい**です。'},{w:'森林浴',t:'kąpiel leśna',s:'週末に**森林浴**をします。'},{w:'積ん読',t:'kupowanie nieczytanych książek',s:'また**積ん読**が増えた。'},{w:'生きがい',t:'sens życia',s:'仕事が私の**生きがい**です。'},{w:'お疲れ様',t:'podziękowanie za pracę',s:'今日も**お疲れ様**でした。'}],
+    de:[{w:'Fernweh',t:'tęsknota za podróżami',s:'Ich habe starkes **Fernweh**.'},{w:'Weltschmerz',t:'ból egzystencjalny',s:'Er leidet an **Weltschmerz**.'},{w:'Geborgenheit',t:'poczucie bezpieczeństwa',s:'Zuhause fühle ich **Geborgenheit**.'},{w:'Vorfreude',t:'radość z oczekiwania',s:'Die **Vorfreude** ist die schönste Freude.'},{w:'Feierabend',t:'koniec dnia pracy',s:'Schönen **Feierabend**!'},{w:'Sehnsucht',t:'głęboka tęsknota',s:'Eine tiefe **Sehnsucht** erfüllte ihn.'},{w:'gemütlich',t:'przytulny, swojski',s:'Das Café ist sehr **gemütlich**.'}],
+    fr:[{w:'dépaysement',t:'uczucie bycia za granicą',s:"J'aime le **dépaysement** des voyages."},{w:'flâner',t:'beztrosko spacerować',s:"J'aime **flâner** dans les rues de Paris."},{w:'retrouvailles',t:'radość ze spotkania po rozłące',s:'Les **retrouvailles** étaient émouvantes.'},{w:'terroir',t:'charakter regionu',s:'Ce vin a un **terroir** unique.'},{w:'flâneur',t:'spacerowicz, obserwator',s:'Il est un vrai **flâneur**.'},{w:'douceur',t:'łagodność, słodycz',s:'La **douceur** du soir m\'apaise.'},{w:'épanouissement',t:'rozkwit, spełnienie',s:'Son **épanouissement** était visible.'}]
   };
   var words=fallbacks[lang]||fallbacks['en'];
+  // Rotacja po dniu — bez tego zawsze wyświetlałoby się słowo[0] (serendipity)
+  var dayNum=Math.floor(Date.now()/86400000);
+  var w=words[dayNum % words.length];
   document.getElementById('dc-word-loading').style.display='none';
   document.getElementById('dc-word-content').style.display='block';
-  document.getElementById('dc-word-text').textContent=words[0].w;
-  document.getElementById('dc-word-translation').textContent=words[0].t;
-  var s1=words[0].s.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+  document.getElementById('dc-word-text').textContent=w.w;
+  document.getElementById('dc-word-translation').textContent=w.t;
+  var s1=w.s.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
   document.getElementById('dc-word-sentence').innerHTML='"'+s1+'"';
 }
 
@@ -8118,6 +8122,13 @@ function trybBackToStrefa(){
   if(typeof trybSaveSnapshot==='function') trybSaveSnapshot();
   window._trybExternalCards=null;
   if(typeof showPage==='function') showPage('strefa');
+  // Otwórz od razu katalog „Wszystkie zestawy", zamiast pustego ekranu wyboru.
+  setTimeout(function(){
+    try{
+      if(typeof strefaSetActiveCat==='function') strefaSetActiveCat('all');
+      if(typeof strefaShowCatalogSets==='function') strefaShowCatalogSets(null,'Wszystkie zestawy','tryb');
+    }catch(e){}
+  },220);
 }
 window.trybBackToStrefa=trybBackToStrefa;
 
@@ -8302,7 +8313,19 @@ function startTrybMode(mode){
 }
 
 // ── TRYB: PRZEGLĄDANIE (flip cards) ──────────────────
+function _trybResetExtras(){
+  // Czyści stan podpowiedzi i przykładu między słowami/trybami,
+  // by nie "przyklejały się" do kolejnych kart (bug: podpowiedź widoczna wszędzie).
+  _trybHintLevel=0;_trybHintPenalty=0;
+  var htx=document.getElementById('tryb-hint-text'); if(htx){ htx.style.display='none'; htx.textContent=''; }
+  var hlv=document.getElementById('tryb-hint-level'); if(hlv) hlv.textContent='3';
+  var hbtn=document.getElementById('tryb-hint-btn'); if(hbtn){ hbtn.disabled=false; hbtn.style.opacity='1'; }
+  var sbox=document.getElementById('tryb-story-box'); if(sbox){ sbox.style.display='none'; sbox.innerHTML=''; }
+  document.querySelectorAll('.tryb-rate-btn').forEach(function(b){ b.style.opacity='1'; });
+}
+
 function loadTrybFlipCard(direction){
+  _trybResetExtras();
   var card = _trybCards[_trybIdx];
   if(!card){ showTrybSessionSummary(); return; }
   if(typeof trybSaveSnapshot==='function') trybSaveSnapshot();
@@ -8476,6 +8499,7 @@ function trybFlipPrev(){
 
 // ── TRYB: MULTIWYBÓR ─────────────────────────────────
 function loadTrybMCCard(){
+  _trybResetExtras();
   var card = _trybCards[_trybIdx];
   if(!card){ showTrybSessionSummary(); return; }
 
@@ -8574,6 +8598,7 @@ function loadTrybMemorizeCard(){
 }
 
 function loadTrybMemorizeMCPhase(){
+  _trybResetExtras();
   var card = _trybCards[_trybIdx];
   if(!card){ showTrybSessionSummary(); return; }
 
@@ -8664,6 +8689,7 @@ function loadTrybMemorizeWritePhase(card, correctAnswer){
 function loadTrybCard(){
   var card=_trybCards[_trybIdx];
   if(!card){showTrybSessionSummary();return;}
+  _trybResetExtras();
   _trybHintLevel=0;_trybHintPenalty=0;
 
   // Reset 3D flip to front (never touch display on front/back faces)
@@ -9025,6 +9051,12 @@ async function catalogTileDrop(e, colIdx){
   saveCollections(sess.user.id);
   loadCollections();
   if(window.loadMySets) loadMySets();
+  // Odśwież aktualnie otwarty katalog — bez tego przeniesiony zestaw nadal
+  // widnieje w katalogu, z którego go wyciągnięto.
+  var _cv=document.getElementById('mat-collection-view');
+  if(_cv && _cv.style.display!=='none' && typeof _matActiveCollection!=='undefined' && _matActiveCollection!==null){
+    if(typeof openCollectionView==='function') openCollectionView(_matActiveCollection);
+  }
 }
 
 window.loadCollections = async function loadCollections(){
@@ -9125,7 +9157,9 @@ function openCollectionView(colIdx){
   if(sub) sub.textContent = (col.sets&&col.sets.length||0) + ' zestawów';
   if(grid) grid.style.display = 'none';
   if(createBtn) createBtn.style.display = 'none';
-  var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='none';
+  var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='inline-flex';
+  // Nowe zestawy (AI i zwykłe) tworzone wewnątrz katalogu trafiają do tego katalogu.
+  window._createSetTargetCollection = colIdx;
   if(colView) colView.style.display = 'block';
   if(!colSets) return;
 
