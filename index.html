@@ -31,15 +31,10 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Scroll snap - zachowane */
+/* Normalny scroll (bez snapowania co sekcję) */
 #page-home {
-  scroll-snap-type: y mandatory;
-  overflow-y: scroll;
+  overflow-y: auto;
   height: 100vh;
-}
-#page-home section {
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
 }
 
 /* ─────────────────────────────────────────────────
@@ -1353,7 +1348,7 @@ window.dailyReadDone = function(){
     <div class="nav-tabs" id="nav-tabs">
       <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Twoje zestawy</button>
       <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
-      <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)">Porcja dnia</button>
+      <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)" style="display:none">Porcja dnia</button>
       <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
       <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">Nauczyciel AI <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
       <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
@@ -2136,30 +2131,44 @@ function dashSetBridgeLang(code){
 
 async function loadBridge1(uid, lang){
   lang = lang || _dashBridgeLang || 'en';
-  let words=[];
-  try{
-    const{data}=await db.from('word_progress')
-      .select('ease_factor,repetitions,flashcards(word,translation,languages(code))')
-      .eq('user_id',uid)
-      .gte('repetitions',3)
-      .lte('repetitions',7)
-      .order('ease_factor',{ascending:true})
-      .limit(40);
-    words=(data||[])
-      .filter(r=>r.flashcards&&r.flashcards.word&&r.flashcards.languages&&r.flashcards.languages.code===lang)
-      .slice(0,7)
-      .map(r=>({word:r.flashcards.word,translation:r.flashcards.translation||''}));
-  }catch(e){ words=[]; }
+  // 1) Rekomendacje z faktycznej praktyki (uniwersalny SRS): ostatnio ćwiczone, nieopanowane
+  let words = usrsRecommend(uid, lang, 7);
+  // 2) Fallback: word_progress (gdy brak lokalnej praktyki)
+  if(!words.length){
+    try{
+      const{data}=await db.from('word_progress')
+        .select('ease_factor,repetitions,flashcards(word,translation,languages(code))')
+        .eq('user_id',uid)
+        .gte('repetitions',3)
+        .lte('repetitions',7)
+        .order('ease_factor',{ascending:true})
+        .limit(40);
+      words=(data||[])
+        .filter(r=>r.flashcards&&r.flashcards.word&&r.flashcards.languages&&r.flashcards.languages.code===lang)
+        .slice(0,7)
+        .map(r=>({word:r.flashcards.word,translation:r.flashcards.translation||''}));
+    }catch(e){ words=[]; }
+  }
 
   window._bridge1Words=words;
   const card=document.getElementById('bridge1-card');
   if(!card)return;
-  if(words.length===0){ card.style.display='none'; return; }
-
-  card.style.display='';
+  const txt=card.querySelector('.bridge-text');
+  const pills=document.getElementById('bridge1-pills');
+  const btn=document.getElementById('bridge1-btn');
+  card.style.display='';   // zawsze widoczna — nie znika przy zmianie języka
+  if(words.length===0){
+    setText('bridge1-title','Brak słów do utrwalenia w tym języku');
+    if(txt) txt.textContent='Przerób kilka fiszek w tym języku w Strefie Nauki — pojawią się tu rekomendacje do rozmowy z Alexem.';
+    if(pills) pills.innerHTML='';
+    if(btn) btn.style.display='none';
+    toggleBridgeEmpty();
+    return;
+  }
+  if(btn) btn.style.display='';
   const n=words.length;
   setText('bridge1-title', `Porozmawiaj o ${n} ${plWord(n,'słowie','słowach','słowach')}, których jeszcze nie opanowałeś`);
-  const pills=document.getElementById('bridge1-pills');
+  if(txt) txt.textContent='Ostatnio ćwiczone słowa, których jeszcze nie opanowałeś — utrwal je w rozmowie z Alexem:';
   if(pills){
     const shown=words.slice(0,5);
     let html=shown.map(w=>`<span class="word-pill" title="${escH(w.translation)}">${escH(w.word)}</span>`).join('');
@@ -5709,6 +5718,7 @@ async function strefaLoadEyelingoSet(langCode,langLabel,flag,lvl,catId,catLabel)
     startBtn.onclick=(function(cc,sn){ return function(){
       _trybExternalCards=cc.map(function(c){return {word:c.word||'',translation:c.translation||'',flashcard_id:c.id};});
       _trybExternalName=sn;
+      window._trybStudyLang=langCode;
       window._trybSource='strefa';
       RewardSystem&&RewardSystem.load();
       showPage('tryb');
@@ -8150,9 +8160,27 @@ async function usrsRecord(card,newSRS){
     var w=card.word||card.front||''; var tr=card.translation||card.back||'';
     if(!w&&!tr) return;
     var store=_usrsLoad(uid);
-    store[_usrsCK(w,tr)]={ef:newSRS.ease_factor,interval:newSRS.interval_days,reps:newSRS.repetitions,due:newSRS.next_review,word:w,translation:tr,fc:(card.id!=null?card.id:null)};
+    var lang=card.lang||window._trybStudyLang||'';
+    store[_usrsCK(w,tr)]={ef:newSRS.ease_factor,interval:newSRS.interval_days,reps:newSRS.repetitions,due:newSRS.next_review,word:w,translation:tr,fc:(card.id!=null?card.id:null),lang:lang,ts:Date.now()};
     _usrsSaveAll(uid,store);
   }catch(e){}
+}
+
+// Rekomendacje: ostatnio ćwiczone, jeszcze nieopanowane słowa (Most #1)
+function usrsRecommend(uid, lang, n){
+  try{
+    var store=_usrsLoad(uid);
+    var all=Object.keys(store).map(function(k){return store[k];})
+      .filter(function(r){ return r && (r.word||r.translation) && (r.reps==null || r.reps<5); }); // jeszcze nieopanowane
+    var matched=all.filter(function(r){ return r.lang===lang; });
+    var unknown=all.filter(function(r){ return !r.lang; });
+    var pool=(matched.length>=3)?matched:matched.concat(unknown);
+    pool.sort(function(a,b){
+      var dt=(b.ts||0)-(a.ts||0); if(dt!==0) return dt;       // najpierw ostatnio ćwiczone
+      return (a.ef||2.5)-(b.ef||2.5);                          // potem najtrudniejsze
+    });
+    return pool.slice(0,n||7).map(function(r){ return {word:r.word,translation:r.translation||''}; });
+  }catch(e){ return []; }
 }
 async function _usrsCurrentCustomKeys(uid){
   var set={};
