@@ -2050,7 +2050,8 @@ async function loadDashboard(){
   // Tabela desktop_daily_stats jest nowa (Logic Bible §7). Degradacja gdy pusta/brak.
   loadDesktopStats(user.id, seenTotal);
 
-  // ── Most #1: słowa wymagające rozmowy z Alexem (word_progress: repetitions 3–7, najtrudniejsze pierwsze) ──
+  // ── Most #1: słowa wymagające rozmowy z Alexem (ostatnio ćwiczone, nieopanowane) ──
+  try{ await usrsSync(); }catch(e){}
   var _bl=document.getElementById('dash-bridge-lang'); if(_bl) _bl.value=_dashBridgeLang;
   loadBridge1(user.id, _dashBridgeLang);
 
@@ -8159,11 +8160,39 @@ async function usrsRecord(card,newSRS){
     var uid=await _usrsUid(); if(!uid||!card||!newSRS) return;
     var w=card.word||card.front||''; var tr=card.translation||card.back||'';
     if(!w&&!tr) return;
-    var store=_usrsLoad(uid);
     var lang=card.lang||window._trybStudyLang||'';
-    store[_usrsCK(w,tr)]={ef:newSRS.ease_factor,interval:newSRS.interval_days,reps:newSRS.repetitions,due:newSRS.next_review,word:w,translation:tr,fc:(card.id!=null?card.id:null),lang:lang,ts:Date.now()};
+    var key=_usrsCK(w,tr);
+    var fc=(card.id!=null?card.id:null);
+    // 1) Cache lokalny (offline + szybkie rekomendacje)
+    var store=_usrsLoad(uid);
+    store[key]={ef:newSRS.ease_factor,interval:newSRS.interval_days,reps:newSRS.repetitions,due:newSRS.next_review,word:w,translation:tr,fc:fc,lang:lang,ts:Date.now()};
     _usrsSaveAll(uid,store);
+    // 2) Zapis do chmury (wspólne web↔desktop) — nie blokuje UI
+    try{
+      db.from('srs_progress').upsert({
+        user_id:uid, card_key:key, word:w, translation:tr, lang:lang,
+        source:(fc!=null?'eyelingo':'custom'), flashcard_id:fc,
+        ease_factor:newSRS.ease_factor, repetitions:newSRS.repetitions,
+        interval_days:newSRS.interval_days, next_review:newSRS.next_review
+      }, {onConflict:'user_id,card_key'}).then(function(){},function(e){ console.warn('[srs] upsert nieudany:', e&&e.message); });
+    }catch(e){}
   }catch(e){}
+}
+
+// Pobierz chmurę → cache lokalny. Wołać przy starcie sekcji (dashboard/strefa).
+async function usrsSync(){
+  try{
+    var uid=await _usrsUid(); if(!uid) return;
+    var {data}=await db.from('srs_progress')
+      .select('card_key,word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review,updated_at')
+      .eq('user_id',uid).limit(5000);
+    if(!data) return;
+    var store={};
+    data.forEach(function(r){
+      store[r.card_key]={ef:r.ease_factor,interval:r.interval_days,reps:r.repetitions,due:r.next_review,word:r.word||'',translation:r.translation||'',fc:(r.flashcard_id!=null?r.flashcard_id:null),lang:r.lang||'',ts:r.updated_at?Date.parse(r.updated_at):Date.now()};
+    });
+    _usrsSaveAll(uid,store);
+  }catch(e){ /* offline — zostaje cache */ }
 }
 
 // Rekomendacje: ostatnio ćwiczone, jeszcze nieopanowane słowa (Most #1)
@@ -8192,14 +8221,27 @@ async function _usrsCurrentCustomKeys(uid){
 }
 async function usrsDueList(limit){
   var uid=await _usrsUid(); if(!uid) return [];
-  var store=_usrsLoad(uid); var today=new Date().toISOString().slice(0,10);
-  var due=Object.keys(store).map(function(k){return store[k];}).filter(function(r){return r&&r.due&&r.due<=today;});
-  if(!due.length) return [];
+  var today=new Date().toISOString().slice(0,10);
+  var rows=null;
+  // 1) Chmura — autorytatywne (wspólne web↔desktop)
+  try{
+    var {data}=await db.from('srs_progress')
+      .select('word,translation,flashcard_id,ease_factor,repetitions,interval_days,next_review')
+      .eq('user_id',uid).lte('next_review',today).limit(limit||50);
+    rows=data||[];
+  }catch(e){ rows=null; }
+  // 2) Offline → cache lokalny
+  if(rows===null){
+    var store=_usrsLoad(uid);
+    rows=Object.keys(store).map(function(k){var r=store[k];return {word:r.word,translation:r.translation,flashcard_id:r.fc,ease_factor:r.ef,repetitions:r.reps,interval_days:r.interval,next_review:r.due};})
+      .filter(function(r){return r.next_review&&r.next_review<=today;});
+  }
+  if(!rows.length) return [];
   var cur=await _usrsCurrentCustomKeys(uid);
-  // eyelingo (fc != null) zawsze dostępne; własne tylko jeśli wciąż w zestawach
-  due=due.filter(function(r){ return r.fc!=null || cur[_usrsCK(r.word,r.translation)]; });
-  due.sort(function(a,b){ return a.due<b.due?-1:(a.due>b.due?1:0); });
-  return due.slice(0,limit||50).map(function(r){ return {id:(r.fc!=null?r.fc:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ef||2.5,repetitions:r.reps||0,interval_days:r.interval||1}; });
+  // eyelingo (flashcard_id != null) zawsze dostępne; własne tylko jeśli wciąż w zestawach
+  rows=rows.filter(function(r){ return (r.flashcard_id!=null) || cur[_usrsCK(r.word,r.translation)]; });
+  rows.sort(function(a,b){ return a.next_review<b.next_review?-1:(a.next_review>b.next_review?1:0); });
+  return rows.slice(0,limit||50).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1}; });
 }
 async function usrsDueCount(){ try{ var l=await usrsDueList(9999); return l.length; }catch(e){ return 0; } }
 
