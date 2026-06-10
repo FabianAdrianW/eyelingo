@@ -8082,6 +8082,42 @@ function sm2Local(card,quality){
 
 var _trybCards=[],_trybIdx=0,_trybHintLevel=0,_trybHintPenalty=0;
 var _trybMode = 'write'; // write | flip | mc | memorize
+var _trybMemBatches=[],_trybMemBatchIdx=0,_trybMemPhase='mc',_trybMemPosInBatch=0;
+function _trybHexA(hex,a){ if(!hex||hex.indexOf('#')!==0) return hex; var h=hex.replace('#',''); if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; var n=parseInt(h,16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+function trybRenderProgress(){
+  var track=document.getElementById('tryb-progress-track');
+  var label=document.getElementById('tryb-progress-label');
+  var badge=document.getElementById('tryb-mode-badge');
+  var sub=document.getElementById('tryb-progress-sub');
+  if(!track) return;
+  var mm=({flip:{name:'Przeglądanie',c:'#1a2340'},mc:{name:'Multiwybór',c:'#c96a2a'},write:{name:'Wpisywanie',c:'#0f6e56'},memorize:{name:'Zapamiętywanie',c:'#7c5cbf'}})[_trybMode]||{name:'Sesja',c:'#F5A623'};
+  if(badge){ badge.style.cssText='display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:100px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;background:'+_trybHexA(mm.c,.12)+';color:'+mm.c; badge.textContent=mm.name; }
+  track.innerHTML='';
+  if(_trybMode==='memorize'){
+    var T=_trybMemBatches.length||1, cur=_trybMemBatchIdx;
+    for(var i=0;i<T;i++){
+      var seg=document.createElement('div');
+      var st=i<cur?'done':(i===cur?'current':'upcoming');
+      seg.style.cssText='flex:1;max-width:64px;height:8px;border-radius:5px;transition:background .3s;background:'+(st==='done'?'#639922':(st==='current'?_trybHexA(mm.c,.22):'var(--border2)'));
+      if(st==='current'){ var bl=(_trybMemBatches[cur]&&_trybMemBatches[cur].len)||1; var frac=(_trybMemPhase==='write'?0.5:0)+(0.5*Math.min(1,_trybMemPosInBatch/bl)); seg.style.background='linear-gradient(90deg,'+mm.c+' '+(frac*100)+'%,'+_trybHexA(mm.c,.18)+' '+(frac*100)+'%)'; }
+      track.appendChild(seg);
+    }
+    if(label) label.innerHTML='Checkpoint <strong style="color:var(--navy)">'+Math.min(cur+1,T)+'</strong> z '+T;
+    if(sub){ var bl2=(_trybMemBatches[cur]&&_trybMemBatches[cur].len)||0; sub.style.display='block'; sub.textContent=(_trybMemPhase==='write'?'Wpisywanie':'Multiwybór')+' · fiszka '+Math.min(_trybMemPosInBatch+1,bl2)+' z '+bl2; }
+  } else {
+    var N=_trybCards.length||1, idx=_trybIdx, maxSeg=40, segCount=Math.min(N,maxSeg);
+    for(var j=0;j<segCount;j++){
+      var lo = N>maxSeg ? Math.floor(j*N/segCount) : j;
+      var hi = N>maxSeg ? Math.floor((j+1)*N/segCount) : j+1;
+      var st2 = hi<=idx?'done':(lo<=idx&&idx<hi?'current':'upcoming');
+      var d=document.createElement('div');
+      d.style.cssText='flex:1;max-width:24px;height:8px;border-radius:5px;transition:background .3s;background:'+(st2==='done'?'#639922':(st2==='current'?mm.c:'var(--border2)'));
+      track.appendChild(d);
+    }
+    if(label) label.innerHTML='Fiszka <strong style="color:var(--navy)">'+Math.min(idx+1,N)+'</strong> z '+N;
+    if(sub) sub.style.display='none';
+  }
+}
 var _trybFlipRevealed = false;
 var _trybMcOptions = [];
 var _trybCardDirection = 'foreign'; // foreign→pl or pl→foreign
@@ -8132,12 +8168,15 @@ async function startSession(mode){
   if(hdr)hdr.textContent=_trybChallengeMode?'Tryb Wyzwania aktywny':'Sesja nauki';
   if(mode==='set_external'&&_trybExternalCards){
     _trybSetCards=_trybExternalCards.slice();
-    _trybCards=shuffleArr(_trybExternalCards.slice()).map(function(c){return{word:c.word||c.front||'',translation:c.translation||c.back||'',emoji:'',example:'',etymology:'',ease_factor:2.5,repetitions:0,interval_days:1,id:(c.flashcard_id!=null?c.flashcard_id:null)};});
+    var _seen={};
+    _trybCards=_trybExternalCards.filter(function(c){var k=((c.word||c.front||'')+'|'+(c.translation||c.back||'')).toLowerCase();if(!k||k==='|')return false;if(_seen[k])return false;_seen[k]=1;return true;}).map(function(c){return{word:c.word||c.front||'',translation:c.translation||c.back||'',emoji:'',example:'',etymology:'',ease_factor:2.5,repetitions:0,interval_days:1,id:(c.flashcard_id!=null?c.flashcard_id:null)};});
     if(hdr)hdr.textContent=(typeof stripEmoji==='function'?stripEmoji(_trybExternalName||'Zestaw'):(_trybExternalName||'Zestaw'))+(_trybChallengeMode?' · Wyzwanie':'');
   }else{
     _trybCards=await loadDueCardsForTryb();_trybSetCards=_trybCards.slice();
+    var _seen2={};
+    _trybCards=_trybCards.filter(function(c){var k=((c.word||'')+'|'+(c.translation||'')).toLowerCase();if(_seen2[k])return false;_seen2[k]=1;return true;});
   }
-  if(_trybChallengeMode){var hard=_trybCards.filter(function(c){return(c.ease_factor||2.5)<1.8;});_trybCards=shuffleArr(_trybCards.concat(hard));}
+  if(_trybChallengeMode){var hard=_trybCards.filter(function(c){return(c.ease_factor||2.5)<1.8;});_trybCards=_trybCards.concat(hard);}
   if(!_trybCards.length){showTrybView('lobby');if(typeof showToast==='function')showToast('Brak słów do nauki — wybierz zestaw!','success');return;}
   var tot=document.getElementById('tryb-card-total');if(tot)tot.textContent=_trybCards.length;
   // Show mode picker
@@ -8292,9 +8331,11 @@ window.trybBackToStrefa=trybBackToStrefa;
 // ── TRYB NAUKI — MODE PICKER ──────────────────────────
 function showTrybModePicker(){
   showTrybView('session');
-  // Hide the card scene while picking mode
+  // Hide the card scene + session chrome while picking mode
   var scene = document.getElementById('tryb-card-scene');
   if(scene) scene.style.display = 'none';
+  var _tb=document.getElementById('tryb-session-topbar'); if(_tb) _tb.style.display='none';
+  var _pw=document.getElementById('tryb-progress-wrap'); if(_pw) _pw.style.display='none';
 
   // Remove existing picker
   var existing = document.getElementById('tryb-mode-picker');
@@ -8312,7 +8353,7 @@ function showTrybModePicker(){
 
   // Pasek powrotu — użytkownik zawsze może wybrać inny zestaw
   var topBar = document.createElement('div');
-  topBar.style.cssText = 'display:flex;justify-content:flex-start;margin-bottom:6px';
+  topBar.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:6px';
   var chooseBtn = document.createElement('button');
   chooseBtn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:100px;border:.5px solid var(--border2);background:transparent;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s';
   chooseBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Wybierz inny zestaw';
@@ -8344,33 +8385,53 @@ function showTrybModePicker(){
   grid.appendChild(trybModeCard('memorize', ICO.brain, 'Zapamiętywanie', 'Multiwybór + wpisywanie', '#7c5cbf'));
   picker.appendChild(grid);
 
-  // Direction + SRS row
-  var dirRow = document.createElement('div');
-  dirRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--paper);border-radius:12px;flex-wrap:wrap';
-  var dirLabel = document.createElement('span');
-  dirLabel.style.cssText = 'font-size:13px;color:var(--dim2)';
-  dirLabel.textContent = 'Kierunek:';
-  var dirBtn = document.createElement('button');
-  dirBtn.id = 'tryb-dir-btn';
-  dirBtn.style.cssText = 'padding:6px 14px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:12px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:6px';
-  dirBtn.innerHTML = 'Obcy <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Polski';
-  dirBtn.onclick = trybToggleDirection;
-  dirRow.appendChild(dirLabel);
-  dirRow.appendChild(dirBtn);
-
-  // SRS toggle
-  var srsSep = document.createElement('div'); srsSep.style.cssText = 'flex:1';
-  var srsLabel = document.createElement('label');
-  srsLabel.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim2);cursor:pointer';
-  var srsCheck = document.createElement('input');
-  srsCheck.type = 'checkbox'; srsCheck.id = 'tryb-srs-toggle'; srsCheck.checked = true;
-  srsCheck.style.cssText = 'width:14px;height:14px;accent-color:var(--orange)';
-  srsCheck.onchange = function(){ window._trybSRSEnabled = this.checked; };
+  // Direction control (segmentowany, 2 kolory) — SRS zawsze aktywny
   window._trybSRSEnabled = true;
-  var srsText = document.createElement('span'); srsText.textContent = 'Zapisuj do powtórek (SRS)';
-  srsLabel.appendChild(srsCheck); srsLabel.appendChild(srsText);
-  dirRow.appendChild(srsSep); dirRow.appendChild(srsLabel);
-  picker.appendChild(dirRow);
+  var dirWrap = document.createElement('div');
+  dirWrap.style.cssText = 'padding:14px 16px;background:var(--paper);border-radius:14px';
+  var dirCap = document.createElement('div');
+  dirCap.style.cssText = 'font-size:12px;font-weight:600;letter-spacing:.3px;color:var(--dim);text-transform:uppercase;margin-bottom:10px;text-align:center';
+  dirCap.textContent = 'Kierunek nauki';
+  dirWrap.appendChild(dirCap);
+
+  var FP_COLOR = '#1a2340';   // Obcy -> Polski (rozpoznawanie)
+  var PF_COLOR = '#c96a2a';   // Polski -> Obcy (aktywne przypominanie)
+  var dirArrow = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+
+  var segDir = document.createElement('div');
+  segDir.style.cssText = 'display:flex;border-radius:100px;overflow:hidden;border:1.5px solid var(--border2);max-width:440px;margin:0 auto';
+  var optFP = document.createElement('button');
+  optFP.id = 'tryb-dir-fp';
+  var optPF = document.createElement('button');
+  optPF.id = 'tryb-dir-pf';
+  var baseSeg = 'flex:1;padding:11px 10px;border:none;font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:all .18s';
+  optFP.style.cssText = baseSeg;
+  optPF.style.cssText = baseSeg;
+  optFP.innerHTML = 'Obcy ' + dirArrow + ' Polski';
+  optPF.innerHTML = 'Polski ' + dirArrow + ' Obcy';
+
+  function paintDir(){
+    var fg = _trybCardDirection === 'foreign';
+    optFP.style.background = fg ? FP_COLOR : '#fff';
+    optFP.style.color = fg ? '#fff' : 'var(--dim2)';
+    optPF.style.background = !fg ? PF_COLOR : '#fff';
+    optPF.style.color = !fg ? '#fff' : 'var(--dim2)';
+    var hint = document.getElementById('tryb-dir-hint');
+    if(hint) hint.textContent = fg
+      ? 'Obcy \u2192 Polski: rozpoznajesz znaczenie (\u0142atwiejsze).'
+      : 'Polski \u2192 Obcy: aktywnie przypominasz s\u0142owo obce (trudniejsze, skuteczniejsze).';
+  }
+  optFP.onclick = function(){ _trybCardDirection = 'foreign'; paintDir(); };
+  optPF.onclick = function(){ _trybCardDirection = 'pl'; paintDir(); };
+  segDir.appendChild(optFP); segDir.appendChild(optPF);
+  dirWrap.appendChild(segDir);
+
+  var dirHint = document.createElement('div');
+  dirHint.id = 'tryb-dir-hint';
+  dirHint.style.cssText = 'font-size:11.5px;color:var(--dim2);text-align:center;margin-top:9px;line-height:1.5';
+  dirWrap.appendChild(dirHint);
+  picker.appendChild(dirWrap);
+  paintDir();
 
   // Insert at top of session
   var firstChild = session.firstChild;
@@ -8407,54 +8468,65 @@ function startTrybMode(mode){
   _trybMode = mode;
   _trybIdx = 0;
   _trybFlipRevealed = false;
+
+  // Tasowanie dla wszystkich trybów oprócz Przeglądania (flip = kolejność z zestawu)
+  if(mode !== 'flip' && _trybCards.length > 1){
+    for(var sIx=_trybCards.length-1; sIx>0; sIx--){ var rIx=Math.floor(Math.random()*(sIx+1)); var tmp=_trybCards[sIx]; _trybCards[sIx]=_trybCards[rIx]; _trybCards[rIx]=tmp; }
+  }
+
+  // Budowa checkpointów dla Zapamiętywania (grupy po 5; ostatni = ile zostało)
+  _trybMemBatches = [];
+  _trybMemBatchIdx = 0;
+  _trybMemPhase = 'mc';
+  _trybMemPosInBatch = 0;
+  if(mode === 'memorize'){
+    for(var bs=0; bs<_trybCards.length; bs+=5){
+      _trybMemBatches.push({ start: bs, len: Math.min(5, _trybCards.length-bs) });
+    }
+  }
+
   var picker = document.getElementById('tryb-mode-picker');
   if(picker) picker.remove();
 
-  // Add "Back to modes" button to session header
-  var sessionHdr = document.getElementById('tryb-session');
-  var existingBack = document.getElementById('tryb-back-to-modes');
-  if(existingBack) existingBack.remove();
-  if(sessionHdr){
+  // Lewy pasek: „Zmień tryb” (obok statycznego „Zakończ”)
+  var leftBar = document.getElementById('tryb-topbar-left');
+  var rightBar = document.getElementById('tryb-topbar-right');
+  var oldBack = document.getElementById('tryb-back-to-modes'); if(oldBack) oldBack.remove();
+  if(leftBar){
     var backBtn = document.createElement('button');
     backBtn.id = 'tryb-back-to-modes';
-    backBtn.style.cssText = 'padding:7px 14px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:4px';
-    backBtn.innerHTML = '← Zmień tryb';
+    backBtn.style.cssText = 'padding:8px 16px;border-radius:100px;border:1.5px solid var(--border);background:transparent;font-size:13px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px;transition:.15s';
+    backBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Zmie\u0144 tryb';
+    backBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.color='var(--navy)'; };
+    backBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.color='var(--dim2)'; };
     backBtn.onclick = function(){
-      backBtn.remove();
       if(window.speechSynthesis) window.speechSynthesis.cancel();
-      // Clear card content so no blank card shows
-      var qs = document.getElementById('tryb-q-side');
-      var as = document.getElementById('tryb-a-side');
-      var card = document.getElementById('tryb-card');
-      // display NOT touched - 3D structure must stay intact
-      // a-side display NOT touched
-      // Remove any injected controls
-      ['tryb-flip-controls','tryb-mc-options','tryb-mode-picker','tryb-flip-nav'].forEach(function(id){
-        var el = document.getElementById(id); if(el) el.remove();
-      });
-            var sc=document.getElementById('tryb-card-scene'); if(sc) sc.style.display='none';
+      ['tryb-flip-controls','tryb-mc-options','tryb-flip-nav','tryb-back-to-modes'].forEach(function(id){ var el=document.getElementById(id); if(el) el.remove(); });
+      var sc=document.getElementById('tryb-card-scene'); if(sc) sc.style.display='none';
+      document.onkeydown = null;
       showTrybModePicker();
     };
-    // Insert back button into the header bar (before first button)
-    var endBtn = sessionHdr.querySelector('button');
-    if(endBtn && endBtn.parentNode){
-      endBtn.parentNode.insertBefore(backBtn, endBtn.nextSibling);
-    } else {
-      sessionHdr.appendChild(backBtn);
-    }
-
-    // Przycisk „Wybierz inny zestaw" — sprawczość użytkownika także w trakcie trybu
-    var existingSet = document.getElementById('tryb-choose-set');
-    if(existingSet) existingSet.remove();
-    var setBtn = document.createElement('button');
-    setBtn.id = 'tryb-choose-set';
-    setBtn.style.cssText = 'padding:7px 14px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:4px';
-    setBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg> Wybierz inny zestaw';
-    setBtn.onclick = trybBackToStrefa;
-    backBtn.parentNode.insertBefore(setBtn, backBtn.nextSibling);
+    leftBar.appendChild(backBtn);
   }
 
-  // Show card scene
+  // Prawy pasek: „Wybierz inny zestaw”
+  if(rightBar){
+    rightBar.innerHTML = '';
+    var setBtn = document.createElement('button');
+    setBtn.id = 'tryb-choose-set';
+    setBtn.style.cssText = 'padding:8px 16px;border-radius:100px;border:1.5px solid var(--border);background:transparent;font-size:13px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:6px;transition:.15s';
+    setBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg> Wybierz inny zestaw';
+    setBtn.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.color='var(--navy)'; };
+    setBtn.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.color='var(--dim2)'; };
+    setBtn.onclick = trybBackToStrefa;
+    rightBar.appendChild(setBtn);
+  }
+
+  // Pokaż pasek górny + pasek postępu
+  var topbar = document.getElementById('tryb-session-topbar'); if(topbar) topbar.style.display='flex';
+  var pwrap = document.getElementById('tryb-progress-wrap'); if(pwrap) pwrap.style.display='block';
+
+  // Pokaż scenę karty
   var scene = document.getElementById('tryb-card-scene');
   if(scene) scene.style.display = 'block';
 
@@ -8474,6 +8546,8 @@ function _trybResetExtras(){
   // Czyści stan podpowiedzi i przykładu między słowami/trybami,
   // by nie "przyklejały się" do kolejnych kart (bug: podpowiedź widoczna wszędzie).
   _trybHintLevel=0;_trybHintPenalty=0;
+  var _sc=document.getElementById('tryb-card-scene'); if(_sc){ _sc.onclick=null; _sc.style.cursor='default'; }
+  var _cf=document.getElementById('tryb-card'); if(_cf){ _cf.onclick=null; _cf.style.cursor='default'; }
   var htx=document.getElementById('tryb-hint-text'); if(htx){ htx.style.display='none'; htx.textContent=''; }
   var hlv=document.getElementById('tryb-hint-level'); if(hlv) hlv.textContent='3';
   var hbtn=document.getElementById('tryb-hint-btn'); if(hbtn){ hbtn.disabled=false; hbtn.style.opacity='1'; }
@@ -8537,10 +8611,19 @@ function loadTrybFlipCard(direction){
   if(num) num.textContent = _trybIdx+1;
   if(prog) prog.style.width = Math.round(_trybIdx/_trybCards.length*100) + '%';
 
+  trybRenderProgress();
+
+  // Klik w kartę odwraca (fix: wcześniej działała tylko Spacja)
+  var sceneEl=document.getElementById('tryb-card-scene');
+  if(sceneEl){
+    sceneEl.style.cursor='pointer';
+    sceneEl.onclick=function(){ if(!_trybFlipRevealed) trybFlipReveal(backText); };
+  }
+
   // Keyboard handlers
   document.onkeydown = function(e){
     if(e.code === 'Space'){ e.preventDefault(); if(!_trybFlipRevealed) trybFlipReveal(backText); }
-    if(e.code === 'ArrowRight' && _trybFlipRevealed) _trybIdx++;
+    if(e.code === 'ArrowRight' && _trybFlipRevealed){ if(_trybIdx >= _trybCards.length-1) showTrybSessionSummary(); else { _trybIdx++; loadTrybFlipCard(); } }
     if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard('prev'); }
   };
 }
@@ -8655,195 +8738,187 @@ function trybFlipPrev(){
 }
 
 // ── TRYB: MULTIWYBÓR ─────────────────────────────────
+function trybMcAnswer(btn, grid, opt, correctAnswer, card, context){
+  if(btn.dataset.answered) return;
+  var isCorrect = opt === correctAnswer;
+  try{ var _ns=sm2Local(card,isCorrect?4:1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); }catch(_e){}
+  grid.querySelectorAll('button').forEach(function(b){
+    b.dataset.answered='1'; b.disabled=true; b.onmouseover=null;
+    if(b.textContent===correctAnswer){ b.style.background='#eaf3de'; b.style.color='#3b6d11'; b.style.borderColor='#639922'; }
+  });
+  _trybSessionStats.total++;
+  if(!isCorrect){
+    btn.style.background='#fcebeb'; btn.style.color='#a32d2d'; btn.style.borderColor='#e24b4a';
+    var cont=document.createElement('div');
+    cont.style.cssText='margin-top:10px;font-size:12px;color:var(--dim2);text-align:center';
+    cont.textContent='Kliknij kart\u0119 aby przej\u015b\u0107 dalej';
+    grid.appendChild(cont);
+    if(context==='mc'){
+      var wc=_trybCards[_trybIdx];
+      _trybCards.splice(Math.min(_trybIdx+3,_trybCards.length),0,wc);
+    }
+    var fc=document.getElementById('tryb-card');
+    if(fc){
+      fc.style.cursor='pointer';
+      fc.onclick=function(){
+        fc.onclick=null; fc.style.cursor='default';
+        if(context==='memorize'){ trybMemAdvance(); }
+        else { _trybIdx++; loadTrybMCCard(); }
+      };
+    }
+  } else {
+    _trybSessionStats.correct++; _trybSessionStats.xpGained+=7;
+    setTimeout(function(){
+      if(context==='memorize'){ trybMemAdvance(); }
+      else { _trybIdx++; loadTrybMCCard(); }
+    }, 650);
+  }
+}
+
 function loadTrybMCCard(){
   _trybResetExtras();
-  var card = _trybCards[_trybIdx];
+  var card=_trybCards[_trybIdx];
   if(!card){ showTrybSessionSummary(); return; }
 
-  // Reset 3D flip to front - NEVER touch display on front/back faces
-  var flipper = document.getElementById('tryb-card-flipper');
+  var flipper=document.getElementById('tryb-card-flipper');
   if(flipper) flipper.classList.remove('flipped');
 
-  // Hide write zone and flip hint
-  var writeZone = document.getElementById('tryb-write-zone');
-  if(writeZone) writeZone.style.display = 'none';
-  var flipHint = document.getElementById('tryb-flip-hint');
-  if(flipHint) flipHint.style.display = 'none';
+  var writeZone=document.getElementById('tryb-write-zone');
+  if(writeZone) writeZone.style.display='none';
+  var flipHint=document.getElementById('tryb-flip-hint');
+  if(flipHint) flipHint.style.display='none';
 
-  // Remove old MC options
-  var existing = document.getElementById('tryb-mc-options');
+  var existing=document.getElementById('tryb-mc-options');
   if(existing) existing.remove();
 
-  // Set front card content
-  var frontText = _trybCardDirection === 'foreign' ? (card.word||'') : (card.translation||'');
-  var correctAnswer = _trybCardDirection === 'foreign' ? (card.translation||'') : (card.word||'');
-  var word = document.getElementById('tryb-card-word');
-  var ex = document.getElementById('tryb-card-example');
-  if(word) word.textContent = frontText;
-  if(ex) ex.textContent = '';
+  var frontText=_trybCardDirection==='foreign'?(card.word||''):(card.translation||'');
+  var correctAnswer=_trybCardDirection==='foreign'?(card.translation||''):(card.word||'');
+  var word=document.getElementById('tryb-card-word');
+  var ex=document.getElementById('tryb-card-example');
+  if(word) word.textContent=frontText;
+  if(ex) ex.textContent='';
 
-  // Generate 3 wrong options
-  var others = _trybCards.filter(function(c,idx){ return idx !== _trybIdx; });
-  var shuffled = others.sort(function(){ return Math.random()-.5; }).slice(0,3);
-  var options = shuffled.map(function(c){ return _trybCardDirection==='foreign'?(c.translation||''):(c.word||''); });
+  var others=_trybCards.filter(function(c,idx){ return idx!==_trybIdx; });
+  var shuffled=others.sort(function(){ return Math.random()-.5; }).slice(0,3);
+  var options=shuffled.map(function(c){ return _trybCardDirection==='foreign'?(c.translation||''):(c.word||''); });
   options.push(correctAnswer);
-  options = options.sort(function(){ return Math.random()-.5; });
+  options=options.sort(function(){ return Math.random()-.5; });
 
-  // Build options grid - inject into q-side (front face)
-  var qside = document.getElementById('tryb-q-side');
+  var qside=document.getElementById('tryb-q-side');
   if(qside){
-    var grid = document.createElement('div');
-    grid.id = 'tryb-mc-options';
-    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%;max-width:420px';
-
+    var grid=document.createElement('div');
+    grid.id='tryb-mc-options';
+    grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%;max-width:420px';
     options.forEach(function(opt){
-      var btn = document.createElement('button');
-      btn.style.cssText = 'padding:12px 14px;border:1.5px solid var(--border2);border-radius:12px;background:var(--paper);color:var(--navy);font-size:14px;cursor:pointer;text-align:center;font-family:DM Sans,sans-serif;transition:all .15s;line-height:1.3';
-      btn.textContent = opt;
-      btn.onmouseover = function(){ if(!btn.dataset.answered){ btn.style.borderColor='var(--orange)'; btn.style.background='#fff'; } };
-      btn.onmouseout = function(){ if(!btn.dataset.answered){ btn.style.borderColor='var(--border2)'; btn.style.background='var(--paper)'; } };
-      btn.onclick = function(){
-        if(btn.dataset.answered) return;
-        var isCorrect = opt === correctAnswer;
-        try{ var _ns=sm2Local(card,isCorrect?4:1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); }catch(_e){}
-        grid.querySelectorAll('button').forEach(function(b){
-          b.dataset.answered = '1'; b.disabled = true; b.onmouseover = null;
-          if(b.textContent === correctAnswer){ b.style.background='#eaf3de'; b.style.color='#3b6d11'; b.style.borderColor='#639922'; }
-        });
-        if(!isCorrect){
-          btn.style.background='#fcebeb'; btn.style.color='#a32d2d'; btn.style.borderColor='#e24b4a';
-          _trybSessionStats.total++;
-          // Re-queue wrong card at +3
-          var wrongCard = _trybCards[_trybIdx];
-          _trybCards.splice(Math.min(_trybIdx+3, _trybCards.length), 0, wrongCard);
-          // Show "click to continue" message
-          var cont = document.createElement('div');
-          cont.style.cssText = 'margin-top:10px;font-size:12px;color:var(--dim2);text-align:center';
-          cont.textContent = 'Kliknij kartę aby przejść dalej';
-          grid.appendChild(cont);
-          // Click card to advance
-          var flipCard = document.getElementById('tryb-card');
-          if(flipCard){
-            flipCard.style.cursor = 'pointer';
-            flipCard.onclick = function(){
-              flipCard.onclick = null;
-              _trybIdx++; loadTrybMCCard();
-            };
-          }
-        } else {
-          _trybSessionStats.correct++; _trybSessionStats.total++;
-          _trybSessionStats.xpGained += 7;
-          setTimeout(function(){ _trybIdx++; loadTrybMCCard(); }, 700);
-        }
-      };
+      var btn=document.createElement('button');
+      btn.style.cssText='padding:12px 14px;border:1.5px solid var(--border2);border-radius:12px;background:var(--paper);color:var(--navy);font-size:14px;cursor:pointer;text-align:center;font-family:DM Sans,sans-serif;transition:all .15s;line-height:1.3';
+      btn.textContent=opt;
+      btn.onmouseover=function(){ if(!btn.dataset.answered){ btn.style.borderColor='var(--orange)'; btn.style.background='#fff'; } };
+      btn.onmouseout=function(){ if(!btn.dataset.answered){ btn.style.borderColor='var(--border2)'; btn.style.background='var(--paper)'; } };
+      btn.onclick=function(){ trybMcAnswer(btn,grid,opt,correctAnswer,card,'mc'); };
       grid.appendChild(btn);
     });
     qside.appendChild(grid);
   }
 
-  // Progress
-  var num = document.getElementById('tryb-card-num');
-  var prog = document.getElementById('tryb-progress-bar');
-  if(num) num.textContent = _trybIdx+1;
-  if(prog) prog.style.width = Math.round(_trybIdx/_trybCards.length*100) + '%';
-  document.onkeydown = null;
+  trybRenderProgress();
+  document.onkeydown=null;
 }
 
-
 function loadTrybMemorizeCard(){
-  _trybMemPhase = 'mc';
-  loadTrybMemorizeMCPhase();
+  if(!_trybMemBatches.length){ showTrybSessionSummary(); return; }
+  if(_trybMemBatchIdx >= _trybMemBatches.length){ showTrybSessionSummary(); return; }
+  var batch=_trybMemBatches[_trybMemBatchIdx];
+  if(_trybMemPosInBatch >= batch.len){
+    if(_trybMemPhase==='mc'){
+      // ta sama piątka, teraz faza wpisywania
+      _trybMemPhase='write';
+      _trybMemPosInBatch=0;
+    } else {
+      // checkpoint ukończony (MC + wpisywanie)
+      _trybMemBatchIdx++;
+      _trybMemPhase='mc';
+      _trybMemPosInBatch=0;
+      if(_trybMemBatchIdx >= _trybMemBatches.length){ showTrybSessionSummary(); return; }
+      batch=_trybMemBatches[_trybMemBatchIdx];
+    }
+  }
+  _trybIdx = batch.start + _trybMemPosInBatch;
+  if(_trybMemPhase==='mc') loadTrybMemorizeMCPhase();
+  else loadTrybMemorizeWritePhase2();
+}
+
+function trybMemAdvance(){
+  _trybMemPosInBatch++;
+  loadTrybMemorizeCard();
 }
 
 function loadTrybMemorizeMCPhase(){
   _trybResetExtras();
-  var card = _trybCards[_trybIdx];
-  if(!card){ showTrybSessionSummary(); return; }
+  var card=_trybCards[_trybIdx];
+  if(!card){ trybMemAdvance(); return; }
 
-  // Reset to front using 3D (NEVER touch display on front/back faces)
-  var flipper = document.getElementById('tryb-card-flipper');
+  var flipper=document.getElementById('tryb-card-flipper');
   if(flipper) flipper.classList.remove('flipped');
-  var oldNav = document.getElementById('tryb-flip-nav'); if(oldNav) oldNav.remove();
-  var oldMC = document.getElementById('tryb-mc-options'); if(oldMC) oldMC.remove();
+  var oldNav=document.getElementById('tryb-flip-nav'); if(oldNav) oldNav.remove();
+  var oldMC=document.getElementById('tryb-mc-options'); if(oldMC) oldMC.remove();
+  var writeZone=document.getElementById('tryb-write-zone'); if(writeZone) writeZone.style.display='none';
+  var flipHint=document.getElementById('tryb-flip-hint'); if(flipHint) flipHint.style.display='none';
 
-  var writeZone = document.getElementById('tryb-write-zone');
-  if(writeZone) writeZone.style.display='none';
-  var flipHint = document.getElementById('tryb-flip-hint');
-  if(flipHint) flipHint.style.display='none';
+  var frontText=_trybCardDirection==='foreign'?(card.word||''):(card.translation||'');
+  var correctAnswer=_trybCardDirection==='foreign'?(card.translation||''):(card.word||'');
+  var word=document.getElementById('tryb-card-word'); if(word) word.textContent=frontText;
+  var ex=document.getElementById('tryb-card-example'); if(ex) ex.textContent='';
 
-  var frontText = _trybCardDirection==='foreign'?(card.word||''):(card.translation||'');
-  var correctAnswer = _trybCardDirection==='foreign'?(card.translation||''):(card.word||'');
-
-  var word = document.getElementById('tryb-card-word');
-  if(word) word.textContent = frontText;
-
-  // Build MC options grid and inject into q-side (front face)
-  var qside = document.getElementById('tryb-q-side');
+  var qside=document.getElementById('tryb-q-side');
   if(qside){
-    var grid = document.createElement('div');
-    grid.id = 'tryb-mc-options';
-    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%;max-width:420px';
-    var others = _trybCards.filter(function(c,idx){ return idx!==_trybIdx; })
-      .sort(function(){return Math.random()-.5;}).slice(0,3);
-    var options = others.map(function(c){ return _trybCardDirection==='foreign'?(c.translation||''):(c.word||''); });
+    var grid=document.createElement('div');
+    grid.id='tryb-mc-options';
+    grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;width:100%;max-width:420px';
+    var others=_trybCards.filter(function(c,idx){ return idx!==_trybIdx; }).sort(function(){return Math.random()-.5;}).slice(0,3);
+    var options=others.map(function(c){ return _trybCardDirection==='foreign'?(c.translation||''):(c.word||''); });
     options.push(correctAnswer);
     options.sort(function(){return Math.random()-.5;});
     options.forEach(function(opt){
-      var btn = document.createElement('button');
-      btn.style.cssText='padding:12px 14px;border:1.5px solid var(--border2);border-radius:12px;background:var(--paper);color:var(--navy);font-size:14px;cursor:pointer;text-align:center;font-family:DM Sans,sans-serif;transition:all .15s';
+      var btn=document.createElement('button');
+      btn.style.cssText='padding:12px 14px;border:1.5px solid var(--border2);border-radius:12px;background:var(--paper);color:var(--navy);font-size:14px;cursor:pointer;text-align:center;font-family:DM Sans,sans-serif;transition:all .15s;line-height:1.3';
       btn.textContent=opt;
-      btn.onmouseover=function(){if(!btn.dataset.answered){btn.style.borderColor='var(--orange)';btn.style.background='#fff';}};
-      btn.onmouseout=function(){if(!btn.dataset.answered){btn.style.borderColor='var(--border2)';btn.style.background='var(--paper)';}};
-      btn.onclick=function(){
-        if(btn.dataset.answered)return;
-        var isCorrect=opt===correctAnswer;
-        try{ var _ns=sm2Local(card,isCorrect?4:1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); }catch(_e){}
-        grid.querySelectorAll('button').forEach(function(b){
-          b.dataset.answered='1';b.disabled=true;
-          if(b.textContent===correctAnswer){b.style.background='#eaf3de';b.style.color='#3b6d11';b.style.borderColor='#639922';}
-        });
-        if(!isCorrect){
-          btn.style.background='#fcebeb';btn.style.color='#a32d2d';btn.style.borderColor='#e24b4a';
-          _trybSessionStats.total++;
-          var wc=_trybCards[_trybIdx];
-          _trybCards.splice(Math.min(_trybIdx+3,_trybCards.length),0,wc);
-          var cont=document.createElement('div');
-          cont.style.cssText='margin-top:8px;font-size:12px;color:var(--dim2);text-align:center';
-          cont.textContent='Kliknij kartę aby kontynuować';
-          grid.appendChild(cont);
-          var fc=document.getElementById('tryb-card');
-          if(fc){fc.style.cursor='pointer';fc.onclick=function(){fc.onclick=null;_trybIdx++;loadTrybMemorizeCard();};}
-        } else {
-          _trybSessionStats.correct++;_trybSessionStats.total++;_trybSessionStats.xpGained+=7;
-          setTimeout(function(){
-            // Phase 2: write mode
-            _trybMemPhase='write';
-            loadTrybMemorizeWritePhase(card,correctAnswer);
-          },600);
-        }
-      };
+      btn.onmouseover=function(){ if(!btn.dataset.answered){ btn.style.borderColor='var(--orange)'; btn.style.background='#fff'; } };
+      btn.onmouseout=function(){ if(!btn.dataset.answered){ btn.style.borderColor='var(--border2)'; btn.style.background='var(--paper)'; } };
+      btn.onclick=function(){ trybMcAnswer(btn,grid,opt,correctAnswer,card,'memorize'); };
       grid.appendChild(btn);
     });
     qside.appendChild(grid);
   }
 
-  var num=document.getElementById('tryb-card-num');
-  var prog=document.getElementById('tryb-progress-bar');
-  if(num)num.textContent=_trybIdx+1;
-  if(prog)prog.style.width=Math.round(_trybIdx/_trybCards.length*100)+'%';
+  trybRenderProgress();
   document.onkeydown=null;
 }
 
+function loadTrybMemorizeWritePhase2(){
+  _trybResetExtras();
+  var card=_trybCards[_trybIdx];
+  if(!card){ trybMemAdvance(); return; }
 
-function loadTrybMemorizeWritePhase(card, correctAnswer){
-  // Clear MC options, show write zone
+  var flipper=document.getElementById('tryb-card-flipper');
+  if(flipper) flipper.classList.remove('flipped');
+  var oldNav=document.getElementById('tryb-flip-nav'); if(oldNav) oldNav.remove();
   var oldMC=document.getElementById('tryb-mc-options'); if(oldMC) oldMC.remove();
-  var writeZone=document.getElementById('tryb-write-zone');
-  if(writeZone) writeZone.style.display='block';
-  var inp=document.getElementById('tryb-answer-input');
-  if(inp){inp.value='';setTimeout(function(){inp.focus();},100);}
-}
+  var flipHint=document.getElementById('tryb-flip-hint'); if(flipHint) flipHint.style.display='none';
 
+  var frontText=_trybCardDirection==='pl'?(card.translation||''):(card.word||'');
+  var word=document.getElementById('tryb-card-word'); if(word) word.textContent=frontText;
+  var ex=document.getElementById('tryb-card-example'); if(ex) ex.textContent='';
+
+  var ansData=document.getElementById('tryb-card-answer-data');
+  if(ansData) ansData.textContent=_trybCardDirection==='pl'?(card.word||''):(card.translation||'');
+
+  var writeZone=document.getElementById('tryb-write-zone'); if(writeZone) writeZone.style.display='block';
+  var inp=document.getElementById('tryb-answer-input'); if(inp){ inp.value=''; setTimeout(function(){ inp.focus(); },100); }
+
+  trybRenderProgress();
+  document.onkeydown=null;
+}
 
 function loadTrybCard(){
   var card=_trybCards[_trybIdx];
@@ -8881,11 +8956,10 @@ function loadTrybCard(){
 
   // Progress
   var num=document.getElementById('tryb-card-num');
-  var prog=document.getElementById('tryb-progress-bar');
   var done=document.getElementById('tryb-session-done');
   if(num) num.textContent=_trybIdx+1;
-  if(prog) prog.style.width=Math.round(_trybIdx/_trybCards.length*100)+'%';
   if(done) done.textContent=_trybIdx;
+  trybRenderProgress();
 
   // Mnemonic
   var mnKey='mnem_'+encodeURIComponent(card.word||'');
@@ -8912,13 +8986,20 @@ function levenshteinDist(a,b){
 function checkAnswer(){
   var card=_trybCards[_trybIdx];if(!card)return;
   var userAns=(document.getElementById('tryb-answer-input').value||'').trim().toLowerCase();
-  var correct=(card.translation||'').trim().toLowerCase();
+  // Puste pole nigdy nie jest poprawne (fix: pusta odpowiedź pokazywała „Poprawnie”)
+  if(!userAns){ revealTrybAnswer('',false,false); return; }
+  var correct=(_trybCardDirection==='pl' ? (card.word||'') : (card.translation||'')).trim().toLowerCase();
   function norm(s){return s.replace(/[(),.!?]/g,' ').replace(/\s+/g,' ').trim();}
   var userN=norm(userAns),correctN=norm(correct);
-  var alts=correctN.split(/[\/,]| lub /).map(function(a){return a.trim();});
-  var isCorrect=alts.some(function(a){return userN===a||userN.includes(a)||a.includes(userN);});
+  if(!userN){ revealTrybAnswer('',false,false); return; }
+  var alts=correctN.split(/[\/,]| lub /).map(function(a){return a.trim();}).filter(function(a){return a.length>0;});
+  var isCorrect=alts.some(function(a){
+    if(userN===a) return true;
+    if(a.length>=4 && userN.length>=4 && (userN.indexOf(a)>=0 || a.indexOf(userN)>=0)) return true;
+    return false;
+  });
   var isTypo=false;
-  if(!isCorrect&&userAns.length>0){var best=alts.reduce(function(min,a){return Math.min(min,levenshteinDist(userN,a));},Infinity);isTypo=best<=2&&best<correctN.length*0.3;if(isTypo)isCorrect=true;}
+  if(!isCorrect){var best=alts.reduce(function(min,a){return Math.min(min,levenshteinDist(userN,a));},Infinity);isTypo=best<=2&&best<correctN.length*0.3;if(isTypo)isCorrect=true;}
   revealTrybAnswer(userAns,isCorrect,isTypo);
 }
 
@@ -8937,13 +9018,15 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
   var cardAns=document.getElementById('tryb-card-answer');
   var resIcon=document.getElementById('tryb-result-icon');
   var userWrote=document.getElementById('tryb-user-wrote');
-  if(wordAns) wordAns.textContent=card?(card.word||''):'';
-  if(cardAns) cardAns.textContent=card?(card.translation||''):'';
-  if(resIcon) resIcon.textContent=isCorrect?(isTypo?'⚠️ Literówka':'✅ Poprawnie'):'❌ Błędna';
-  if(userWrote) userWrote.textContent=!userAns?'Nie wpisałeś odpowiedzi':(isTypo?'Twoja: "'+userAns+'" — literówka':'Twoja: "'+userAns+'"');
+  if(wordAns) wordAns.textContent=card?(_trybCardDirection==='pl'?(card.translation||''):(card.word||'')):'';
+  if(cardAns) cardAns.textContent=card?(_trybCardDirection==='pl'?(card.word||''):(card.translation||'')):'';
+  if(resIcon) resIcon.textContent=isCorrect?(isTypo?'\u26a0\ufe0f Liter\u00f3wka':'\u2705 Poprawnie'):'\u274c B\u0142\u0119dna';
+  if(userWrote) userWrote.textContent=!userAns?'Nie wpisa\u0142e\u015b odpowiedzi':(isTypo?'Twoja: "'+userAns+'" \u2014 liter\u00f3wka':'Twoja: "'+userAns+'"');
 
-  // For write mode: add SRS buttons to back face (like flip mode does)
-  if(_trybMode==='write'||_trybMode==='memorize'){
+  // Po odsłonięciu nie pozwól ponownie wywołać checkAnswer Enterem
+  var _inp=document.getElementById('tryb-answer-input'); if(_inp) _inp.blur();
+
+  if(_trybMode==='write'){
     var oldNav=document.getElementById('tryb-flip-nav'); if(oldNav) oldNav.remove();
     var answerSide=document.getElementById('tryb-a-side');
     if(answerSide){
@@ -8952,31 +9035,46 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
       nav.style.cssText='display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:14px;width:100%';
       var rateLabel=document.createElement('div');
       rateLabel.style.cssText='font-size:11px;color:var(--dim2)';
-      rateLabel.textContent='Jak dobrze znałeś to słowo?';
+      rateLabel.textContent='Jak dobrze zna\u0142e\u015b to s\u0142owo?';
       nav.appendChild(rateLabel);
       var btnRow=document.createElement('div');
       btnRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
-      [{q:1,l:'Nie wiedziałem',bg:'#fcebeb',c:'#a32d2d'},{q:2,l:'Prawie',bg:'#fef3c7',c:'#92400e'},{q:3,l:'Wiedziałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Łatwe',bg:'#e0f2fe',c:'#0369a1'}].forEach(function(opt){
+      [{q:1,l:'Nie wiedzia\u0142em',bg:'#fcebeb',c:'#a32d2d'},{q:2,l:'Prawie',bg:'#fef3c7',c:'#92400e'},{q:3,l:'Wiedzia\u0142em',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'\u0141atwe',bg:'#e0f2fe',c:'#0369a1'}].forEach(function(opt){
         var b=document.createElement('button');
         b.style.cssText='padding:10px 14px;border-radius:10px;border:none;background:'+opt.bg+';color:'+opt.c+';font-size:12px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .15s';
         b.dataset.q=opt.q;
         b.textContent=opt.l;
         b.onmousedown=function(){this.style.transform='scale(0.94)';};
         b.onmouseup=function(){this.style.transform='scale(1)';};
-        b.onclick=function(){ 
-      this.classList.add('rate-selected');
-      document.querySelectorAll('[data-q]').forEach(function(x){ if(x!==this) x.style.opacity='0.35'; }.bind(this));
-      setTimeout(function(){ nav.remove(); }, 300);
-      rateCard(opt.q); 
-    };
+        b.onclick=function(){
+          this.classList.add('rate-selected');
+          document.querySelectorAll('[data-q]').forEach(function(x){ if(x!==this) x.style.opacity='0.35'; }.bind(this));
+          setTimeout(function(){ nav.remove(); }, 300);
+          rateCard(opt.q);
+        };
         btnRow.appendChild(b);
       });
       nav.appendChild(btnRow);
       answerSide.appendChild(nav);
     }
+  } else if(_trybMode==='memorize'){
+    try{ var _ns=sm2Local(card,isCorrect?(isTypo?3:4):1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); }catch(_e){}
+    if(isCorrect){ _trybSessionStats.xpGained+=5; }
+    var oldNav2=document.getElementById('tryb-flip-nav'); if(oldNav2) oldNav2.remove();
+    var aSide=document.getElementById('tryb-a-side');
+    if(aSide){
+      var nav2=document.createElement('div');
+      nav2.id='tryb-flip-nav';
+      nav2.style.cssText='display:flex;justify-content:center;margin-top:16px;width:100%';
+      var nextBtn=document.createElement('button');
+      nextBtn.style.cssText='padding:12px 28px;border-radius:100px;border:none;background:#7c5cbf;color:#fff;font-size:14px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:6px';
+      nextBtn.innerHTML='Dalej <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+      nextBtn.onclick=function(){ nav2.remove(); trybMemAdvance(); };
+      nav2.appendChild(nextBtn);
+      aSide.appendChild(nav2);
+    }
   }
 }
-
 
 async function rateCard(btnRating){
   var card=_trybCards[_trybIdx];if(!card)return;
@@ -10220,13 +10318,23 @@ function injectTrybPage(){
     +'</div>'
     // Session view
     +'<div id="tryb-session" style="display:none">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:10px">'
-    +'<button onclick="endSession()" style="background:transparent;border:1.5px solid var(--border);border-radius:100px;padding:8px 18px;cursor:pointer;font-size:13px;color:var(--dim2)">← Zakończ</button>'
-    +'<div id="tryb-session-header" style="font-size:13px;font-weight:500;color:var(--dim2)">Sesja nauki</div>'
-    +'<div style="display:flex;align-items:center;gap:12px">'
-    +'<div style="font-size:13px;color:var(--dim2)"><span id="tryb-card-num">1</span> / <span id="tryb-card-total">?</span></div>'
-    +'<div style="width:100px;height:6px;background:var(--paper2);border-radius:3px;overflow:hidden"><div id="tryb-progress-bar" style="height:100%;background:var(--orange);border-radius:3px;transition:width .4s;width:0%"></div></div>'
-    +'</div></div>'
+    +'<div id="tryb-session-topbar" style="display:none;align-items:center;justify-content:space-between;margin-bottom:18px;gap:10px;flex-wrap:wrap">'
+    +'<div id="tryb-topbar-left" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+    +'<button onclick="endSession()" style="background:transparent;border:1.5px solid var(--border);border-radius:100px;padding:8px 16px;cursor:pointer;font-size:13px;color:var(--dim2);font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px">\u2190 Zako\u0144cz</button>'
+    +'</div>'
+    +'<div id="tryb-topbar-right" style="display:flex;align-items:center;gap:8px;margin-left:auto"></div>'
+    +'</div>'
+    +'<div id="tryb-progress-wrap" style="display:none;max-width:560px;margin:0 auto 26px">'
+    +'<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px">'
+    +'<span id="tryb-mode-badge" style="display:none"></span>'
+    +'<span id="tryb-progress-label" style="font-size:13px;color:var(--dim2)"></span>'
+    +'</div>'
+    +'<div id="tryb-progress-track" style="display:flex;gap:3px;justify-content:center;align-items:center"></div>'
+    +'<div id="tryb-progress-sub" style="display:none;text-align:center;font-size:11.5px;color:var(--dim2);margin-top:8px"></div>'
+    +'</div>'
+    +'<div id="tryb-session-header" style="display:none">Sesja nauki</div>'
+    +'<span id="tryb-card-num" style="display:none">1</span><span id="tryb-card-total" style="display:none">?</span>'
+    +'<div id="tryb-progress-bar" style="display:none"></div>'
     // Card
     +'<div id="tryb-card-answer-data" style="display:none"></div>'
     +'<div class="tryb-card-scene" id="tryb-card-scene">'
