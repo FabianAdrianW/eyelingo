@@ -2307,7 +2307,7 @@ function showPage(name){
   if(name==='strefa'){ initStrefa(); strefaShowTab('tryb'); setTimeout(function(){ if(typeof strefaRenderContinue==='function') strefaRenderContinue(); },60); }
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
   if(name==='daily'){ setTimeout(function(){ var ind=document.getElementById('daily-loading-indicator'); if(ind) ind.style.display='none'; initDaily(); dailyShowTab('daily'); }, 50); }
-  if(name==='teacher'){ setTimeout(function(){ teacherShowTab('chat'); }, 50); }
+  if(name==='teacher'){ setTimeout(function(){ teacherShowTab('hub'); }, 50); }
   if(name==='dash'){ try{ loadDashboard(); }catch(e){} }
   if(name==='tutors') initTutors();
   // Redirects for merged pages — route to parent hub
@@ -3725,6 +3725,13 @@ async function initToFixPage(){
   <div id="teacher-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
     <div style="padding:88px 0 64px 16px;min-width:200px">
       <!-- Tryb -->
+      <div id="teacher-nav-hub" onclick="teacherShowTab('hub')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:14px;margin-right:16px;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)'}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"></path></svg>
+          <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Start</div>
+        </div>
+        <div style="font-size:11px;color:var(--dim2);margin-top:3px">Rekomendacje i tryby</div>
+      </div>
       <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Tryb</div>
       <div id="teacher-nav-chat" onclick="teacherShowTab('chat')" style="background:var(--white);border:.5px solid var(--orange);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;margin-right:16px;transition:.2s">
         <div style="display:flex;align-items:center;gap:8px">
@@ -3798,6 +3805,52 @@ async function initToFixPage(){
     <p class="ph-sub" id="teacher-main-sub">Swobodna rozmowa z AI dopasowana do Twojego poziomu</p>
   </div>
 
+  <!-- ═══ HUB — AI Tutor (Design Bible W5) ═══ -->
+  <div id="teacher-panel-hub" style="display:none">
+    <!-- Hero: Rekomendowane na dziś (most #1) -->
+    <div id="hub-hero" onclick="hubStartRecommended()" style="background:linear-gradient(135deg,var(--navy) 0%,#26335c 100%);border-radius:20px;padding:28px 30px;margin-bottom:22px;cursor:pointer;position:relative;overflow:hidden;box-shadow:0 12px 36px rgba(26,35,64,.18)">
+      <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+        <div style="width:44px;height:44px;border-radius:12px;background:rgba(201,106,42,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3z"></path></svg>
+        </div>
+        <div style="flex:1;min-width:240px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--orange);margin-bottom:8px">Rekomendowane na dziś</div>
+          <div id="hub-hero-title" style="font-family:DM Sans,sans-serif;font-size:21px;font-weight:500;color:#fff;line-height:1.35;margin-bottom:6px">Domknij to, co zacząłeś — 10 minut z Lexem</div>
+          <div id="hub-hero-sub" style="font-size:13.5px;color:rgba(255,255,255,.65);line-height:1.55;max-width:560px">Krótka lekcja konsolidująca: Lex zbierze słowa, które ostatnio mijałeś, i zmusi Cię do ich użycia.</div>
+        </div>
+        <button onclick="event.stopPropagation();hubStartRecommended()" style="align-self:center;background:var(--orange);color:#fff;border:none;border-radius:100px;padding:13px 24px;font-size:14px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap">Zacznij (10 min) →</button>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 0 12px">Lub wybierz tryb</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:28px">
+      <!-- AI Partner -->
+      <div onclick="teacherShowTab('chat')" style="background:#fff;border:1.5px solid var(--border);border-radius:18px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="width:38px;height:38px;border-radius:10px;background:rgba(26,35,64,.08);display:flex;align-items:center;justify-content:center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg></div>
+          <div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy)">AI Partner</div>
+        </div>
+        <div style="font-size:13px;color:var(--dim);line-height:1.55;margin-bottom:14px">Swobodna rozmowa. Alex dostosowuje się do Twojego poziomu i naturalnie wplata słowa z Twoich fiszek.</div>
+        <div style="font-size:10.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);margin-bottom:6px">Idealne na</div>
+        <div style="font-size:12.5px;color:var(--dim);line-height:1.7">5–10 min między spotkaniami · przełamywanie bariery · codzienną praktykę</div>
+      </div>
+      <!-- Lex -->
+      <div onclick="teacherShowTab('teacher')" style="background:#fff;border:2px solid var(--orange);border-radius:18px;padding:24px;cursor:pointer;transition:.2s;position:relative" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+        <span style="position:absolute;top:14px;right:14px;font-size:10px;font-weight:600;letter-spacing:.06em;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px">PRO</span>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="width:38px;height:38px;border-radius:10px;background:var(--navy);display:flex;align-items:center;justify-content:center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>
+          <div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy)">Lex — Twój nauczyciel</div>
+        </div>
+        <div style="font-size:13px;color:var(--dim);line-height:1.55;margin-bottom:14px">Ustrukturyzowane lekcje 10 / 25 min. Lex ocenia poziom, wykrywa luki i prowadzi przez retrieval — nie przez oglądanie.</div>
+        <div style="font-size:10.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);margin-bottom:6px">Idealne na</div>
+        <div style="font-size:12.5px;color:var(--dim);line-height:1.7">wieczorne sesje · przygotowanie do egzaminu · trwałą progresję A1→C2</div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 0 12px">Ostatnie sesje</div>
+    <div id="hub-recent" style="display:flex;flex-direction:column;gap:8px"><div style="font-size:12px;color:var(--dim2);padding:8px 0">Wczytuję…</div></div>
+  </div><!-- /teacher-panel-hub -->
+
   <div id="teacher-panel-chat">
     <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start;min-width:0" id="chat-grid-layout">
 
@@ -3831,6 +3884,15 @@ async function initToFixPage(){
         </div>
         <button class="btn btn-orange" onclick="chatStart()" style="width:100%;justify-content:center;margin-bottom:10px">Zacznij rozmowę</button>
         <button class="btn btn-navy" onclick="chatReset()" style="width:100%;margin-top:8px;font-size:13px;padding:10px">Nowa rozmowa</button>
+        <!-- Most #2: Alex naturalnie wplata słowa z fiszek (Design Bible W6) -->
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            <span id="chat-weak-label" style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2)">Z Twoich fiszek</span>
+          </div>
+          <div style="font-size:11px;color:var(--dim2);margin-bottom:8px;line-height:1.4">Alex użyje tych słów w naturalny sposób</div>
+          <div id="chat-weak-words" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+        </div>
       </div>
 
       <!-- Chat area -->
@@ -3901,10 +3963,10 @@ async function initToFixPage(){
           <div>
             <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Czas lekcji</label>
             <div style="display:flex;gap:8px">
-              <button onclick="lexObSelect(this,'dur',10)" data-dur="10" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">10 min</button>
-              <button onclick="lexObSelect(this,'dur',25)" data-dur="25" class="lex-dur-opt lex-ob-active" style="flex:1;padding:10px;border-radius:10px;border:2px solid var(--orange);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">25 min</button>
-              <button onclick="lexObSelect(this,'dur',40)" data-dur="40" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">40 min</button>
+              <button onclick="lexObSelect(this,'dur',10)" data-dur="10" class="lex-dur-opt" style="flex:1;padding:12px 10px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif;text-align:left"><div style="font-size:16px;font-weight:600">10 min</div><div style="font-size:11px;color:var(--dim2);margin-top:2px">Quick · konsolidacja</div></button>
+              <button onclick="lexObSelect(this,'dur',25)" data-dur="25" class="lex-dur-opt lex-ob-active" style="flex:1;padding:12px 10px;border-radius:12px;border:2px solid var(--orange);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif;text-align:left"><div style="font-size:16px;font-weight:600">25 min</div><div style="font-size:11px;color:var(--dim2);margin-top:2px">Standard · pełna lekcja</div></button>
             </div>
+            <div style="font-size:11px;color:var(--dim2);margin-top:6px;line-height:1.4">Masz więcej czasu? Po lekcji 25 min Lex zaproponuje „jeszcze 10 minut" — domknięta sesja działa lepiej niż maraton.</div>
           </div>
           <div>
             <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Język prowadzenia lekcji</label>
@@ -3942,12 +4004,13 @@ async function initToFixPage(){
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <div id="lex-card-num" style="font-size:11px;color:var(--dim2)">Karta 1</div>
+          <div id="lex-card-num" style="font-size:11px;color:var(--dim2);max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
           <span id="lex-phase" style="display:none;font-size:11px;padding:3px 10px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--dim);font-weight:500"></span>
           <div id="lex-eval-badge" style="display:none;font-size:11px;padding:3px 10px;background:#e0f2fe;border:1px solid #0ea5e9;border-radius:100px;color:#0369a1">Ocena poziomu</div>
           <span id="lex-score-badge" style="display:none"></span>
           <button id="lex-speech-toggle" onclick="lexToggleSpeech()" style="font-size:16px;padding:4px 8px;background:transparent;border:1px solid var(--border2);border-radius:100px;cursor:pointer" title="Włącz/wyłącz czytanie"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>
           <button id="lex-audiolang-btn" onclick="lexToggleAudioLang()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Lekcja: PL</button>
+          <button onclick="lexBookOpen(0)" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Twoje słowa i Mapa Językowa"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"></path><path d="M8 4v16M11 9h5M11 13h5"></path></svg>Zeszyt</button>
           <button onclick="lexToggleBoard()" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"></path><path d="M8 21h8M12 17v4"></path></svg>Tablica</button>
           <button onclick="lexEndLesson()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">Zakończ</button>
         </div>
@@ -4075,16 +4138,21 @@ async function initToFixPage(){
     <div id="lex-summary" style="display:none;padding:0 24px">
       <div style="max-width:520px;margin:0 auto;padding:32px 0;text-align:center">
         <div style="margin-bottom:12px;display:flex;justify-content:center"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>
-        <h3 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:6px">Lekcja zakończona!</h3>
+        <h3 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:6px">To jest zmiana z tej sesji.</h3>
         <div id="lex-summary-score" style="font-size:15px;color:var(--dim);margin-bottom:24px"></div>
         <div id="lex-summary-vocab" style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;text-align:left"></div>
         <div id="lex-summary-gaps-wrap" style="display:none;background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;text-align:left"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:12px">
-          <button onclick="lexSaveVocab('all')" style="padding:10px 20px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">🖥️ Dodaj do fiszek desktopa</button>
+          <button onclick="lexSaveVocab('all')" style="padding:10px 20px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Dodaj do fiszek desktopa</button>
           <button onclick="lexSaveVocab('select')" style="padding:10px 16px;background:transparent;border:1.5px solid var(--border2);color:var(--dim);border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Wybierz zestaw</button>
           <button onclick="lexSaveVocab('skip')" style="padding:10px 14px;background:transparent;border:none;color:var(--dim2);font-size:12px;cursor:pointer;font-family:DM Sans,sans-serif">Pomiń</button>
         </div>
-        <button onclick="lexStartNewLesson()" style="width:100%;padding:14px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Następna lekcja →</button>
+        <button onclick="lexExtraTen()" style="width:100%;padding:14px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Jeszcze 10 minut →</button>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button onclick="teacherShowTab('chat')" style="flex:1;padding:12px;background:transparent;border:1.5px solid var(--border2);color:var(--navy);border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Porozmawiaj z Alexem →</button>
+          <button onclick="lexStartNewLesson()" style="flex:1;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Nowa lekcja</button>
+        </div>
+        <p style="font-size:12px;color:var(--dim2);margin-top:14px">Twój postęp jest zapisany. Możesz wrócić w każdej chwili.</p>
       </div>
     </div>
 
@@ -11970,21 +12038,29 @@ function dailyShowTab(tab){
 // ── NAUCZYCIEL AI ──
 function teacherShowTab(tab){
   if(typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
+  var panelH=document.getElementById('teacher-panel-hub');
   var panelC=document.getElementById('teacher-panel-chat');
   var panelT=document.getElementById('teacher-panel-teacher');
+  if(panelH) panelH.style.display = tab==='hub'     ? '' : 'none';
   if(panelC) panelC.style.display = tab==='chat'    ? '' : 'none';
   if(panelT) panelT.style.display = tab==='teacher' ? '' : 'none';
   // Nawigacja w sidebarze (wzorzec z Materiałów)
-  var navC=document.getElementById('teacher-nav-chat');
-  var navT=document.getElementById('teacher-nav-teacher');
-  if(navC){ if(tab==='chat'){ navC.dataset.active='1'; navC.style.borderColor='var(--orange)'; navC.style.background='var(--paper2)'; } else { delete navC.dataset.active; navC.style.borderColor='var(--border)'; navC.style.background='var(--white)'; } }
-  if(navT){ if(tab==='teacher'){ navT.dataset.active='1'; navT.style.borderColor='var(--orange)'; navT.style.background='var(--paper2)'; } else { delete navT.dataset.active; navT.style.borderColor='var(--border)'; navT.style.background='var(--white)'; } }
+  function navState(el, on){
+    if(!el) return;
+    if(on){ el.dataset.active='1'; el.style.borderColor='var(--orange)'; el.style.background='var(--paper2)'; }
+    else { delete el.dataset.active; el.style.borderColor='var(--border)'; el.style.background='var(--white)'; }
+  }
+  navState(document.getElementById('teacher-nav-hub'), tab==='hub');
+  navState(document.getElementById('teacher-nav-chat'), tab==='chat');
+  navState(document.getElementById('teacher-nav-teacher'), tab==='teacher');
   // Tytuł strony
   var title=document.getElementById('teacher-main-title');
   var sub=document.getElementById('teacher-main-sub');
   var pro='<span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span>';
-  if(tab==='chat'){ if(title)title.innerHTML='AI Partner'; if(sub)sub.textContent='Swobodna rozmowa z AI dopasowana do Twojego poziomu'; }
-  else { if(title)title.innerHTML='Nauczyciel AI '+pro; if(sub)sub.textContent='Ustrukturyzowane lekcje z AI nauczycielem języka'; }
+  if(tab==='hub'){ if(title)title.innerHTML='Tutor AI'; if(sub)sub.textContent='Pogłębij to, czego desktop nauczył Cię w ciągu dnia'; }
+  else if(tab==='chat'){ if(title)title.innerHTML='AI Partner'; if(sub)sub.textContent='Swobodna rozmowa z AI dopasowana do Twojego poziomu'; }
+  else { if(title)title.innerHTML='Nauczyciel AI '+pro; if(sub)sub.textContent='Lex prowadzi Cię przez retrieval — wydobywasz, nie oglądasz'; }
+  if(tab==='hub' && typeof teacherRenderHub==='function') teacherRenderHub();
   if(tab==='chat' && typeof initChat==='function') initChat();
   if(tab==='teacher') lexInit();
   // Sekcje sidebara
@@ -11994,6 +12070,72 @@ function teacherShowTab(tab){
   if(sbPro) sbPro.style.display = tab==='teacher' ? 'block' : 'none';
   if(tab==='teacher' && typeof lexLoadSidebar==='function') lexLoadSidebar();
   if(typeof teacherRenderHistory==='function') teacherRenderHistory();
+}
+
+// ── HUB (Design Bible W5): rekomendacja dnia + ostatnie sesje ──
+function hubStartRecommended(){
+  // Rekomendacja = lekcja 10 min Quick (konsolidacja); jeśli jest otwarta luka — na niej.
+  window._lexObDur = 10;
+  try{ if(window._lexProfile) _lexProfile.lesson_duration = 10; }catch(e){}
+  if(window._hubTopGap){ window._lexNextTopic = window._hubTopGap; }
+  teacherShowTab('teacher');
+}
+async function teacherRenderHub(){
+  var rec=document.getElementById('hub-recent');
+  var heroT=document.getElementById('hub-hero-title');
+  var heroS=document.getElementById('hub-hero-sub');
+  window._hubTopGap=null;
+  function escHub(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){ if(rec) rec.innerHTML='<div style="font-size:12px;color:var(--dim2)">Zaloguj się, aby zobaczyć sesje.</div>'; return; }
+    // Profil Lexa → luka do hero
+    try{
+      if(!window._lexProfile){
+        var rp=await db.from('lex_profiles').select('*').eq('user_id', sess.user.id).maybeSingle();
+        window._lexProfile=rp.data||null;
+      }
+      var gaps=((window._lexProfile&&_lexProfile.known_gaps)||[]).map(function(g){ return (typeof g==='string')?{topic:g,status:'open',priority:2}:g; })
+        .filter(function(g){ return g&&g.topic&&g.status!=='known'; })
+        .sort(function(a,b){ return (b.priority||1)-(a.priority||1); });
+      if(gaps.length && heroT && heroS){
+        window._hubTopGap=gaps[0].topic;
+        heroT.textContent='Domknij lukę: '+gaps[0].topic;
+        heroS.textContent='Lex zauważył, że to miejsce, gdzie lekcja da Ci dziś najwięcej. 10 minut celowanego retrievalu.';
+      }
+    }catch(e){}
+    // Ostatnie sesje: lekcje Lexa + rozmowy z Alexem
+    var items=[];
+    try{
+      var rl=await db.from('lex_lessons').select('id,title,duration_min,ended_at,created_at,vocabulary').eq('user_id', sess.user.id).order('created_at',{ascending:false}).limit(4);
+      (rl.data||[]).forEach(function(l){
+        items.push({ t:l.title||'Lekcja z Lexem', mode:'lex', when:l.ended_at||l.created_at,
+          meta:(l.duration_min?(l.duration_min+' min'):'lekcja'), outcome:(l.vocabulary&&l.vocabulary.length?('+'+l.vocabulary.length+' słów'):'') });
+      });
+    }catch(e){}
+    try{
+      (typeof teacherGetHistory==='function'?teacherGetHistory():[]).slice(0,3).forEach(function(c){
+        items.push({ t:c.title||'Rozmowa z Alexem', mode:'chat', when:c.updated||c.created, meta:'AI Partner', outcome:'', id:c.id });
+      });
+    }catch(e){}
+    items.sort(function(a,b){ return new Date(b.when||0)-new Date(a.when||0); });
+    items=items.slice(0,5);
+    if(!rec) return;
+    if(!items.length){ rec.innerHTML='<div style="font-size:12px;color:var(--dim2);padding:8px 0">Jeszcze nic tu nie ma — zacznij pierwszą sesję powyżej.</div>'; return; }
+    rec.innerHTML=items.map(function(it){
+      var d=it.when?new Date(it.when).toLocaleDateString('pl-PL',{day:'numeric',month:'short'}):'';
+      var icon=it.mode==='lex'
+        ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>'
+        : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg>';
+      var click=it.mode==='chat'&&it.id ? 'teacherLoadConversation(\''+it.id+'\')' : 'teacherShowTab(\''+(it.mode==='lex'?'teacher':'chat')+'\')';
+      return '<div onclick="'+click+'" style="display:flex;align-items:center;gap:12px;background:#fff;border:.5px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;transition:.15s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
+        +'<div style="width:30px;height:30px;border-radius:8px;background:var(--paper2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+icon+'</div>'
+        +'<div style="flex:1;min-width:0"><div style="font-family:DM Sans,sans-serif;font-size:13.5px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHub(it.t)+'</div>'
+        +'<div style="font-size:11px;color:var(--dim2)">'+escHub(it.meta)+(d?(' · '+d):'')+'</div></div>'
+        +(it.outcome?'<span style="font-size:11.5px;font-weight:500;color:var(--success,#3E7D5A);white-space:nowrap">'+escHub(it.outcome)+'</span>':'')
+        +'</div>';
+    }).join('');
+  }catch(e){ if(rec) rec.innerHTML='<div style="font-size:12px;color:var(--dim2)">Nie udało się wczytać sesji.</div>'; }
 }
 
 function teacherLoadChat(){
@@ -13107,7 +13249,7 @@ function lexQuickStart(){
     + '<div style="display:inline-flex;align-items:center;gap:8px;background:var(--navy);color:#fff;border-radius:100px;padding:5px 14px;font-size:12px;margin-top:6px">Twój poziom: <b>'+lvl+'</b><span style="opacity:.5">·</span>'+lexEsc(goal)+'</div>'
     + topic
     + '<div style="font-size:12px;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin:30px 0 10px">Ile masz dziś czasu?</div>'
-    + '<div style="display:flex;gap:10px">'+durBtn(10,'szybko')+durBtn(25,'pełny rytm')+durBtn(40,'głęboko')+'</div>'
+    + '<div style="display:flex;gap:10px">'+durBtn(10,'Quick · konsolidacja')+durBtn(25,'Standard · pełna lekcja')+'</div>'
     + '<button onclick="lexQuickGo()" style="width:100%;margin-top:22px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
     + '<button onclick="lexShowScreen(\'lex-onboarding\');lexFullSetup()" style="background:transparent;border:none;color:var(--dim2);font-size:12.5px;cursor:pointer;margin-top:14px;text-decoration:underline;text-underline-offset:3px;font-family:DM Sans,sans-serif">Dostosuj cel i język prowadzenia</button>'
     + '</div>';
@@ -14164,7 +14306,7 @@ function lexEvalRenderMap(m){
     + '</div>'
     + '<div style="background:var(--paper2);border:1px solid var(--border);border-radius:18px;padding:18px;text-align:center">'
     + '<div style="font-size:14.5px;color:var(--navy);margin-bottom:14px;font-weight:500">Twoja pierwsza lekcja jest gotowa. Ile masz czasu?</div>'
-    + '<div style="display:flex;gap:10px">' + durBtn(10, 'szybki start') + durBtn(25, 'pełny rytm') + durBtn(40, 'głęboka sesja') + '</div>'
+    + '<div style="display:flex;gap:10px">' + durBtn(10, 'Quick · konsolidacja') + durBtn(25, 'Standard · pełna lekcja') + '</div>'
     + '</div>'
     + '<div id="lex-eval-react" style="text-align:center;margin-top:14px;font-size:12px;color:var(--dim2)">Czy ta mapa do Ciebie pasuje? '
     + '<button onclick="lexEvalReact(1)" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:4px 12px;font-size:11.5px;color:var(--navy);cursor:pointer;margin-left:6px;font-family:DM Sans,sans-serif">Pasuje</button>'
@@ -14216,6 +14358,7 @@ async function lexStartLesson(){
   _lexStreaming = false;
 
   var dur = (_lexProfile && _lexProfile.lesson_duration) || _lexObDur || 25;
+  if(dur > 25) dur = 25; // tylko formaty 10/25 (Lesson Formats v2.0)
   var badge = document.getElementById('lex-lesson-badge');
   if(badge) badge.textContent = 'Lekcja ' + dur + ' min';
 
@@ -15670,14 +15813,22 @@ function lexHideHistory(){
 async function lexEndLesson(){
   lexShowScreen('lex-summary');
   var scoreEl = document.getElementById('lex-summary-score');
-  if(scoreEl) scoreEl.textContent = 'Zdobyłeś ' + _lexScore + ' punktów · ' + _lexVocab.length + ' nowych słów';
+  if(scoreEl){
+    // E9 MIRROR: konkretny moment kompetencji, nie punkty (Lesson Bible §11 — punkty zakazane)
+    var nW=_lexVocab.length, nG=_lexGaps.length;
+    var t = nW
+      ? ('Pracowałeś dziś z '+nW+' '+(typeof plWord==='function'?plWord(nW,'słowem','słowami','słowami'):'słowami')+' — i to Ty je wydobywałeś z pamięci, nie tylko oglądałeś.')
+      : 'Ślad się utrwalił — te formy wrócą wkrótce, by usiąść na stałe.';
+    if(nG) t += ' Lex zanotował, gdzie następna sesja da najwięcej.';
+    scoreEl.textContent = t;
+  }
 
   var vocabEl = document.getElementById('lex-summary-vocab');
   if(vocabEl){
     if(_lexVocab.length === 0){
       vocabEl.innerHTML = '<p style="font-size:13px;color:var(--dim2);margin:0">Brak nowych słów w tej lekcji.</p>';
     } else {
-      vocabEl.innerHTML = '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📖 Słówka z lekcji</div>'
+      vocabEl.innerHTML = '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Słowa z tej sesji</div>'
         + _lexVocab.map(function(w){
           return '<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">'
             + '<span style="font-size:14px;font-weight:500;color:var(--navy);min-width:100px">' + w.word + '</span>'
@@ -15691,7 +15842,7 @@ async function lexEndLesson(){
     var gWrap = document.getElementById('lex-summary-gaps-wrap');
     if(gWrap){
       gWrap.style.display = 'block';
-      gWrap.innerHTML = '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🔍 Do powtórki</div>'
+      gWrap.innerHTML = '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Tu lekcja da najwięcej</div>'
         + _lexGaps.map(function(g,i){
           return '<div style="font-size:13px;color:var(--dim);padding:4px 0">' + (i+1) + '. ' + g + '</div>';
         }).join('');
@@ -15908,6 +16059,13 @@ async function lexSaveToExistingSet(setId, setName){
 }
 
 function lexStartNewLesson(){ lexInit(); }
+function lexExtraTen(){
+  // „40 min" wg Lesson Formats v2.0 = 25 + jeszcze 10: domknięta sesja + kontynuacja
+  window._lexObDur = 10;
+  try{ if(window._lexProfile) _lexProfile.lesson_duration = 10; }catch(e){}
+  window._lexxSweepDone = false;
+  lexStartLesson();
+}
 
 // ── OpenRouter key ────────────────────────────────────────
 // ── SWIPE SUPPORT for flip mode ──
@@ -16046,7 +16204,7 @@ async function lexInit(){
 .lexx-opt:hover{border-color:var(--orange);transform:translateX(2px)}
 .lexx-opt.sel{border-color:var(--navy);background:var(--paper2)}
 .lexx-opt.ok{border-color:var(--success);background:var(--success-bg);color:var(--success-dark)}
-.lexx-opt.bad{border-color:#d9534f;background:#fdecea;color:#a9342f}
+.lexx-opt.bad{border-color:var(--orange);background:rgba(201,106,42,.07);color:var(--navy)}
 .lexx-input{width:100%;box-sizing:border-box;padding:15px 18px;border:1.5px solid var(--border2);border-radius:14px;font-size:16px;font-family:DM Sans,sans-serif;outline:none;transition:border-color .15s}
 .lexx-input:focus{border-color:var(--orange)}
 .lexx-hint{font-size:12.5px;color:var(--dim2);margin-top:9px;line-height:1.45}
@@ -16055,13 +16213,25 @@ async function lexInit(){
 .lexx-check[disabled]{opacity:.5;cursor:default}
 .lexx-fb{margin-top:16px;font-size:14px;line-height:1.6;padding:14px 16px;border-radius:14px;display:none}
 .lexx-fb.ok{background:var(--success-bg);color:var(--success-dark);border-left:3px solid var(--success)}
-.lexx-fb.bad{background:#fdecea;color:#a9342f;border-left:3px solid #d9534f}
+.lexx-fb.bad{background:rgba(201,106,42,.08);color:var(--navy);border-left:3px solid var(--orange)}
 .lexx-fb.neutral{background:var(--paper2);color:var(--dim);border-left:3px solid var(--orange)}
 .lexx-next{width:100%;padding:15px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;margin-top:8px;animation:lexxRise .3s ease}
 .lexx-next[disabled]{opacity:.45;cursor:default}
 .lexx-items{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
 .lexx-chip{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--border);border-radius:100px;padding:8px 15px;font-size:14px;box-shadow:0 2px 8px rgba(26,35,64,.05)}
 .lexx-target{display:inline-block;background:var(--navy);color:#fff;font-family:DM Sans,sans-serif;font-weight:500;padding:4px 12px;border-radius:8px;font-size:15px}
+.lexx-key{margin-top:14px;padding:12px 14px;border-radius:12px;background:rgba(201,106,42,.10);border:1px solid rgba(201,106,42,.3);font-size:14px;color:var(--navy);line-height:1.55}
+.lexx-key b,.lexx-key strong{color:var(--orange)}
+.lexx-tilezone{min-height:54px;display:flex;flex-wrap:wrap;gap:8px;padding:12px;margin-bottom:12px;border:2px dashed var(--border2);border-radius:14px;background:#fff;align-items:center}
+.lexx-tilezone .lexx-hintph{color:var(--dim2);font-size:13px}
+.lexx-tilepool{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.lexx-tile{padding:10px 14px;border-radius:10px;font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:#fff;color:var(--navy);transition:.12s}
+.lexx-tile.placed{background:var(--navy);border-color:var(--navy);color:#fff}
+.lexx-tile:hover{border-color:var(--orange)}
+.lexx-dots{display:flex;gap:6px;margin-bottom:16px}
+.lexx-dots span{flex:1;height:4px;border-radius:9px;background:var(--border2);transition:background .25s}
+.lexx-dots span.done{background:var(--orange)}
+.lexx-dots span.cur{background:var(--navy)}
 .lex-sb-h.collapsed .lex-sb-chev{transform:rotate(-90deg)}
 .lex-book{perspective:2200px;background:#efe7d8;border-radius:14px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.4)}
 .lex-book-spread{display:grid;grid-template-columns:1fr 1fr;gap:0;min-height:430px;position:relative;transform-style:preserve-3d}
@@ -16151,8 +16321,11 @@ async function lexInit(){
   // ── Generowanie porcji ──
   window.lexxStartPortions = async function(sets){
     window._lexxPortionNum = 0;
+    window._lexxSweepPool = [];
+    window._lexxSweepDone = false;
     var dur = (window._lexProfile && _lexProfile.lesson_duration) || window._lexObDur || 25;
-    window._lexxPortionTarget = Math.max(3, Math.round(dur/5));
+    if(dur > 25) dur = 25; // Format 40 min usunięty (Lesson Formats v2.0) — stare profile clampowane
+    window._lexxPortionTarget = Math.max(2, Math.round(dur/5)); // portions = round(min/5): 10→2, 25→5
     await lexxGeneratePortion();
   };
 
@@ -16184,8 +16357,13 @@ async function lexInit(){
     var pn = window._lexxPortionNum;
     // Luka receptywno-produktywna waży TYPY zadań (Assessment Bible §6.5 → selektor z Pedagogy Bible)
     var gapRp = (km && typeof km.gap_rp==='number') ? km.gap_rp : 1;
-    var fourth = (gapRp >= 2) ? ((pn % 2 === 0) ? 'produce' : 'transform')
-               : ((pn % 3 === 0) ? 'produce' : 'transform');
+    // Kształt porcji (Lesson Formats §1.3.2): zawsze E1 CUE na wejściu, koniec produkcją,
+    // beat 3 i modalność produkcji naprzemienne między porcjami (anty-worksheet, anti-fatigue).
+    var third = (pn % 2 === 1) ? 'contrast' : 'cloze';
+    var finals = (pn % 2 === 1) ? 'sculpt' : 'produce';
+    if(gapRp >= 2) finals = 'produce'; // luka receptywno-produktywna → ciężar na wolną produkcję
+    var weave = '';
+    try{ if(pn>1 && Array.isArray(window._lexVocab) && window._lexVocab.length){ var wv=window._lexVocab[Math.max(0,window._lexVocab.length-3)]; if(wv&&wv.word) weave='WEAVE (lag effect): w ćwiczeniu cloze ponownie użyj słowa z poprzedniej porcji: "'+wv.word+'". '; } }catch(e){}
     var kmCtx = '';
     if(km){
       kmCtx = 'PROFIL Z KALIBRACJI: rozpoznaje pasmo '+(km.passive_band||lvl)+', aktywnie używa pasma '+(km.active_band||lvl)+'. ';
@@ -16204,19 +16382,22 @@ async function lexInit(){
       +kmCtx+'Język wyjaśnień: POLSKI. '
       +(focus? ('Temat lekcji: "'+focus+'". '):'Dobierz praktyczny, przydatny temat porcji. ')
       +(recentGaps? ('Uwzględnij braki ucznia: '+recentGaps+'. '):'')
-      +'To porcja nr '+pn+'. Zbuduj JEDNĄ porcję materiału skupioną na 3-5 słowach/jednej strukturze, i przećwicz JE pod różnym kątem w 4 ćwiczeniach.\n'
+      +'To porcja nr '+pn+'. Zbuduj JEDNĄ porcję skupioną na 2-4 słowach/jednej strukturze. '+weave
+      +'Porcja = 4 beaty mikro-pętli CUE-RETRIEVE-APPLY: (1) cue: odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem, (2) cloze: wydobycie z pamięci bez podpowiedzi, (3) '+(third==='contrast'?'contrast: para zdań native vs polska kalka (przyimki, false friends, szyk)':'cloze: inne słowo porcji w świeżym zdaniu')+', (4) '+(finals==='sculpt'?'sculpt: produkcja z intencji przez ułożenie kafelków słów':'produce: własne zdanie ucznia z docelowym słowem')+'. Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego.\n'
       +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
       +'{'
       +'"focus":"krótki temat porcji po polsku",'
       +'"intro":"1-2 zdania po polsku wprowadzające; słowa docelowe w języku '+langName()+' ujmij w **gwiazdki**",'
       +'"items":[{"word":"słowo w '+langName()+'","translation":"po polsku"}],'
       +'"exercises":['
-      +'{"type":"mc","context":"zdanie-scenka w '+langName()+' osadzające słowo w realnym kontekście (1 zdanie)","source":"gdzie pada to zdanie, po polsku, np. W rozmowie","question":"pytanie (po polsku lub z frazą w '+langName()+')","options":["a","b","c","d"],"answer":0,"explain":"krótkie wyjaśnienie po polsku"},'
-      +'{"type":"cloze","prompt":"Uzupełnij lukę","sentence":"zdanie w '+langName()+' z ___ w miejscu luki","answer":"słowo do luki","hint":"krótka podpowiedź po polsku","explain":"wyjaśnienie po polsku"},'
-      +'{"type":"translate","prompt":"Przetłumacz na '+langName()+'","source":"krótka fraza po polsku","answer":"wzorcowe tłumaczenie w '+langName()+'","explain":"wyjaśnienie po polsku"},'
-      +(fourth==='produce'
-        ? '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po polsku co ma zawierać"}'
-        : '{"type":"transform","prompt":"Przekształć","source":"forma wyjściowa w '+langName()+'","instruction":"co zmienić (po polsku, np. na liczbę mnogą/czas przeszły)","answer":"poprawna forma w '+langName()+'","explain":"wyjaśnienie po polsku"}')
+      +'{"type":"cue","context":"1-2 zdania scenki w '+langName()+' z naturalnym użyciem słowa-celu","source":"skąd pochodzi scenka, po polsku, np. Slack / Mail / W rozmowie","question":"pytanie po polsku sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po polsku; formę docelową w '+langName()+' ujmij w **gwiazdki**"},'
+      +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w miejscu luki","answer":"słowo do luki","hint":"podpowiedź po polsku (pokazywana dopiero po nieudanej próbie)","explain":"wyjaśnienie po polsku"},'
+      +(third==='contrast'
+        ? '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po polsku: które jest native, dlaczego, i jaka polska kalka zdradza nie-native"},'
+        : '{"type":"cloze","sentence":"inne zdanie w '+langName()+' z ___ w miejscu luki (inne słowo porcji)","answer":"słowo do luki","hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"},')
+      +(finals==='sculpt'
+        ? '{"type":"sculpt","intent":"intencja po polsku, np. grzecznie przesuń termin na czwartek","tiles":["lista","4-7 kafelków","ze słowami w '+langName()+'"],"answer":"pełne zdanie = kafelki połączone spacjami we właściwej kolejności"}'
+        : '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po polsku co ma zawierać"}')
       +']}';
     try{
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
@@ -16228,6 +16409,14 @@ async function lexInit(){
       var data=null; if(a>=0&&b>a){ try{ data=JSON.parse(raw.slice(a,b+1)); }catch(e){} }
       if(!data||!data.exercises||!data.exercises.length) throw new Error('Pusta porcja');
       window._lexxData=data;
+      window._lexxSculpt={}; // reset stanu kafelków na nową porcję
+      // Pula do E8 CALLBACK (spaced sweep): cloze z każdej porcji wracają na końcu sesji (lag effect)
+      try{
+        window._lexxSweepPool=window._lexxSweepPool||[];
+        (data.exercises||[]).forEach(function(ex){
+          if(ex&&ex.type==='cloze'&&ex.sentence&&ex.answer) window._lexxSweepPool.push({sentence:ex.sentence,answer:ex.answer,wrong:false,portion:window._lexxPortionNum});
+        });
+      }catch(e){}
       try{ if(data.focus){ window._lexPortionFocuses=window._lexPortionFocuses||[]; if(window._lexPortionFocuses.indexOf(data.focus)===-1) window._lexPortionFocuses.push(data.focus); } }catch(e){}
       try{ if(data.items&&Array.isArray(window._lexVocab)) data.items.forEach(function(it){ if(it&&it.word&&it.translation) window._lexVocab.push({word:it.word,translation:it.translation}); }); }catch(e){}
       lexxRenderPortion(data);
@@ -16260,9 +16449,9 @@ async function lexInit(){
       var box=document.createElement('div'); box.className='lexx-ex';
       var h='<div class="lexx-ex-head"><span class="lexx-badge">Słowa porcji</span><span style="font-size:13px;color:var(--dim2)">'+esc(data.focus||'')+'</span></div>';
       var chips='<div class="lexx-items">'+(data.items||[]).map(function(it){
-        return '<span class="lexx-chip"><span class="tl lexx-fw" data-tl-lang="'+lang()+'">'+(typeof window.tlBuildHTML==='function'?window.tlBuildHTML(String(it.word||''),lang()):esc(it.word))+'</span><span style="color:var(--dim2)">— '+esc(it.translation||'')+'</span></span>';
+        return '<span class="lexx-chip"><span class="tl lexx-fw" data-tl-lang="'+lang()+'">'+(typeof window.tlBuildHTML==='function'?window.tlBuildHTML(String(it.word||''),lang()):esc(it.word))+'</span></span>';
       }).join('')+'</div>';
-      box.innerHTML=h+chips+'<div style="font-size:12px;color:var(--dim2);margin-top:10px;line-height:1.5">Wprowadzenie Lexa jest powyżej. Potem '+((data.exercises||[]).length||4)+' krótkie ćwiczenia — jedno na raz.</div>';
+      box.innerHTML=h+chips+'<div style="font-size:12px;color:var(--dim2);margin-top:10px;line-height:1.5">Tapnij słowo — tłumaczenie i wymowa na żądanie. Potem '+((data.exercises||[]).length||4)+' krótkie ćwiczenia, jedno na raz — kończysz produkcją.</div>';
       stage0.appendChild(box);
       var st=document.createElement('button'); st.className='lexx-next'; st.textContent='Zaczynamy →';
       st.onclick=function(){ lexxShowStep(0); };
@@ -16290,7 +16479,7 @@ async function lexInit(){
       var introHtml=(typeof lexFormatCardText==='function')? lexFormatCardText(data.intro||'') : esc(data.intro||'');
       ct.innerHTML=introHtml;
     }
-    var cn=document.getElementById('lex-card-num'); if(cn) cn.textContent='Porcja '+window._lexxPortionNum+' z '+window._lexxPortionTarget;
+    var cn=document.getElementById('lex-card-num'); if(cn) cn.textContent=String(data.focus||'');
     if(typeof lexUpdateAudioLangBtn==='function') lexUpdateAudioLangBtn();
     var pb=document.getElementById('lex-progress-bar'); if(pb) pb.style.width=Math.min(100,Math.round((window._lexxPortionNum-1)/window._lexxPortionTarget*100))+'%';
     var zone=document.getElementById('lex-answer-zone');
@@ -16300,13 +16489,13 @@ async function lexInit(){
     lexxShowStep(-1);
   }
 
-  function badge(t){ var b={mc:'Multiwybór',cloze:'Uzupełnij lukę',translate:'Tłumaczenie',produce:'Twoje zdanie',transform:'Przekształć'}; return b[t]||'Ćwiczenie'; }
+  function badge(t){ var b={cue:'Odkrycie',mc:'Multiwybór',cloze:'Uzupełnij lukę',contrast:'Native czy nie?',translate:'Tłumaczenie',produce:'Twoje zdanie',sculpt:'Produkcja',transform:'Przekształć'}; return b[t]||'Ćwiczenie'; }
 
   // Eyebrow „intencji" w stylu MVP — nie suchy typ, tylko cel kognitywny
-  function exEyebrow(t){ var m={mc:'Rozpoznanie',cloze:'Wydobycie z pamięci',translate:'Produkcja',produce:'Twoje zdanie',transform:'Przekształcenie'}; return m[t]||'Ćwiczenie'; }
+  function exEyebrow(t){ var m={cue:'Odkrycie',mc:'Rozpoznanie',cloze:'Wydobycie z pamięci',contrast:'Wiedza insidera',translate:'Produkcja',produce:'Twoje zdanie',sculpt:'Produkcja',transform:'Przekształcenie'}; return m[t]||'Ćwiczenie'; }
   function exObjective(ex){
     if(ex.objective) return esc(ex.objective);
-    var m={mc:'Wybierz właściwą odpowiedź',cloze:'Uzupełnij — z pamięci, bez podpowiedzi',translate:'Przetłumacz na '+langName(),produce:'Ułóż własne zdanie',transform:'Przekształć zdanie'};
+    var m={cue:'Co to znaczy w tym kontekście?',mc:'Wybierz właściwą odpowiedź',cloze:'Uzupełnij — z pamięci, bez podpowiedzi',contrast:'Które zdanie powie native?',translate:'Przetłumacz na '+langName(),produce:'Ułóż własne zdanie',sculpt:'Ułóż zdanie z intencji',transform:'Przekształć zdanie'};
     return esc(ex.prompt||m[ex.type]||'');
   }
   // Karta scenki z pomarańczowym źródłem (jak cue w MVP)
@@ -16317,19 +16506,43 @@ async function lexInit(){
     var box=document.createElement('div'); box.className='lexx-ex'; box.dataset.i=i;
     var head='<div class="lexx-ex-head"><span class="lexx-eyebrow">'+exEyebrow(ex.type)+'</span></div>'
       +'<div class="lexx-obj">'+exObjective(ex)+'</div>';
-    var body='', inputHtml='';
-    if(ex.type==='mc'){
+    var body='', inputHtml='', needCheck=true;
+    if(ex.type==='cue'){
+      // E1 CUE: odkrycie znaczenia z kontekstu PRZED wyjaśnieniem (pretesting; 1 tap = decyzja, bez oceny)
+      body+=exScene(ex.source||'Kontekst', ex.context||'');
+      if(ex.question) body+='<div class="lexx-q">'+esc(ex.question)+'</div>';
+      inputHtml='<div class="lexx-opts">'+(ex.options||[]).map(function(o,k){
+        return '<button type="button" class="lexx-opt" data-k="'+k+'" onclick="lexxCueAnswer('+i+','+k+')">'+esc(o)+'</button>';
+      }).join('')+'</div>';
+      needCheck=false;
+    } else if(ex.type==='contrast'){
+      // E6 NATIVE OR NOT: sonda misconception/kalki — 1 tap = decyzja
+      inputHtml='<div class="lexx-opts">'+(ex.options||[]).map(function(o,k){
+        return '<button type="button" class="lexx-opt" data-k="'+k+'" onclick="lexxContrastAnswer('+i+','+k+')" style="font-family:Georgia,serif;font-size:16px">'+esc(o)+'</button>';
+      }).join('')+'</div>';
+      needCheck=false;
+    } else if(ex.type==='sculpt'){
+      // E5 SCULPT IT: produkcja z intencji, kafelki = przestrzeń skończona (constrained grading)
+      body+=exScene('Intencja', ex.intent||'');
+      window._lexxSculpt=window._lexxSculpt||{};
+      if(!window._lexxSculpt[i]){
+        var pool=(ex.tiles||[]).slice();
+        for(var z=pool.length-1;z>0;z--){ var r=Math.floor(Math.random()*(z+1)); var tmp=pool[z]; pool[z]=pool[r]; pool[r]=tmp; }
+        window._lexxSculpt[i]={built:[],pool:pool};
+      }
+      inputHtml='<div id="lexx-sc-'+i+'">'+lexxSculptHtml(i)+'</div>';
+    } else if(ex.type==='mc'){
       if(ex.context) body+=exScene(ex.source||'Kontekst', ex.context);
       body+='<div class="lexx-q">'+esc(ex.question||'')+'</div>';
       inputHtml='<div class="lexx-opts">'+(ex.options||[]).map(function(o,k){
         return '<button type="button" class="lexx-opt" data-k="'+k+'" onclick="lexxPick('+i+','+k+')">'+esc(o)+'</button>';
       }).join('')+'</div>';
     } else if(ex.type==='cloze'){
-      // Luka jako podkreślone pole w zdaniu (serif), nie suchy string
+      // E3 THE GAP: recall bez podpowiedzi; hint dopiero jako fallback po nieudanej próbie
       var sent=esc(ex.sentence||'').replace(/_{2,}|\[\.\.\.\]|\.\.\./,'<span style="display:inline-block;min-width:90px;border-bottom:2px solid var(--orange);text-align:center;color:var(--orange);font-weight:600">&nbsp;&nbsp;&nbsp;</span>');
       body+='<p class="lexx-q">'+sent+'</p>';
-      inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="wpisz brakujące słowo">'
-        +(ex.hint?'<div class="lexx-hint">Podpowiedź: '+esc(ex.hint)+'</div>':'');
+      inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="z pamięci, bez podpowiedzi">'
+        +'<div class="lexx-hint" id="lexx-hint-'+i+'" style="display:none"></div>';
     } else if(ex.type==='translate'){
       body+=exScene('Po polsku', ex.source||'');
       inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoje tłumaczenie po '+langName()+'…">';
@@ -16343,10 +16556,63 @@ async function lexInit(){
       inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="3" placeholder="Napisz własne zdanie po '+langName()+'…"></textarea>';
     }
     box.innerHTML=head+body+inputHtml
-      +'<button class="lexx-check" id="lexx-chk-'+i+'" onclick="lexxCheck('+i+')">Sprawdź</button>'
+      +(needCheck?'<button class="lexx-check" id="lexx-chk-'+i+'" onclick="lexxCheck('+i+')">Sprawdź</button>':'')
       +'<div class="lexx-fb" id="lexx-fb-'+i+'"></div>';
     return box;
   }
+
+  // ── E5 SCULPT IT: kafelki (przestrzeń skończona → grading deterministyczny) ──
+  function lexxSculptHtml(i){
+    var st=(window._lexxSculpt||{})[i]||{built:[],pool:[]};
+    var built=st.built.length
+      ? st.built.map(function(t,k){ return '<button type="button" class="lexx-tile placed" onclick="lexxSculptUntap('+i+','+k+')">'+esc(t)+'</button>'; }).join('')
+      : '<span class="lexx-hintph">Stuknij kafelki, by zbudować zdanie</span>';
+    var pool=st.pool.map(function(t,k){ return '<button type="button" class="lexx-tile" onclick="lexxSculptTap('+i+','+k+')">'+esc(t)+'</button>'; }).join('');
+    return '<div class="lexx-tilezone">'+built+'</div><div class="lexx-tilepool">'+pool+'</div>';
+  }
+  window.lexxSculptTap=function(i,k){
+    var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(box&&box.dataset.checked) return;
+    var st=(window._lexxSculpt||{})[i]; if(!st||!st.pool[k]&&st.pool[k]!=='') return;
+    st.built.push(st.pool[k]); st.pool.splice(k,1);
+    var el=document.getElementById('lexx-sc-'+i); if(el) el.innerHTML=lexxSculptHtml(i);
+  };
+  window.lexxSculptUntap=function(i,k){
+    var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(box&&box.dataset.checked) return;
+    var st=(window._lexxSculpt||{})[i]; if(!st) return;
+    st.pool.push(st.built[k]); st.built.splice(k,1);
+    var el=document.getElementById('lexx-sc-'+i); if(el) el.innerHTML=lexxSculptHtml(i);
+  };
+
+  // ── E1 CUE: pretesting — trafienie/pudło nieoceniane, reveal reguły [KEY] po próbie ──
+  window.lexxCueAnswer=function(i,k){
+    var ex=(window._lexxData&&window._lexxData.exercises||[])[i]; if(!ex) return;
+    var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(!box||box.dataset.checked) return;
+    var hit=(k===ex.answer);
+    box.querySelectorAll('.lexx-opt').forEach(function(o){
+      if(o.dataset.k==String(ex.answer)) o.classList.add('ok');
+      else if(o.dataset.k==String(k)) o.classList.add('sel');
+      o.disabled=true;
+    });
+    var keyHtml=ex.key?('<div class="lexx-key">'+(typeof lexFormatCardText==='function'?lexFormatCardText(ex.key):esc(ex.key))+'</div>'):'';
+    showFb(i,'neutral',(hit?'Sam to rozkminiłeś z kontekstu. ':'Teraz już wiesz — zgadywanie przed wyjaśnieniem buduje ślad. ')+(keyHtml?'':esc(ex.explain||'')));
+    if(keyHtml){ var fb=document.getElementById('lexx-fb-'+i); if(fb) fb.insertAdjacentHTML('afterend',keyHtml); }
+    markDone(i);
+  };
+
+  // ── E6 NATIVE OR NOT: kalka z L1 — pudło tu jest najcenniejsze (misconception → luka) ──
+  window.lexxContrastAnswer=function(i,k){
+    var ex=(window._lexxData&&window._lexxData.exercises||[])[i]; if(!ex) return;
+    var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(!box||box.dataset.checked) return;
+    var correct=(k===ex.native);
+    box.querySelectorAll('.lexx-opt').forEach(function(o){
+      if(o.dataset.k==String(ex.native)) o.classList.add('ok');
+      else if(o.dataset.k==String(k)&&!correct) o.classList.add('bad');
+      o.disabled=true;
+    });
+    showFb(i, correct?'ok':'bad', (correct?'Zapamiętaj: ':'Do zapamiętania — to częsta pułapka: ')+esc(ex.explain||''));
+    if(!correct) feedGap((window._lexxData&&window._lexxData.focus)||'kalka językowa');
+    markDone(i);
+  };
 
   window.lexxPick=function(i,k){
     var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(!box) return;
@@ -16388,14 +16654,45 @@ async function lexInit(){
         if(o.dataset.k==String(ex.answer)) o.classList.add('ok');
         if(o.dataset.k==String(pick)&&!correct) o.classList.add('bad');
       });
-      showFb(i, correct?'ok':'bad', (correct?'Dobrze! ':'Nie tym razem. ')+esc(ex.explain||''));
+      showFb(i, correct?'ok':'bad', (correct?'Zapamiętaj: ':'Do zapamiętania: ')+esc(ex.explain||''));
       if(!correct) feedGap(window._lexxData.focus||ex.question);
+      markDone(i); return;
+    }
+    if(ex.type==='sculpt'){
+      // Constrained grading: przestrzeń skończona kafelków, klucz jest arbitrem
+      var st=(window._lexxSculpt||{})[i];
+      if(!st||!st.built.length){ showFb(i,'neutral','Ułóż zdanie z kafelków.'); return; }
+      var built=st.built.join(' ');
+      var okS=lexxAnsMatch(built, ex.answer);
+      showFb(i, okS?'ok':'bad', okS
+        ? ('Zapamiętaj: „'+esc(ex.answer)+'" — dokładnie tak.')
+        : ('Do zapamiętania — wzorzec: <strong>'+esc(ex.answer)+'</strong>.'));
+      if(!okS) feedGap(window._lexxData.focus||ex.intent);
       markDone(i); return;
     }
     if(ex.type==='cloze'||ex.type==='transform'){
       var v=(document.getElementById('lexx-in-'+i)||{}).value||'';
       if(!v.trim()){ showFb(i,'neutral','Wpisz odpowiedź.'); return; }
       var ok=lexxAnsMatch(v, ex.answer);
+      if(ex.type==='cloze' && !ok){
+        // Drabinka fallbacków (Lesson Formats E3): pusto/źle → pierwsza litera + hint → reveal.
+        // Pierwsza nieudana próba NIE kończy ekranu — wysiłkowa pauza jest miejscem konsolidacji.
+        var tries=parseInt((box&&box.dataset.tries)||'0',10);
+        if(tries===0){
+          if(box) box.dataset.tries='1';
+          var hintEl=document.getElementById('lexx-hint-'+i);
+          var first=String(ex.answer||'').trim().charAt(0);
+          if(hintEl){ hintEl.style.display='block'; hintEl.innerHTML='Zaczyna się na „'+esc(first)+'…"'+(ex.hint?(' · '+esc(ex.hint)):''); }
+          showFb(i,'neutral','Jeszcze raz — spróbuj z podpowiedzią.');
+          try{ lexxMarkSweepWrong(ex); }catch(e){}
+          var inEl=document.getElementById('lexx-in-'+i); if(inEl){ inEl.focus(); inEl.select(); }
+          return;
+        }
+        showFb(i,'bad','Do zapamiętania: <strong>'+esc(ex.answer)+'</strong>. '+esc(ex.explain||'')+' Wróci jeszcze w tej sesji, by ślad się utrwalił.');
+        feedGap(window._lexxData.focus||ex.prompt);
+        try{ lexxMarkSweepWrong(ex); }catch(e){}
+        markDone(i); return;
+      }
       if(!ok && ex.type==='transform'){
         // Przekształcenie to pełne zdanie — może mieć więcej niż jedną poprawną
         // realizację (skróty, szyk). Klucz nie pasuje → rozstrzyga AI, nie sztywny string.
@@ -16403,21 +16700,21 @@ async function lexInit(){
         var v2=await lexxAIEval(ex, v);
         ok=!!v2.ok;
         showFb(i, ok?'ok':'bad', ok
-          ? esc(v2.comment||('Dobrze! '+(ex.explain||'')))
-          : ('Wzór: <strong>'+esc(ex.answer)+'</strong>. '+esc(v2.comment||ex.explain||'')));
+          ? esc(v2.comment||('Zapamiętaj: '+(ex.explain||'')))
+          : ('Do zapamiętania — wzór: <strong>'+esc(ex.answer)+'</strong>. '+esc(v2.comment||ex.explain||'')));
         if(!ok) feedGap(v2.gap||window._lexxData.focus||ex.prompt);
         markDone(i); return;
       }
-      showFb(i, ok?'ok':'bad', ok?('Dobrze! '+esc(ex.explain||'')):('Poprawnie: <strong>'+esc(ex.answer)+'</strong> '+esc(ex.explain||'')));
+      showFb(i, ok?'ok':'bad', ok?('Zapamiętaj: '+esc(ex.explain||'')):('Do zapamiętania: <strong>'+esc(ex.answer)+'</strong> '+esc(ex.explain||'')));
       if(!ok) feedGap(window._lexxData.focus||ex.prompt);
       markDone(i); return;
     }
-    // translate / produce → ocena AI
+    // translate / produce → ocena AI (constrained: AI ocenia, klucz/wzorzec widoczny przy pudle)
     var val=(document.getElementById('lexx-in-'+i)||{}).value||'';
     if(!val.trim()){ showFb(i,'neutral','Najpierw napisz odpowiedź.'); return; }
     var chk=document.getElementById('lexx-chk-'+i); if(chk){ chk.disabled=true; chk.textContent='Sprawdzam…'; }
     var verdict=await lexxAIEval(ex, val);
-    showFb(i, verdict.ok?'ok':'bad', esc(verdict.comment||(verdict.ok?'Dobrze!':'Spróbuj inaczej.'))
+    showFb(i, verdict.ok?'ok':'bad', esc(verdict.comment||(verdict.ok?'Zapamiętaj ten wzorzec.':'Spróbuj inaczej.'))
       + (ex.answer&&!verdict.ok? ' <span style="color:var(--dim2)">(wzór: '+esc(ex.answer)+')</span>':''));
     if(!verdict.ok) feedGap(verdict.gap||window._lexxData.focus||ex.prompt);
     if(chk){ chk.textContent='Sprawdzone'; }
@@ -16451,10 +16748,66 @@ async function lexInit(){
   window.lexxNext=function(){
     if(window.speechSynthesis) try{speechSynthesis.cancel();}catch(e){}
     if(window._lexxPortionNum>=window._lexxPortionTarget){
+      // CONSOLIDATE: spaced sweep przed CLOSE — "zaklejenie śladu" (Lesson Bible §6:
+      // CONSOLIDATE nigdy nie jest wycinane, nawet w 10 min)
+      if(!window._lexxSweepDone && lexxSweepItems().length>=2){ lexxRenderSweep(); return; }
       if(typeof lexEndLesson==='function') lexEndLesson();
       return;
     }
     lexxGeneratePortion();
+  };
+
+  // ── E8 CALLBACK — spaced sweep: najtrudniejsze + najstarsze słowa sesji wracają ──
+  window.lexxMarkSweepWrong=function(ex){
+    (window._lexxSweepPool||[]).forEach(function(p){ if(p.sentence===ex.sentence) p.wrong=true; });
+  };
+  function lexxSweepItems(){
+    var pool=(window._lexxSweepPool||[]).slice();
+    var seen={}, out=[];
+    // priorytet: skorygowane (misconception/luka), potem najdłuższy lag (najwcześniejsze porcje)
+    pool.sort(function(a,b){ return (b.wrong?1:0)-(a.wrong?1:0) || (a.portion-b.portion); });
+    pool.forEach(function(p){ var k=lexxNormEx(p.answer); if(!seen[k]){ seen[k]=1; out.push(p); } });
+    return out.slice(0,4);
+  }
+  function lexxRenderSweep(){
+    window._lexxSweepItems=lexxSweepItems();
+    window._lexxSweepIdx=0;
+    var cn=document.getElementById('lex-card-num'); if(cn) cn.textContent='Powrót pamięciowy';
+    var pb=document.getElementById('lex-progress-bar'); if(pb) pb.style.width='96%';
+    var ct=document.getElementById('lex-card-text'); if(ct) ct.innerHTML='Ostatni ruch: te formy były kilka porcji temu. Wydobądź je jeszcze raz — to domyka ślad pamięciowy.';
+    lexxSweepStep();
+  }
+  function lexxSweepStep(){
+    var w=document.getElementById('lexx-wrap'); if(!w) return;
+    var items=window._lexxSweepItems||[], idx=window._lexxSweepIdx||0;
+    var it=items[idx]; if(!it){ window._lexxSweepDone=true; if(typeof lexEndLesson==='function') lexEndLesson(); return; }
+    var dots=items.map(function(_,k){ return '<span class="'+(k<idx?'done':(k===idx?'cur':''))+'"></span>'; }).join('');
+    var sent=esc(it.sentence||'').replace(/_{2,}|\[\.\.\.\]|\.\.\./,'<span style="display:inline-block;min-width:90px;border-bottom:2px solid var(--orange);text-align:center">&nbsp;&nbsp;&nbsp;</span>');
+    w.innerHTML='<div class="lexx-stage"><div class="lexx-ex">'
+      +'<div class="lexx-ex-head"><span class="lexx-eyebrow">Powrót pamięciowy</span></div>'
+      +'<div class="lexx-obj">Szybko — to było kilka porcji temu.</div>'
+      +'<div class="lexx-dots">'+dots+'</div>'
+      +'<p class="lexx-q">'+sent+'</p>'
+      +'<input class="lexx-input" id="lexx-sweep-in" placeholder="z pamięci">'
+      +'<button class="lexx-check" id="lexx-sweep-btn" onclick="lexxSweepSubmit()">'+(idx+1<items.length?'Następne':'Zakończ powrót')+'</button>'
+      +'<div class="lexx-fb" id="lexx-sweep-fb"></div>'
+      +'</div></div>';
+    var inp=document.getElementById('lexx-sweep-in');
+    if(inp){ inp.onkeydown=function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); lexxSweepSubmit(); } }; setTimeout(function(){ inp.focus(); },80); }
+  }
+  window.lexxSweepSubmit=function(){
+    var items=window._lexxSweepItems||[], idx=window._lexxSweepIdx||0;
+    var it=items[idx]; if(!it) return;
+    var inp=document.getElementById('lexx-sweep-in'); var v=(inp&&inp.value)||'';
+    if(!v.trim()){ var fb0=document.getElementById('lexx-sweep-fb'); if(fb0){ fb0.className='lexx-fb neutral'; fb0.style.display='block'; fb0.textContent='Spróbuj z pamięci — nawet częściowo.'; } return; }
+    var ok=lexxAnsMatch(v, it.answer);
+    var fb=document.getElementById('lexx-sweep-fb');
+    if(fb){ fb.className='lexx-fb '+(ok?'ok':'bad'); fb.style.display='block';
+      fb.innerHTML=ok?'Pamiętasz to sprzed kilkunastu minut — ślad siedzi.':('Do zapamiętania: <strong>'+esc(it.answer)+'</strong>'); }
+    if(!ok) feedGap(it.answer);
+    var btn=document.getElementById('lexx-sweep-btn'); if(btn) btn.disabled=true;
+    if(inp) inp.disabled=true;
+    setTimeout(function(){ window._lexxSweepIdx=idx+1; lexxSweepStep(); }, ok?700:1500);
   };
 })();
 </script>
