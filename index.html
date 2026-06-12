@@ -3881,7 +3881,6 @@ async function initToFixPage(){
             <div style="display:flex;gap:8px">
               <button onclick="lexObSelect(this,'dur',10)" data-dur="10" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">10 min</button>
               <button onclick="lexObSelect(this,'dur',25)" data-dur="25" class="lex-dur-opt lex-ob-active" style="flex:1;padding:10px;border-radius:10px;border:2px solid var(--orange);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">25 min</button>
-              <button onclick="lexObSelect(this,'dur',40)" data-dur="40" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">40 min</button>
             </div>
           </div>
           <div>
@@ -13296,6 +13295,11 @@ async function lexStartFromOnboarding(){
       _lexProfile = profileData;
     }
   }catch(e){ console.error('Lex onboarding save:', e); }
+  // ── ENGINE v3 cutover (kill-switch elConfig.engine_v3) ──
+  try{
+    var _cfg = await elConfig();
+    if(!_cfg || _cfg.engine_v3 !== false){ elStartLesson(); return; }
+  }catch(e){ console.error("engine_v3 gate:", e); }
   lexStartLesson();
 }
 
@@ -15843,3 +15847,636 @@ async function lexInit(){
   #chat-messages{ max-width: 100%; }
 }
 </style>
+<script>
+// ═══════════════════════════════════════════════════════════
+// EL — AI TEACHER ENGINE v3 · LESSON FLOW (Sprint 4)
+// State machine (§6.1) + 9 rendererów (§6.2) w skorupie
+// #lex-card-engine. Wymaga: data layer (elApi/elCache/elLatency/
+// elQueue/elConfig) + helpery legacy (lexEsc, lexSpeak, lexShowScreen).
+// ═══════════════════════════════════════════════════════════
+
+var _elState = null;        // {lesson_id, lang, format_min, plan, screen_index, rolling, topic, macro_goal, done}
+var _elAdapt = {fallback:false, harder:false};
+var _elSubItem = 0;         // sub-item dla beatów multi-item (E2/E8)
+var _elBusy = false;
+var _elPrefetching = {};    // klucze grup w locie
+var EL_LANG_TTS = {en:'en-GB', es:'es-ES', nl:'nl-NL', jp:'ja-JP'};
+
+// ── START ─────────────────────────────────────────────────
+async function elStartLesson(){
+  _elAdapt = {fallback:false, harder:false};
+  _elSubItem = 0; _elBusy = false;
+  lexShowScreen('lex-card-engine');
+  elCardHTML('<span style="color:var(--dim2)">Lex układa Twoją lekcję…</span>');
+  elZoneHTML('');
+  var fmt = (_lexObDur === 10) ? 10 : 25;   // 40 min nie istnieje w v3
+  var r = await elApi('lesson-start', {format_min: fmt, target_lang: _lexLang});
+  if(!r.ok || !r.data || !r.data.plan){
+    console.error('elStartLesson:', r);
+    elCardHTML('<span style="color:var(--dim2)">Nie udało się ułożyć lekcji — uruchamiam tryb klasyczny…</span>');
+    setTimeout(function(){ lexStartLesson(); }, 600);
+    return;
+  }
+  var d = r.data;
+  _elState = {
+    lesson_id: d.lesson_id, lang: _lexLang, format_min: d.format_min || fmt,
+    plan: d.plan, screen_index: d.screen_index || 0,
+    rolling: d.rolling_accuracy || 0.8,
+    topic: d.topic_container, macro_goal: d.macro_goal, done: false
+  };
+  elCache.set('lesson', {lesson_id: d.lesson_id, lang: _lexLang});
+  elUpdateBoard();
+  elRender();
+}
+
+async function elResumeFromData(d){
+  _lexLang = d.target_lang || _lexLang;
+  var info = LEX_LANG_MAP[_lexLang]; if(info){ _lexLangName = info.name; _lexLangNative = info.native;
+    var badge = document.getElementById('lex-lang-badge'); if(badge) badge.textContent = '· ' + info.flag + ' ' + info.native; }
+  _elState = {
+    lesson_id: d.lesson_id, lang: _lexLang, format_min: d.format_min || 25,
+    plan: d.plan || [], screen_index: d.screen_index || 0,
+    rolling: d.rolling_accuracy || 0.8,
+    topic: d.topic_container, macro_goal: d.macro_goal, done: false
+  };
+  _elAdapt = {fallback:false, harder:false}; _elSubItem = 0; _elBusy = false;
+  lexShowScreen('lex-card-engine');
+  elUpdateBoard();
+  elRender();
+}
+
+// ── RENDER DISPATCH ───────────────────────────────────────
+async function elRender(){
+  var st = _elState; if(!st) return;
+  var item = st.plan[st.screen_index];
+  if(!item || item.type === 'CLOSE'){ elComplete(false); return; }
+
+  _elSubItem = 0;
+  elLatency.reset();
+
+  // top bar + progress (obraz, bez liczb-wyników)
+  var num = document.getElementById('lex-card-num');
+  if(num) num.textContent = 'Karta ' + (st.screen_index + 1);
+  var ph = document.getElementById('lex-phase');
+  if(ph){ ph.style.display='inline-block'; ph.textContent = elPhaseLabel(item.phase); }
+  var bar = document.getElementById('lex-progress-bar');
+  if(bar) bar.style.width = Math.round(100 * st.screen_index / Math.max(1, st.plan.length)) + '%';
+
+  // treść (lazy)
+  if(!item.content){
+    elCardHTML('<span style="color:var(--dim2)">Przygotowuję…</span>'); elZoneHTML('');
+    await elEnsureContent(item);
+  }
+  elPrefetchNext();
+
+  switch(item.type){
+    case 'PRIME':      return elRenderInfo(item, 'Zaczynamy →');
+    case 'CHECKPOINT': return elRenderInfo(item, 'Druga połowa →');
+    case 'E2':         return elRenderE2(item);
+    case 'E1':         return elRenderE1(item);
+    case 'E3':         return elRenderE3(item);
+    case 'E5':         return elRenderE5(item, false);
+    case 'STRETCH_E5': return elRenderE5(item, true);
+    case 'ODDECH':     return elRenderOddech(item);
+    case 'E8':         return elRenderE8(item);
+    default:           return elAdvanceTap();   // nieznany typ → przeskocz
+  }
+}
+
+function elPhaseLabel(p){
+  return {PRIME:'Start', ACTIVATE:'Rozgrzewka', CORE:'Trening', ODDECH:'Oddech',
+    CHECKPOINT:'Półmetek', STRETCH:'Wyzwanie', CONSOLIDATE:'Utrwalenie', CLOSE:'Finisz'}[p] || p;
+}
+
+// ── CONTENT (lazy + prefetch porcji N+1) ──────────────────
+function elGroupSpec(item){
+  return (item.portion != null) ? {portion: item.portion} : {phase: item.phase};
+}
+async function elEnsureContent(item){
+  var spec = elGroupSpec(item);
+  var r = await elApi('portion-content', Object.assign({lesson_id:_elState.lesson_id}, spec));
+  if(r.ok && r.data && r.data.items){
+    r.data.items.forEach(function(it){
+      var p = _elState.plan[it.idx];
+      if(p && p.idx === it.idx) p.content = it.content;
+    });
+  }
+  if(!item.content){
+    // degraded offline/awaria: minimalny beat z samego słowa
+    var w = item.word || (item.words||[])[0] || '';
+    item.content = {prompt_pl: w ? ('Słowo: ' + w) : 'Dalej', answer_key:[w], degraded:true};
+  }
+}
+function elPrefetchNext(){
+  var st = _elState; if(!st) return;
+  for(var i = st.screen_index + 1; i < st.plan.length; i++){
+    var p = st.plan[i];
+    if(p.content || p.type === 'CLOSE') continue;
+    var spec = elGroupSpec(p);
+    var key = JSON.stringify(spec);
+    if(_elPrefetching[key]) return;
+    _elPrefetching[key] = 1;
+    elApi('portion-content', Object.assign({lesson_id:st.lesson_id}, spec)).then(function(r){
+      delete _elPrefetching[key];
+      if(r.ok && r.data && r.data.items){
+        r.data.items.forEach(function(it){
+          var q = st.plan[it.idx];
+          if(q && !q.content) q.content = it.content;
+        });
+      }
+    });
+    return;  // tylko najbliższa grupa
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────
+function elCardHTML(html){
+  if(typeof speechSynthesis !== 'undefined'){ try{ speechSynthesis.cancel(); }catch(e){} }
+  var el = document.getElementById('lex-card-text');
+  if(el) el.innerHTML = html;
+  var hint = document.getElementById('lex-translate-hint'); if(hint) hint.style.display='none';
+  var tr = document.getElementById('lex-sentence-tr'); if(tr) tr.style.display='none';
+}
+function elZone(){
+  var zone = document.getElementById('lex-answer-zone');
+  ['lex-type-choice','lex-type-text','lex-type-conv','lex-type-feedback','lex-type-loading']
+    .forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display='none'; });
+  var el = document.getElementById('el-zone');
+  if(!el){
+    el = document.createElement('div'); el.id = 'el-zone';
+    el.style.cssText = 'display:flex;flex-direction:column;gap:10px';
+    if(zone) zone.appendChild(el);
+  }
+  return el;
+}
+function elZoneHTML(html){ elZone().innerHTML = html; }
+function elBtn(label, fn, primary){
+  return '<button onclick="'+fn+'" style="width:100%;padding:14px;background:'+(primary?'var(--navy)':'var(--paper)')+
+    ';color:'+(primary?'#fff':'var(--navy)')+';border:'+(primary?'none':'1.5px solid var(--border2)')+
+    ';border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">'+label+'</button>';
+}
+function elSpeakTarget(text){
+  if(!_lexSpeechEnabled || typeof speechSynthesis === 'undefined' || !text) return;
+  try{
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(text);
+    u.lang = EL_LANG_TTS[_elState.lang] || 'en-GB';
+    u.rate = 0.95;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+function elShuffle(a){
+  a = (a||[]).slice();
+  for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; }
+  return a;
+}
+function elGlossBtn(item){
+  var g = item.content && item.content.gloss_pl;
+  if(!g || _elAdapt.harder) return '';
+  return '<button onclick="elShowGloss(this)" data-gloss="'+lexEsc(g)+'" style="align-self:flex-start;font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif">[KLUCZ] podpowiedź</button>';
+}
+function elShowGloss(btn){
+  elLatency.markHint();
+  var g = btn.getAttribute('data-gloss');
+  btn.outerHTML = '<div style="font-size:13px;color:var(--dim);padding:8px 14px;background:var(--paper);border-radius:10px;border-left:3px solid var(--orange)">🇵🇱 '+g+'</div>';
+}
+function elHighlight(sentence, word){
+  if(!sentence) return '';
+  var safe = lexEsc(sentence);
+  if(word){
+    var re = new RegExp('('+word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','i');
+    safe = safe.replace(re, '<strong style="color:var(--orange)">$1</strong>');
+  }
+  return safe;
+}
+
+// Tablica lekcji (overlay) — słowa lekcji + temat
+function elUpdateBoard(){
+  var panel = document.getElementById('lex-board-panel');
+  if(!panel || !_elState) return;
+  var words = [];
+  _elState.plan.forEach(function(p){
+    if(p.phase === 'CORE' && p.type === 'E1' && p.words){
+      p.words.forEach(function(w){ if(words.indexOf(w) < 0) words.push(w); });
+    }
+  });
+  var html = '<div style="font-size:12px;color:var(--dim);padding:8px 12px;background:var(--paper);border-radius:10px;margin-bottom:6px">Temat: <strong>'+lexEsc(_elState.topic||'')+'</strong></div>';
+  words.forEach(function(w){
+    html += '<div style="font-size:13px;color:var(--navy);padding:6px 12px;background:var(--paper);border-radius:8px">'+lexEsc(w)+'</div>';
+  });
+  panel.innerHTML = html;
+}
+
+// ── SUBMIT (wspólna ścieżka, offline-aware) ───────────────
+async function elSubmit(payload, opts){
+  if(_elBusy) return; _elBusy = true;
+  opts = opts || {};
+  var st = _elState;
+  var m = elLatency.read();
+  var body = Object.assign({
+    lesson_id: st.lesson_id, screen_index: st.screen_index,
+    target_lang: st.lang, latency_ms: m.latency_ms, hint_used: m.hint_used
+  }, payload);
+
+  var r = await elApi('beat-submit', body);
+
+  if(r.ok){
+    var d = r.data || {};
+    st.rolling = (d.rolling_accuracy != null) ? d.rolling_accuracy : st.rolling;
+    await elApplyAdaptation(d.adaptation);
+    if(!body.no_advance && d.next_screen_index != null) st.screen_index = d.next_screen_index;
+    _elBusy = false;
+    return d;
+  }
+  if(r.status === 409){
+    // duplikat / rozjazd: resynchronizacja do stanu serwera
+    var nsi = r.data && r.data.next_screen_index;
+    if(nsi != null){ st.screen_index = nsi; }
+    _elBusy = false;
+    return {resync:true, correct:null};
+  }
+  if(r.offline){
+    // tryb offline: lokalny grading lustrzany, kolejka, advance lokalny
+    var item = st.plan[st.screen_index];
+    var key = (payload._local_key || (item.content && item.content.answer_key) || []);
+    var correct = elLocalGrade(String(payload.answer||''), key, payload.exercise_type || item.type, item.words);
+    elQueue.push('beat-submit', body);
+    st.rolling = Math.round((0.7*st.rolling + 0.3*(correct?1:0))*1000)/1000;
+    if(!body.no_advance) st.screen_index++;
+    _elBusy = false;
+    return {correct: correct, feedback: correct ? 'Dobrze!' : null,
+      answer_key_display: correct ? undefined : key[0], offline: true};
+  }
+  console.error('beat-submit:', r);
+  _elBusy = false;
+  return {correct:null, error:true};
+}
+
+function elLocalGrade(answer, key, type, words){
+  var norm = function(s){ return String(s||'').trim().toLowerCase().normalize('NFC').replace(/\s+/g,' ').replace(/[.!?,;:]+$/,''); };
+  var a = norm(answer); if(!a) return false;
+  if((key||[]).some(function(k){ return norm(k) === a; })) return true;
+  if(type === 'E5'){
+    return (key||[]).some(function(k){ return k && a.indexOf(norm(k)) >= 0; }) && a.split(' ').length >= 3;
+  }
+  if(type === 'STRETCH_E5'){
+    var hits = (words||[]).filter(function(w){ return a.indexOf(norm(w)) >= 0; }).length;
+    return hits >= 2 && a.split(' ').length >= 6;
+  }
+  return false;
+}
+
+async function elApplyAdaptation(a){
+  if(!a) return;
+  if(a === 'FALLBACK'){ _elAdapt.fallback = true; _elAdapt.harder = false; }
+  if(a === 'HARDER'){ _elAdapt.harder = true; _elAdapt.fallback = false; }
+  if(a === 'HOLD_NEW'){
+    // plan zmutowany server-side → resync planu
+    var r = await elApi('lesson-resume', {target_lang: _elState.lang});
+    if(r.ok && r.data && r.data.plan) _elState.plan = r.data.plan;
+  }
+  // RESEED — obsługa w feedbacku (neutralne przejście)
+}
+
+// Feedback strip: poprawne → auto-advance 1.3s; błędne → Dalej (user czyta)
+function elShowFeedback(d, afterFn){
+  var zone = elZone();
+  var ok = d.correct === true;
+  var neutral = d.correct === null || d.correct === undefined;
+  var color = neutral ? 'var(--border2)' : ok ? '#16a34a' : '#dc2626';
+  var bg = neutral ? 'var(--paper)' : ok ? '#f0fdf4' : '#fef2f2';
+  var html = '<div style="padding:12px 16px;background:'+bg+';border:1px solid '+color+';border-radius:12px;font-size:14px;color:var(--navy);line-height:1.5">';
+  if(!neutral) html += '<strong>'+(ok?'✓ Dobrze!':'✗ Nie tym razem')+'</strong> ';
+  if(d.feedback) html += lexEsc(d.feedback);
+  if(!ok && !neutral && d.answer_key_display) html += '<div style="margin-top:6px;font-size:13px;color:var(--dim)">Poprawnie: <strong>'+lexEsc(d.answer_key_display)+'</strong></div>';
+  html += '</div>';
+  if(ok || neutral){
+    zone.innerHTML = html;
+    setTimeout(afterFn, neutral ? 900 : 1300);
+  } else {
+    window._elFeedbackNext = afterFn;
+    zone.innerHTML = html + elBtn('Dalej →', 'window._elFeedbackNext()', true);
+  }
+}
+
+// ── RENDERERY ─────────────────────────────────────────────
+
+// PRIME / CHECKPOINT — info + tap (bez pomiaru)
+function elRenderInfo(item, btnLabel){
+  var c = item.content || {};
+  elCardHTML(lexEsc(c.prompt_pl||'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>'));
+  try{ lexSpeak(c.prompt_pl||''); }catch(e){}
+  elZoneHTML(elBtn(btnLabel, 'elAdvanceTap()', true));
+}
+async function elAdvanceTap(){
+  var d = await elSubmit({exercise_type:'ADVANCE', modality:'tap', answer:null, word:null});
+  if(d) elRender();
+}
+
+// E2 WARM FIRE — MC 1-tap, sekwencja mc_items, latency per item → baseline
+function elRenderE2(item){
+  var items = (item.content && item.content.mc_items) || [];
+  if(!items.length){ elAdvanceTap(); return; }
+  elRenderE2Item(item, items);
+}
+function elRenderE2Item(item, items){
+  var it = items[_elSubItem];
+  elCardHTML('<div style="font-size:13px;color:var(--dim2);margin-bottom:8px">Szybko — co znaczy:</div>'+
+    '<div style="font-size:24px;font-weight:500;color:var(--navy)">'+lexEsc(it.word)+'</div>'+
+    (item.calibration_probe ? '' : ''));
+  elSpeakTarget(it.word);
+  var opts = elShuffle([it.correct].concat(it.distractors||[]));
+  var html = '<div style="display:grid;grid-template-columns:1fr;gap:8px">';
+  opts.forEach(function(o){
+    html += '<button class="el-mc" data-v="'+lexEsc(o)+'" style="padding:13px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;font-size:14px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif;text-align:left">'+lexEsc(o)+'</button>';
+  });
+  html += '</div>';
+  elZoneHTML(html);
+  elLatency.start();
+  Array.prototype.forEach.call(document.querySelectorAll('#el-zone .el-mc'), function(btn){
+    btn.onclick = async function(){
+      elLatency.firstAction();
+      var chosen = btn.getAttribute('data-v');
+      var isLast = _elSubItem >= items.length - 1;
+      var ok = chosen === it.correct;
+      btn.style.borderColor = ok ? '#16a34a' : '#dc2626';
+      btn.style.background = ok ? '#f0fdf4' : '#fef2f2';
+      var d = await elSubmit({
+        exercise_type:'E2', modality:'tap', word: it.word, answer: chosen,
+        no_advance: !isLast, _local_key:[it.correct]
+      });
+      if(!d) return;
+      setTimeout(function(){
+        if(isLast){ elRender(); }
+        else { _elSubItem++; elLatency.reset(); elRenderE2Item(item, items); }
+      }, 650);
+    };
+  });
+}
+
+// E1 CUE — kontekst + target; tap „rozumiem" (latency tap)
+function elRenderE1(item){
+  var c = item.content || {};
+  var html = '';
+  if(item.is_new) html += '<div style="display:inline-block;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#0369a1;background:#e0f2fe;border:1px solid #0ea5e9;border-radius:100px;padding:3px 10px;margin-bottom:10px">Nowe słowo</div>';
+  html += '<div style="font-size:13px;color:var(--dim);margin-bottom:10px;line-height:1.6">'+lexEsc(c.prompt_pl||'')+'</div>';
+  if(c.sentence_target) html += '<div style="font-size:18px;line-height:1.7;color:var(--navy)">'+elHighlight(c.sentence_target, item.word)+'</div>';
+  elCardHTML(html);
+  elSpeakTarget(c.sentence_target || item.word);
+  elZoneHTML(elGlossBtn(item) + elBtn('Rozumiem →', 'elSubmitE1()', true));
+  elLatency.start();
+}
+async function elSubmitE1(){
+  elLatency.firstAction();
+  var item = _elState.plan[_elState.screen_index];
+  var key = (item.content && item.content.answer_key) || [item.word];
+  var d = await elSubmit({exercise_type:'E1', modality:'tap', word:item.word,
+    answer: key[0] || item.word, _local_key:key});
+  if(d) elRender();
+}
+
+// E3 GAP — zdanie z luką; typed | bank tiles (FALLBACK / with_bank)
+function elRenderE3(item){
+  var c = item.content || {};
+  var html = '<div style="font-size:13px;color:var(--dim);margin-bottom:10px">'+lexEsc(c.prompt_pl||'Uzupełnij lukę:')+'</div>';
+  if(item.weave_from) html += '<div style="font-size:11px;color:var(--dim2);margin-bottom:8px">↩ wraca z wcześniejszej części</div>';
+  html += '<div style="font-size:18px;line-height:1.7;color:var(--navy)">'+lexEsc(c.sentence_target||'___')+'</div>';
+  elCardHTML(html);
+  var useBank = !!item.with_bank || _elAdapt.fallback;
+  var zone = '<div id="el-input-wrap" style="display:flex;gap:8px;align-items:flex-end">'+
+    '<textarea id="el-input" rows="1" placeholder="Wpisz brakujące słowo…" style="flex:1;resize:none;padding:12px 14px;border-radius:14px;border:2px solid var(--border2);font-size:14px;font-family:DM Sans,sans-serif;outline:none" onkeydown="if(event.key===\'Enter\'){event.preventDefault();elSubmitTyped(\'E3\');}"></textarea>'+
+    '<button onclick="elSubmitTyped(\'E3\')" style="width:44px;height:44px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;color:#fff;font-size:16px">→</button></div>';
+  if(useBank && c.tiles && c.tiles.length){
+    zone += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+    elShuffle(c.tiles).forEach(function(t){
+      zone += '<button onclick="elTileTap(this,\'E3\')" data-v="'+lexEsc(t)+'" style="padding:9px 16px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:14px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">'+lexEsc(t)+'</button>';
+    });
+    zone += '</div>';
+  }
+  elZoneHTML(elGlossBtn(item) + zone);
+  elLatency.start();
+  var inp = document.getElementById('el-input');
+  if(inp){ elLatency.bindTyped(inp); inp.focus(); }
+}
+async function elTileTap(btn, type){
+  elLatency.firstAction();
+  var v = btn.getAttribute('data-v');
+  var item = _elState.plan[_elState.screen_index];
+  if(type === 'E5'){
+    // E5: kafelki komponują zdanie
+    var inp = document.getElementById('el-input');
+    if(inp){ inp.value = (inp.value ? inp.value + ' ' : '') + v; }
+    btn.disabled = true; btn.style.opacity = .4;
+    return;
+  }
+  var d = await elSubmit({exercise_type:type, modality:'tap', word:item.word, answer:v});
+  if(d) elShowFeedback(d, elRender);
+}
+async function elSubmitTyped(type){
+  var inp = document.getElementById('el-input');
+  var val = inp ? inp.value : '';
+  if(!String(val).trim()) return;
+  var item = _elState.plan[_elState.screen_index];
+  var d = await elSubmit({exercise_type:type, modality:'typed',
+    word: item.word || null, answer: val});
+  if(d) elShowFeedback(d, elRender);
+}
+
+// E5 SCULPT / STRETCH_E5 — produkcja: intencja PL → zdanie target
+function elRenderE5(item, isStretch){
+  var c = item.content || {};
+  var html = '<div style="font-size:13px;color:var(--dim2);margin-bottom:6px">'+(isStretch?'Wyzwanie — połącz słowa:':'Twoja kolej — wyraź to:')+'</div>'+
+    '<div style="font-size:16px;line-height:1.7;color:var(--navy)">'+lexEsc(c.prompt_pl||'')+'</div>';
+  if(isStretch && item.words && item.words.length){
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">';
+    item.words.forEach(function(w){
+      html += '<span style="font-size:13px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy)">'+lexEsc(w)+'</span>';
+    });
+    html += '</div>';
+  }
+  elCardHTML(html);
+  var useTiles = !isStretch && _elAdapt.fallback && c.tiles && c.tiles.length;
+  var zone = '<div style="display:flex;gap:8px;align-items:flex-end">'+
+    '<textarea id="el-input" rows="2" placeholder="Napisz po '+lexEsc(_lexLangName)+'…" style="flex:1;resize:none;padding:12px 14px;border-radius:14px;border:2px solid var(--border2);font-size:14px;font-family:DM Sans,sans-serif;outline:none" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();elSubmitTyped(\''+(isStretch?'STRETCH_E5':'E5')+'\');}"></textarea>'+
+    '<button onclick="elSubmitTyped(\''+(isStretch?'STRETCH_E5':'E5')+'\')" style="width:44px;height:44px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;color:#fff;font-size:16px">→</button></div>';
+  if(useTiles){
+    zone += '<div style="font-size:11px;color:var(--dim2)">Ułóż z kafelków:</div><div style="display:flex;flex-wrap:wrap;gap:8px">';
+    elShuffle(c.tiles).forEach(function(t){
+      zone += '<button onclick="elTileTap(this,\'E5\')" data-v="'+lexEsc(t)+'" style="padding:9px 16px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:14px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">'+lexEsc(t)+'</button>';
+    });
+    zone += '</div>';
+  }
+  elZoneHTML(elGlossBtn(item) + zone);
+  elLatency.start();
+  var inp = document.getElementById('el-input');
+  if(inp){ elLatency.bindTyped(inp); inp.focus(); }
+}
+
+// ODDECH — listening TTS (M6) + 1 MC; transkrypt na tap
+function elRenderOddech(item){
+  var c = item.content || {};
+  var html = '<div style="font-size:13px;color:var(--dim2);margin-bottom:8px">🎧 Oddech — posłuchaj:</div>'+
+    '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">'+
+    '<button onclick="elOddechPlay()" style="padding:10px 20px;border-radius:100px;border:none;background:var(--navy);color:#fff;font-size:14px;cursor:pointer;font-family:DM Sans,sans-serif">▶ Odtwórz</button>'+
+    '<button onclick="elOddechTranscript(this)" style="padding:10px 16px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;color:var(--dim);font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Pokaż transkrypt</button></div>'+
+    '<div id="el-oddech-tr" style="display:none;font-size:15px;line-height:1.7;color:var(--navy);padding:12px;background:var(--paper);border-radius:10px"></div>';
+  elCardHTML(html);
+  var tr = document.getElementById('el-oddech-tr');
+  if(tr) tr.textContent = c.listen_text || '';
+  var zone = '<div style="font-size:14px;font-weight:500;color:var(--navy)">'+lexEsc(c.question_pl||'')+'</div>'+
+    '<div style="display:grid;gap:8px">';
+  (c.options||[]).forEach(function(o){
+    zone += '<button class="el-mc" data-v="'+lexEsc(o)+'" style="padding:13px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;font-size:14px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif;text-align:left">'+lexEsc(o)+'</button>';
+  });
+  zone += '</div>';
+  elZoneHTML(zone);
+  elOddechPlay();
+  elLatency.start();
+  Array.prototype.forEach.call(document.querySelectorAll('#el-zone .el-mc'), function(btn){
+    btn.onclick = async function(){
+      elLatency.firstAction();
+      var d = await elSubmit({exercise_type:'ODDECH', modality:'tap', word:null,
+        answer: btn.getAttribute('data-v'),
+        _local_key:[String((c.options||[])[c.correct_index||0]||'')]});
+      if(d) elShowFeedback(d, elRender);
+    };
+  });
+}
+function elOddechPlay(){
+  var item = _elState.plan[_elState.screen_index];
+  elSpeakTarget(item.content && item.content.listen_text);
+}
+function elOddechTranscript(btn){
+  var tr = document.getElementById('el-oddech-tr');
+  if(tr){ tr.style.display = tr.style.display==='none' ? 'block' : 'none'; }
+  btn.textContent = (tr && tr.style.display==='block') ? 'Ukryj transkrypt' : 'Pokaż transkrypt';
+}
+
+// E8 CALLBACK — sweep: gloss → szybkie typed, sekwencja items
+function elRenderE8(item){
+  var items = (item.content && item.content.items) || [];
+  if(!items.length){ elAdvanceTap(); return; }
+  elRenderE8Item(item, items);
+}
+function elRenderE8Item(item, items){
+  var it = items[_elSubItem];
+  elCardHTML('<div style="font-size:13px;color:var(--dim2);margin-bottom:8px">'+lexEsc((item.content&&item.content.prompt_pl)||'Błyskawiczna runda:')+'</div>'+
+    '<div style="font-size:20px;font-weight:500;color:var(--navy)">🇵🇱 '+lexEsc(it.prompt_pl)+'</div>');
+  var bank = _elAdapt.fallback;
+  var zone = '<div style="display:flex;gap:8px;align-items:flex-end">'+
+    '<textarea id="el-input" rows="1" placeholder="Po '+lexEsc(_lexLangName)+'…" style="flex:1;resize:none;padding:12px 14px;border-radius:14px;border:2px solid var(--border2);font-size:14px;font-family:DM Sans,sans-serif;outline:none" onkeydown="if(event.key===\'Enter\'){event.preventDefault();elSubmitE8Item();}"></textarea>'+
+    '<button onclick="elSubmitE8Item()" style="width:44px;height:44px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;color:#fff;font-size:16px">→</button></div>';
+  elZoneHTML(zone);
+  elLatency.start();
+  var inp = document.getElementById('el-input');
+  if(inp){ elLatency.bindTyped(inp); inp.focus(); }
+  window._elE8 = {item:item, items:items};
+}
+async function elSubmitE8Item(){
+  var ctx = window._elE8; if(!ctx) return;
+  var inp = document.getElementById('el-input');
+  var val = inp ? inp.value : '';
+  if(!String(val).trim()) return;
+  var it = ctx.items[_elSubItem];
+  var isLast = _elSubItem >= ctx.items.length - 1;
+  var d = await elSubmit({exercise_type:'E8', modality:'typed',
+    word:(it.answer_key||[])[0]||null, answer:val,
+    no_advance: !isLast, _local_key: it.answer_key||[]});
+  if(!d) return;
+  elShowFeedback(d, function(){
+    if(isLast){ elRender(); }
+    else { _elSubItem++; elLatency.reset(); elRenderE8Item(ctx.item, ctx.items); }
+  });
+}
+
+// ── COMPLETE / SUMMARY ────────────────────────────────────
+async function elComplete(early){
+  if(!_elState || _elState.done) return;
+  _elState.done = true;
+  elCardHTML('<span style="color:var(--dim2)">Lex podsumowuje lekcję…</span>');
+  elZoneHTML('');
+  var r = await elApi('lesson-complete', {lesson_id:_elState.lesson_id});
+  var s = (r.ok && r.data && r.data.summary) || {};
+  elCache.del('lesson');
+  elRenderSummary(s, early);
+}
+function elRenderSummary(s, early){
+  var score = document.getElementById('lex-summary-score');
+  if(score){
+    var parts = [];
+    if(s.beats_total) parts.push(s.beats_total + ' kart');
+    if(s.correct_share != null) parts.push(Math.round(s.correct_share*100) + '% trafień');
+    score.textContent = early ? 'Lekcja zakończona wcześniej — postęp zapisany.' : parts.join(' · ');
+  }
+  var vocab = document.getElementById('lex-summary-vocab');
+  if(vocab){
+    var html = '';
+    if(s.mirror) html += '<div style="font-size:14px;color:var(--navy);padding:12px;background:#fff7ed;border:1px solid var(--orange);border-radius:12px;margin-bottom:12px;line-height:1.5">✨ '+lexEsc(s.mirror)+'</div>';
+    if(s.words_advanced && s.words_advanced.length){
+      html += '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Słowa, które awansowały</div>';
+      s.words_advanced.slice(0,8).forEach(function(w){
+        html += '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px"><span style="color:var(--navy);font-weight:500">'+lexEsc(w.word)+'</span><span style="font-size:12px;color:var(--dim2)">'+lexEsc(w.from)+' → <strong style="color:var(--orange)">'+lexEsc(w.to)+'</strong></span></div>';
+      });
+    }
+    if(s.map_delta && s.map_delta.active_band){
+      html += '<div style="font-size:13px;color:var(--dim);margin-top:12px">Mapa języka: aktywny poziom <strong style="color:var(--navy)">'+lexEsc(s.map_delta.active_band)+'</strong></div>';
+    }
+    if(s.ambient_preview && s.ambient_preview.length){
+      html += '<div style="font-size:13px;color:var(--dim);margin-top:8px">Wkrótce dojrzeją: '+s.ambient_preview.map(lexEsc).join(', ')+'</div>';
+    }
+    vocab.innerHTML = html || '<div style="font-size:13px;color:var(--dim2)">Postęp zapisany w Zeszycie.</div>';
+  }
+  var gapsWrap = document.getElementById('lex-summary-gaps-wrap');
+  if(gapsWrap){
+    if(s.gaps_closing && s.gaps_closing.length){
+      gapsWrap.style.display = 'block';
+      gapsWrap.innerHTML = '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Luki domknięte</div>'+
+        s.gaps_closing.map(function(g){ return '<div style="font-size:14px;color:var(--navy);padding:5px 0">✓ '+lexEsc(g.desc)+'</div>'; }).join('');
+    } else gapsWrap.style.display = 'none';
+  }
+  // fiszki desktopa: zasil _lexVocab słowami lekcji (integracja z lexSaveVocab)
+  try{
+    _lexVocab = [];
+    (_elState.plan||[]).forEach(function(p){
+      if(p.phase==='CORE' && p.type==='E1' && p.content && p.word){
+        _lexVocab.push({word: p.word, translation: p.content.gloss_pl || ''});
+      }
+    });
+  }catch(e){}
+  lexShowScreen('lex-summary');
+}
+
+// ── RESUME + INTEGRACJA Z LEGACY ──────────────────────────
+// Override (wzorzec codebase: późniejsza definicja wygrywa)
+var _lexCheckResumableLegacy = lexCheckResumable;
+lexCheckResumable = async function(){
+  var banner = document.getElementById('lex-continue-banner');
+  if(banner) banner.style.display='none';
+  try{
+    var cfg = await elConfig();
+    if(cfg && cfg.engine_v3 !== false){
+      var r = await elApi('lesson-resume', {});
+      if(r.ok && r.status === 200 && r.data && r.data.plan && r.data.plan.length){
+        window._elResumeData = r.data;
+        if(banner){
+          var info = LEX_LANG_MAP[r.data.target_lang] || {flag:'🌐', name:r.data.target_lang};
+          banner.style.display = 'block';
+          banner.innerHTML = '<div style="background:var(--paper2,#fff7ed);border:.5px solid var(--orange);border-radius:14px;padding:16px;text-align:left;display:flex;align-items:center;gap:14px">'+
+            '<div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--navy)">Masz niedokończoną lekcję '+info.flag+'</div>'+
+            '<div style="font-size:12px;color:var(--dim2);margin-top:2px">'+lexEsc(r.data.topic_container||'')+' · karta '+((r.data.screen_index||0)+1)+'</div></div>'+
+            '<button onclick="elResumeFromData(window._elResumeData)" style="padding:9px 18px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Kontynuuj →</button></div>';
+        }
+        return;
+      }
+    }
+  }catch(e){}
+  try{ _lexCheckResumableLegacy(); }catch(e){}
+};
+
+// „Zakończ" w top barze: w aktywnej lekcji v3 → lesson-complete (postęp zapisany)
+var _lexEndLessonLegacy = lexEndLesson;
+lexEndLesson = function(){
+  if(_elState && !_elState.done){ elComplete(true); return; }
+  try{ _lexEndLessonLegacy(); }catch(e){ lexShowScreen('lex-lang-select'); }
+};
+</script>
