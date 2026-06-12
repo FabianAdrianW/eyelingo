@@ -12951,6 +12951,7 @@ async function elApi(fn, body){
 
   var ctrl = new AbortController();
   var timer = setTimeout(function(){ ctrl.abort(); }, EL_API_TIMEOUT_MS);
+  var _t0 = performance.now();
   try{
     var res = await fetch(EL_EF_BASE + fn, {
       method: 'POST',
@@ -12963,13 +12964,15 @@ async function elApi(fn, body){
       signal: ctrl.signal
     });
     clearTimeout(timer);
-    if(res.status === 204) return {ok:true, status:204, data:null};
+    if(res.status === 204){ elTrack('ef_call', fn, 204, performance.now()-_t0, body); return {ok:true, status:204, data:null}; }
     var data = null;
     try{ data = await res.json(); }catch(e){}
-    if(!res.ok) return {ok:false, status:res.status, error:(data && data.error) || ('http_' + res.status), data:data};
+    if(!res.ok){ elTrack('ef_call', fn, res.status, performance.now()-_t0, body); return {ok:false, status:res.status, error:(data && data.error) || ('http_' + res.status), data:data}; }
+    elTrack('ef_call', fn, res.status, performance.now()-_t0, body);
     return {ok:true, status:res.status, data:data};
   }catch(e){
     clearTimeout(timer);
+    elTrack('ef_call', fn, 0, performance.now()-_t0, body);
     // network/abort → traktuj jako offline (elQueue decyduje co dalej)
     return {ok:false, status:0, error:String(e && e.name === 'AbortError' ? 'timeout' : e), offline:true};
   }
@@ -13095,6 +13098,35 @@ async function elConfig(){
   }catch(e){}
   return _elCfg;  // null ⇒ caller traktuje jak engine_v3=false (fallback legacy)
 }
+
+// ── elTrack — telemetria (batch 8 / 10s, RLS own-row) ─────
+// Bezpieczna: błędy zapisu nigdy nie wpływają na flow lekcji.
+var _elTel = [];
+var _elTelTimer = null;
+function elTrack(kind, fn, status, durationMs, body){
+  try{
+    var lid = (body && body.lesson_id) || (_elState && _elState.lesson_id) || null;
+    var meta = {};
+    if(body){ if(body.exercise_type) meta.exercise_type = body.exercise_type;
+      if(body.adaptation) meta.adaptation = body.adaptation; }
+    _elTel.push({kind: kind, fn: fn || null, status: (status==null?null:status),
+      duration_ms: durationMs!=null?Math.round(durationMs):null, lesson_id: lid, meta: meta});
+    if(_elTel.length >= 8){ elTrackFlush(); }
+    else if(!_elTelTimer){ _elTelTimer = setTimeout(elTrackFlush, 10000); }
+  }catch(e){}
+}
+async function elTrackFlush(){
+  if(_elTelTimer){ clearTimeout(_elTelTimer); _elTelTimer = null; }
+  if(!_elTel.length) return;
+  var batch = _elTel.splice(0, _elTel.length);
+  try{
+    var uid = window._uid || ((await db.auth.getSession()).data.session||{}).user && (await db.auth.getSession()).data.session.user.id;
+    if(!uid) return;
+    var rows = batch.map(function(r){ r.user_id = uid; return r; });
+    await db.from('telemetry_events').insert(rows);
+  }catch(e){ /* telemetria nigdy nie blokuje */ }
+}
+window.addEventListener('beforeunload', function(){ try{ elTrackFlush(); }catch(e){} });
 </script>
 <script>
 // ═══════════════════════════════════════════════════════════
@@ -15874,6 +15906,7 @@ async function elStartLesson(){
   if(!r.ok || !r.data || !r.data.plan){
     console.error('elStartLesson:', r);
     elCardHTML('<span style="color:var(--dim2)">Nie udało się ułożyć lekcji — uruchamiam tryb klasyczny…</span>');
+    elTrack('fallback_legacy', 'lesson-start', (r&&r.status)||0, null, {});
     setTimeout(function(){ lexStartLesson(); }, 600);
     return;
   }
@@ -15908,6 +15941,7 @@ async function elResumeFromData(d){
 // ── RENDER DISPATCH ───────────────────────────────────────
 async function elRender(){
   var st = _elState; if(!st) return;
+  if(st.screen_index >= st.plan.length){ elComplete(false); return; }
   var item = st.plan[st.screen_index];
   if(!item || item.type === 'CLOSE'){ elComplete(false); return; }
 
@@ -15965,6 +15999,9 @@ async function elEnsureContent(item){
     // degraded offline/awaria: minimalny beat z samego słowa
     var w = item.word || (item.words||[])[0] || '';
     item.content = {prompt_pl: w ? ('Słowo: ' + w) : 'Dalej', answer_key:[w], degraded:true};
+    elTrack('degraded', item.type, null, null, {lesson_id:_elState.lesson_id});
+  } else if(item.content.degraded){
+    elTrack('degraded', item.type, null, null, {lesson_id:_elState.lesson_id});
   }
 }
 function elPrefetchNext(){
@@ -16101,6 +16138,7 @@ async function elSubmit(payload, opts){
     var key = (payload._local_key || (item.content && item.content.answer_key) || []);
     var correct = elLocalGrade(String(payload.answer||''), key, payload.exercise_type || item.type, item.words);
     elQueue.push('beat-submit', body);
+    elTrack('offline', item.type, 0, null, {lesson_id:st.lesson_id});
     st.rolling = Math.round((0.7*st.rolling + 0.3*(correct?1:0))*1000)/1000;
     if(!body.no_advance) st.screen_index++;
     _elBusy = false;
@@ -16128,6 +16166,7 @@ function elLocalGrade(answer, key, type, words){
 
 async function elApplyAdaptation(a){
   if(!a) return;
+  elTrack('adaptation', a, null, null, {});
   if(a === 'FALLBACK'){ _elAdapt.fallback = true; _elAdapt.harder = false; }
   if(a === 'HARDER'){ _elAdapt.harder = true; _elAdapt.fallback = false; }
   if(a === 'HOLD_NEW'){
@@ -16152,7 +16191,8 @@ function elShowFeedback(d, afterFn){
   html += '</div>';
   if(ok || neutral){
     zone.innerHTML = html;
-    setTimeout(afterFn, neutral ? 900 : 1300);
+    var lid = _elState && _elState.lesson_id;
+    setTimeout(function(){ if(_elState && _elState.lesson_id === lid && !_elState.done) afterFn(); }, neutral ? 900 : 1300);
   } else {
     window._elFeedbackNext = afterFn;
     zone.innerHTML = html + elBtn('Dalej →', 'window._elFeedbackNext()', true);
@@ -16199,6 +16239,7 @@ function elRenderE2Item(item, items){
       var chosen = btn.getAttribute('data-v');
       var isLast = _elSubItem >= items.length - 1;
       var ok = chosen === it.correct;
+      var grid = btn.parentNode; if(grid) grid.style.pointerEvents = 'none';
       btn.style.borderColor = ok ? '#16a34a' : '#dc2626';
       btn.style.background = ok ? '#f0fdf4' : '#fef2f2';
       var d = await elSubmit({
@@ -16335,6 +16376,7 @@ function elRenderOddech(item){
   Array.prototype.forEach.call(document.querySelectorAll('#el-zone .el-mc'), function(btn){
     btn.onclick = async function(){
       elLatency.firstAction();
+      var grid = btn.parentNode; if(grid) grid.style.pointerEvents = 'none';
       var d = await elSubmit({exercise_type:'ODDECH', modality:'tap', word:null,
         answer: btn.getAttribute('data-v'),
         _local_key:[String((c.options||[])[c.correct_index||0]||'')]});
