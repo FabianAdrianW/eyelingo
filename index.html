@@ -13998,10 +13998,20 @@ function lexEvalPersist(model){
     _lexProfile.levels_by_lang = _lexProfile.levels_by_lang || {};
     _lexProfile.levels_by_lang[_lexLang] = model.cefr;
     _lexProfile.user_level = model.cefr;
-    var names = model.gaps.map(function(g){ return g.name; });
-    var merged = (_lexProfile.known_gaps || []).slice();
-    names.forEach(function(n){ if(merged.indexOf(n) === -1) merged.push(n); });
-    _lexProfile.known_gaps = merged.slice(0, 12);
+    // Format kanoniczny luk (spójny z lekcjami, sidebariem i lexMarkGapKnown):
+    // {topic, priority, status, count}; misconceptions wchodzą pierwsze (Assessment Bible §7.2)
+    var byTopic = {};
+    (_lexProfile.known_gaps || []).forEach(function(g){
+      if(typeof g === 'string') g = {topic:g, priority:2, status:'open', count:1};
+      if(g && g.topic) byTopic[g.topic.toLowerCase()] = g;
+    });
+    model.gaps.forEach(function(g){
+      var k = String(g.name).toLowerCase();
+      if(!byTopic[k]) byTopic[k] = {topic:g.name, priority:(g.quadrant === 'misconception' ? 3 : 2), status:'open', count:1, source:'eval'};
+    });
+    _lexProfile.known_gaps = Object.keys(byTopic).map(function(k){ return byTopic[k]; })
+      .sort(function(a, b){ return (b.priority || 1) - (a.priority || 1); })
+      .slice(0, 14);
     (async function(){
       try{
         var s = (await db.auth.getSession()).data.session;
@@ -15231,7 +15241,36 @@ function lexNextCardWithAnswer(answer, isCorrect){
 
 // ── Sidebar PRO: ładowanie danych ──
 var _lexNotebookIdx = 0;
+// Powrót do zapisanej Mapy Językowej (strona 1 Zeszytu — Assessment Bible E10)
+function lexShowSavedMap(){
+  var km = null;
+  try{ km = JSON.parse(localStorage.getItem(uk('lex_km_'+(_lexLang||'en')))||'null'); }catch(e){}
+  if(!km || !km.cats) return;
+  lexShowScreen('lex-eval');
+  lexEvalRenderMap(km);
+}
+
+function lexRenderSidebarMap(){
+  var box = document.getElementById('lex-sb-resume'); if(!box) return;
+  var km = null;
+  try{ km = JSON.parse(localStorage.getItem(uk('lex_km_'+(_lexLang||'en')))||'null'); }catch(e){}
+  if(!km || !km.cats) return;
+  var btn = '<button onclick="lexShowSavedMap()" style="width:100%;text-align:left;background:var(--navy);border:none;border-radius:12px;padding:11px 13px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+    + '<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0"><path d="M9 20l-5.5-2.2V5.6L9 7.8l6-2.2 5.5 2.2v12.2L15 17.8l-6 2.2z"></path><path d="M9 7.8v12.2M15 5.6v12.2"></path></svg>'
+    + '<span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:500;color:#fff">Twoja Mapa Językowa</span>'
+    + '<span style="display:block;font-size:11px;color:rgba(255,255,255,.65)">' + (km.cefr || '') + ' · aktualizuje się po lekcjach</span></span></button>';
+  var holder = document.getElementById('lex-sb-map');
+  if(!holder){
+    holder = document.createElement('div');
+    holder.id = 'lex-sb-map';
+    holder.style.cssText = 'margin:18px 16px 0 4px;padding-right:16px';
+    box.parentNode.insertBefore(holder, box);
+  }
+  holder.innerHTML = btn;
+}
+
 async function lexLoadSidebar(){
+  lexRenderSidebarMap();
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){ lexRenderSidebarGaps(); return; }
@@ -15889,16 +15928,37 @@ async function lexInit(){
     lexxLoading();
     var focus = window._lexLessonFocus || '';
     var lvl = (typeof lexCurrentLevel==='function'?lexCurrentLevel():(window._lexObLevel||'B1'))||'B1';
+    // Model wiedzy z ewaluacji (Assessment Bible §7) — steruje doborem treści i TYPÓW zadań
+    var km = null;
+    try{ km = JSON.parse(localStorage.getItem(uk('lex_km_'+(window._lexLang||'en')))||'null'); }catch(e){ km = null; }
     var recentGaps = '';
     try{
-      var g=(window._lexProfile&&_lexProfile.known_gaps)||[];
-      recentGaps = g.filter(function(x){return x&&x.status!=='known';}).slice(0,3).map(function(x){return x.topic;}).join('; ');
+      var g=((window._lexProfile&&_lexProfile.known_gaps)||[]).slice()
+        .map(function(x){ return (typeof x==='string') ? {topic:x, priority:2, status:'open'} : x; })
+        .filter(function(x){ return x && x.topic && x.status!=='known'; })
+        .sort(function(a,b){ return (b.priority||1)-(a.priority||1); });
+      recentGaps = g.slice(0,3).map(function(x){ return x.topic; }).join('; ');
     }catch(e){}
     var pn = window._lexxPortionNum;
-    var fourth = (pn % 3 === 0) ? 'produce' : 'transform';
+    // Luka receptywno-produktywna waży TYPY zadań (Assessment Bible §6.5 → selektor z Pedagogy Bible)
+    var gapRp = (km && typeof km.gap_rp==='number') ? km.gap_rp : 1;
+    var fourth = (gapRp >= 2) ? ((pn % 2 === 0) ? 'produce' : 'transform')
+               : ((pn % 3 === 0) ? 'produce' : 'transform');
+    var kmCtx = '';
+    if(km){
+      kmCtx = 'PROFIL Z KALIBRACJI: rozpoznaje pasmo '+(km.passive_band||lvl)+', aktywnie używa pasma '+(km.active_band||lvl)+'. ';
+      if(gapRp >= 2) kmCtx += 'Rozumie znacznie więcej, niż mówi — przesuń ciężar na AKTYWNE użycie (tłumaczenia, transformacje, własne zdania). ';
+      else if(gapRp <= 0) kmCtx += 'Produkuje na granicy rozumienia — daj więcej inputu i nowego słownictwa; nowe osadzaj wśród znanych (i+1). ';
+      var miscs = (km.gaps||[]).filter(function(x){ return x && x.quadrant==='misconception'; }).slice(0,2).map(function(x){ return x.name; });
+      if(miscs.length) kmCtx += 'W PIERWSZEJ kolejności adresuj mylone konstrukcje: '+miscs.join('; ')+'. ';
+      if(!focus){
+        var grow = (km.cats||[]).filter(function(c){ return c && c.coverage!==null && c.coverage<0.5; }).map(function(c){ return c.name; }).slice(0,2);
+        if(grow.length) kmCtx += 'Priorytetowe obszary z Mapy Językowej ucznia: '+grow.join(', ')+' — dobieraj tematy porcji stamtąd. ';
+      }
+    }
     var prompt =
       'Jesteś Lex — metodyczny nauczyciel języka '+langName()+'. Uczeń jest na poziomie '+lvl+'. '
-      +'Język wyjaśnień: POLSKI. '
+      +kmCtx+'Język wyjaśnień: POLSKI. '
       +(focus? ('Temat lekcji: "'+focus+'". '):'Dobierz praktyczny, przydatny temat porcji. ')
       +(recentGaps? ('Uwzględnij braki ucznia: '+recentGaps+'. '):'')
       +'To porcja nr '+pn+'. Zbuduj JEDNĄ porcję materiału skupioną na 3-5 słowach/jednej strukturze, i przećwicz JE pod różnym kątem w 4 ćwiczeniach.\n'
