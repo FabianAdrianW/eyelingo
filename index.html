@@ -3881,6 +3881,7 @@ async function initToFixPage(){
             <div style="display:flex;gap:8px">
               <button onclick="lexObSelect(this,'dur',10)" data-dur="10" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">10 min</button>
               <button onclick="lexObSelect(this,'dur',25)" data-dur="25" class="lex-dur-opt lex-ob-active" style="flex:1;padding:10px;border-radius:10px;border:2px solid var(--orange);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">25 min</button>
+              <button onclick="lexObSelect(this,'dur',40)" data-dur="40" class="lex-dur-opt" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:13px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">40 min</button>
             </div>
           </div>
           <div>
@@ -3896,6 +3897,14 @@ async function initToFixPage(){
           Zaczynamy →
         </button>
       </div>
+    </div>
+
+    <!-- ── EWALUACJA STARTOWA — Lex Cię poznaje (Assessment Bible E0–E10) ── -->
+    <div id="lex-eval" style="display:none;padding:0 24px">
+      <div style="display:flex;justify-content:flex-end;max-width:620px;margin:0 auto;padding-top:14px">
+        <button onclick="lexEvalAbort()" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:5px 14px;font-size:12px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif">Przerwij</button>
+      </div>
+      <div id="lex-eval-body"></div>
     </div>
 
     <!-- ── CARD ENGINE — główny ekran lekcji ── -->
@@ -12930,206 +12939,6 @@ if(typeof loadDailyRead === 'function'){
 </script>
 <script>
 // ═══════════════════════════════════════════════════════════
-// EL — AI TEACHER ENGINE v3 · DATA LAYER (Sprint 1)
-// elApi (Edge Functions) · elCache (write-through localStorage)
-// elLatency (pomiar latencji D7) · elQueue (offline buffer)
-// Wymaga globali: db, SUPABASE_URL, APIKEY_CONST, uk()
-// ═══════════════════════════════════════════════════════════
-
-var EL_EF_BASE = SUPABASE_URL + '/functions/v1/';
-var EL_API_TIMEOUT_MS = 30000;
-
-// ── elApi — jedyna droga frontend → backend silnika ───────
-// Zwraca {ok:true, data} | {ok:false, status, error, offline}
-async function elApi(fn, body){
-  var tok = null;
-  try{
-    var s = (await db.auth.getSession()).data.session;
-    tok = s && s.access_token;
-  }catch(e){}
-  if(!tok) return {ok:false, status:401, error:'no_session'};
-
-  var ctrl = new AbortController();
-  var timer = setTimeout(function(){ ctrl.abort(); }, EL_API_TIMEOUT_MS);
-  var _t0 = performance.now();
-  try{
-    var res = await fetch(EL_EF_BASE + fn, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + tok,
-        'apikey': APIKEY_CONST
-      },
-      body: JSON.stringify(body || {}),
-      signal: ctrl.signal
-    });
-    clearTimeout(timer);
-    if(res.status === 204){ elTrack('ef_call', fn, 204, performance.now()-_t0, body); return {ok:true, status:204, data:null}; }
-    var data = null;
-    try{ data = await res.json(); }catch(e){}
-    if(!res.ok){ elTrack('ef_call', fn, res.status, performance.now()-_t0, body); return {ok:false, status:res.status, error:(data && data.error) || ('http_' + res.status), data:data}; }
-    elTrack('ef_call', fn, res.status, performance.now()-_t0, body);
-    return {ok:true, status:res.status, data:data};
-  }catch(e){
-    clearTimeout(timer);
-    elTrack('ef_call', fn, 0, performance.now()-_t0, body);
-    // network/abort → traktuj jako offline (elQueue decyduje co dalej)
-    return {ok:false, status:0, error:String(e && e.name === 'AbortError' ? 'timeout' : e), offline:true};
-  }
-}
-
-// ── elCache — write-through cache; źródło prawdy = DB ─────
-// Klucze per-user przez uk() (M11). Prefix 'el3_'.
-var elCache = {
-  get: function(key){
-    try{
-      var raw = localStorage.getItem(uk('el3_' + key));
-      return raw ? JSON.parse(raw) : null;
-    }catch(e){ return null; }
-  },
-  set: function(key, val){
-    try{ localStorage.setItem(uk('el3_' + key), JSON.stringify(val)); }catch(e){}
-    return val;
-  },
-  del: function(key){
-    try{ localStorage.removeItem(uk('el3_' + key)); }catch(e){}
-  }
-};
-
-// ── elLatency — pomiar latencji odpowiedzi (D7, §6.1) ─────
-// start(): wywołać PO pełnym renderze promptu (podwójny rAF
-// gwarantuje namalowaną klatkę). stop: pierwsza akcja odpowiedzi
-// (keydown 1. znaku dla typed; tap dla tap). hint_used gdy [KEY]
-// popover otwarty przed odpowiedzią.
-var elLatency = {
-  _t0: null,
-  _ms: null,
-  _hint: false,
-  _armed: false,
-
-  start: function(){
-    var self = this;
-    self._t0 = null; self._ms = null; self._hint = false; self._armed = true;
-    requestAnimationFrame(function(){
-      requestAnimationFrame(function(){
-        if(self._armed) self._t0 = performance.now();
-      });
-    });
-  },
-
-  // Pierwsza akcja użytkownika — idempotentne (kolejne wywołania ignorowane)
-  firstAction: function(){
-    if(this._t0 !== null && this._ms === null){
-      this._ms = Math.round(performance.now() - this._t0);
-    }
-  },
-
-  markHint: function(){
-    if(this._ms === null) this._hint = true;  // hint tylko PRZED odpowiedzią
-  },
-
-  // Odczyt do beat-submit; null gdy pomiar nie wystartował
-  read: function(){
-    return { latency_ms: this._ms, hint_used: this._hint };
-  },
-
-  reset: function(){
-    this._t0 = null; this._ms = null; this._hint = false; this._armed = false;
-  },
-
-  // Helper: podpina firstAction pod input typed (keydown 1. znaku)
-  bindTyped: function(inputEl){
-    var self = this;
-    var h = function(ev){
-      if(ev.key && ev.key.length === 1){ self.firstAction(); inputEl.removeEventListener('keydown', h); }
-    };
-    inputEl.addEventListener('keydown', h);
-  }
-};
-
-// ── elQueue — offline buffer dla beat-submit (§6.1) ───────
-// Nieudane submity → kolejka w localStorage; flush przy 'online'
-// i po każdym udanym wywołaniu. Kolejność zachowana (FIFO).
-var EL_QUEUE_MAX = 200;
-var elQueue = {
-  _flushing: false,
-
-  _load: function(){ return elCache.get('queue') || []; },
-  _save: function(q){ elCache.set('queue', q); },
-
-  size: function(){ return this._load().length; },
-
-  push: function(fn, body){
-    var q = this._load();
-    if(q.length >= EL_QUEUE_MAX) q.shift();              // drop najstarszy
-    q.push({fn: fn, body: body, ts: Date.now()});
-    this._save(q);
-  },
-
-  // Sekwencyjny flush; stop na pierwszym błędzie sieci (retry później).
-  // Błędy 4xx (np. zdublowany screen_index) — zrzuć element, idź dalej.
-  flush: async function(){
-    if(this._flushing) return;
-    this._flushing = true;
-    try{
-      var q = this._load();
-      while(q.length){
-        var item = q[0];
-        var r = await elApi(item.fn, item.body);
-        if(r.ok || (r.status >= 400 && r.status < 500)){
-          q.shift(); this._save(q);
-        } else break;                                     // sieć — przerwij, wróć później
-      }
-    } finally { this._flushing = false; }
-  }
-};
-
-window.addEventListener('online', function(){ elQueue.flush(); });
-// Flush przy starcie (po inicjalizacji sesji) — odzyskanie po crashu
-setTimeout(function(){ elQueue.flush(); }, 4000);
-
-// ── elConfig — kill-switch i parametry adaptacji (cache 5 min) ──
-var _elCfg = null, _elCfgTs = 0;
-async function elConfig(){
-  if(_elCfg && (Date.now() - _elCfgTs) < 300000) return _elCfg;
-  try{
-    var r = await db.from('activation_config').select('*').eq('context_bucket','global').maybeSingle();
-    if(r.data){ _elCfg = r.data; _elCfgTs = Date.now(); }
-  }catch(e){}
-  return _elCfg;  // null ⇒ caller traktuje jak engine_v3=false (fallback legacy)
-}
-
-// ── elTrack — telemetria (batch 8 / 10s, RLS own-row) ─────
-// Bezpieczna: błędy zapisu nigdy nie wpływają na flow lekcji.
-var _elTel = [];
-var _elTelTimer = null;
-function elTrack(kind, fn, status, durationMs, body){
-  try{
-    var lid = (body && body.lesson_id) || (_elState && _elState.lesson_id) || null;
-    var meta = {};
-    if(body){ if(body.exercise_type) meta.exercise_type = body.exercise_type;
-      if(body.adaptation) meta.adaptation = body.adaptation; }
-    _elTel.push({kind: kind, fn: fn || null, status: (status==null?null:status),
-      duration_ms: durationMs!=null?Math.round(durationMs):null, lesson_id: lid, meta: meta});
-    if(_elTel.length >= 8){ elTrackFlush(); }
-    else if(!_elTelTimer){ _elTelTimer = setTimeout(elTrackFlush, 10000); }
-  }catch(e){}
-}
-async function elTrackFlush(){
-  if(_elTelTimer){ clearTimeout(_elTelTimer); _elTelTimer = null; }
-  if(!_elTel.length) return;
-  var batch = _elTel.splice(0, _elTel.length);
-  try{
-    var uid = window._uid || ((await db.auth.getSession()).data.session||{}).user && (await db.auth.getSession()).data.session.user.id;
-    if(!uid) return;
-    var rows = batch.map(function(r){ r.user_id = uid; return r; });
-    await db.from('telemetry_events').insert(rows);
-  }catch(e){ /* telemetria nigdy nie blokuje */ }
-}
-window.addEventListener('beforeunload', function(){ try{ elTrackFlush(); }catch(e){} });
-</script>
-<script>
-// ═══════════════════════════════════════════════════════════
 // LEX AI TEACHER — silnik karta-po-karcie v2
 // ═══════════════════════════════════════════════════════════
 
@@ -13200,7 +13009,7 @@ async function lexInit(){
 
 function lexShowScreen(id){
   if(typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
-  ['lex-lang-select','lex-onboarding','lex-card-engine','lex-summary'].forEach(function(s){
+  ['lex-lang-select','lex-onboarding','lex-eval','lex-card-engine','lex-summary'].forEach(function(s){
     var el = document.getElementById(s);
     if(el) el.style.display = 'none';
   });
@@ -13327,16 +13136,973 @@ async function lexStartFromOnboarding(){
       _lexProfile = profileData;
     }
   }catch(e){ console.error('Lex onboarding save:', e); }
-  // ── ENGINE v3 cutover (kill-switch elConfig.engine_v3) ──
+  lexStartLesson();
+}
+
+// ═══════════════════════════════════════════════════════════
+// LEX EVAL v2 — ewaluacja ekranowa (Assessment Bible v1.0)
+// E0 kontrakt → E1 can-do → E2 rozgrzewka → E3–E6 drabinka CAT-lite
+// (+ interludium słuchania) → E7/E8 produkcja → E9 zagwozdka (opc.) → E10 Mapa
+// Zasady nienaruszalne: zero "test/ocena/wynik/błąd" w UI, zero czerwonych X,
+// zero strumienia czatu, jeden ekran = jedna decyzja, koniec = payoff (Mapa).
+// ═══════════════════════════════════════════════════════════
+
+var _lexEval = null;
+var LEX_EVAL_CATS = ['rozmowa','praca','podróże','jedzenie','czas','opinie','zdrowie','dom'];
+
+function lexEvalThetaOf(band){ return ({A1:-2,A2:-1,B1:0,B2:1,C1:2,C2:3})[band]; }
+function lexEvalBandOf(theta){
+  if(theta < -1.5) return 'A1';
+  if(theta < -0.5) return 'A2';
+  if(theta < 0.5)  return 'B1';
+  if(theta < 1.5)  return 'B2';
+  if(theta < 2.5)  return 'C1';
+  return 'C2';
+}
+function lexEvalEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// **słowo** → pomarańczowe wyróżnienie (klucz itemu)
+function lexEvalRich(s){
+  return lexEvalEsc(s).replace(/\*\*([^*]+)\*\*/g, '<b style="color:var(--orange);font-weight:600">$1</b>');
+}
+
+// ── BANK ITEMÓW (per język docelowy) ───────────────────────
+// item: {band, type:'mc'|'cloze'|'match', cat, scene, q, opts, ans, pairs, key, gapName}
+var LEX_EVAL_BANK = {
+en: {
+  items: [
+    {band:'A1', type:'mc', cat:'rozmowa', key:'house',
+     scene:'Hello! My name is Tom. I live in a small **house** near the park.',
+     q:'Co znaczy tutaj słowo **house**?', opts:['dom','samochód','sklep','kot'], ans:0},
+    {band:'A1', type:'cloze', cat:'jedzenie', key:'drink',
+     scene:'Every morning I ___ a cup of coffee.',
+     q:'Które słowo pasuje w lukę?', opts:['drink','sleep','go','read'], ans:0},
+    {band:'A2', type:'mc', cat:'podróże', key:'missed',
+     scene:'We **missed** the last bus, so we had to walk home.',
+     q:'Co znaczy tutaj **missed**?', opts:['spóźniliśmy się na','wsiedliśmy do','kupiliśmy','naprawiliśmy'], ans:0},
+    {band:'A2', type:'cloze', cat:'czas', key:'wakes',
+     scene:'She usually ___ up at seven, but today she slept late.',
+     q:'Które słowo pasuje w lukę?', opts:['wakes','makes','takes','looks'], ans:0},
+    {band:'A2', type:'match', cat:'jedzenie', key:'meal',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['hungry','głodny'],['meal','posiłek'],['taste','smak']]},
+    {band:'B1', type:'mc', cat:'praca', key:'applied for',
+     scene:'I **applied for** the job last month, but I have not heard back yet.',
+     q:'Co znaczy tutaj **applied for**?', opts:['złożyłem podanie o','zrezygnowałem z','dostałem','odrzuciłem'], ans:0},
+    {band:'B1', type:'cloze', cat:'opinie', key:'asleep',
+     scene:'In my opinion the film was so boring that I almost fell ___ .',
+     q:'Które słowo pasuje w lukę?', opts:['asleep','sleepy','sleeping','slept'], ans:0},
+    {band:'B1', type:'match', cat:'podróże', key:'delay',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['journey','podróż'],['delay','opóźnienie'],['abroad','za granicą']]},
+    {band:'B2', type:'mc', cat:'zdrowie', key:'reassured',
+     scene:'The doctor **reassured** her that the symptoms were completely harmless.',
+     q:'Co znaczy tutaj **reassured**?', opts:['uspokoił, zapewniając','ostrzegł','zbadał','skierował dalej'], ans:0},
+    {band:'B2', type:'cloze', cat:'praca', key:'called off',
+     scene:'The meeting was called ___ at the last minute because the manager was ill.',
+     q:'Które słowo pasuje w lukę?', opts:['off','out','up','over'], ans:0},
+    {band:'B2', type:'match', cat:'opinie', key:'reluctant',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['reluctant','niechętny'],['accurate','trafny, dokładny'],['demanding','wymagający']]},
+    {band:'C1', type:'mc', cat:'rozmowa', key:'out of hand',
+     scene:'She dismissed the rumour **out of hand**, without even considering it.',
+     q:'Co znaczy tutaj **out of hand**?', opts:['z miejsca, bez zastanowienia','ręcznie','poza kontrolą','niegrzecznie'], ans:0},
+    {band:'C1', type:'cloze', cat:'zdrowie', key:'cautious',
+     scene:'His recovery was slow, and the doctors remained ___ about his long-term prospects.',
+     q:'Które słowo pasuje w lukę?', opts:['cautious','casual','gracious','spacious'], ans:0},
+    {band:'C2', type:'mc', cat:'opinie', key:'hold water',
+     scene:'Her argument, though compelling at first glance, simply does not **hold water**.',
+     q:'Co znaczy tutaj **hold water**?', opts:['bronić się, wytrzymywać krytykę','zawierać wodę','być szczelnym','mieć znaczenie'], ans:0},
+    {band:'C2', type:'cloze', cat:'rozmowa', key:'alluded to',
+     scene:'He alluded ___ the incident several times, but refused to discuss it openly.',
+     q:'Które słowo pasuje w lukę?', opts:['to','on','at','for'], ans:0}
+  ],
+  listening: [
+    {hard:false, text:'Excuse me, what time does the next train to London leave?',
+     q:'O czym mówi ta osoba?', opts:['O odjeździe pociągu','O bilecie do kina'], ans:0},
+    {hard:true, text:'I was going to book the earlier flight, but it turned out to be twice as expensive.',
+     q:'O czym mówi ta osoba?', opts:['O zmianie planów podróży','O zgubionym bagażu'], ans:0}
+  ],
+  stretch: [
+    {scene:'Sorry for the delay — here is the actual version of the report.',
+     q:'Jedno słowo zgrzyta. Które?', opts:['actual (powinno być current)','version','report'], ans:0,
+     gapName:'fałszywy przyjaciel: actual ≠ aktualny'}
+  ],
+  prod: [
+    {kind:'finish', context:'Kolega z pracy pyta, co robiłeś w weekend.', starter:'Last weekend I…'},
+    {kind:'scene', desc:'Zatłoczona kawiarnia. Ktoś przy oknie pracuje na laptopie, kelner niesie tacę, a na zewnątrz zaczyna padać.', ask:'Opisz tę scenę 1–2 zdaniami po angielsku — tak, jak sam(a) byś to powiedział(a).'}
+  ]
+},
+es: {
+  items: [
+    {band:'A1', type:'mc', cat:'rozmowa', key:'casa',
+     scene:'¡Hola! Me llamo Ana y vivo en una **casa** pequeña cerca del parque.',
+     q:'Co znaczy tutaj słowo **casa**?', opts:['dom','samochód','ulica','szkoła'], ans:0},
+    {band:'A1', type:'cloze', cat:'jedzenie', key:'bebo',
+     scene:'Por la mañana ___ un café.',
+     q:'Które słowo pasuje w lukę?', opts:['bebo','duermo','voy','leo'], ans:0},
+    {band:'A2', type:'mc', cat:'podróże', key:'a pie',
+     scene:'Perdimos el último autobús y tuvimos que volver **a pie**.',
+     q:'Co znaczy tutaj **a pie**?', opts:['pieszo','autobusem','szybko','późno'], ans:0},
+    {band:'A2', type:'cloze', cat:'czas', key:'levanta',
+     scene:'Ella normalmente se ___ a las siete, pero hoy durmió más.',
+     q:'Które słowo pasuje w lukę?', opts:['levanta','lleva','llama','lava'], ans:0},
+    {band:'A2', type:'match', cat:'jedzenie', key:'comida',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['hambre','głód'],['comida','jedzenie, posiłek'],['sabor','smak']]},
+    {band:'B1', type:'mc', cat:'praca', key:'solicité',
+     scene:'**Solicité** el puesto el mes pasado, pero todavía no me han respondido.',
+     q:'Co znaczy tutaj **solicité**?', opts:['złożyłem podanie o','zrezygnowałem z','dostałem','odrzuciłem'], ans:0},
+    {band:'B1', type:'cloze', cat:'opinie', key:'dormido',
+     scene:'En mi opinión, la película fue tan aburrida que casi me quedé ___ .',
+     q:'Które słowo pasuje w lukę?', opts:['dormido','despierto','cansado','sentado'], ans:0},
+    {band:'B1', type:'match', cat:'podróże', key:'retraso',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['viaje','podróż'],['retraso','opóźnienie'],['extranjero','zagranica']]},
+    {band:'B2', type:'mc', cat:'zdrowie', key:'inofensivos',
+     scene:'El médico la tranquilizó diciendo que los síntomas eran **inofensivos**.',
+     q:'Co znaczy tutaj **inofensivos**?', opts:['niegroźne','poważne','rzadkie','zakaźne'], ans:0},
+    {band:'B2', type:'cloze', cat:'praca', key:'trabajando',
+     scene:'Llevo cinco años ___ en esta empresa.',
+     q:'Które słowo pasuje w lukę?', opts:['trabajando','trabajar','trabajo','trabajado'], ans:0},
+    {band:'B2', type:'match', cat:'opinie', key:'exigente',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['exigente','wymagający'],['acertado','trafny'],['reacio','niechętny']]},
+    {band:'C1', type:'mc', cat:'rozmowa', key:'de plano',
+     scene:'Descartó el rumor **de plano**, sin considerarlo siquiera.',
+     q:'Co znaczy tutaj **de plano**?', opts:['z miejsca, całkowicie','płasko','zgodnie z planem','częściowo'], ans:0},
+    {band:'C1', type:'cloze', cat:'zdrowie', key:'cautelosos',
+     scene:'Los médicos se mostraron ___ sobre su recuperación a largo plazo.',
+     q:'Które słowo pasuje w lukę?', opts:['cautelosos','casuales','curiosos','costosos'], ans:0},
+    {band:'C2', type:'mc', cat:'opinie', key:'no se sostiene',
+     scene:'Su argumento, aunque convincente a primera vista, **no se sostiene**.',
+     q:'Co znaczy tutaj **no se sostiene**?', opts:['nie broni się, nie wytrzymuje krytyki','nie stoi prosto','nie podtrzymuje się','nie istnieje'], ans:0}
+  ],
+  listening: [
+    {hard:false, text:'Perdone, ¿a qué hora sale el próximo tren a Madrid?',
+     q:'O czym mówi ta osoba?', opts:['O odjeździe pociągu','O bilecie do kina'], ans:0},
+    {hard:true, text:'Iba a reservar el vuelo de la mañana, pero resultó ser el doble de caro.',
+     q:'O czym mówi ta osoba?', opts:['O zmianie planów podróży','O zgubionym bagażu'], ans:0}
+  ],
+  stretch: [
+    {scene:'Ayer pagué la cena con carta de crédito.',
+     q:'Jedno słowo zgrzyta. Które?', opts:['carta (powinno być tarjeta)','cena','crédito'], ans:0,
+     gapName:'fałszywy przyjaciel: carta = list, nie karta'}
+  ],
+  prod: [
+    {kind:'finish', context:'Znajomy pyta, co robiłeś w weekend.', starter:'El fin de semana pasado…'},
+    {kind:'scene', desc:'Zatłoczona kawiarnia. Ktoś przy oknie pracuje na laptopie, kelner niesie tacę, a na zewnątrz zaczyna padać.', ask:'Opisz tę scenę 1–2 zdaniami po hiszpańsku — tak, jak sam(a) byś to powiedział(a).'}
+  ]
+},
+nl: {
+  items: [
+    {band:'A1', type:'mc', cat:'rozmowa', key:'huis',
+     scene:'Hallo! Ik heet Tom en ik woon in een klein **huis** bij het park.',
+     q:'Co znaczy tutaj słowo **huis**?', opts:['dom','samochód','sklep','miasto'], ans:0},
+    {band:'A1', type:'cloze', cat:'jedzenie', key:'drink',
+     scene:'Ik ___ elke ochtend een kop koffie.',
+     q:'Które słowo pasuje w lukę?', opts:['drink','slaap','ga','lees'], ans:0},
+    {band:'A2', type:'mc', cat:'podróże', key:'misten',
+     scene:'We **misten** de laatste bus en moesten naar huis lopen.',
+     q:'Co znaczy tutaj **misten**?', opts:['spóźniliśmy się na','wsiedliśmy do','kupiliśmy','zobaczyliśmy'], ans:0},
+    {band:'A2', type:'cloze', cat:'czas', key:'staat op',
+     scene:'Zij staat meestal om zeven uur ___, maar vandaag sliep ze uit.',
+     q:'Które słowo pasuje w lukę?', opts:['op','uit','aan','af'], ans:0},
+    {band:'A2', type:'match', cat:'jedzenie', key:'maaltijd',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['honger','głód'],['maaltijd','posiłek'],['smaak','smak']]},
+    {band:'B1', type:'mc', cat:'praca', key:'gesolliciteerd',
+     scene:'Ik heb vorige maand **gesolliciteerd** naar de baan, maar ik heb nog niets gehoord.',
+     q:'Co znaczy tutaj **gesolliciteerd**?', opts:['złożyłem podanie','zrezygnowałem','awansowałem','odmówiłem'], ans:0},
+    {band:'B1', type:'cloze', cat:'opinie', key:'viel',
+     scene:'De film was zo saai dat ik bijna in slaap ___ .',
+     q:'Które słowo pasuje w lukę?', opts:['viel','ging','kwam','zat'], ans:0},
+    {band:'B1', type:'match', cat:'podróże', key:'vertraging',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['reis','podróż'],['vertraging','opóźnienie'],['buitenland','zagranica']]},
+    {band:'B2', type:'mc', cat:'zdrowie', key:'stelde gerust',
+     scene:'De arts **stelde** haar **gerust**: de symptomen waren onschuldig.',
+     q:'Co znaczy tutaj **stelde gerust**?', opts:['uspokoił, zapewniając','ostrzegł','zbadał','skierował dalej'], ans:0},
+    {band:'B2', type:'cloze', cat:'praca', key:'afgezegd',
+     scene:'De vergadering werd op het laatste moment ___ .',
+     q:'Które słowo pasuje w lukę?', opts:['afgezegd','opgezegd','gezegd','toegezegd'], ans:0},
+    {band:'C1', type:'mc', cat:'rozmowa', key:'wuifde weg',
+     scene:'Ze **wuifde** het gerucht meteen **weg**, zonder er ook maar over na te denken.',
+     q:'Co znaczy tutaj **wuifde weg**?', opts:['zbyła, odrzuciła z miejsca','pomachała','przemyślała','rozpowszechniła'], ans:0},
+    {band:'C1', type:'cloze', cat:'zdrowie', key:'terughoudend',
+     scene:'De artsen bleven ___ over zijn herstel op lange termijn.',
+     q:'Które słowo pasuje w lukę?', opts:['terughoudend','terugkerend','achterhaald','nadrukkelijk'], ans:0}
+  ],
+  listening: [
+    {hard:false, text:'Pardon, hoe laat vertrekt de volgende trein naar Amsterdam?',
+     q:'O czym mówi ta osoba?', opts:['O odjeździe pociągu','O bilecie do kina'], ans:0},
+    {hard:true, text:'Ik wilde de vroege vlucht boeken, maar die bleek twee keer zo duur te zijn.',
+     q:'O czym mówi ta osoba?', opts:['O zmianie planów podróży','O zgubionym bagażu'], ans:0}
+  ],
+  stretch: [
+    {scene:'Het eten staat al op de stoel, kom maar zitten!',
+     q:'Jedno słowo zgrzyta. Które?', opts:['stoel (powinno być tafel — stoel to krzesło)','eten','zitten'], ans:0,
+     gapName:'fałszywy przyjaciel: stoel = krzesło, nie stół'}
+  ],
+  prod: [
+    {kind:'finish', context:'Współpracownik pyta, co robiłeś w weekend.', starter:'Afgelopen weekend…'},
+    {kind:'scene', desc:'Zatłoczona kawiarnia. Ktoś przy oknie pracuje na laptopie, kelner niesie tacę, a na zewnątrz zaczyna padać.', ask:'Opisz tę scenę 1–2 zdaniami po niderlandzku — tak, jak sam(a) byś to powiedział(a).'}
+  ]
+},
+jp: {
+  items: [
+    {band:'A1', type:'mc', cat:'rozmowa', key:'はじめまして',
+     scene:'「**はじめまして**。わたしは アンナ です。」',
+     q:'Co znaczy **はじめまして**?', opts:['Miło poznać (pierwsze spotkanie)','Do widzenia','Dziękuję','Przepraszam'], ans:0},
+    {band:'A1', type:'cloze', cat:'jedzenie', key:'のみ',
+     scene:'あさ、コーヒーを ___ ます。',
+     q:'Które słowo pasuje w lukę?', opts:['のみ','たべ','いき','よみ'], ans:0},
+    {band:'A2', type:'mc', cat:'podróże', key:'のりおくれて',
+     scene:'でんしゃに **のりおくれて**、あるいて かえりました。',
+     q:'Co znaczy tutaj **のりおくれて**?', opts:['spóźniwszy się na (pociąg)','wsiadłszy do','kupiwszy bilet','zgubiwszy się'], ans:0},
+    {band:'A2', type:'cloze', cat:'czas', key:'おき',
+     scene:'まいあさ しちじに ___ ます。',
+     q:'Które słowo pasuje w lukę?', opts:['おき','ね','あけ','つき'], ans:0},
+    {band:'A2', type:'match', cat:'jedzenie', key:'たべもの',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['たべもの','jedzenie'],['みず','woda'],['おいしい','smaczny']]},
+    {band:'B1', type:'mc', cat:'praca', key:'応募しました',
+     scene:'その仕事に**応募しました**が、まだ返事がありません。',
+     q:'Co znaczy tutaj **応募しました**?', opts:['złożyłem podanie','zrezygnowałem','awansowałem','odmówiłem'], ans:0},
+    {band:'B1', type:'cloze', cat:'opinie', key:'ねむり',
+     scene:'この映画はつまらなくて、___ そうになりました。',
+     q:'Które słowo pasuje w lukę?', opts:['ねむり','わらい','おどろき','なき'], ans:0},
+    {band:'B1', type:'match', cat:'podróże', key:'旅行',
+     scene:'Połącz słowa z ich znaczeniem.',
+     pairs:[['旅行','podróż'],['遅れ','opóźnienie'],['海外','zagranica']]},
+    {band:'B2', type:'mc', cat:'zdrowie', key:'安心させた',
+     scene:'医者は、症状は心配いらないと彼女を**安心させた**。',
+     q:'Co znaczy tutaj **安心させた**?', opts:['uspokoił','ostrzegł','zbadał','skierował dalej'], ans:0},
+    {band:'B2', type:'cloze', cat:'praca', key:'中止',
+     scene:'会議は直前に ___ になった。',
+     q:'Które słowo pasuje w lukę?', opts:['中止','開始','参加','用意'], ans:0},
+    {band:'C1', type:'mc', cat:'rozmowa', key:'一蹴した',
+     scene:'彼女はそのうわさを**一蹴した**。',
+     q:'Co znaczy tutaj **一蹴した**?', opts:['odrzuciła z miejsca','rozważyła','rozpowszechniła','potwierdziła'], ans:0},
+    {band:'C1', type:'cloze', cat:'zdrowie', key:'慎重',
+     scene:'医師たちは長期的な回復について ___ な見方を崩さなかった。',
+     q:'Które słowo pasuje w lukę?', opts:['慎重','単純','新鮮','平凡'], ans:0}
+  ],
+  listening: [
+    {hard:false, text:'すみません、つぎの でんしゃは なんじに でますか。',
+     q:'O czym mówi ta osoba?', opts:['O odjeździe pociągu','O bilecie do kina'], ans:0},
+    {hard:true, text:'朝の便を予約するつもりでしたが、値段が二倍だとわかってやめました。',
+     q:'O czym mówi ta osoba?', opts:['O zmianie planów podróży','O zgubionym bagażu'], ans:0}
+  ],
+  stretch: [
+    {scene:'きのう、ともだちと 映画に 見ました。',
+     q:'Coś tu zgrzyta. Co?', opts:['に (powinno być を — 映画を見ました)','ともだち','見ました'], ans:0,
+     gapName:'partykuła: 映画を見る (を, nie に)'}
+  ],
+  prod: [
+    {kind:'finish', context:'Znajomy pyta, co robiłeś w weekend.', starter:'しゅうまつは…'},
+    {kind:'scene', desc:'Zatłoczona kawiarnia. Ktoś przy oknie pracuje na laptopie, kelner niesie tacę, a na zewnątrz zaczyna padać.', ask:'Opisz tę scenę 1–2 zdaniami po japońsku — tak, jak sam(a) byś to powiedział(a).'}
+  ]
+}
+};
+
+// ── Start / przerwanie ─────────────────────────────────────
+function lexEvalStart(){
+  var bank = LEX_EVAL_BANK[_lexLang] || LEX_EVAL_BANK.en;
+  _lexEval = {
+    lang: _lexLang, bank: bank,
+    startedAt: Date.now(),
+    theta: 0, se: 1.2, info: 0.5, nItems: 0,
+    seedTheta: 0,
+    canDo: [], affect: null,
+    responses: [],
+    bandHits: {},        // band -> {hits, confHits}
+    cats: {},            // cat -> {a, c, conf}
+    usedIds: [],
+    lastType: null, lastCat: null,
+    ladderCount: 0, listenDone: false, listenCorrect: null,
+    prodSamples: [],
+    gaps: [],            // {name, quadrant, priority}
+    vocabTouched: [],    // {word, state}
+    line: null,          // komunikat Lexa na następnym ekranie
+    shownAt: 0,
+    matchState: null,
+    mapReaction: null
+  };
+  lexShowScreen('lex-eval');
+  lexEvalRenderIntro();
+}
+
+function lexEvalAbort(){
+  if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  _lexEval = null;
+  lexShowScreen('lex-lang-select');
+}
+
+function lexEvalSpeak(text){
   try{
-    var _cfg = await elConfig();
-    if(!_cfg || _cfg.engine_v3 !== false){ elStartLesson(); return; }
-  }catch(e){ console.error("engine_v3 gate:", e); }
+    if(!window.speechSynthesis || !text) return;
+    var syn = window.speechSynthesis; syn.cancel();
+    var code = (typeof window.ttsLangCode === 'function') ? window.ttsLangCode(_lexEval ? _lexEval.lang : _lexLang) : 'en-US';
+    _lexSpeakSeg(syn, String(text).replace(/\*\*/g,'').replace(/___/g,'…'), code);
+  }catch(e){}
+}
+
+// ── Wspólna rama ekranu: progres faz + linia Lexa ──────────
+var LEX_EVAL_PHASES = ['Start','O Tobie','Kalibracja','Twoje zdania','Mapa'];
+
+function lexEvalFrame(phaseIdx, inner){
+  var box = document.getElementById('lex-eval-body');
+  if(!box) return;
+  var dots = LEX_EVAL_PHASES.map(function(p, i){
+    var on = i <= phaseIdx;
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;min-width:0">'
+      + '<div style="width:10px;height:10px;border-radius:50%;background:'+(on?'var(--orange)':'var(--border2)')+';transition:background .3s"></div>'
+      + '<div style="font-size:10px;letter-spacing:.04em;color:'+(on?'var(--navy)':'var(--dim2)')+';white-space:nowrap">'+p+'</div>'
+      + '</div>';
+  }).join('');
+  var pct = Math.round(phaseIdx / (LEX_EVAL_PHASES.length - 1) * 100);
+  var lexLine = '';
+  if(_lexEval && _lexEval.line){
+    lexLine = '<div style="display:flex;align-items:flex-start;gap:10px;background:var(--paper2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:18px">'
+      + '<div style="width:26px;height:26px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>'
+      + '<div style="font-size:13.5px;color:var(--navy);line-height:1.55">'+_lexEval.line+'</div>'
+      + '</div>';
+    _lexEval.line = null;
+  }
+  box.innerHTML =
+    '<div style="max-width:620px;margin:0 auto;padding:20px 0 48px">'
+    + '<div style="margin-bottom:6px;position:relative">'
+    +   '<div style="position:absolute;top:4.5px;left:10%;right:10%;height:1.5px;background:var(--border2)"><div style="height:100%;width:'+pct+'%;background:var(--orange);transition:width .4s"></div></div>'
+    +   '<div style="display:flex;position:relative">'+dots+'</div>'
+    + '</div>'
+    + '<div style="text-align:center;font-size:11px;color:var(--dim2);margin:8px 0 20px">Lex coraz wyraźniej Cię widzi</div>'
+    + lexLine
+    + inner
+    + '</div>';
+}
+
+// ── E0 — kontrakt: co to jest, po co, jak wygląda ──────────
+function lexEvalRenderIntro(){
+  var langName = _lexLangName ? (_lexLangName.charAt(0).toUpperCase() + _lexLangName.slice(1)) : 'Język';
+  var steps = [
+    ['1','Kilka krótkich zadań','Głównie jedno tapnięcie — zdania w kontekście, dopasowania, chwila słuchania. Trudność dopasowuje się do Ciebie na bieżąco.'],
+    ['2','Jedno–dwa zdania od Ciebie','Twoimi słowami, bez perfekcji. To pokazuje, czego naprawdę używasz, a nie tylko co rozpoznajesz.'],
+    ['3','Na końcu: Twoja Mapa Językowa','Poziom po ludzku, Twoje atuty i obszary, w których lekcje dadzą Ci najwięcej. Mapa zostaje w Zeszycie i rośnie z Tobą.']
+  ].map(function(s){
+    return '<div style="display:flex;gap:14px;align-items:flex-start;text-align:left">'
+      + '<div style="width:28px;height:28px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;font-family:DM Sans,sans-serif">'+s[0]+'</div>'
+      + '<div><div style="font-size:14.5px;font-weight:600;color:var(--navy);margin-bottom:3px">'+s[1]+'</div>'
+      + '<div style="font-size:13px;color:var(--dim);line-height:1.55">'+s[2]+'</div></div>'
+      + '</div>';
+  }).join('<div style="height:16px"></div>');
+  lexEvalFrame(0,
+    '<div style="text-align:center;margin-bottom:26px">'
+    + '<div style="width:64px;height:64px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;margin:6px auto 16px;box-shadow:0 8px 24px rgba(26,35,64,.18)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>'
+    + '<h3 style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:500;color:var(--navy);margin-bottom:10px">Zanim zaczniemy — chcę Cię poznać</h3>'
+    + '<p style="font-size:14.5px;color:var(--dim);line-height:1.6;max-width:460px;margin:0 auto">To nie test. Nie ma punktów, czerwonych krzyżyków ani „wyników". W ok. <b style="color:var(--navy)">5 minut</b> narysuję Twoją mapę języka — '+lexEvalEsc(langName.toLowerCase())+' skrojony pod Ciebie zaczyna się tutaj.</p>'
+    + '</div>'
+    + '<div style="background:#fff;border:1px solid var(--border);border-radius:18px;padding:24px">'+steps+'</div>'
+    + '<div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:16px;font-size:12px;color:var(--dim2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>Przycisk „Nie jestem pewien" jest zawsze pod ręką — to informacja dla mnie, nie porażka.</div>'
+    + '<button onclick="lexEvalRenderCanDo()" style="width:100%;margin-top:22px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Poznajmy się →</button>'
+    + '<div style="text-align:center;font-size:11.5px;color:var(--dim2);margin-top:10px">ok. 5 minut · możesz przerwać w każdej chwili</div>'
+  );
+}
+
+// ── E1 — can-do + nastawienie ──────────────────────────────
+var LEX_EVAL_CANDO = [
+  {band:'A1', txt:'Rozumiem proste powitania i potrafię się przedstawić'},
+  {band:'A2', txt:'Rozumiem główny sens prostego maila lub wiadomości'},
+  {band:'B1', txt:'Poprowadzę swobodną rozmowę o codziennych sprawach'},
+  {band:'B2', txt:'Obejrzę film lub serial bez napisów i nadążam'},
+  {band:'C1', txt:'Czytam dłuższy artykuł i łapię niuanse oraz ironię'}
+];
+
+function lexEvalRenderCanDo(){
+  var e = _lexEval;
+  e.canDo = e.canDo.length ? e.canDo : LEX_EVAL_CANDO.map(function(){ return null; });
+  var rows = LEX_EVAL_CANDO.map(function(cd, i){
+    var states = ['Bez problemu','Z trudem','Jeszcze nie'];
+    var btns = states.map(function(s, v){
+      var on = e.canDo[i] === v;
+      return '<button onclick="lexEvalCanDoSet('+i+','+v+')" style="flex:1;padding:8px 4px;border-radius:9px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fdf3ec':'#fff')+';font-size:12px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">'+s+'</button>';
+    }).join('');
+    return '<div style="padding:13px 0;border-bottom:1px solid var(--border)">'
+      + '<div style="font-size:13.5px;color:var(--navy);margin-bottom:9px;line-height:1.5">'+cd.txt+'</div>'
+      + '<div style="display:flex;gap:7px">'+btns+'</div>'
+      + '</div>';
+  }).join('');
+  var affects = [['komfortowo','Komfortowo'],['srednio','Tak średnio'],['spina','Trochę mnie spina']].map(function(a){
+    var on = e.affect === a[0];
+    return '<button onclick="lexEvalAffect(\''+a[0]+'\')" style="flex:1;padding:10px 6px;border-radius:10px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fdf3ec':'#fff')+';font-size:12.5px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">'+a[1]+'</button>';
+  }).join('');
+  var answered = e.canDo.filter(function(v){ return v !== null; }).length;
+  var ready = answered >= 3;
+  lexEvalFrame(1,
+    '<div style="text-align:center;margin-bottom:18px">'
+    + '<h3 style="font-family:DM Sans,sans-serif;font-size:21px;font-weight:500;color:var(--navy);margin-bottom:6px">Zaznacz, co już potrafisz</h3>'
+    + '<p style="font-size:13px;color:var(--dim);line-height:1.55;max-width:440px;margin:0 auto">Szczerość pomaga mi nie zanudzić Cię zbyt łatwym i nie przytłoczyć zbyt trudnym.</p>'
+    + '</div>'
+    + '<div style="background:#fff;border:1px solid var(--border);border-radius:18px;padding:6px 20px 2px">'+rows+'</div>'
+    + '<div style="margin-top:16px">'
+    + '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Jak się czujesz z tym językiem?</div>'
+    + '<div style="display:flex;gap:8px">'+affects+'</div>'
+    + '</div>'
+    + '<button id="lex-eval-cando-next" onclick="lexEvalCanDoDone()" '+(ready?'':'disabled')+' style="width:100%;margin-top:22px;padding:14px;background:'+(ready?'var(--orange)':'var(--border2)')+';color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:'+(ready?'pointer':'default')+';font-family:DM Sans,sans-serif">Dalej →</button>'
+    + (ready ? '' : '<div style="text-align:center;font-size:11.5px;color:var(--dim2);margin-top:9px">Zaznacz co najmniej 3 — resztę możesz pominąć</div>')
+  );
+}
+function lexEvalCanDoSet(i, v){ _lexEval.canDo[i] = v; lexEvalRenderCanDo(); }
+function lexEvalAffect(a){ _lexEval.affect = a; lexEvalRenderCanDo(); }
+
+function lexEvalSeed(){
+  var e = _lexEval, seed = null;
+  for(var i = LEX_EVAL_CANDO.length - 1; i >= 0; i--){
+    if(e.canDo[i] === 0){ seed = lexEvalThetaOf(LEX_EVAL_CANDO[i].band); break; }
+  }
+  if(seed === null){
+    for(var j = LEX_EVAL_CANDO.length - 1; j >= 0; j--){
+      if(e.canDo[j] === 1){ seed = lexEvalThetaOf(LEX_EVAL_CANDO[j].band) - 1; break; }
+    }
+  }
+  if(seed === null) seed = -2;
+  e.seedTheta = Math.max(-2, Math.min(3, seed));
+  e.theta = e.seedTheta;
+}
+
+function lexEvalCanDoDone(){
+  var e = _lexEval;
+  if(e.canDo.filter(function(v){ return v !== null; }).length < 3) return;
+  lexEvalSeed();
+  e.line = 'Na rozgrzewkę — zobacz to zdanie i powiedz, co tu znaczy wyróżnione słowo. Bez pośpiechu.';
+  var item = lexEvalPickItem(e.seedTheta - 1, ['mc']);
+  lexEvalShowItem(item, true);
+}
+
+// ── Dobór itemu (CAT-lite) ─────────────────────────────────
+function lexEvalPickItem(targetTheta, allowTypes){
+  var e = _lexEval, best = null, bestScore = 1e9;
+  e.bank.items.forEach(function(it){
+    if(e.usedIds.indexOf(it) !== -1) return;
+    if(allowTypes && allowTypes.indexOf(it.type) === -1) return;
+    if(!allowTypes && it.type === e.lastType) return;
+    var d = Math.abs(lexEvalThetaOf(it.band) - targetTheta);
+    if(it.cat === e.lastCat) d += 0.6;                 // różnorodność kategorii
+    if(e.cats[it.cat]) d += 0.25;                      // preferuj nietknięte kategorie
+    if(d < bestScore){ bestScore = d; best = it; }
+  });
+  if(!best){
+    e.bank.items.forEach(function(it){
+      if(e.usedIds.indexOf(it) !== -1) return;
+      var d = Math.abs(lexEvalThetaOf(it.band) - targetTheta);
+      if(d < bestScore){ bestScore = d; best = it; }
+    });
+  }
+  return best;
+}
+
+// ── Ekran itemu receptywnego ───────────────────────────────
+function lexEvalShowItem(item, isWarmup){
+  var e = _lexEval;
+  e.current = item; e.currentWarmup = !!isWarmup;
+  e.usedIds.push(item); e.shownAt = Date.now();
+  e.matchState = null;
+  var phase = isWarmup ? 1 : 2;
+  var srcMap = {rozmowa:'Rozmowa', praca:'W pracy', 'podróże':'W podróży', jedzenie:'Przy stole', czas:'Na co dzień', opinie:'Wymiana zdań', zdrowie:'U lekarza', dom:'W domu'};
+  var srcChip = (item.type !== 'match')
+    ? '<div style="display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);background:var(--paper2);border:1px solid var(--border);border-radius:100px;padding:3px 10px;margin-bottom:12px">' + (srcMap[item.cat] || 'Scenka') + '</div>'
+    : '';
+  var sceneHtml = srcChip
+    + '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">'
+    + '<div style="flex:1;font-size:17.5px;color:var(--navy);line-height:1.7;font-family:Georgia,serif">'+lexEvalRich(item.scene)+'</div>'
+    + (item.type !== 'match' ? '<button onclick="lexEvalSpeak(_lexEval.current.scene)" title="Posłuchaj" style="flex-shrink:0;width:34px;height:34px;border-radius:50%;border:1px solid var(--border2);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--navy)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>' : '')
+    + '</div>';
+  var body;
+  if(item.type === 'match'){
+    e.matchState = { sel: null, done: {}, wrong: 0, order: lexEvalShuffle(item.pairs.map(function(_, i){ return i; })) };
+    body = sceneHtml + lexEvalMatchHtml();
+  } else {
+    var opts = item.opts.map(function(o, i){
+      return '<button onclick="lexEvalAnswer('+i+')" class="lex-eval-opt" style="width:100%;text-align:left;padding:13px 16px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;font-size:14.5px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'+lexEvalEsc(o)+'</button>';
+    }).join('<div style="height:8px"></div>');
+    body = sceneHtml
+      + '<div style="font-size:13px;color:var(--dim);margin-bottom:12px">'+lexEvalRich(item.q)+'</div>'
+      + opts;
+  }
+  lexEvalFrame(phase,
+    '<div style="background:#fff;border:1px solid var(--border);border-radius:18px;padding:22px 22px 20px">'+body+'</div>'
+    + '<div style="text-align:center;margin-top:14px"><button onclick="lexEvalUnsure()" style="background:transparent;border:none;color:var(--dim2);font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;font-family:DM Sans,sans-serif">Nie jestem pewien — dalej</button></div>'
+  );
+}
+
+function lexEvalShuffle(a){
+  for(var i = a.length - 1; i > 0; i--){ var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+
+function lexEvalMatchHtml(){
+  var e = _lexEval, item = e.current, st = e.matchState;
+  var left = item.pairs.map(function(p, i){
+    var done = st.done[i], sel = st.sel === i;
+    return '<button onclick="lexEvalMatchTap('+i+')" '+(done?'disabled':'')+' style="width:100%;padding:12px;border-radius:11px;border:'+(done?'2px solid var(--orange)':(sel?'2px solid var(--navy)':'1.5px solid var(--border2)'))+';background:'+(done?'#fdf3ec':'#fff')+';font-size:14.5px;color:var(--navy);cursor:'+(done?'default':'pointer')+';font-family:DM Sans,sans-serif;margin-bottom:8px">'+lexEvalEsc(p[0])+'</button>';
+  }).join('');
+  var right = st.order.map(function(pi){
+    var done = st.done[pi];
+    return '<button onclick="lexEvalMatchTapR('+pi+')" '+(done?'disabled':'')+' style="width:100%;padding:12px;border-radius:11px;border:'+(done?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(done?'#fdf3ec':'#fff')+';font-size:13.5px;color:var(--navy);cursor:'+(done?'default':'pointer')+';font-family:DM Sans,sans-serif;margin-bottom:8px">'+lexEvalEsc(item.pairs[pi][1])+'</button>';
+  }).join('');
+  return '<div id="lex-eval-match" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+    + '<div>'+left+'</div><div>'+right+'</div></div>';
+}
+
+function lexEvalMatchTap(i){
+  var st = _lexEval.matchState; if(!st || st.done[i]) return;
+  st.sel = (st.sel === i) ? null : i;
+  var box = document.getElementById('lex-eval-match'); if(box) box.outerHTML = lexEvalMatchHtml();
+}
+function lexEvalMatchTapR(pi){
+  var e = _lexEval, st = e.matchState; if(!st || st.done[pi]) return;
+  if(st.sel === null) return;
+  if(st.sel === pi){ st.done[pi] = true; st.sel = null; }
+  else { st.wrong++; st.sel = null; }
+  var box = document.getElementById('lex-eval-match'); if(box) box.outerHTML = lexEvalMatchHtml();
+  if(Object.keys(st.done).length === e.current.pairs.length){
+    var correct = st.wrong <= 1;
+    var confident = st.wrong === 0 && (Date.now() - e.shownAt) < 22000;
+    setTimeout(function(){ lexEvalRecord(correct, confident, false); }, 350);
+  }
+}
+
+function lexEvalAnswer(idx){
+  var e = _lexEval, item = e.current;
+  var rt = Date.now() - e.shownAt;
+  var correct = idx === item.ans;
+  var confident = rt < (item.type === 'mc' ? 8000 : 10000);
+  lexEvalRecord(correct, confident, false);
+}
+function lexEvalUnsure(){
+  var e = _lexEval;
+  if(e.current && e.current.type === 'listen'){ lexEvalRecordListen(null); return; }
+  if(e.current && e.current.stretch){ lexEvalStretchSkip(); return; }
+  lexEvalRecord(false, false, true);
+}
+
+// ── Zapis odpowiedzi + Elo + kwadrant pewności ─────────────
+function lexEvalRecord(correct, confident, unsure){
+  var e = _lexEval, item = e.current;
+  var ti = lexEvalThetaOf(item.band);
+  var p = 1 / (1 + Math.pow(10, (ti - e.theta)));
+  var K = 1 / (1 + e.nItems * 0.3);
+  if(unsure) K *= 0.5;
+  e.theta += K * ((correct ? 1 : 0) - p);
+  e.theta = Math.max(-2.5, Math.min(3.2, e.theta));
+  e.info += 5.3 * p * (1 - p);   // informacja Fishera dla logistyki base-10 (s=1)
+  e.se = 1 / Math.sqrt(e.info);
+  e.nItems++;
+  if(!e.currentWarmup) e.ladderCount++;
+
+  e.responses.push({band:item.band, type:item.type, cat:item.cat, correct:correct, confident:confident, unsure:unsure, rt: Date.now() - e.shownAt});
+  var bh = e.bandHits[item.band] = e.bandHits[item.band] || {hits:0, conf:0};
+  if(correct){ bh.hits++; if(confident) bh.conf++; }
+  var c = e.cats[item.cat] = e.cats[item.cat] || {a:0, c:0, conf:0};
+  c.a++; if(correct){ c.c++; if(confident) c.conf++; }
+
+  // Kwadrant pewność × poprawność → luki + stany słów
+  if(item.key){
+    if(correct && confident){ e.vocabTouched.push({word:item.key, state:'known'}); }
+    else if(correct){ e.vocabTouched.push({word:item.key, state:'passive'});
+      e.gaps.push({name:'kruche: '+item.key+' ('+item.band+') — zna, wymaga aktywizacji', quadrant:'fragile', priority:'med'}); }
+    else if(confident && !unsure){ e.vocabTouched.push({word:item.key, state:'unknown'});
+      e.gaps.push({name:(item.gapName || 'mylone: '+item.key+' ('+item.band+')'), quadrant:'misconception', priority:'high'}); }
+    else { e.vocabTouched.push({word:item.key, state:'unknown'});
+      e.gaps.push({name:'słownictwo: '+item.key+' ('+item.band+')', quadrant:'clean_gap', priority:'med'}); }
+  }
+
+  // Linia Lexa — informacyjna, reaguje na trend (nigdy "Świetnie!")
+  if(unsure) e.line = 'W porządku — szczerość to też informacja. Idziemy dalej.';
+  else if(e.currentWarmup && correct) e.line = 'Dokładnie tak. Teraz będę dobierał zdania pod Ciebie — jak coś nie siądzie, to moja wskazówka, nie Twój problem.';
+  else if(correct && e.theta > e.seedTheta + 0.4) e.line = 'Pasmo, które rozpoznajesz, jest wyżej, niż wskazywała Twoja samoocena — podbijam trudność.';
+  else if(!correct) e.line = 'Notuję — to ląduje na Twojej mapie jako miejsce, gdzie lekcja da Ci najwięcej.';
+  else if(e.ladderCount === 2) e.line = 'Zauważyłem coś ciekawego — pokażę Ci na końcu, na Mapie.';
+  else e.line = null;
+
+  lexEvalAdvance();
+}
+
+// ── Sterowanie przepływem ──────────────────────────────────
+function lexEvalAdvance(){
+  var e = _lexEval;
+  // interludium słuchania mniej więcej w środku drabinki
+  if(!e.listenDone && e.ladderCount >= 2){ lexEvalShowListening(); return; }
+  var elapsed = (Date.now() - e.startedAt) / 1000;
+  var stop = (e.ladderCount >= 3 && e.se < 0.5) || e.ladderCount >= 5 || elapsed > 240;
+  if(!stop){
+    var item = lexEvalPickItem(e.theta);
+    if(item){ lexEvalShowItem(item, false); return; }
+  }
+  lexEvalShowProd(0);
+}
+
+// ── Interludium słuchania ──────────────────────────────────
+function lexEvalShowListening(){
+  var e = _lexEval;
+  var L = e.bank.listening || [];
+  var li = (e.theta >= 0.5 && L.length > 1) ? L[1] : L[0];
+  if(!li){ e.listenDone = true; lexEvalAdvance(); return; }
+  e.current = {type:'listen', li:li}; e.shownAt = Date.now(); e.listenDone = true;
+  e.line = e.line || 'Chwila oddechu — posłuchaj i powiedz tylko, o co chodzi w skrócie.';
+  var opts = li.opts.map(function(o, i){
+    return '<button onclick="lexEvalRecordListen('+i+')" style="width:100%;text-align:left;padding:13px 16px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;font-size:14.5px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'+lexEvalEsc(o)+'</button>';
+  }).join('<div style="height:8px"></div>');
+  lexEvalFrame(2,
+    '<div style="background:#fff;border:1px solid var(--border);border-radius:18px;padding:26px 22px;text-align:center">'
+    + '<button onclick="lexEvalSpeak(_lexEval.current.li.text)" style="width:74px;height:74px;border-radius:50%;border:none;background:var(--navy);color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(26,35,64,.22)"><svg width="28" height="28" viewBox="0 0 24 24" fill="#fff" stroke="none"><path d="M8 5v14l11-7z"></path></svg></button>'
+    + '<div style="font-size:12px;color:var(--dim2);margin:12px 0 20px">Możesz odsłuchać kilka razy</div>'
+    + '<div style="font-size:13px;color:var(--dim);margin-bottom:12px;text-align:left">'+lexEvalEsc(li.q)+'</div>'
+    + '<div style="text-align:left">'+opts+'</div>'
+    + '</div>'
+    + '<div style="text-align:center;margin-top:14px"><button onclick="lexEvalRecordListen(null)" style="background:transparent;border:none;color:var(--dim2);font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;font-family:DM Sans,sans-serif">Nie jestem pewien — dalej</button></div>'
+  );
+  setTimeout(function(){ lexEvalSpeak(li.text); }, 450);
+}
+function lexEvalRecordListen(idx){
+  var e = _lexEval, li = e.current.li;
+  e.listenCorrect = (idx !== null) ? (idx === li.ans) : null;
+  e.line = (e.listenCorrect === true) ? 'Słuch masz włączony — to dobra baza.' : null;
+  lexEvalAdvance();
+}
+
+// ── E7/E8 — sondy produkcyjne ──────────────────────────────
+function lexEvalShowProd(n){
+  var e = _lexEval, pr = e.bank.prod[n];
+  if(!pr){ lexEvalMaybeStretch(); return; }
+  e.current = {type:'prod', n:n}; e.shownAt = Date.now();
+  if(n === 0) e.line = e.line || 'Teraz Twoja kolej — dokończ to zdanie tak, jak sam(a) byś powiedział(a). Nie musi być perfekcyjnie.';
+  else e.line = 'Ostatnie ode mnie zadanie z myśleniem — opisz tę scenkę paroma słowami. Potem pokażę Ci, co zobaczyłem.';
+  var head = (pr.kind === 'finish')
+    ? '<div style="font-size:13px;color:var(--dim);margin-bottom:10px">'+lexEvalEsc(pr.context)+'</div>'
+      + '<div style="font-size:18px;color:var(--navy);font-family:Georgia,serif;line-height:1.7;margin-bottom:16px">'+lexEvalEsc(pr.starter)+'</div>'
+    : '<div style="background:var(--paper2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;font-size:13.5px;color:var(--navy);line-height:1.6;margin-bottom:14px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.07em;color:var(--dim2);text-transform:uppercase;display:block;margin-bottom:5px">Scenka</span>'+lexEvalEsc(pr.desc)+'</div>'
+      + '<div style="font-size:13px;color:var(--dim);margin-bottom:14px">'+lexEvalEsc(pr.ask)+'</div>';
+  lexEvalFrame(3,
+    '<div style="background:#fff;border:1px solid var(--border);border-radius:18px;padding:22px">'
+    + head
+    + '<textarea id="lex-eval-prod-input" rows="3" placeholder="Napisz po swojemu…" style="width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid var(--border2);border-radius:12px;font-size:15px;color:var(--navy);font-family:DM Sans,sans-serif;resize:vertical;outline:none" onfocus="this.style.borderColor=\'var(--orange)\'" onblur="this.style.borderColor=\'var(--border2)\'"></textarea>'
+    + '<button onclick="lexEvalProdSubmit('+n+')" style="width:100%;margin-top:14px;padding:13px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:14.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Wyślij</button>'
+    + '</div>'
+    + '<div style="text-align:center;margin-top:14px"><button onclick="lexEvalProdSubmit('+n+',true)" style="background:transparent;border:none;color:var(--dim2);font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;font-family:DM Sans,sans-serif">Nie wiem, jak to ująć — dalej</button></div>'
+  );
+  setTimeout(function(){ var t = document.getElementById('lex-eval-prod-input'); if(t) t.focus(); }, 120);
+}
+function lexEvalProdSubmit(n, skipped){
+  var e = _lexEval;
+  var t = document.getElementById('lex-eval-prod-input');
+  var txt = (!skipped && t) ? String(t.value || '').trim() : '';
+  if(!skipped && !txt) return;
+  var pr = e.bank.prod[n];
+  e.prodSamples.push({kind:pr.kind, prompt:(pr.starter || pr.ask || ''), text:txt, skipped:!!skipped});
+  if(skipped){
+    e.gaps.push({name:'produkcja: trudność z ujęciem własnymi słowami', quadrant:'clean_gap', priority:'med'});
+    e.line = 'W porządku — to też cenna informacja. Lekcje wzmocnią właśnie tę stronę.';
+  } else if(n === 0){
+    e.line = 'Zapamiętuję, jak budujesz zdania — to dla mnie najcenniejszy materiał.';
+  }
+  if(n === 0) lexEvalShowProd(1);
+  else lexEvalMaybeStretch();
+}
+
+// ── E9 — Zagwozdka Lexa (opcjonalny stretch) ───────────────
+function lexEvalMaybeStretch(){
+  var e = _lexEval;
+  var elapsed = (Date.now() - e.startedAt) / 1000;
+  var st = (e.bank.stretch || [])[0];
+  if(!st || elapsed > 280 || e.se < 0.42 || e.theta < -1){ lexEvalFinish(); return; }
+  e.current = {stretch:true, st:st}; e.shownAt = Date.now();
+  var opts = st.opts.map(function(o, i){
+    return '<button onclick="lexEvalStretchAnswer('+i+')" style="width:100%;text-align:left;padding:13px 16px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;font-size:14.5px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'+lexEvalEsc(o)+'</button>';
+  }).join('<div style="height:8px"></div>');
+  lexEvalFrame(3,
+    '<div style="background:#fff;border:2px solid var(--orange);border-radius:18px;padding:22px;position:relative">'
+    + '<div style="position:absolute;top:-11px;left:18px;background:var(--orange);color:#fff;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:4px 12px;border-radius:100px">Zagwozdka Lexa</div>'
+    + '<div style="font-size:13px;color:var(--dim);margin:8px 0 14px;line-height:1.55">Czysto z ciekawości — bez ciśnienia. Złapiesz, co tu zgrzyta? Jak nie, to nic — i tak już Cię nieźle znam.</div>'
+    + '<div style="font-size:17.5px;color:var(--navy);line-height:1.7;font-family:Georgia,serif;margin-bottom:16px">'+lexEvalRich(st.scene)+'</div>'
+    + '<div style="font-size:13px;color:var(--dim);margin-bottom:12px">'+lexEvalEsc(st.q)+'</div>'
+    + opts
+    + '</div>'
+    + '<button onclick="lexEvalStretchSkip()" style="width:100%;margin-top:14px;padding:13px;background:#fff;color:var(--navy);border:1.5px solid var(--border2);border-radius:100px;font-size:14px;cursor:pointer;font-family:DM Sans,sans-serif">Pomiń — to tylko ciekawostka</button>'
+  );
+}
+function lexEvalStretchAnswer(i){
+  var e = _lexEval, st = e.current.st;
+  var rt = Date.now() - e.shownAt;
+  var correct = i === st.ans, confident = rt < 12000;
+  var ti = Math.min(3, e.theta + 1);
+  var p = 1 / (1 + Math.pow(10, (ti - e.theta)));
+  e.theta += 0.4 * ((correct ? 1 : 0) - p);
+  if(!correct && confident) e.gaps.unshift({name:st.gapName, quadrant:'misconception', priority:'high'});
+  else if(!correct) e.gaps.push({name:st.gapName, quadrant:'clean_gap', priority:'med'});
+  e.line = correct ? 'Złapane. Górne pasmo też mam już naszkicowane.' : 'Dobra zagwozdka, prawda? Trafia na mapę — wrócimy do niej w lekcji.';
+  lexEvalFinish();
+}
+function lexEvalStretchSkip(){ _lexEval.line = null; lexEvalFinish(); }
+
+// ── E10 — finalizacja: scoring, model wiedzy, Mapa ─────────
+async function lexEvalFinish(){
+  var e = _lexEval;
+  lexEvalFrame(4,
+    '<div style="text-align:center;padding:60px 0">'
+    + '<div style="width:64px;height:64px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;margin:0 auto 18px;animation:lexEvalPulse 1.6s ease-in-out infinite"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20l-5.5-2.2V5.6L9 7.8l6-2.2 5.5 2.2v12.2L15 17.8l-6 2.2z"></path><path d="M9 7.8v12.2M15 5.6v12.2"></path></svg></div>'
+    + '<div style="font-family:DM Sans,sans-serif;font-size:20px;color:var(--navy);margin-bottom:8px">Lex rysuje Twoją mapę…</div>'
+    + '<div style="font-size:13px;color:var(--dim)">To, co zauważyłem po drodze, za chwilę zobaczysz czarno na pomarańczowym.</div>'
+    + '</div>'
+    + '<style>@keyframes lexEvalPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}</style>'
+  );
+
+  var cefr = lexEvalBandOf(e.theta);
+  var passive = lexEvalPassiveBand();
+  var ai = null;
+  try{
+    ai = await Promise.race([ lexEvalAIScore(cefr, passive), new Promise(function(res){ setTimeout(function(){ res(null); }, 22000); }) ]);
+  }catch(err){ ai = null; }
+  var model = lexEvalBuildModel(cefr, passive, ai);
+  lexEvalPersist(model);
+  lexEvalRenderMap(model);
+}
+
+function lexEvalPassiveBand(){
+  var e = _lexEval, bands = ['A1','A2','B1','B2','C1','C2'], best = null;
+  bands.forEach(function(b){
+    var h = e.bandHits[b];
+    if(h && (h.hits >= 2 || h.conf >= 1)) best = b;
+  });
+  return best || lexEvalBandOf(Math.min(e.theta, 0));
+}
+
+async function lexEvalAIScore(cefr, passive){
+  var e = _lexEval;
+  var samples = e.prodSamples.filter(function(s){ return !s.skipped && s.text; });
+  var prompt = 'Jesteś Lexem, doświadczonym nauczycielem języka ' + _lexLangName + ' (uczeń: Polak). '
+    + 'Dane z krótkiej kalibracji startowej:\n'
+    + '- Szacowany poziom (recepcja): ' + cefr + ' (pasmo pasywne: ' + passive + ')\n'
+    + '- Samoocena (can-do, 0=bez problemu,1=z trudem,2=jeszcze nie): ' + JSON.stringify(e.canDo) + '\n'
+    + '- Kategorie (poprawne/próby): ' + JSON.stringify(Object.keys(e.cats).map(function(k){ return k + ':' + e.cats[k].c + '/' + e.cats[k].a; })) + '\n'
+    + '- Zauważone luki: ' + JSON.stringify(e.gaps.slice(0, 6).map(function(g){ return g.name; })) + '\n'
+    + (samples.length ? '- Próbki produkcji ucznia:\n' + samples.map(function(s, i){ return (i + 1) + '. [' + s.prompt + '] ' + s.text; }).join('\n') + '\n' : '- Brak próbek produkcji (pominięte).\n')
+    + 'Oceń WYŁĄCZNIE zakres i poprawność, nie "ładność". Nie karz za prostotę. Ignoruj literówki bez znaczenia. '
+    + 'Zwróć WYŁĄCZNIE poprawny JSON (bez markdown, bez komentarzy) o polach: '
+    + '{"active_band":"A1|A2|B1|B2|C1|C2","errors":[{"name_pl":"krótka nazwa luki po polsku","evidence":"cytat","fix":"poprawna wersja"}],'
+    + '"strengths":["3 atuty po polsku, konkretne, 1 zdanie każdy"],"growth":["3 obszary wzrostu po polsku, język wzrostu (nie: błąd/słabość), 1 zdanie każdy"],'
+    + '"level_sentence":"1 ludzkie zdanie po polsku o poziomie ' + cefr + ', np. mocne B1, blisko B2"}';
+  var raw = await lexEvalAICall(prompt, 800);
+  if(!raw) return null;
+  try{
+    var s = raw.replace(/```json|```/g, '');
+    var a = s.indexOf('{'), b = s.lastIndexOf('}');
+    if(a === -1 || b === -1) return null;
+    return JSON.parse(s.slice(a, b + 1));
+  }catch(err){ return null; }
+}
+
+async function lexEvalAICall(prompt, maxTok){
+  try{
+    if(window.OPENROUTER_KEY_VALUE){
+      var r = await fetch(OPENROUTER_API, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer ' + window.OPENROUTER_KEY_VALUE,'HTTP-Referer':window.location.origin,'X-Title':'Eyelingo Lex'},
+        body: JSON.stringify({model:LEX_MODEL, max_tokens:maxTok, messages:[{role:'user', content:prompt}]})
+      });
+      if(r.ok){
+        var j = await r.json();
+        var t = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+        if(t) return t;
+      }
+    }
+  }catch(e){}
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    var tok = sess ? sess.access_token : '';
+    var pr = await fetch(AI_PROXY_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer ' + tok,'apikey':APIKEY_CONST},
+      body: JSON.stringify({messages:[{role:'user', content:prompt}], max_tokens:maxTok})
+    });
+    var d = await pr.json();
+    return d && d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts && d.candidates[0].content.parts[0] && d.candidates[0].content.parts[0].text || null;
+  }catch(e){ return null; }
+}
+
+var LEX_EVAL_RANGES = {A1:'~500', A2:'~1 000–1 500', B1:'~2 000–3 000', B2:'~4 000–6 000', C1:'~8 000–10 000', C2:'~12 000+'};
+
+function lexEvalBuildModel(cefr, passive, ai){
+  var e = _lexEval;
+  var bands = ['A1','A2','B1','B2','C1','C2'];
+  var active = (ai && ai.active_band && bands.indexOf(ai.active_band) !== -1)
+    ? ai.active_band
+    : bands[Math.max(0, bands.indexOf(passive) - 1)];
+  if(ai && ai.errors){
+    ai.errors.slice(0, 4).forEach(function(er){
+      if(er && er.name_pl) e.gaps.push({name:er.name_pl + (er.evidence ? ' („' + er.evidence + '")' : ''), quadrant:'production', priority:'med'});
+    });
+  }
+  // Heatmapa kategorii
+  var cats = LEX_EVAL_CATS.map(function(name){
+    var c = e.cats[name];
+    var cov = c ? Math.min(1, (c.c + 0.3 * c.conf) / Math.max(1, c.a + 0.3 * c.a)) : null;
+    return {name:name, coverage:cov};
+  });
+  // Atuty / obszary wzrostu (AI lub heurystyka)
+  var strengths = (ai && ai.strengths && ai.strengths.length) ? ai.strengths.slice(0, 3) : [];
+  if(!strengths.length){
+    var top = cats.filter(function(c){ return c.coverage !== null && c.coverage >= 0.6; }).slice(0, 2);
+    top.forEach(function(c){ strengths.push('Pewnie poruszasz się w obszarze „' + c.name + '" — to mocna baza do dalszej pracy.'); });
+    if(e.listenCorrect === true) strengths.push('Rozumienie ze słuchu działa — łapiesz sens bez podpórki tekstu.');
+    if(strengths.length < 3) strengths.push('Masz odwagę próbować własnymi słowami — to najszybsza droga do biegłości.');
+    if(strengths.length < 3) strengths.push('Twoja samoocena trzyma się blisko tego, co pokazały zadania — dobrze znasz swój punkt startu.');
+    strengths = strengths.slice(0, 3);
+  }
+  var growth = (ai && ai.growth && ai.growth.length) ? ai.growth.slice(0, 3) : [];
+  if(!growth.length){
+    e.gaps.filter(function(g){ return g.quadrant === 'misconception'; }).slice(0, 2).forEach(function(g){ growth.push(g.name + ' — zaadresujemy to w pierwszych lekcjach.'); });
+    cats.filter(function(c){ return c.coverage !== null && c.coverage < 0.5; }).slice(0, 2).forEach(function(c){ growth.push('Obszar „' + c.name + '" da Ci najwięcej — tu lekcje zaczną pracować od razu.'); });
+    cats.filter(function(c){ return c.coverage === null; }).slice(0, 2).forEach(function(c){ if(growth.length < 3) growth.push('Obszar „' + c.name + '" jest jeszcze niezbadany — pierwsze lekcje go naszkicują.'); });
+    if(growth.length < 3) growth.push('Przejście słów z rozpoznawania do swobodnego użycia — dokładnie to robią lekcje Lexa.');
+    if(growth.length < 3) growth.push('Utrwalenie górnego pasma, którego dziś dotknęliśmy — tam zaczyna się Twoje i+1.');
+    growth = growth.slice(0, 3);
+  }
+  var levelSentence = (ai && ai.level_sentence) ? ai.level_sentence : lexEvalLevelSentence(cefr);
+  return {
+    cefr:cefr, theta:Math.round(e.theta * 100) / 100, se:Math.round(e.se * 100) / 100,
+    provisional: e.se > 0.55,
+    passive_band:passive, active_band:active,
+    gap_rp: Math.max(0, bands.indexOf(passive) - bands.indexOf(active)),
+    cats:cats, strengths:strengths, growth:growth, level_sentence:levelSentence,
+    gaps:e.gaps, vocab:e.vocabTouched, affect:e.affect,
+    listening: e.listenCorrect,
+    duration_s: Math.round((Date.now() - e.startedAt) / 1000),
+    items_seen: e.nItems, completed_at: new Date().toISOString(), version:'2.0'
+  };
+}
+
+function lexEvalLevelSentence(cefr){
+  var e = _lexEval;
+  var frac = e.theta - Math.floor(e.theta + 0.5);
+  var names = {A1:'początki — i dobrze, każda mapa gdzieś się zaczyna', A2:'solidne podstawy', B1:'samodzielna komunikacja', B2:'swoboda w większości sytuacji', C1:'zaawansowana biegłość', C2:'poziom bliski rodzimemu'};
+  var base = (names[cefr] || '');
+  if(e.se > 0.55) return cefr + ' — wstępnie; doprecyzujemy w pierwszych lekcjach. ' + base.charAt(0).toUpperCase() + base.slice(1) + '.';
+  if(frac > 0.25) return 'Mocne ' + cefr + ', blisko następnego pasma. ' + base.charAt(0).toUpperCase() + base.slice(1) + '.';
+  return cefr + ' — ' + base + '.';
+}
+
+// ── Persist: profil + model wiedzy (per-user, per-język) ───
+function lexEvalPersist(model){
+  try{
+    if(!_lexProfile) _lexProfile = {};
+    _lexProfile.levels_by_lang = _lexProfile.levels_by_lang || {};
+    _lexProfile.levels_by_lang[_lexLang] = model.cefr;
+    _lexProfile.user_level = model.cefr;
+    var names = model.gaps.map(function(g){ return g.name; });
+    var merged = (_lexProfile.known_gaps || []).slice();
+    names.forEach(function(n){ if(merged.indexOf(n) === -1) merged.push(n); });
+    _lexProfile.known_gaps = merged.slice(0, 12);
+    (async function(){
+      try{
+        var s = (await db.auth.getSession()).data.session;
+        if(s) await db.from('lex_profiles').update({
+          levels_by_lang:_lexProfile.levels_by_lang,
+          user_level:model.cefr,
+          known_gaps:_lexProfile.known_gaps,
+          updated_at:new Date().toISOString()
+        }).eq('user_id', s.user.id);
+      }catch(err){}
+    })();
+  }catch(e){}
+  try{ localStorage.setItem(uk('lex_km_' + _lexLang), JSON.stringify(model)); }catch(e){}
+}
+
+// ── Render Mapy Językowej ──────────────────────────────────
+function lexEvalHeatColor(t){
+  function L(a, b){ return Math.round(a + (b - a) * t); }
+  return 'rgb(' + L(26, 201) + ',' + L(35, 106) + ',' + L(64, 42) + ')';
+}
+
+function lexEvalRenderMap(m){
+  var chips = m.cats.map(function(c){
+    if(c.coverage === null){
+      return '<div style="padding:9px 6px;border-radius:11px;border:1.5px dashed var(--border2);text-align:center"><div style="font-size:12px;color:var(--dim2);text-transform:capitalize">' + c.name + '</div><div style="font-size:10px;color:var(--dim2);margin-top:2px">do zbadania</div></div>';
+    }
+    var col = lexEvalHeatColor(c.coverage);
+    return '<div style="padding:9px 6px;border-radius:11px;background:' + col + ';text-align:center"><div style="font-size:12px;color:#fff;text-transform:capitalize">' + c.name + '</div><div style="font-size:10px;color:rgba(255,255,255,.75);margin-top:2px">' + (c.coverage >= 0.7 ? 'mocny obszar' : c.coverage >= 0.4 ? 'w budowie' : 'duży potencjał') + '</div></div>';
+  }).join('');
+  var sList = m.strengths.map(function(s){
+    return '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg><div style="font-size:13.5px;color:var(--navy);line-height:1.55">' + lexEvalEsc(s) + '</div></div>';
+  }).join('');
+  var gList = m.growth.map(function(s){
+    return '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M12 19V5M5 12l7-7 7 7"></path></svg><div style="font-size:13.5px;color:var(--navy);line-height:1.55">' + lexEvalEsc(s) + '</div></div>';
+  }).join('');
+  var bands = ['A1','A2','B1','B2','C1','C2'];
+  var vocabLine = 'Rozpoznajesz słownictwo z pasma <b>' + m.passive_band + '</b> (orientacyjnie ' + (LEX_EVAL_RANGES[m.passive_band] || '') + ' słów), swobodnie używasz pasma <b>' + m.active_band + '</b>.'
+    + (m.gap_rp >= 2 ? ' Rozumiesz dużo więcej, niż mówisz — lekcje postawią na aktywne użycie.' : '');
+  var durBtn = function(d, label){
+    return '<button onclick="lexEvalChooseDur(' + d + ')" style="flex:1;padding:14px 8px;border-radius:14px;border:1.5px solid var(--border2);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'"><div style="font-size:17px;font-weight:600;color:var(--navy)">' + d + ' min</div><div style="font-size:11px;color:var(--dim2);margin-top:3px">' + label + '</div></button>';
+  };
+  lexEvalFrame(4,
+    '<div style="text-align:center;margin-bottom:18px">'
+    + '<h3 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:6px">Twoja Mapa Językowa</h3>'
+    + '<p style="font-size:13px;color:var(--dim)">Oto jak Cię widzę po tych kilku minutach. Mapa zapisuje się jako strona 1 Twojego Zeszytu i będzie rosła po każdej lekcji.</p>'
+    + '</div>'
+    + '<div style="background:var(--navy);border-radius:18px;padding:24px;text-align:center;margin-bottom:14px">'
+    + '<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.6);margin-bottom:8px">Twój poziom</div>'
+    + '<div style="font-family:DM Sans,sans-serif;font-size:42px;font-weight:600;color:#fff;line-height:1">' + m.cefr + '</div>'
+    + '<div style="font-size:13.5px;color:rgba(255,255,255,.85);margin-top:10px;line-height:1.55">' + lexEvalEsc(m.level_sentence) + '</div>'
+    + '<div style="font-size:12.5px;color:rgba(255,255,255,.7);margin-top:10px;line-height:1.55">' + vocabLine + '</div>'
+    + '</div>'
+    + '<div style="background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:14px">'
+    + '<div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2);margin-bottom:12px">Mapa obszarów</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px">' + chips + '</div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:18px">'
+    + '<div style="background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px"><div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--orange);margin-bottom:12px">Twoje atuty</div>' + sList + '</div>'
+    + '<div style="background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px"><div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--navy);margin-bottom:12px">Obszary, gdzie lekcje dadzą Ci najwięcej</div>' + gList + '</div>'
+    + '</div>'
+    + '<div style="background:var(--paper2);border:1px solid var(--border);border-radius:18px;padding:18px;text-align:center">'
+    + '<div style="font-size:14.5px;color:var(--navy);margin-bottom:14px;font-weight:500">Twoja pierwsza lekcja jest gotowa. Ile masz czasu?</div>'
+    + '<div style="display:flex;gap:10px">' + durBtn(10, 'szybki start') + durBtn(25, 'pełny rytm') + durBtn(40, 'głęboka sesja') + '</div>'
+    + '</div>'
+    + '<div id="lex-eval-react" style="text-align:center;margin-top:14px;font-size:12px;color:var(--dim2)">Czy ta mapa do Ciebie pasuje? '
+    + '<button onclick="lexEvalReact(1)" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:4px 12px;font-size:11.5px;color:var(--navy);cursor:pointer;margin-left:6px;font-family:DM Sans,sans-serif">Pasuje</button>'
+    + '<button onclick="lexEvalReact(0)" style="background:transparent;border:1px solid var(--border2);border-radius:100px;padding:4px 12px;font-size:11.5px;color:var(--navy);cursor:pointer;margin-left:6px;font-family:DM Sans,sans-serif">Nie czuję tego</button>'
+    + '</div>'
+  );
+}
+
+function lexEvalReact(v){
+  try{
+    var key = uk('lex_km_' + _lexLang);
+    var km = JSON.parse(localStorage.getItem(key) || '{}');
+    km.map_reaction = v ? 'pasuje' : 'nie_czuje';
+    localStorage.setItem(key, JSON.stringify(km));
+  }catch(e){}
+  var el = document.getElementById('lex-eval-react');
+  if(el) el.innerHTML = v ? 'Zanotowane — mapa będzie się doprecyzowywać z każdą lekcją.' : 'Zanotowane — potraktuję ją jako wstępną i doprecyzuję w lekcjach.';
+}
+
+function lexEvalChooseDur(d){
+  _lexObDur = d;
+  try{
+    if(_lexProfile) _lexProfile.lesson_duration = d;
+    (async function(){
+      try{
+        var s = (await db.auth.getSession()).data.session;
+        if(s) await db.from('lex_profiles').update({lesson_duration:d, updated_at:new Date().toISOString()}).eq('user_id', s.user.id);
+      }catch(err){}
+    })();
+  }catch(e){}
+  _lexEval = null;
   lexStartLesson();
 }
 
 // ── Lesson start ──────────────────────────────────────────
 async function lexStartLesson(){
+  // Poziom nieustalony → ewaluacja ekranowa (Assessment Bible), nie czat [CONV]
+  if(lexCurrentLevel()==='unknown'){ return lexEvalStart(); }
   _lexLessonFocus = window._lexNextTopic || null; window._lexNextTopic = null;
   _lexTopGap = null; _lexRecommendedGap = null;
   _lexVocab = [];
@@ -15879,646 +16645,3 @@ async function lexInit(){
   #chat-messages{ max-width: 100%; }
 }
 </style>
-<script>
-// ═══════════════════════════════════════════════════════════
-// EL — AI TEACHER ENGINE v3 · LESSON FLOW (Sprint 4)
-// State machine (§6.1) + 9 rendererów (§6.2) w skorupie
-// #lex-card-engine. Wymaga: data layer (elApi/elCache/elLatency/
-// elQueue/elConfig) + helpery legacy (lexEsc, lexSpeak, lexShowScreen).
-// ═══════════════════════════════════════════════════════════
-
-var _elState = null;        // {lesson_id, lang, format_min, plan, screen_index, rolling, topic, macro_goal, done}
-var _elAdapt = {fallback:false, harder:false};
-var _elSubItem = 0;         // sub-item dla beatów multi-item (E2/E8)
-var _elBusy = false;
-var _elPrefetching = {};    // klucze grup w locie
-var EL_LANG_TTS = {en:'en-GB', es:'es-ES', nl:'nl-NL', jp:'ja-JP'};
-
-// ── START ─────────────────────────────────────────────────
-async function elStartLesson(){
-  _elAdapt = {fallback:false, harder:false};
-  _elSubItem = 0; _elBusy = false;
-  lexShowScreen('lex-card-engine');
-  elCardHTML('<span style="color:var(--dim2)">Lex układa Twoją lekcję…</span>');
-  elZoneHTML('');
-  var fmt = (_lexObDur === 10) ? 10 : 25;   // 40 min nie istnieje w v3
-  var r = await elApi('lesson-start', {format_min: fmt, target_lang: _lexLang});
-  if(!r.ok || !r.data || !r.data.plan){
-    console.error('elStartLesson:', r);
-    elCardHTML('<span style="color:var(--dim2)">Nie udało się ułożyć lekcji — uruchamiam tryb klasyczny…</span>');
-    elTrack('fallback_legacy', 'lesson-start', (r&&r.status)||0, null, {});
-    setTimeout(function(){ lexStartLesson(); }, 600);
-    return;
-  }
-  var d = r.data;
-  _elState = {
-    lesson_id: d.lesson_id, lang: _lexLang, format_min: d.format_min || fmt,
-    plan: d.plan, screen_index: d.screen_index || 0,
-    rolling: d.rolling_accuracy || 0.8,
-    topic: d.topic_container, macro_goal: d.macro_goal, done: false
-  };
-  elCache.set('lesson', {lesson_id: d.lesson_id, lang: _lexLang});
-  elUpdateBoard();
-  elRender();
-}
-
-async function elResumeFromData(d){
-  _lexLang = d.target_lang || _lexLang;
-  var info = LEX_LANG_MAP[_lexLang]; if(info){ _lexLangName = info.name; _lexLangNative = info.native;
-    var badge = document.getElementById('lex-lang-badge'); if(badge) badge.textContent = '· ' + info.flag + ' ' + info.native; }
-  _elState = {
-    lesson_id: d.lesson_id, lang: _lexLang, format_min: d.format_min || 25,
-    plan: d.plan || [], screen_index: d.screen_index || 0,
-    rolling: d.rolling_accuracy || 0.8,
-    topic: d.topic_container, macro_goal: d.macro_goal, done: false
-  };
-  _elAdapt = {fallback:false, harder:false}; _elSubItem = 0; _elBusy = false;
-  lexShowScreen('lex-card-engine');
-  elUpdateBoard();
-  elRender();
-}
-
-// ── RENDER DISPATCH ───────────────────────────────────────
-async function elRender(){
-  var st = _elState; if(!st) return;
-  if(st.screen_index >= st.plan.length){ elComplete(false); return; }
-  var item = st.plan[st.screen_index];
-  if(!item || item.type === 'CLOSE'){ elComplete(false); return; }
-
-  _elSubItem = 0;
-  elLatency.reset();
-
-  // top bar + progress (obraz, bez liczb-wyników)
-  var num = document.getElementById('lex-card-num');
-  if(num) num.textContent = 'Karta ' + (st.screen_index + 1);
-  var ph = document.getElementById('lex-phase');
-  if(ph){ ph.style.display='inline-block'; ph.textContent = elPhaseLabel(item.phase); }
-  var bar = document.getElementById('lex-progress-bar');
-  if(bar) bar.style.width = Math.round(100 * st.screen_index / Math.max(1, st.plan.length)) + '%';
-
-  // treść (lazy)
-  if(!item.content){
-    elCardHTML('<span style="color:var(--dim2)">Przygotowuję…</span>'); elZoneHTML('');
-    await elEnsureContent(item);
-  }
-  elPrefetchNext();
-
-  switch(item.type){
-    case 'PRIME':      return elRenderInfo(item, 'Zaczynamy →');
-    case 'CHECKPOINT': return elRenderInfo(item, 'Druga połowa →');
-    case 'E2':         return elRenderE2(item);
-    case 'E1':         return elRenderE1(item);
-    case 'E3':         return elRenderE3(item);
-    case 'E5':         return elRenderE5(item, false);
-    case 'STRETCH_E5': return elRenderE5(item, true);
-    case 'ODDECH':     return elRenderOddech(item);
-    case 'E8':         return elRenderE8(item);
-    default:           return elAdvanceTap();   // nieznany typ → przeskocz
-  }
-}
-
-function elPhaseLabel(p){
-  return {PRIME:'Start', ACTIVATE:'Rozgrzewka', CORE:'Trening', ODDECH:'Oddech',
-    CHECKPOINT:'Półmetek', STRETCH:'Wyzwanie', CONSOLIDATE:'Utrwalenie', CLOSE:'Finisz'}[p] || p;
-}
-
-// ── CONTENT (lazy + prefetch porcji N+1) ──────────────────
-function elGroupSpec(item){
-  return (item.portion != null) ? {portion: item.portion} : {phase: item.phase};
-}
-async function elEnsureContent(item){
-  var spec = elGroupSpec(item);
-  var r = await elApi('portion-content', Object.assign({lesson_id:_elState.lesson_id}, spec));
-  if(r.ok && r.data && r.data.items){
-    r.data.items.forEach(function(it){
-      var p = _elState.plan[it.idx];
-      if(p && p.idx === it.idx) p.content = it.content;
-    });
-  }
-  if(!item.content){
-    // degraded offline/awaria: minimalny beat z samego słowa
-    var w = item.word || (item.words||[])[0] || '';
-    item.content = {prompt_pl: w ? ('Słowo: ' + w) : 'Dalej', answer_key:[w], degraded:true};
-    elTrack('degraded', item.type, null, null, {lesson_id:_elState.lesson_id});
-  } else if(item.content.degraded){
-    elTrack('degraded', item.type, null, null, {lesson_id:_elState.lesson_id});
-  }
-}
-function elPrefetchNext(){
-  var st = _elState; if(!st) return;
-  for(var i = st.screen_index + 1; i < st.plan.length; i++){
-    var p = st.plan[i];
-    if(p.content || p.type === 'CLOSE') continue;
-    var spec = elGroupSpec(p);
-    var key = JSON.stringify(spec);
-    if(_elPrefetching[key]) return;
-    _elPrefetching[key] = 1;
-    elApi('portion-content', Object.assign({lesson_id:st.lesson_id}, spec)).then(function(r){
-      delete _elPrefetching[key];
-      if(r.ok && r.data && r.data.items){
-        r.data.items.forEach(function(it){
-          var q = st.plan[it.idx];
-          if(q && !q.content) q.content = it.content;
-        });
-      }
-    });
-    return;  // tylko najbliższa grupa
-  }
-}
-
-// ── UI helpers ────────────────────────────────────────────
-function elCardHTML(html){
-  if(typeof speechSynthesis !== 'undefined'){ try{ speechSynthesis.cancel(); }catch(e){} }
-  var el = document.getElementById('lex-card-text');
-  if(el) el.innerHTML = html;
-  var hint = document.getElementById('lex-translate-hint'); if(hint) hint.style.display='none';
-  var tr = document.getElementById('lex-sentence-tr'); if(tr) tr.style.display='none';
-}
-function elZone(){
-  var zone = document.getElementById('lex-answer-zone');
-  ['lex-type-choice','lex-type-text','lex-type-conv','lex-type-feedback','lex-type-loading']
-    .forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display='none'; });
-  var el = document.getElementById('el-zone');
-  if(!el){
-    el = document.createElement('div'); el.id = 'el-zone';
-    el.style.cssText = 'display:flex;flex-direction:column;gap:10px';
-    if(zone) zone.appendChild(el);
-  }
-  return el;
-}
-function elZoneHTML(html){ elZone().innerHTML = html; }
-function elBtn(label, fn, primary){
-  return '<button onclick="'+fn+'" style="width:100%;padding:14px;background:'+(primary?'var(--navy)':'var(--paper)')+
-    ';color:'+(primary?'#fff':'var(--navy)')+';border:'+(primary?'none':'1.5px solid var(--border2)')+
-    ';border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">'+label+'</button>';
-}
-function elSpeakTarget(text){
-  if(!_lexSpeechEnabled || typeof speechSynthesis === 'undefined' || !text) return;
-  try{
-    speechSynthesis.cancel();
-    var u = new SpeechSynthesisUtterance(text);
-    u.lang = EL_LANG_TTS[_elState.lang] || 'en-GB';
-    u.rate = 0.95;
-    speechSynthesis.speak(u);
-  }catch(e){}
-}
-function elShuffle(a){
-  a = (a||[]).slice();
-  for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; }
-  return a;
-}
-function elGlossBtn(item){
-  var g = item.content && item.content.gloss_pl;
-  if(!g || _elAdapt.harder) return '';
-  return '<button onclick="elShowGloss(this)" data-gloss="'+lexEsc(g)+'" style="align-self:flex-start;font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif">[KLUCZ] podpowiedź</button>';
-}
-function elShowGloss(btn){
-  elLatency.markHint();
-  var g = btn.getAttribute('data-gloss');
-  btn.outerHTML = '<div style="font-size:13px;color:var(--dim);padding:8px 14px;background:var(--paper);border-radius:10px;border-left:3px solid var(--orange)">🇵🇱 '+g+'</div>';
-}
-function elHighlight(sentence, word){
-  if(!sentence) return '';
-  var safe = lexEsc(sentence);
-  if(word){
-    var re = new RegExp('('+word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','i');
-    safe = safe.replace(re, '<strong style="color:var(--orange)">$1</strong>');
-  }
-  return safe;
-}
-
-// Tablica lekcji (overlay) — słowa lekcji + temat
-function elUpdateBoard(){
-  var panel = document.getElementById('lex-board-panel');
-  if(!panel || !_elState) return;
-  var words = [];
-  _elState.plan.forEach(function(p){
-    if(p.phase === 'CORE' && p.type === 'E1' && p.words){
-      p.words.forEach(function(w){ if(words.indexOf(w) < 0) words.push(w); });
-    }
-  });
-  var html = '<div style="font-size:12px;color:var(--dim);padding:8px 12px;background:var(--paper);border-radius:10px;margin-bottom:6px">Temat: <strong>'+lexEsc(_elState.topic||'')+'</strong></div>';
-  words.forEach(function(w){
-    html += '<div style="font-size:13px;color:var(--navy);padding:6px 12px;background:var(--paper);border-radius:8px">'+lexEsc(w)+'</div>';
-  });
-  panel.innerHTML = html;
-}
-
-// ── SUBMIT (wspólna ścieżka, offline-aware) ───────────────
-async function elSubmit(payload, opts){
-  if(_elBusy) return; _elBusy = true;
-  opts = opts || {};
-  var st = _elState;
-  var m = elLatency.read();
-  var body = Object.assign({
-    lesson_id: st.lesson_id, screen_index: st.screen_index,
-    target_lang: st.lang, latency_ms: m.latency_ms, hint_used: m.hint_used
-  }, payload);
-
-  var r = await elApi('beat-submit', body);
-
-  if(r.ok){
-    var d = r.data || {};
-    st.rolling = (d.rolling_accuracy != null) ? d.rolling_accuracy : st.rolling;
-    await elApplyAdaptation(d.adaptation);
-    if(!body.no_advance && d.next_screen_index != null) st.screen_index = d.next_screen_index;
-    _elBusy = false;
-    return d;
-  }
-  if(r.status === 409){
-    // duplikat / rozjazd: resynchronizacja do stanu serwera
-    var nsi = r.data && r.data.next_screen_index;
-    if(nsi != null){ st.screen_index = nsi; }
-    _elBusy = false;
-    return {resync:true, correct:null};
-  }
-  if(r.offline){
-    // tryb offline: lokalny grading lustrzany, kolejka, advance lokalny
-    var item = st.plan[st.screen_index];
-    var key = (payload._local_key || (item.content && item.content.answer_key) || []);
-    var correct = elLocalGrade(String(payload.answer||''), key, payload.exercise_type || item.type, item.words);
-    elQueue.push('beat-submit', body);
-    elTrack('offline', item.type, 0, null, {lesson_id:st.lesson_id});
-    st.rolling = Math.round((0.7*st.rolling + 0.3*(correct?1:0))*1000)/1000;
-    if(!body.no_advance) st.screen_index++;
-    _elBusy = false;
-    return {correct: correct, feedback: correct ? 'Dobrze!' : null,
-      answer_key_display: correct ? undefined : key[0], offline: true};
-  }
-  console.error('beat-submit:', r);
-  _elBusy = false;
-  return {correct:null, error:true};
-}
-
-function elLocalGrade(answer, key, type, words){
-  var norm = function(s){ return String(s||'').trim().toLowerCase().normalize('NFC').replace(/\s+/g,' ').replace(/[.!?,;:]+$/,''); };
-  var a = norm(answer); if(!a) return false;
-  if((key||[]).some(function(k){ return norm(k) === a; })) return true;
-  if(type === 'E5'){
-    return (key||[]).some(function(k){ return k && a.indexOf(norm(k)) >= 0; }) && a.split(' ').length >= 3;
-  }
-  if(type === 'STRETCH_E5'){
-    var hits = (words||[]).filter(function(w){ return a.indexOf(norm(w)) >= 0; }).length;
-    return hits >= 2 && a.split(' ').length >= 6;
-  }
-  return false;
-}
-
-async function elApplyAdaptation(a){
-  if(!a) return;
-  elTrack('adaptation', a, null, null, {});
-  if(a === 'FALLBACK'){ _elAdapt.fallback = true; _elAdapt.harder = false; }
-  if(a === 'HARDER'){ _elAdapt.harder = true; _elAdapt.fallback = false; }
-  if(a === 'HOLD_NEW'){
-    // plan zmutowany server-side → resync planu
-    var r = await elApi('lesson-resume', {target_lang: _elState.lang});
-    if(r.ok && r.data && r.data.plan) _elState.plan = r.data.plan;
-  }
-  // RESEED — obsługa w feedbacku (neutralne przejście)
-}
-
-// Feedback strip: poprawne → auto-advance 1.3s; błędne → Dalej (user czyta)
-function elShowFeedback(d, afterFn){
-  var zone = elZone();
-  var ok = d.correct === true;
-  var neutral = d.correct === null || d.correct === undefined;
-  var color = neutral ? 'var(--border2)' : ok ? '#16a34a' : '#dc2626';
-  var bg = neutral ? 'var(--paper)' : ok ? '#f0fdf4' : '#fef2f2';
-  var html = '<div style="padding:12px 16px;background:'+bg+';border:1px solid '+color+';border-radius:12px;font-size:14px;color:var(--navy);line-height:1.5">';
-  if(!neutral) html += '<strong>'+(ok?'✓ Dobrze!':'✗ Nie tym razem')+'</strong> ';
-  if(d.feedback) html += lexEsc(d.feedback);
-  if(!ok && !neutral && d.answer_key_display) html += '<div style="margin-top:6px;font-size:13px;color:var(--dim)">Poprawnie: <strong>'+lexEsc(d.answer_key_display)+'</strong></div>';
-  html += '</div>';
-  if(ok || neutral){
-    zone.innerHTML = html;
-    var lid = _elState && _elState.lesson_id;
-    setTimeout(function(){ if(_elState && _elState.lesson_id === lid && !_elState.done) afterFn(); }, neutral ? 900 : 1300);
-  } else {
-    window._elFeedbackNext = afterFn;
-    zone.innerHTML = html + elBtn('Dalej →', 'window._elFeedbackNext()', true);
-  }
-}
-
-// ── RENDERERY ─────────────────────────────────────────────
-
-// PRIME / CHECKPOINT — info + tap (bez pomiaru)
-function elRenderInfo(item, btnLabel){
-  var c = item.content || {};
-  elCardHTML(lexEsc(c.prompt_pl||'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>'));
-  try{ lexSpeak(c.prompt_pl||''); }catch(e){}
-  elZoneHTML(elBtn(btnLabel, 'elAdvanceTap()', true));
-}
-async function elAdvanceTap(){
-  var d = await elSubmit({exercise_type:'ADVANCE', modality:'tap', answer:null, word:null});
-  if(d) elRender();
-}
-
-// E2 WARM FIRE — MC 1-tap, sekwencja mc_items, latency per item → baseline
-function elRenderE2(item){
-  var items = (item.content && item.content.mc_items) || [];
-  if(!items.length){ elAdvanceTap(); return; }
-  elRenderE2Item(item, items);
-}
-function elRenderE2Item(item, items){
-  var it = items[_elSubItem];
-  elCardHTML('<div style="font-size:13px;color:var(--dim2);margin-bottom:8px">Szybko — co znaczy:</div>'+
-    '<div style="font-size:24px;font-weight:500;color:var(--navy)">'+lexEsc(it.word)+'</div>'+
-    (item.calibration_probe ? '' : ''));
-  elSpeakTarget(it.word);
-  var opts = elShuffle([it.correct].concat(it.distractors||[]));
-  var html = '<div style="display:grid;grid-template-columns:1fr;gap:8px">';
-  opts.forEach(function(o){
-    html += '<button class="el-mc" data-v="'+lexEsc(o)+'" style="padding:13px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;font-size:14px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif;text-align:left">'+lexEsc(o)+'</button>';
-  });
-  html += '</div>';
-  elZoneHTML(html);
-  elLatency.start();
-  Array.prototype.forEach.call(document.querySelectorAll('#el-zone .el-mc'), function(btn){
-    btn.onclick = async function(){
-      elLatency.firstAction();
-      var chosen = btn.getAttribute('data-v');
-      var isLast = _elSubItem >= items.length - 1;
-      var ok = chosen === it.correct;
-      var grid = btn.parentNode; if(grid) grid.style.pointerEvents = 'none';
-      btn.style.borderColor = ok ? '#16a34a' : '#dc2626';
-      btn.style.background = ok ? '#f0fdf4' : '#fef2f2';
-      var d = await elSubmit({
-        exercise_type:'E2', modality:'tap', word: it.word, answer: chosen,
-        no_advance: !isLast, _local_key:[it.correct]
-      });
-      if(!d) return;
-      setTimeout(function(){
-        if(isLast){ elRender(); }
-        else { _elSubItem++; elLatency.reset(); elRenderE2Item(item, items); }
-      }, 650);
-    };
-  });
-}
-
-// E1 CUE — kontekst + target; tap „rozumiem" (latency tap)
-function elRenderE1(item){
-  var c = item.content || {};
-  var html = '';
-  if(item.is_new) html += '<div style="display:inline-block;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#0369a1;background:#e0f2fe;border:1px solid #0ea5e9;border-radius:100px;padding:3px 10px;margin-bottom:10px">Nowe słowo</div>';
-  html += '<div style="font-size:13px;color:var(--dim);margin-bottom:10px;line-height:1.6">'+lexEsc(c.prompt_pl||'')+'</div>';
-  if(c.sentence_target) html += '<div style="font-size:18px;line-height:1.7;color:var(--navy)">'+elHighlight(c.sentence_target, item.word)+'</div>';
-  elCardHTML(html);
-  elSpeakTarget(c.sentence_target || item.word);
-  elZoneHTML(elGlossBtn(item) + elBtn('Rozumiem →', 'elSubmitE1()', true));
-  elLatency.start();
-}
-async function elSubmitE1(){
-  elLatency.firstAction();
-  var item = _elState.plan[_elState.screen_index];
-  var key = (item.content && item.content.answer_key) || [item.word];
-  var d = await elSubmit({exercise_type:'E1', modality:'tap', word:item.word,
-    answer: key[0] || item.word, _local_key:key});
-  if(d) elRender();
-}
-
-// E3 GAP — zdanie z luką; typed | bank tiles (FALLBACK / with_bank)
-function elRenderE3(item){
-  var c = item.content || {};
-  var html = '<div style="font-size:13px;color:var(--dim);margin-bottom:10px">'+lexEsc(c.prompt_pl||'Uzupełnij lukę:')+'</div>';
-  if(item.weave_from) html += '<div style="font-size:11px;color:var(--dim2);margin-bottom:8px">↩ wraca z wcześniejszej części</div>';
-  html += '<div style="font-size:18px;line-height:1.7;color:var(--navy)">'+lexEsc(c.sentence_target||'___')+'</div>';
-  elCardHTML(html);
-  var useBank = !!item.with_bank || _elAdapt.fallback;
-  var zone = '<div id="el-input-wrap" style="display:flex;gap:8px;align-items:flex-end">'+
-    '<textarea id="el-input" rows="1" placeholder="Wpisz brakujące słowo…" style="flex:1;resize:none;padding:12px 14px;border-radius:14px;border:2px solid var(--border2);font-size:14px;font-family:DM Sans,sans-serif;outline:none" onkeydown="if(event.key===\'Enter\'){event.preventDefault();elSubmitTyped(\'E3\');}"></textarea>'+
-    '<button onclick="elSubmitTyped(\'E3\')" style="width:44px;height:44px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;color:#fff;font-size:16px">→</button></div>';
-  if(useBank && c.tiles && c.tiles.length){
-    zone += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
-    elShuffle(c.tiles).forEach(function(t){
-      zone += '<button onclick="elTileTap(this,\'E3\')" data-v="'+lexEsc(t)+'" style="padding:9px 16px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:14px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">'+lexEsc(t)+'</button>';
-    });
-    zone += '</div>';
-  }
-  elZoneHTML(elGlossBtn(item) + zone);
-  elLatency.start();
-  var inp = document.getElementById('el-input');
-  if(inp){ elLatency.bindTyped(inp); inp.focus(); }
-}
-async function elTileTap(btn, type){
-  elLatency.firstAction();
-  var v = btn.getAttribute('data-v');
-  var item = _elState.plan[_elState.screen_index];
-  if(type === 'E5'){
-    // E5: kafelki komponują zdanie
-    var inp = document.getElementById('el-input');
-    if(inp){ inp.value = (inp.value ? inp.value + ' ' : '') + v; }
-    btn.disabled = true; btn.style.opacity = .4;
-    return;
-  }
-  var d = await elSubmit({exercise_type:type, modality:'tap', word:item.word, answer:v});
-  if(d) elShowFeedback(d, elRender);
-}
-async function elSubmitTyped(type){
-  var inp = document.getElementById('el-input');
-  var val = inp ? inp.value : '';
-  if(!String(val).trim()) return;
-  var item = _elState.plan[_elState.screen_index];
-  var d = await elSubmit({exercise_type:type, modality:'typed',
-    word: item.word || null, answer: val});
-  if(d) elShowFeedback(d, elRender);
-}
-
-// E5 SCULPT / STRETCH_E5 — produkcja: intencja PL → zdanie target
-function elRenderE5(item, isStretch){
-  var c = item.content || {};
-  var html = '<div style="font-size:13px;color:var(--dim2);margin-bottom:6px">'+(isStretch?'Wyzwanie — połącz słowa:':'Twoja kolej — wyraź to:')+'</div>'+
-    '<div style="font-size:16px;line-height:1.7;color:var(--navy)">'+lexEsc(c.prompt_pl||'')+'</div>';
-  if(isStretch && item.words && item.words.length){
-    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">';
-    item.words.forEach(function(w){
-      html += '<span style="font-size:13px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy)">'+lexEsc(w)+'</span>';
-    });
-    html += '</div>';
-  }
-  elCardHTML(html);
-  var useTiles = !isStretch && _elAdapt.fallback && c.tiles && c.tiles.length;
-  var zone = '<div style="display:flex;gap:8px;align-items:flex-end">'+
-    '<textarea id="el-input" rows="2" placeholder="Napisz po '+lexEsc(_lexLangName)+'…" style="flex:1;resize:none;padding:12px 14px;border-radius:14px;border:2px solid var(--border2);font-size:14px;font-family:DM Sans,sans-serif;outline:none" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();elSubmitTyped(\''+(isStretch?'STRETCH_E5':'E5')+'\');}"></textarea>'+
-    '<button onclick="elSubmitTyped(\''+(isStretch?'STRETCH_E5':'E5')+'\')" style="width:44px;height:44px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;color:#fff;font-size:16px">→</button></div>';
-  if(useTiles){
-    zone += '<div style="font-size:11px;color:var(--dim2)">Ułóż z kafelków:</div><div style="display:flex;flex-wrap:wrap;gap:8px">';
-    elShuffle(c.tiles).forEach(function(t){
-      zone += '<button onclick="elTileTap(this,\'E5\')" data-v="'+lexEsc(t)+'" style="padding:9px 16px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:14px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif">'+lexEsc(t)+'</button>';
-    });
-    zone += '</div>';
-  }
-  elZoneHTML(elGlossBtn(item) + zone);
-  elLatency.start();
-  var inp = document.getElementById('el-input');
-  if(inp){ elLatency.bindTyped(inp); inp.focus(); }
-}
-
-// ODDECH — listening TTS (M6) + 1 MC; transkrypt na tap
-function elRenderOddech(item){
-  var c = item.content || {};
-  var html = '<div style="font-size:13px;color:var(--dim2);margin-bottom:8px">🎧 Oddech — posłuchaj:</div>'+
-    '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">'+
-    '<button onclick="elOddechPlay()" style="padding:10px 20px;border-radius:100px;border:none;background:var(--navy);color:#fff;font-size:14px;cursor:pointer;font-family:DM Sans,sans-serif">▶ Odtwórz</button>'+
-    '<button onclick="elOddechTranscript(this)" style="padding:10px 16px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;color:var(--dim);font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Pokaż transkrypt</button></div>'+
-    '<div id="el-oddech-tr" style="display:none;font-size:15px;line-height:1.7;color:var(--navy);padding:12px;background:var(--paper);border-radius:10px"></div>';
-  elCardHTML(html);
-  var tr = document.getElementById('el-oddech-tr');
-  if(tr) tr.textContent = c.listen_text || '';
-  var zone = '<div style="font-size:14px;font-weight:500;color:var(--navy)">'+lexEsc(c.question_pl||'')+'</div>'+
-    '<div style="display:grid;gap:8px">';
-  (c.options||[]).forEach(function(o){
-    zone += '<button class="el-mc" data-v="'+lexEsc(o)+'" style="padding:13px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;font-size:14px;cursor:pointer;color:var(--navy);font-family:DM Sans,sans-serif;text-align:left">'+lexEsc(o)+'</button>';
-  });
-  zone += '</div>';
-  elZoneHTML(zone);
-  elOddechPlay();
-  elLatency.start();
-  Array.prototype.forEach.call(document.querySelectorAll('#el-zone .el-mc'), function(btn){
-    btn.onclick = async function(){
-      elLatency.firstAction();
-      var grid = btn.parentNode; if(grid) grid.style.pointerEvents = 'none';
-      var d = await elSubmit({exercise_type:'ODDECH', modality:'tap', word:null,
-        answer: btn.getAttribute('data-v'),
-        _local_key:[String((c.options||[])[c.correct_index||0]||'')]});
-      if(d) elShowFeedback(d, elRender);
-    };
-  });
-}
-function elOddechPlay(){
-  var item = _elState.plan[_elState.screen_index];
-  elSpeakTarget(item.content && item.content.listen_text);
-}
-function elOddechTranscript(btn){
-  var tr = document.getElementById('el-oddech-tr');
-  if(tr){ tr.style.display = tr.style.display==='none' ? 'block' : 'none'; }
-  btn.textContent = (tr && tr.style.display==='block') ? 'Ukryj transkrypt' : 'Pokaż transkrypt';
-}
-
-// E8 CALLBACK — sweep: gloss → szybkie typed, sekwencja items
-function elRenderE8(item){
-  var items = (item.content && item.content.items) || [];
-  if(!items.length){ elAdvanceTap(); return; }
-  elRenderE8Item(item, items);
-}
-function elRenderE8Item(item, items){
-  var it = items[_elSubItem];
-  elCardHTML('<div style="font-size:13px;color:var(--dim2);margin-bottom:8px">'+lexEsc((item.content&&item.content.prompt_pl)||'Błyskawiczna runda:')+'</div>'+
-    '<div style="font-size:20px;font-weight:500;color:var(--navy)">🇵🇱 '+lexEsc(it.prompt_pl)+'</div>');
-  var bank = _elAdapt.fallback;
-  var zone = '<div style="display:flex;gap:8px;align-items:flex-end">'+
-    '<textarea id="el-input" rows="1" placeholder="Po '+lexEsc(_lexLangName)+'…" style="flex:1;resize:none;padding:12px 14px;border-radius:14px;border:2px solid var(--border2);font-size:14px;font-family:DM Sans,sans-serif;outline:none" onkeydown="if(event.key===\'Enter\'){event.preventDefault();elSubmitE8Item();}"></textarea>'+
-    '<button onclick="elSubmitE8Item()" style="width:44px;height:44px;border-radius:50%;background:var(--navy);border:none;cursor:pointer;color:#fff;font-size:16px">→</button></div>';
-  elZoneHTML(zone);
-  elLatency.start();
-  var inp = document.getElementById('el-input');
-  if(inp){ elLatency.bindTyped(inp); inp.focus(); }
-  window._elE8 = {item:item, items:items};
-}
-async function elSubmitE8Item(){
-  var ctx = window._elE8; if(!ctx) return;
-  var inp = document.getElementById('el-input');
-  var val = inp ? inp.value : '';
-  if(!String(val).trim()) return;
-  var it = ctx.items[_elSubItem];
-  var isLast = _elSubItem >= ctx.items.length - 1;
-  var d = await elSubmit({exercise_type:'E8', modality:'typed',
-    word:(it.answer_key||[])[0]||null, answer:val,
-    no_advance: !isLast, _local_key: it.answer_key||[]});
-  if(!d) return;
-  elShowFeedback(d, function(){
-    if(isLast){ elRender(); }
-    else { _elSubItem++; elLatency.reset(); elRenderE8Item(ctx.item, ctx.items); }
-  });
-}
-
-// ── COMPLETE / SUMMARY ────────────────────────────────────
-async function elComplete(early){
-  if(!_elState || _elState.done) return;
-  _elState.done = true;
-  elCardHTML('<span style="color:var(--dim2)">Lex podsumowuje lekcję…</span>');
-  elZoneHTML('');
-  var r = await elApi('lesson-complete', {lesson_id:_elState.lesson_id});
-  var s = (r.ok && r.data && r.data.summary) || {};
-  elCache.del('lesson');
-  elRenderSummary(s, early);
-}
-function elRenderSummary(s, early){
-  var score = document.getElementById('lex-summary-score');
-  if(score){
-    var parts = [];
-    if(s.beats_total) parts.push(s.beats_total + ' kart');
-    if(s.correct_share != null) parts.push(Math.round(s.correct_share*100) + '% trafień');
-    score.textContent = early ? 'Lekcja zakończona wcześniej — postęp zapisany.' : parts.join(' · ');
-  }
-  var vocab = document.getElementById('lex-summary-vocab');
-  if(vocab){
-    var html = '';
-    if(s.mirror) html += '<div style="font-size:14px;color:var(--navy);padding:12px;background:#fff7ed;border:1px solid var(--orange);border-radius:12px;margin-bottom:12px;line-height:1.5">✨ '+lexEsc(s.mirror)+'</div>';
-    if(s.words_advanced && s.words_advanced.length){
-      html += '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Słowa, które awansowały</div>';
-      s.words_advanced.slice(0,8).forEach(function(w){
-        html += '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:14px"><span style="color:var(--navy);font-weight:500">'+lexEsc(w.word)+'</span><span style="font-size:12px;color:var(--dim2)">'+lexEsc(w.from)+' → <strong style="color:var(--orange)">'+lexEsc(w.to)+'</strong></span></div>';
-      });
-    }
-    if(s.map_delta && s.map_delta.active_band){
-      html += '<div style="font-size:13px;color:var(--dim);margin-top:12px">Mapa języka: aktywny poziom <strong style="color:var(--navy)">'+lexEsc(s.map_delta.active_band)+'</strong></div>';
-    }
-    if(s.ambient_preview && s.ambient_preview.length){
-      html += '<div style="font-size:13px;color:var(--dim);margin-top:8px">Wkrótce dojrzeją: '+s.ambient_preview.map(lexEsc).join(', ')+'</div>';
-    }
-    vocab.innerHTML = html || '<div style="font-size:13px;color:var(--dim2)">Postęp zapisany w Zeszycie.</div>';
-  }
-  var gapsWrap = document.getElementById('lex-summary-gaps-wrap');
-  if(gapsWrap){
-    if(s.gaps_closing && s.gaps_closing.length){
-      gapsWrap.style.display = 'block';
-      gapsWrap.innerHTML = '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Luki domknięte</div>'+
-        s.gaps_closing.map(function(g){ return '<div style="font-size:14px;color:var(--navy);padding:5px 0">✓ '+lexEsc(g.desc)+'</div>'; }).join('');
-    } else gapsWrap.style.display = 'none';
-  }
-  // fiszki desktopa: zasil _lexVocab słowami lekcji (integracja z lexSaveVocab)
-  try{
-    _lexVocab = [];
-    (_elState.plan||[]).forEach(function(p){
-      if(p.phase==='CORE' && p.type==='E1' && p.content && p.word){
-        _lexVocab.push({word: p.word, translation: p.content.gloss_pl || ''});
-      }
-    });
-  }catch(e){}
-  lexShowScreen('lex-summary');
-}
-
-// ── RESUME + INTEGRACJA Z LEGACY ──────────────────────────
-// Override (wzorzec codebase: późniejsza definicja wygrywa)
-var _lexCheckResumableLegacy = lexCheckResumable;
-lexCheckResumable = async function(){
-  var banner = document.getElementById('lex-continue-banner');
-  if(banner) banner.style.display='none';
-  try{
-    var cfg = await elConfig();
-    if(cfg && cfg.engine_v3 !== false){
-      var r = await elApi('lesson-resume', {});
-      if(r.ok && r.status === 200 && r.data && r.data.plan && r.data.plan.length){
-        window._elResumeData = r.data;
-        if(banner){
-          var info = LEX_LANG_MAP[r.data.target_lang] || {flag:'🌐', name:r.data.target_lang};
-          banner.style.display = 'block';
-          banner.innerHTML = '<div style="background:var(--paper2,#fff7ed);border:.5px solid var(--orange);border-radius:14px;padding:16px;text-align:left;display:flex;align-items:center;gap:14px">'+
-            '<div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--navy)">Masz niedokończoną lekcję '+info.flag+'</div>'+
-            '<div style="font-size:12px;color:var(--dim2);margin-top:2px">'+lexEsc(r.data.topic_container||'')+' · karta '+((r.data.screen_index||0)+1)+'</div></div>'+
-            '<button onclick="elResumeFromData(window._elResumeData)" style="padding:9px 18px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Kontynuuj →</button></div>';
-        }
-        return;
-      }
-    }
-  }catch(e){}
-  try{ _lexCheckResumableLegacy(); }catch(e){}
-};
-
-// „Zakończ" w top barze: w aktywnej lekcji v3 → lesson-complete (postęp zapisany)
-var _lexEndLessonLegacy = lexEndLesson;
-lexEndLesson = function(){
-  if(_elState && !_elState.done){ elComplete(true); return; }
-  try{ _lexEndLessonLegacy(); }catch(e){ lexShowScreen('lex-lang-select'); }
-};
-</script>
