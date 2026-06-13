@@ -4104,6 +4104,13 @@ async function initToFixPage(){
 
       <!-- #3 Tablica lekcji — wysuwany panel z prawej (nie zasłania) -->
       <div id="lex-board-backdrop" onclick="lexToggleBoard()" style="display:none;position:fixed;inset:0;background:rgba(26,35,64,.25);z-index:9997"></div>
+      <!-- Pływający przycisk Tablicy: zawsze dostępny, delikatny/półprzezroczysty, nad treścią -->
+      <button id="lex-board-fab" onclick="lexToggleBoard()" title="Tablica — reguły i słowa z tej lekcji"
+        style="display:none;position:fixed;right:22px;bottom:26px;z-index:9996;width:54px;height:54px;border-radius:50%;border:1px solid rgba(26,35,64,.12);background:rgba(255,255,255,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 6px 22px rgba(26,35,64,.16);cursor:pointer;color:var(--navy);align-items:center;justify-content:center;opacity:.55;transition:opacity .2s,transform .15s"
+        onmouseover="this.style.opacity='1';this.style.transform='scale(1.06)'" onmouseout="this.style.opacity='.55';this.style.transform='none'">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"></path><path d="M8 21h8M12 17v4"></path></svg>
+        <span id="lex-board-fab-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--orange);color:#fff;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;align-items:center;justify-content:center;line-height:20px;text-align:center"></span>
+      </button>
       <div id="lex-side-panel" style="position:fixed;right:-380px;top:0;width:360px;height:100vh;display:flex;flex-direction:column;gap:0;background:#fff;border-left:.5px solid var(--border);box-shadow:-8px 0 32px rgba(26,35,64,.12);z-index:9998;transition:right .28s ease;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 20px 14px;border-bottom:.5px solid var(--border)">
           <div>
@@ -6076,11 +6083,13 @@ async function chatRenderSetPicker(){
   (src.user||[]).forEach(function(u){ chips.push({kind:'user',id:u.id,label:u.label,level:lvlUser,sub:'Twój zestaw · '+u.count+' słów'}); });
   window._chatSourcesAvail=chips;
   if(!chips.length){ host.style.display='none'; return; }
-  host.style.display='flex';
+  host.style.display='grid';
+  host.style.gridTemplateColumns='1fr 1fr';
+  host.style.gap='8px';
   host.innerHTML=chips.slice(0,6).map(function(c,i){
-    return '<button type="button" data-csrc="'+i+'" onclick="chatToggleSet('+i+')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;border:1.5px solid var(--border2);background:#fff;border-radius:10px;padding:8px 11px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;text-align:left">'
-      +'<span style="font-size:12.5px;font-weight:500;color:var(--navy)">'+escH(c.label)+'</span>'
-      +'<span style="font-size:10px;color:var(--dim2);white-space:nowrap">'+escH(c.sub)+'</span></button>';
+    return '<button type="button" data-csrc="'+i+'" onclick="chatToggleSet('+i+')" style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;border:1.5px solid var(--border2);background:#fff;border-radius:12px;padding:10px 12px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;text-align:left;min-height:54px;justify-content:center">'
+      +'<span style="font-size:12.5px;font-weight:500;color:var(--navy);line-height:1.25">'+escH(c.label)+'</span>'
+      +'<span style="font-size:10px;color:var(--dim2);line-height:1.2">'+escH(c.sub)+'</span></button>';
   }).join('');
 }
 window.chatToggleSet=async function(i){
@@ -6162,16 +6171,17 @@ async function loadChatWeakWords(){
 }
 
 function renderWeakWords(words, lang){
+  // Pigułki słów pokazujemy WYŁĄCZNIE po wyborze zestawu (seed words). Bez zestawu — czysto.
   var el=document.getElementById('chat-weak-words');
-  var label=document.getElementById('chat-weak-label');
   if(!el)return;
-  if(label) label.textContent='Z Twoich fiszek';
-  if(words.length){
+  var hasSet=(window._chatSources && _chatSources.length>0);
+  if(hasSet && words && words.length){
+    el.style.marginTop='8px';
     el.innerHTML=words.map(function(w){
       return '<span class="word-pill" style="font-size:12px;padding:3px 9px">'+escH(w)+'</span>';
     }).join('');
   } else {
-    el.innerHTML='<span style="font-size:12px;color:var(--dim2,#888)">Ucz się więcej, aby spersonalizować rozmowę</span>';
+    el.innerHTML='';
   }
 }
 
@@ -12098,6 +12108,7 @@ function dailyShowTab(tab){
 // ── NAUCZYCIEL AI ──
 function teacherShowTab(tab){
   if(typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
+  try{ if(typeof lexBoardFabShow==='function' && tab!=='teacher') lexBoardFabShow(false); }catch(e){}
   var panelH=document.getElementById('teacher-panel-hub');
   var panelC=document.getElementById('teacher-panel-chat');
   var panelT=document.getElementById('teacher-panel-teacher');
@@ -13301,6 +13312,13 @@ function lexQuickStart(){
     + '<h3 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:4px">Gotowy na '+lexEsc(info.name||_lexLangName)+'?</h3>'
     + '<div style="display:inline-flex;align-items:center;gap:8px;background:var(--navy);color:#fff;border-radius:100px;padding:5px 14px;font-size:12px;margin-top:6px">Twój poziom: <b>'+lvl+'</b></div>'
     + topic
+    + (function(){ try{ var st=(typeof lexxHasResume==='function')?lexxHasResume():null; if(!st) return '';
+        var nm=(st.sources&&st.sources.length? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'lekcja'));
+        return '<div onclick="lexxResume()" style="margin:28px 0 4px;cursor:pointer;background:var(--paper2);border:1.5px solid var(--orange);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left">'
+          +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>'
+          +'<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--navy)">Kontynuuj przerwaną lekcję</div>'
+          +'<div style="font-size:11.5px;color:var(--dim2)">'+lexEsc(nm)+' · porcja '+st.portionNum+' z '+st.portionTarget+'</div></div>'
+          +'<span style="font-size:18px;color:var(--orange)">→</span></div>'; }catch(e){ return ''; } })()
     + '<div style="font-size:12px;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin:34px 0 4px">Co utrwalamy?</div>'
     + '<div style="font-size:11.5px;color:var(--dim2);margin-bottom:14px;line-height:1.45">Wybierz fiszki przerabiane na stronie lub desktopie — Lex przerobi z Tobą cały zestaw, słowo po słowie, i doprowadzi Cię do ich aktywnego użycia.</div>'
     + '<div id="lex-source-picker"></div>'
@@ -15846,6 +15864,13 @@ function lexUpdateBoardPanel(){
       + (e.example?'<div style="font-size:12px;color:var(--dim2);font-style:italic;margin-top:3px;line-height:1.4">'+lexEsc(e.example)+'</div>':'')
       + '</div></div></div>';
   }).join('');
+  // Licznik na pływającym przycisku
+  var badge=document.getElementById('lex-board-fab-badge');
+  if(badge){ var n=_lexBoard.length; if(n){ badge.style.display='flex'; badge.textContent=String(n); } else { badge.style.display='none'; } }
+}
+// Pokaż/ukryj pływający przycisk Tablicy
+function lexBoardFabShow(on){
+  var fab=document.getElementById('lex-board-fab'); if(fab) fab.style.display = on ? 'flex' : 'none';
 }
 
 function lexToggleBoard(){
@@ -16032,7 +16057,10 @@ async function lexEndLesson(){
         ended_at: new Date().toISOString(),
         vocabulary: _lexVocab, gaps_found: _lexGaps,
         board: _lexBoard,
-        title: (window._lexPortionFocuses && window._lexPortionFocuses[0])
+        title: (window._lexSources && _lexSources.length
+                  ? (_lexSources.length===1 ? String(_lexSources[0].label).replace(/^[^\w]+\s*/,'') : (_lexSources.length+' zestawy'))
+                  : null)
+               || (window._lexPortionFocuses && window._lexPortionFocuses[0])
                || _lexLessonFocus
                || (_lexBoard[0] && _lexBoard[0].content ? String(_lexBoard[0].content).slice(0,42) : null)
                || _lexGaps[0]
@@ -16060,6 +16088,8 @@ async function lexEndLesson(){
     }
   }catch(e){ console.error('Lex save:', e); }
   if(typeof lexLoadSidebar==='function') lexLoadSidebar();
+  try{ if(typeof lexBoardFabShow==='function') lexBoardFabShow(false); }catch(e){}
+  try{ if(typeof lexxClearResume==='function') lexxClearResume(); }catch(e){}
 }
 
 function lexShowSummary(){ setTimeout(lexEndLesson, 500); }
@@ -16543,6 +16573,51 @@ async function lexInit(){
     var ct=document.getElementById('lex-card-text'); if(ct) ct.innerHTML='<span style="color:var(--dim2)">…</span>';
   }
 
+  // ── Wznowienie przerwanej lekcji porcjowej (localStorage; engine generuje porcje na żywo) ──
+  function lexxResumeKey(){ try{ return uk('lex_resume_portion_'+(window._lexLang||'en')); }catch(e){ return 'lex_resume_portion'; } }
+  window.lexxSaveResume=function(){
+    try{
+      if(window._lexxReflectionDone) return;
+      var st={
+        lang:(window._lexLang||'en'),
+        sources:(window._lexSources||[]),
+        sourceWords:(window._lexSourceWords||[]),
+        lessonLevel:(window._lexLessonLevel||null),
+        focus:(window._lexLessonFocus||null),
+        enrichGap:(window._lexEnrichGap||null),
+        portionNum:(window._lexxPortionNum||0),
+        portionTarget:(window._lexxPortionTarget||5),
+        vocab:(window._lexVocab||[]),
+        board:(window._lexBoard||[]),
+        gaps:(window._lexGaps||[]),
+        session:(window._lexSession||null),
+        ts:new Date().toISOString()
+      };
+      localStorage.setItem(lexxResumeKey(), JSON.stringify(st));
+    }catch(e){}
+  };
+  window.lexxClearResume=function(){ try{ localStorage.removeItem(lexxResumeKey()); }catch(e){} };
+  window.lexxHasResume=function(){
+    try{ var st=JSON.parse(localStorage.getItem(lexxResumeKey())||'null'); return (st && st.portionNum>0 && st.portionNum<st.portionTarget) ? st : null; }catch(e){ return null; }
+  };
+  window.lexxResume=function(){
+    var st=window.lexxHasResume(); if(!st){ return; }
+    // Przywróć stan i kontynuuj od KOLEJNEJ porcji (bieżąca i tak generowana jest na żywo)
+    window._lexSources=st.sources||[]; window._lexSourceWords=st.sourceWords||[];
+    window._lexLessonLevel=st.lessonLevel||null; window._lexLessonFocus=st.focus||null;
+    window._lexEnrichGap=st.enrichGap||null;
+    window._lexxPortionTarget=st.portionTarget||5;
+    window._lexxPortionNum=Math.max(0,(st.portionNum||1)-1); // generate++ przeskoczy na bieżącą
+    window._lexVocab=st.vocab||[]; window._lexBoard=st.board||[]; window._lexGaps=st.gaps||[];
+    window._lexSession=st.session||null;
+    window._lexxSweepPool=[]; window._lexxSweepDone=false; window._lexxReflectionDone=false;
+    if(typeof lexShowScreen==='function') lexShowScreen('lex-lesson');
+    if(typeof lexUpdateBoardPanel==='function') lexUpdateBoardPanel();
+    var badge=document.getElementById('lex-lesson-badge');
+    if(badge) badge.textContent=(st.sources&&st.sources.length? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'Lekcja'));
+    lexxGeneratePortion();
+  };
+
   // Wyciąga JSON nawet z lekko niedomkniętej/uciętej odpowiedzi
   function lexxParseJSON(raw){
     if(!raw) return null;
@@ -16747,6 +16822,8 @@ async function lexInit(){
 
   function lexxRenderPortion(data){
     window._lexxDone=(data.exercises||[]).map(function(){return false;});
+    try{ if(typeof lexBoardFabShow==='function') lexBoardFabShow(true); }catch(e){}
+    try{ lexxSaveResume(); }catch(e){}
     // Intro w karcie Lexa (jego głos), strefa ćwiczeń = stepper
     var ct=document.getElementById('lex-card-text');
     if(ct){
@@ -17404,6 +17481,9 @@ async function lexInit(){
 (function(){
   if(window.lexLectureOpen) return;
   var TTS_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/tts';
+  // Chmurowe TTS wyłączone, dopóki edge function nie jest wdrożona (inaczej błędy CORS w konsoli).
+  // Po wdrożeniu ustaw: window.LEX_TTS_CLOUD = true;
+  var LEX_TTS_CLOUD = (typeof window.LEX_TTS_CLOUD!=='undefined') ? window.LEX_TTS_CLOUD : false;
   var esc=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
 
   // Rdzeń metodyczny — wiedza nauczyciela (kompresja Pedagogy/Lesson Bible)
@@ -17426,11 +17506,11 @@ async function lexInit(){
     if(window.speechSynthesis) try{speechSynthesis.cancel();}catch(e){}
     window._lexvPlaying=false;
   };
-  window.lexVoicePrefetch=function(text){ if(_ttsDown||!text) return; fetchTTS(text).catch(function(){}); };
+  window.lexVoicePrefetch=function(text){ if(!LEX_TTS_CLOUD||_ttsDown||!text) return; fetchTTS(text).catch(function(){}); };
   window.lexVoiceSpeak=async function(text, onend){
     lexVoiceStop();
     window._lexvPlaying=true;
-    if(!_ttsDown){
+    if(LEX_TTS_CLOUD && !_ttsDown){
       try{
         var url=await fetchTTS(text);
         if(!window._lexvPlaying) return; // przerwane w trakcie pobierania
