@@ -17026,19 +17026,29 @@ async function lexInit(){
       var sentRaw=String(ex.sentence||'');
       var re=/_{2,}|\[\.\.\.\]|\.\.\./g;
       var html='', gi=0, last=0, mm;
+      // Tokenizuje segment tekstu na klikalny .tl-w (jak tlBuildHTML) — dla tłumaczenia słów w cloze
+      function clozeTlTokens(seg, langCode){
+        if(!seg) return '';
+        return seg.split(/(\s+)/).map(function(tok){
+          if(/^\s*$/.test(tok)) return tok;
+          return '<span class="tl-w" style="cursor:pointer;border-radius:3px;padding:0 1px;transition:background .12s" onmouseover="this.style.background=\'rgba(201,106,42,.14)\'" onmouseout="this.style.background=\'\'">'+esc(tok)+'</span>';
+        }).join('');
+      }
+      var clLang=lang();
       if(re.test(sentRaw)){
         re.lastIndex=0;
         while((mm=re.exec(sentRaw))!==null){
-          html+=esc(sentRaw.slice(last, mm.index));
+          html+='<span class="tl" data-tl-lang="'+clLang+'">'+clozeTlTokens(sentRaw.slice(last, mm.index), clLang)+'</span>';
           html+=lexxGapInputHtml(i, gi, answers[gi]||'');
           gi++; last=mm.index+mm[0].length;
         }
-        html+=esc(sentRaw.slice(last));
+        html+='<span class="tl" data-tl-lang="'+clLang+'">'+clozeTlTokens(sentRaw.slice(last), clLang)+'</span>';
       } else {
-        html=esc(sentRaw)+' '+lexxGapInputHtml(i,0,answers[0]||''); gi=1;
+        html='<span class="tl" data-tl-lang="'+clLang+'">'+clozeTlTokens(sentRaw, clLang)+'</span> '+lexxGapInputHtml(i,0,answers[0]||''); gi=1;
       }
       window._lexxGapN=window._lexxGapN||{}; window._lexxGapN[i]=gi||1;
       body+='<p class="lexx-q lexx-cloze">'+html+'</p>'
+        +'<div style="font-size:11.5px;color:var(--dim2);margin-top:6px;margin-bottom:2px">Tapnij słowo, by zobaczyć tłumaczenie · ikona = odsłuchaj</div>'
         +'<div class="lexx-hint" id="lexx-hint-'+i+'" style="display:none;margin-top:10px"></div>';
       inputHtml='';
     } else if(ex.type==='translate'){
