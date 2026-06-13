@@ -11981,7 +11981,7 @@ async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catI
     // Direct query (RPC removed - use direct query)
     if(!cards.length && catId){
       var {data:direct} = await db.from('flashcards')
-        .select('word,translation,example')
+        .select('id,word,translation')
         .eq('category_id', catId)
         .limit(200);
       if(direct&&direct.length) cards = direct;
@@ -11992,7 +11992,7 @@ async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catI
         var {data:langRow} = await db.from('languages').select('id').eq('code',langCode).single();
         var {data:lvlRow} = await db.from('levels').select('id').eq('code',lvl).maybeSingle();
         if(langRow){
-          var q2 = db.from('flashcards').select('word,translation').eq('language_id',langRow.id);
+          var q2 = db.from('flashcards').select('id,word,translation').eq('language_id',langRow.id);
           if(lvlRow) q2 = q2.eq('level_id',lvlRow.id);
           if(catId) q2 = q2.eq('category_id',catId);
           var {data:fb2} = await q2.limit(200);
@@ -12005,9 +12005,10 @@ async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catI
       return;
     }
     var fullName = flag + ' ' + langLabel + ' ' + lvl + ' \u00b7 ' + cleanCat(catName);
+    try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet('eyelingo', catId, cleanCat(catName), lvl, cards.length, langCode); }catch(_e){}
     strefaShowWordPreview(cards, fullName, function(){
       if(typeof closeMatModal==='function') closeMatModal();
-      _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||''}; });
+      _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',flashcard_id:(c.id!=null?c.id:null)}; });
       _trybExternalName = fullName;
       RewardSystem.load();
       showPage('tryb');
@@ -13245,18 +13246,9 @@ function lexSelectLanguage(code, name){
   var badge = document.getElementById('lex-lang-badge');
   if(badge) badge.textContent = '· ' + info.flag + ' ' + info.native;
 
-  var known = lexCurrentLevel();
-  if(!_lexProfile || !_lexProfile.user_name){
-    // Pierwszy kontakt: pełny onboarding (cel + czas + język prowadzenia)
-    lexPrefillSetup();
-    lexShowScreen('lex-onboarding');
-  } else if(known === 'unknown'){
-    // Znany user, ale ten język bez poziomu → ewaluacja zrobi resztę (sama wybierze czas na końcu)
-    lexStartLesson();
-  } else {
-    // Znany poziom → NIE pokazujemy ściany onboardingu. Lekki picker tylko czasu (smart).
-    lexQuickStart();
-  }
+  // Nauczyciel AI opiera się WYŁĄCZNIE na wyborze zestawu/kategorii (bez celu, czasu, ewaluacji-walla).
+  // Każde wejście prowadzi do pickera; poziom bierze się z zestawu Eyelingo lub profilu (domyślnie B1).
+  lexQuickStart();
 }
 
 // Smart start: poziom znamy, cel pamiętamy — pytamy tylko o czas (1 tap), z opcją „dostosuj".
@@ -13283,10 +13275,15 @@ function lexQuickStart(){
     + '<div style="font-size:11.5px;color:var(--dim2);margin-bottom:14px;line-height:1.45">Wybierz fiszki przerabiane na stronie lub desktopie — Lex przerobi z Tobą cały zestaw, słowo po słowie, i doprowadzi Cię do ich aktywnego użycia.</div>'
     + '<div id="lex-source-picker"></div>'
     + '<button onclick="lexQuickGo()" style="width:100%;margin-top:24px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
-    + '<button onclick="lexShowScreen(\'lex-onboarding\');lexFullSetup()" style="background:transparent;border:none;color:var(--dim2);font-size:12.5px;cursor:pointer;margin-top:14px;text-decoration:underline;text-underline-offset:3px;font-family:DM Sans,sans-serif">Zmień język prowadzenia</button>'
+    + '<div style="margin-top:18px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap">'
+    + '<span style="font-size:11.5px;color:var(--dim2)">Język prowadzenia lekcji:</span>'
+    + '<button onclick="lexObSelectLessonLang(\'pl\')" id="lex-ob-langpl" style="font-size:12px;padding:5px 12px;border-radius:100px;border:2px solid var(--orange);background:#fff;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Polski</button>'
+    + '<button onclick="lexObSelectLessonLang(\'target\')" id="lex-ob-langtgt" style="font-size:12px;padding:5px 12px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">'+lexEsc(info.name||_lexLangName)+'</button>'
+    + '</div>'
     + '</div>';
   lexShowScreen('lex-onboarding');
   window._lexSources=[]; // reset wyboru na każdym wejściu
+  if(typeof lexSyncLessonLangBtns==='function') lexSyncLessonLangBtns();
   if(typeof lexRenderSourcePicker==='function') lexRenderSourcePicker();
 }
 function lexQuickDur(d){
@@ -13347,10 +13344,9 @@ function lexObSelectLessonLang(which){
 
 // Pokazuje ekran wyboru celu/czasu przed każdą lekcją (zachowuje ewentualny _lexNextTopic).
 function lexGoToSetup(){
-  lexPrefillSetup();
-  var sub = document.getElementById('lex-ob-sub');
-  if(sub) sub.textContent = (_lexProfile && _lexProfile.user_name) ? 'Wybierz cel i czas tej lekcji' : 'Powiedz mi o sobie — dostosuję lekcje do Ciebie';
-  lexShowScreen('lex-onboarding');
+  // Stary panel celu/czasu wycofany — Nauczyciel AI opiera się na pickerze zestawów.
+  // _lexNextTopic (np. z kliknięcia luki) zostaje zachowany i wejdzie jako temat lekcji.
+  lexQuickStart();
 }
 
 // ── Onboarding selectors ──────────────────────────────────
