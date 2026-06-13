@@ -13249,10 +13249,15 @@ function lexQuickStart(){
     + topic
     + '<div style="font-size:12px;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin:30px 0 10px">Ile masz dziś czasu?</div>'
     + '<div style="display:flex;gap:10px">'+durBtn(10,'Quick · konsolidacja')+durBtn(25,'Standard · pełna lekcja')+'</div>'
+    + '<div style="font-size:12px;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin:26px 0 4px">Co utrwalamy?</div>'
+    + '<div style="font-size:11.5px;color:var(--dim2);margin-bottom:12px;line-height:1.45">Wybierz fiszki przerabiane na stronie lub desktopie — Lex zbuduje lekcję na tym fundamencie. Pomiń, by uczyć ogólnie.</div>'
+    + '<div id="lex-source-picker"></div>'
     + '<button onclick="lexQuickGo()" style="width:100%;margin-top:22px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
     + '<button onclick="lexShowScreen(\'lex-onboarding\');lexFullSetup()" style="background:transparent;border:none;color:var(--dim2);font-size:12.5px;cursor:pointer;margin-top:14px;text-decoration:underline;text-underline-offset:3px;font-family:DM Sans,sans-serif">Dostosuj cel i język prowadzenia</button>'
     + '</div>';
   lexShowScreen('lex-onboarding');
+  window._lexSources=[]; // reset wyboru na każdym wejściu
+  if(typeof lexRenderSourcePicker==='function') lexRenderSourcePicker();
 }
 function lexQuickDur(d){
   _lexObDur = d;
@@ -14346,6 +14351,20 @@ async function lexStartLesson(){
   if(lexCurrentLevel()==='unknown'){ return lexEvalStart(); }
   _lexLessonFocus = window._lexNextTopic || null; window._lexNextTopic = null;
   window._lexPortionFocuses = [];
+  // Scaffolding: jeśli uczeń wybrał zestawy fiszek — to one są materiałem lekcji.
+  // Poziom przykładów Lexa = poziom zestawów Eyelingo (np. A2→słowa A2), inaczej poziom ucznia.
+  window._lexSourceWords=[]; window._lexLessonLevel=null;
+  try{
+    if(window._lexSources && _lexSources.length){
+      window._lexSourceWords = (typeof lexFetchSourceWords==='function') ? await lexFetchSourceWords() : [];
+      var lvls=_lexSources.map(function(x){return x.level;}).filter(Boolean);
+      var ORD=['A1','A2','B1','B2','C1','C2'];
+      // bierzemy NAJNIŻSZY poziom z wybranych zestawów (by nie było za trudno)
+      lvls.sort(function(a,b){ return ORD.indexOf(a)-ORD.indexOf(b); });
+      window._lexLessonLevel = lvls[0] || (typeof lexCurrentLevel==='function'?lexCurrentLevel():null);
+      if(!_lexLessonFocus && _lexSources.length===1) _lexLessonFocus = _lexSources[0].label.replace(/^[^\w]+\s*/,'');
+    }
+  }catch(e){}
   _lexTopGap = null; _lexRecommendedGap = null;
   _lexVocab = [];
   _lexGaps = [];
@@ -14925,7 +14944,7 @@ function lexToggleSpeech(){
   _lexSpeechEnabled = !_lexSpeechEnabled;
   var btn = document.getElementById('lex-speech-toggle');
   if(btn) btn.innerHTML = _lexSpeechEnabled ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="m23 9-6 6"></path><path d="m17 9 6 6"></path></svg>';
-  if(!_lexSpeechEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+  if(!_lexSpeechEnabled){ if(window.speechSynthesis) window.speechSynthesis.cancel(); if(typeof lexVoiceStop==='function') lexVoiceStop(); }
   try{ localStorage.setItem(uk('lex_speech'), _lexSpeechEnabled ? '1' : '0'); }catch(e){}
 }
 
@@ -15581,8 +15600,8 @@ var _lexBookIdx = 0;            // 0 = pierwsza lekcja (strona 1-2)
 var _lexBookList = [];          // lekcje wybranego języka, posortowane chronologicznie (najstarsza pierwsza)
 var _lexBookLang = null;        // aktywny język Zeszytu
 
-var LEX_LANG_NAMES={en:'Angielski',es:'Hiszpański',nl:'Niderlandzki',jp:'Japoński',de:'Niemiecki',fr:'Francuski',it:'Włoski',pt:'Portugalski'};
-function lexBookLangOf(L){ return L.target_lang || L.lang || (window._lexLang||'en'); }
+var LEX_LANG_NAMES={en:'Angielski',es:'Hiszpański',nl:'Niderlandzki',jp:'Japoński',de:'Niemiecki',fr:'Francuski',it:'Włoski',pt:'Portugalski','?':'Bez przypisanego języka'};
+function lexBookLangOf(L){ return L.target_lang || L.lang || '?'; }
 
 function lexBookBuildList(langCode){
   // Zbuduj listę lekcji danego języka, NAJSTARSZA NA POCZĄTKU (zeszyt zaczyna się od strony 1)
@@ -15624,7 +15643,9 @@ function lexBookPageData(i){
 }
 function lexBookSpreadHtml(i){
   var d=lexBookPageData(i);
-  var left='<div class="lex-page left"><div class="lex-pg-title">'+d.title+'</div><div class="lex-pg-date">'+d.date+'</div>'
+  var L=_lexBookList[i]||{};
+  var tear=L.id?('<button onclick="lexBookTear(\''+String(L.id)+'\')" title="Wyrwij kartkę (usuń lekcję)" style="position:absolute;top:18px;right:20px;background:rgba(176,122,50,.08);border:none;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#b07a32;display:flex;align-items:center;justify-content:center" onmouseover="this.style.background=\'rgba(201,106,42,.18)\'" onmouseout="this.style.background=\'rgba(176,122,50,.08)\'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6"></path></svg></button>'):'';
+  var left='<div class="lex-page left">'+tear+'<div class="lex-pg-title">'+d.title+'</div><div class="lex-pg-date">'+d.date+'</div>'
     +'<h4>Reguły i zasady</h4>'
     +(d.rules.length?d.rules.map(function(r){return '<div class="lex-pg-rule">'+lexEsc(r)+'</div>';}).join(''):'<div style="font-size:13px;color:#a89a7e;font-style:italic;font-family:Georgia,serif">Bez reguł w tej lekcji.</div>')
     +'<div class="lex-page-num">'+(d.num*2-1)+'</div></div>';
@@ -15658,10 +15679,13 @@ function lexBookSwitchLang(code){
 }
 function lexBookOpen(i){
   var m=document.getElementById('lex-book-modal'); if(!m) return;
-  // Domyślny język: aktywny język nauki; jeśli pusty, pierwszy dostępny
+  // Domyślny język: aktywny język nauki; jeśli brak w nim lekcji — język z największą liczbą lekcji
   var want=(window._lexLang||'en');
   var langs=lexBookLangsAvailable();
-  _lexBookLang = (langs.indexOf(want)>=0)?want:langs[0];
+  if(langs.indexOf(want)>=0){ _lexBookLang=want; }
+  else {
+    _lexBookLang=langs.slice().sort(function(a,b){ return lexBookBuildList(b).length-lexBookBuildList(a).length; })[0] || want;
+  }
   _lexBookList=lexBookBuildList(_lexBookLang);
   // i===9999 → skok na ostatnią (najnowszą) stronę; inaczej strona 1
   if(i===9999) _lexBookIdx=Math.max(0,_lexBookList.length-1);
@@ -15671,6 +15695,22 @@ function lexBookOpen(i){
   lexBookRender();
 }
 function lexBookClose(){ var m=document.getElementById('lex-book-modal'); if(m) m.style.display='none'; }
+async function lexBookTear(lessonId){
+  if(!lessonId) return;
+  var d=lexBookPageData(_lexBookIdx);
+  if(!confirm('Wyrwać tę kartkę z zeszytu?\n\n„'+(d.title||'lekcja').replace(/<[^>]*>/g,'')+'" zniknie na stałe — reguły i słowa z tej lekcji nie będą już zapisane w zeszycie. Tej akcji nie da się cofnąć.')) return;
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(sess) await db.from('lex_lessons').delete().eq('id', lessonId).eq('user_id', sess.user.id);
+  }catch(e){}
+  // Usuń z cache i przebuduj listę bieżącego języka
+  _lexLessonsCache=(_lexLessonsCache||[]).filter(function(L){ return String(L.id)!==String(lessonId); });
+  _lexBookList=lexBookBuildList(_lexBookLang);
+  if(_lexBookIdx>=_lexBookList.length) _lexBookIdx=Math.max(0,_lexBookList.length-1);
+  lexBookPopulateLangSelect();
+  lexBookRender();
+  if(typeof lexRenderNotebook==='function') lexRenderNotebook();
+}
 function lexBookFlip(dir){
   var ni=_lexBookIdx+dir;
   if(ni<0||ni>=_lexBookList.length) return;
@@ -16423,6 +16463,8 @@ async function lexInit(){
     lexxLoading();
     var focus = window._lexLessonFocus || '';
     var lvl = (typeof lexCurrentLevel==='function'?lexCurrentLevel():(window._lexObLevel||'B1'))||'B1';
+    // Scaffolding: wybrane zestawy narzucają poziom przykładów (A2→słowa A2), by nie było za trudno
+    if(window._lexLessonLevel) lvl = window._lexLessonLevel;
     // Model wiedzy z ewaluacji (Assessment Bible §7) — steruje doborem treści i TYPÓW zadań
     var km = null;
     try{ km = JSON.parse(localStorage.getItem(uk('lex_km_'+(window._lexLang||'en')))||'null'); }catch(e){ km = null; }
@@ -16438,11 +16480,17 @@ async function lexInit(){
     // Słowa z fiszek wchodzą do porcji rotacyjnie (selektor §1.4: due-set + ambient seeds)
     var dueWords='';
     try{
-      var dl=window._lexxDue||[];
+      // Priorytet: słowa z zestawów wybranych przez ucznia (scaffolding). Fallback: due-set SRS.
+      var dl=(window._lexSourceWords && _lexSourceWords.length) ? _lexSourceWords : (window._lexxDue||[]);
+      var fromSets=(window._lexSourceWords && _lexSourceWords.length)>0;
       if(dl.length){
-        var off=((pn-1)*2)%Math.max(1,dl.length);
-        var pick=dl.slice(off,off+3); if(pick.length<2) pick=dl.slice(0,3);
-        dueWords='SŁOWA Z FISZEK UCZNIA (due wg SRS): '+pick.map(function(w){return w.word;}).join(', ')+'. Co najmniej DWA z nich muszą być słowami-celami tej porcji — umieść je w items i przećwicz w ćwiczeniach. ';
+        var off=((pn-1)*3)%Math.max(1,dl.length);
+        var pick=dl.slice(off,off+4); if(pick.length<2) pick=dl.slice(0,4);
+        dueWords=(fromSets
+          ? 'MATERIAŁ DO UTRWALENIA (fiszki wybrane przez ucznia — to jest fundament tej lekcji): '
+          : 'SŁOWA Z FISZEK UCZNIA (due wg SRS): ')
+          +pick.map(function(w){return w.word+(w.translation?(' ('+w.translation+')'):'');}).join(', ')
+          +'. Co najmniej DWA z nich MUSZĄ być słowami-celami tej porcji — umieść je w items i przećwicz w ćwiczeniach. Twoja rola to rusztowanie: te słowa uczeń już widział pasywnie, lekcja ma go doprowadzić do ich AKTYWNEGO użycia. ';
       }
     }catch(e){}
     // Luka receptywno-produktywna waży TYPY zadań (Assessment Bible §6.5 → selektor z Pedagogy Bible)
@@ -16467,8 +16515,9 @@ async function lexInit(){
       }
     }
     var lvlGuard = ({A1:'',A2:'',B1:'',B2:'Materiał MUSI być na poziomie B2 — żadnych elementarnych tematów typu "to be", podstawowe czasy teraźniejsze, kolory, liczby.',C1:'Materiał MUSI być na poziomie C1 — zaawansowane kolokacje, phrasal verbs, niuanse rejestru, idiomy. ABSOLUTNIE żadnych podstaw (to be, present simple, podstawowe słownictwo).',C2:'Materiał MUSI być na poziomie C2 — subtelne niuanse, rzadkie kolokacje, styl, ironia, rejestr. ABSOLUTNIE żadnych podstaw.'})[lvl]||'';
+    var exLevelInstr = 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze trzymaj na poziomie '+lvl+' lub niżej — nie wprowadzaj słownictwa trudniejszego niż '+lvl+', żeby przykład tłumaczący nie był trudniejszy niż to, czego uczeń się uczy. ';
     var prompt =
-      'Jesteś Lex — metodyczny nauczyciel języka '+langName()+'. Uczeń jest na poziomie '+lvl+'. '+lvlGuard+' '
+      'Jesteś Lex — metodyczny nauczyciel języka '+langName()+'. Uczeń jest na poziomie '+lvl+'. '+lvlGuard+' '+exLevelInstr+' '
       +kmCtx+'Język wyjaśnień: POLSKI. '
       +(focus? ('Temat lekcji: "'+focus+'". '):'Dobierz praktyczny, przydatny temat porcji. ')
       +(recentGaps? ('Uwzględnij braki ucznia: '+recentGaps+'. '):'')
@@ -16548,12 +16597,6 @@ async function lexInit(){
       var st=document.createElement('button'); st.className='lexx-next'; st.textContent='Zaczynamy →';
       st.onclick=function(){ lexxShowStep(0); };
       stage0.appendChild(st);
-      // Omówienie głosem (NotebookLM-style, jeden głos Lexa) — input przed retrievalem, opcjonalny
-      var lec=document.createElement('button');
-      lec.style.cssText='width:100%;margin-top:8px;padding:12px;background:#fff;border:1.5px solid var(--border2);color:var(--navy);border-radius:100px;font-size:13.5px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;justify-content:center;gap:7px';
-      lec.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"></path></svg>Posłuchaj omówienia Lexa';
-      lec.onclick=function(){ lexLectureOpen(); };
-      stage0.appendChild(lec);
       w.appendChild(stage0);
       return;
     }
@@ -16577,6 +16620,14 @@ async function lexInit(){
       var introHtml=(typeof lexFormatCardText==='function')? lexFormatCardText(data.intro||'') : esc(data.intro||'');
       ct.innerHTML=introHtml;
     }
+    // Lex mówi od razu, naturalnym głosem (NotebookLM-style) — bez osobnego przycisku.
+    try{
+      var speechOn=(typeof _lexSpeechEnabled==='undefined')?true:_lexSpeechEnabled;
+      if(speechOn && data.intro && typeof lexVoiceSpeak==='function'){
+        var spoken=String(data.intro).replace(/\*\*/g,'').replace(/<[^>]*>/g,'');
+        setTimeout(function(){ lexVoiceSpeak(spoken); }, 250);
+      }
+    }catch(e){}
     var cn=document.getElementById('lex-card-num'); if(cn) cn.textContent=String(data.focus||'');
     if(typeof lexUpdateAudioLangBtn==='function') lexUpdateAudioLangBtn();
     var pb=document.getElementById('lex-progress-bar'); if(pb) pb.style.width=Math.min(100,Math.round((window._lexxPortionNum-1)/window._lexxPortionTarget*100))+'%';
@@ -16937,6 +16988,122 @@ async function lexInit(){
     var btn=document.getElementById('lexx-sweep-btn'); if(btn) btn.disabled=true;
     if(inp) inp.disabled=true;
     setTimeout(function(){ window._lexxSweepIdx=idx+1; lexxSweepStep(); }, ok?700:1500);
+  };
+})();
+</script>
+
+<!-- ═══ EYELINGO — Wybór materiału lekcji: scaffolding na fiszkach (web + desktop) ═══ -->
+<script>
+(function(){
+  if(window.lexLoadStudySources) return;
+  var esc=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+
+  // Wybrane źródła materiału na bieżącą lekcję
+  window._lexSources=[];        // [{kind,id,label,level,count}]
+  window._lexSourceWords=[];    // [{word,translation}] z wybranych źródeł
+  window._lexLessonLevel=null;  // poziom przykładów Lexa (z zestawów lub poziomu usera)
+
+  // Załaduj „ostatnio przerabiane" zestawy: Eyelingo (przez word_progress) + własne (user_sets).
+  // word_progress to wspólna tabela web+desktop — desktop ucząc w tle zapisuje tu postęp.
+  window.lexLoadStudySources=async function(){
+    var out={eyelingo:[], user:[]};
+    try{
+      var sess=(await db.auth.getSession()).data.session; if(!sess) return out;
+      var uid=sess.user.id;
+      var lang=(window._lexLang||'en');
+
+      // ── 1. Eyelingo: kategorie, które uczeń realnie przerabiał (ma word_progress) ──
+      var wp=null;
+      try{
+        var r=await db.from('word_progress')
+          .select('flashcard_id,updated_at,flashcards(category_id,language_id,languages(code),categories(id,label,code,icon),levels(code))')
+          .eq('user_id',uid).order('updated_at',{ascending:false}).limit(400);
+        wp=r.data;
+      }catch(e){
+        // brak updated_at → bez sortowania
+        try{ var r2=await db.from('word_progress')
+          .select('flashcard_id,flashcards(category_id,language_id,languages(code),categories(id,label,code,icon),levels(code))')
+          .eq('user_id',uid).limit(400); wp=r2.data; }catch(e2){ wp=null; }
+      }
+      if(wp&&wp.length){
+        var byCat={};
+        wp.forEach(function(row){
+          var f=row.flashcards; if(!f||!f.categories) return;
+          if(!f.languages||f.languages.code!==lang) return;
+          var cid=f.categories.id;
+          if(!byCat[cid]) byCat[cid]={id:cid, label:f.categories.label||f.categories.code, icon:f.categories.icon||'', level:(f.levels&&f.levels.code)||null, count:0, recent:row.updated_at||''};
+          byCat[cid].count++;
+          if(f.levels&&f.levels.code) byCat[cid].level=f.levels.code; // poziom kategorii
+        });
+        out.eyelingo=Object.keys(byCat).map(function(k){return byCat[k];})
+          .sort(function(a,b){ return String(b.recent).localeCompare(String(a.recent)) || b.count-a.count; })
+          .slice(0,8);
+      }
+
+      // ── 2. Zestawy własne (ostatnio tworzone/edytowane) ──
+      try{
+        var us=await db.from('user_sets').select('id,name,created_at,user_set_cards(id)').eq('user_id',uid).order('created_at',{ascending:false}).limit(8);
+        out.user=(us.data||[]).map(function(st){ return {id:st.id, label:st.name, count:(st.user_set_cards||[]).length}; }).filter(function(x){ return x.count>0; });
+      }catch(e){}
+    }catch(e){}
+    return out;
+  };
+
+  // Pobierz słowa z wybranych źródeł (do prompta i chipów)
+  window.lexFetchSourceWords=async function(){
+    var words=[]; var lang=(window._lexLang||'en');
+    try{
+      var sess=(await db.auth.getSession()).data.session; if(!sess) return words;
+      for(var i=0;i<window._lexSources.length;i++){
+        var src=window._lexSources[i];
+        if(src.kind==='eyelingo'){
+          var lr=await db.from('languages').select('id').eq('code',lang).single();
+          if(!lr.data) continue;
+          var q=db.from('flashcards').select('word,translation').eq('language_id',lr.data.id).eq('category_id',src.id);
+          var fc=await q.limit(40);
+          (fc.data||[]).forEach(function(c){ if(c.word) words.push({word:c.word,translation:c.translation||''}); });
+        } else {
+          var uc=await db.from('user_set_cards').select('word,translation').eq('set_id',src.id).limit(40);
+          (uc.data||[]).forEach(function(c){ if(c.word) words.push({word:c.word,translation:c.translation||''}); });
+        }
+      }
+    }catch(e){}
+    // dedupe
+    var seen={}, out=[]; words.forEach(function(w){ var k=String(w.word).toLowerCase().trim(); if(k&&!seen[k]){seen[k]=1;out.push(w);} });
+    return out;
+  };
+
+  // Render sekcji wyboru materiału na ekranie startu lekcji
+  window.lexRenderSourcePicker=async function(){
+    var host=document.getElementById('lex-source-picker'); if(!host) return;
+    host.innerHTML='<div style="font-size:12px;color:var(--dim2);padding:10px 0">Sprawdzam, co ostatnio przerabiałeś…</div>';
+    var src=await lexLoadStudySources();
+    var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
+    var chips=[];
+    src.eyelingo.forEach(function(c){
+      chips.push({kind:'eyelingo', id:c.id, label:(c.icon?c.icon+' ':'')+c.label, level:c.level||lvlUser, count:c.count, sub:(c.level?c.level+' · ':'')+c.count+' słów'});
+    });
+    src.user.forEach(function(u){
+      chips.push({kind:'user', id:u.id, label:u.label, level:lvlUser, count:u.count, sub:'Twój zestaw · '+u.count+' słów'});
+    });
+    if(!chips.length){
+      host.innerHTML='<div style="font-size:12.5px;color:var(--dim2);line-height:1.5;padding:10px 14px;background:var(--paper2);border-radius:12px">Nie widzę jeszcze przerabianych fiszek w tym języku. Lex poprowadzi lekcję ogólną — a gdy poćwiczysz fiszki na stronie lub desktopie, pojawią się tu do utrwalenia.</div>';
+      window._lexSources=[]; return;
+    }
+    window._lexSourcesAvail=chips;
+    host.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">'+chips.map(function(c,i){
+      return '<button type="button" data-src="'+i+'" onclick="lexToggleSource('+i+')" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:1.5px solid var(--border2);background:#fff;border-radius:14px;padding:10px 14px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;min-width:130px;text-align:left">'
+        +'<span style="font-size:13.5px;font-weight:500;color:var(--navy)">'+esc(c.label)+'</span>'
+        +'<span style="font-size:10.5px;color:var(--dim2)">'+esc(c.sub)+'</span></button>';
+    }).join('')+'</div>';
+  };
+
+  window.lexToggleSource=function(i){
+    var c=(window._lexSourcesAvail||[])[i]; if(!c) return;
+    var btn=document.querySelector('#lex-source-picker [data-src="'+i+'"]');
+    var idx=window._lexSources.findIndex(function(x){ return x.kind===c.kind && String(x.id)===String(c.id); });
+    if(idx>=0){ window._lexSources.splice(idx,1); if(btn){ btn.style.border='1.5px solid var(--border2)'; btn.style.background='#fff'; } }
+    else { window._lexSources.push({kind:c.kind,id:c.id,label:c.label,level:c.level,count:c.count}); if(btn){ btn.style.border='2px solid var(--orange)'; btn.style.background='#fff8f3'; } }
   };
 })();
 </script>
