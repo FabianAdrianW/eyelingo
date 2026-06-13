@@ -2307,7 +2307,7 @@ function showPage(name){
   if(name==='strefa'){ initStrefa(); strefaShowTab('tryb'); setTimeout(function(){ if(typeof strefaRenderContinue==='function') strefaRenderContinue(); },60); }
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
   if(name==='daily'){ setTimeout(function(){ var ind=document.getElementById('daily-loading-indicator'); if(ind) ind.style.display='none'; initDaily(); dailyShowTab('daily'); }, 50); }
-  if(name==='teacher'){ setTimeout(function(){ teacherShowTab('hub'); }, 50); }
+  if(name==='teacher'){ setTimeout(function(){ teacherShowTab('teacher'); }, 50); }
   if(name==='dash'){ try{ loadDashboard(); }catch(e){} }
   if(name==='tutors') initTutors();
   // Redirects for merged pages — route to parent hub
@@ -2724,6 +2724,25 @@ window.loadMySets = async function loadMySets(){
     var createBtn=document.getElementById('mat-create-btn');
     if(createBtn) createBtn.style.display='block';
     var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='inline-flex';
+    // Auto-detect języka w tle dla zestawów bez lang (heurystyka, jednorazowo)
+    setTimeout(async function(){
+      var noLang=_matSets.filter(function(s){return !s.lang;});
+      for(var i=0;i<noLang.length;i++){
+        var st=noLang[i];
+        try{
+          var cards=st.user_set_cards||[];
+          if(!cards.length){ var r=await db.from('user_set_cards').select('word').eq('set_id',st.id).limit(15); cards=r.data||[]; }
+          if(cards.length && typeof window.lexDetectSetLang==='function'){
+            window.lexDetectSetLang(st.id, cards, function(detected){
+              if(detected){
+                var idx=_matSets.findIndex(function(x){return x.id===st.id;});
+                if(idx>=0){ _matSets[idx].lang=detected; matRenderMine(); }
+              }
+            });
+          }
+        }catch(e){}
+      }
+    }, 600);
   }catch(e){
     if(grid) grid.innerHTML='<div class="mat-empty">Błąd: '+(e.message||e)+'</div>';
   }
@@ -2806,8 +2825,11 @@ function setCard(s){
   const authorLine = !isOwn && s.username
     ? `<div class="mat-card-count" style="margin-top:1px">${esc(s.username)}</div>`
     : '';
-  // Przycisk Ucz się — otwiera lekcję Lex z tym zestawem
-  const playBtn = `<button onclick="event.stopPropagation();matCardStartLesson(${s.id},${JSON.stringify(s.name||'')},${JSON.stringify(langCode||'')})" title="Zacznij naukę z Lexem" style="display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:100px;border:1.5px solid var(--orange);background:transparent;color:var(--orange);font-size:12px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap;margin-top:10px" onmouseover="this.style.background='var(--orange)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--orange)'"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"></polygon></svg>Ucz się</button>`;
+  // Przycisk Ucz się (SRS) + Utrwal z Lexem (modal wyboru poziomu → Lex)
+  const playBtn = `<div style="display:flex;gap:7px;margin-top:10px" onclick="event.stopPropagation()">
+    <button onclick="matCardStartSRS(${s.id},${JSON.stringify(s.name||'')})" title="Tryb fiszek SRS" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;color:var(--dim);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.borderColor='var(--navy)';this.style.color='var(--navy)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--dim)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Ucz się</button>
+    <button onclick="matCardLexModal(${s.id},${JSON.stringify(s.name||'')},${JSON.stringify(langCode||'')})" title="Utrwal z nauczycielem Lex" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--orange);background:transparent;color:var(--orange);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.background='var(--orange)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--orange)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Utrwal z Lexem</button>
+  </div>`;
   return `<div class="mat-card" onclick="openSet(${s.id})" style="cursor:pointer;position:relative"
     draggable="true"
     ondragstart="matCardDragStart(event,${s.id},'${(s.name||'').replace(/'/g,'')}')"
@@ -2842,6 +2864,71 @@ window.matCardStartLesson = function(setId, setName, langCode){
   } else {
     go(langCode);
   }
+};
+
+// Modal "Utrwal z Lexem" — wybór poziomu języka przykładów → start lekcji
+window.matCardLexModal = function(setId, setName, langCode){
+  var old=document.getElementById('mat-lex-modal'); if(old) old.remove();
+  var m=document.createElement('div'); m.id='mat-lex-modal';
+  m.style.cssText='position:fixed;inset:0;z-index:10060;background:rgba(26,35,64,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px';
+  m.addEventListener('click',function(e){ if(e.target===m) m.remove(); });
+  var curLevel=window._lexTeacherExLevel||'intermediate';
+  var levels=[
+    {id:'basic',label:'Podstawowy',sub:'Proste, codzienne zdania',desc:'A1–A2'},
+    {id:'intermediate',label:'Średniozaawansowany',sub:'Naturalne, płynne zdania',desc:'B1–B2'},
+    {id:'advanced',label:'Zaawansowany',sub:'Złożone struktury, idiomy',desc:'C1–C2'},
+  ];
+  var lvlBtns=levels.map(function(lv){
+    var on=lv.id===curLevel;
+    return '<button data-lvl="'+lv.id+'" onclick="matLexModalPickLevel(this,\''+lv.id+'\')" style="border-radius:12px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';padding:12px 14px;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left;transition:.15s">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-size:13.5px;font-weight:600;color:var(--navy)">'+lv.label+'</span><span style="font-size:10px;font-weight:600;background:rgba(26,35,64,.08);color:var(--navy);padding:2px 8px;border-radius:100px">'+lv.desc+'</span></div>'
+      +'<div style="font-size:12px;color:var(--dim2)">'+lv.sub+'</div>'
+      +'</button>';
+  }).join('');
+  // Flaga + nazwa języka
+  var lInfo=(langCode&&typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[langCode])||null;
+  var lBadge=lInfo?('<span style="font-size:12px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:3px 10px;border-radius:100px">'+(lInfo.flag||'')+' '+(lInfo.name||langCode)+'</span>'):'';
+  var cleanName=window.stripEmoji?window.stripEmoji(setName||''):(setName||'');
+  m.innerHTML='<div style="background:#fff;border-radius:20px;padding:28px;width:min(440px,94vw);box-shadow:0 28px 70px rgba(26,35,64,.28)">'
+    +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px">'
+    +'<div><div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--orange);margin-bottom:5px">Utrwal z Lexem</div>'
+    +'<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy);line-height:1.3">'+esc(cleanName)+'</div>'
+    +(lBadge?'<div style="margin-top:6px">'+lBadge+'</div>':'')+'</div>'
+    +'<button onclick="document.getElementById(\'mat-lex-modal\').remove()" style="background:transparent;border:none;color:var(--dim2);font-size:22px;cursor:pointer;line-height:1;padding:0;margin-left:12px">×</button>'
+    +'</div>'
+    +'<div style="font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Jak trudne mają być przykłady Lexa?</div>'
+    +'<div id="mat-lex-lvl-btns" style="display:flex;flex-direction:column;gap:8px;margin-bottom:22px">'+lvlBtns+'</div>'
+    +'<button onclick="matCardLexGo('+setId+','+JSON.stringify(setName)+','+JSON.stringify(langCode||'')+')" style="width:100%;padding:14px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zacznij lekcję →</button>'
+    +'</div>';
+  document.body.appendChild(m);
+};
+
+window.matLexModalPickLevel=function(btn, level){
+  window._lexTeacherExLevel=level;
+  try{ if(typeof uk==='function') localStorage.setItem(uk('lex_teacher_ex_level'), level); }catch(e){}
+  document.querySelectorAll('#mat-lex-lvl-btns button').forEach(function(b){
+    var on=b===btn;
+    b.style.border=on?'2px solid var(--orange)':'1.5px solid var(--border2)';
+    b.style.background=on?'#fff8f3':'#fff';
+  });
+};
+
+window.matCardLexGo=function(setId, setName, langCode){
+  var m=document.getElementById('mat-lex-modal'); if(m) m.remove();
+  window.matCardStartLesson(setId, setName, langCode);
+};
+
+// Ucz się — otwiera Strefę Nauki SRS z tym zestawem
+window.matCardStartSRS=function(setId, setName){
+  // Przekieruj do Strefy Nauki z tym zestawem jako źródłem
+  if(typeof switchTab==='function') switchTab('strefa', document.getElementById('ntab-strefa'));
+  // Ustaw zestaw jako aktywny jeśli możliwe
+  try{
+    setTimeout(function(){
+      if(typeof strefaStartWithSet==='function') strefaStartWithSet(setId, setName);
+      else if(typeof startStrefaSession==='function') startStrefaSession();
+    }, 150);
+  }catch(e){}
 };
 
 
@@ -3766,34 +3853,28 @@ async function initToFixPage(){
   <!-- LEFT SIDEBAR -->
   <div id="teacher-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
     <div style="padding:88px 0 64px 16px;min-width:200px">
-      <!-- Tryb -->
-      <div id="teacher-nav-hub" onclick="teacherShowTab('hub')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:14px;margin-right:16px;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)'}">
-        <div style="display:flex;align-items:center;gap:8px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"></path></svg>
-          <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Start</div>
+
+      <!-- Tryby — kompaktowe przyciski nawigacji -->
+      <div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 16px 10px 4px">Tryb</div>
+      <div id="teacher-nav-teacher" onclick="teacherShowTab('teacher')" style="background:var(--paper2);border:1.5px solid var(--orange);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:6px;margin-right:16px;transition:.2s;display:flex;align-items:center;gap:9px" onmouseover="if(!this.dataset.active){this.style.background='var(--paper2)'}" onmouseout="if(!this.dataset.active){this.style.background='var(--white)'}">
+        <div style="width:28px;height:28px;border-radius:7px;background:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>
+        <div>
+          <div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">Lex <span style="font-size:9px;background:var(--orange);color:#fff;padding:1px 6px;border-radius:100px;margin-left:2px">PRO</span></div>
+          <div style="font-size:10.5px;color:var(--dim2)">Lekcje z retrieval</div>
         </div>
-        <div style="font-size:11px;color:var(--dim2);margin-top:3px">Rekomendacje i tryby</div>
       </div>
-      <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Tryb</div>
-      <div id="teacher-nav-chat" onclick="teacherShowTab('chat')" style="background:var(--white);border:.5px solid var(--orange);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;margin-right:16px;transition:.2s">
-        <div style="display:flex;align-items:center;gap:8px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg>
-          <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">AI Partner</div>
+      <div id="teacher-nav-chat" onclick="teacherShowTab('chat')" style="background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:20px;margin-right:16px;transition:.2s;display:flex;align-items:center;gap:9px" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)'}">
+        <div style="width:28px;height:28px;border-radius:7px;background:rgba(26,35,64,.08);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg></div>
+        <div>
+          <div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">Alex</div>
+          <div style="font-size:10.5px;color:var(--dim2)">Swobodna rozmowa</div>
         </div>
-        <div style="font-size:11px;color:var(--dim2);margin-top:3px">Swobodna rozmowa</div>
-      </div>
-      <div id="teacher-nav-teacher" onclick="teacherShowTab('teacher')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;margin-right:16px;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)'}">
-        <div style="display:flex;align-items:center;gap:8px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>
-          <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Nauczyciel PRO</div>
-        </div>
-        <div style="font-size:11px;color:var(--dim2);margin-top:3px">Ustrukturyzowane lekcje</div>
       </div>
 
       <!-- Historia rozmów (AI Partner) -->
       <div id="teacher-sb-chat-history" style="display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin:24px 16px 12px 4px">
-          <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2)">Historia rozmów</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:0 16px 10px 4px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2)">Historia rozmów</div>
           <button onclick="teacherNewConversation()" style="background:var(--orange);border:none;color:#fff;width:24px;height:24px;border-radius:50%;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;flex-shrink:0" title="Nowa rozmowa">+</button>
         </div>
         <div id="teacher-history-list" style="display:flex;flex-direction:column;gap:6px;padding-right:16px"></div>
@@ -3845,43 +3926,7 @@ async function initToFixPage(){
     <p class="ph-sub" id="teacher-main-sub">Swobodna rozmowa z AI dopasowana do Twojego poziomu</p>
   </div>
 
-  <!-- ═══ HUB — AI Tutor (Design Bible W5) ═══ -->
-  <div id="teacher-panel-hub" style="display:none">
-    <!-- Hero: Rekomendowane na dziś -->
-    <div id="hub-hero" onclick="hubStartRecommended()" style="background:linear-gradient(135deg,var(--navy) 0%,#26335c 100%);border-radius:20px;padding:28px 30px;margin-bottom:22px;cursor:pointer;position:relative;overflow:hidden;box-shadow:0 12px 36px rgba(26,35,64,.18)">
-      <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
-        <div style="width:44px;height:44px;border-radius:12px;background:rgba(201,106,42,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.5 1 2.5h6c0-1 .4-1.9 1-2.5A6 6 0 0 0 12 3z"></path></svg>
-        </div>
-        <div style="flex:1;min-width:240px">
-          <div style="font-size:11px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--orange);margin-bottom:8px">Rekomendowane na dziś</div>
-          <div id="hub-hero-title" style="font-family:DM Sans,sans-serif;font-size:21px;font-weight:500;color:#fff;line-height:1.35;margin-bottom:6px">Utrwal z Lexem to, co przerabiałeś</div>
-          <div id="hub-hero-sub" style="font-size:13.5px;color:rgba(255,255,255,.65);line-height:1.55;max-width:560px">Wybierz zestaw fiszek — Lex przerobi z Tobą cały materiał, słowo po słowie.</div>
-        </div>
-        <button onclick="event.stopPropagation();hubStartRecommended()" style="align-self:center;background:var(--orange);color:#fff;border:none;border-radius:100px;padding:13px 24px;font-size:14px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap">Zacznij →</button>
-      </div>
-    </div>
-
-    <!-- Sekcja: ostatnie sesje + szybkie linki -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:28px">
-      <div onclick="teacherShowTab('teacher')" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:22px;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:14px" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
-        <div style="width:42px;height:42px;border-radius:11px;background:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>
-        <div style="flex:1;min-width:0">
-          <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">Lex <span style="font-size:10px;font-weight:600;letter-spacing:.06em;background:var(--orange);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">PRO</span></div>
-          <div style="font-size:12px;color:var(--dim2);margin-top:2px">Strukturowane lekcje z retrieval practice</div>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
-      </div>
-      <div onclick="teacherShowTab('chat')" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:22px;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:14px" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
-        <div style="width:42px;height:42px;border-radius:11px;background:rgba(26,35,64,.08);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg></div>
-        <div style="flex:1;min-width:0">
-          <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">Alex — AI Partner</div>
-          <div style="font-size:12px;color:var(--dim2);margin-top:2px">Swobodna rozmowa · przełam barierę</div>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
-      </div>
-    </div>
-  </div><!-- /teacher-panel-hub -->
+  <!-- ═══ HUB panel usunięty — sidebar bezpośrednio nawiguje do Lexa lub Alexa ═══ -->
 
   <div id="teacher-panel-chat">
     <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start;min-width:0" id="chat-grid-layout">
@@ -12141,29 +12186,24 @@ function dailyShowTab(tab){
 function teacherShowTab(tab){
   if(typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
   try{ if(typeof lexBoardFabShow==='function' && tab!=='teacher') lexBoardFabShow(false); }catch(e){}
-  var panelH=document.getElementById('teacher-panel-hub');
   var panelC=document.getElementById('teacher-panel-chat');
   var panelT=document.getElementById('teacher-panel-teacher');
-  if(panelH) panelH.style.display = tab==='hub'     ? '' : 'none';
   if(panelC) panelC.style.display = tab==='chat'    ? '' : 'none';
   if(panelT) panelT.style.display = tab==='teacher' ? '' : 'none';
-  // Nawigacja w sidebarze (wzorzec z Materiałów)
+  // Nawigacja w sidebarze
   function navState(el, on){
     if(!el) return;
     if(on){ el.dataset.active='1'; el.style.borderColor='var(--orange)'; el.style.background='var(--paper2)'; }
     else { delete el.dataset.active; el.style.borderColor='var(--border)'; el.style.background='var(--white)'; }
   }
-  navState(document.getElementById('teacher-nav-hub'), tab==='hub');
   navState(document.getElementById('teacher-nav-chat'), tab==='chat');
   navState(document.getElementById('teacher-nav-teacher'), tab==='teacher');
   // Tytuł strony
   var title=document.getElementById('teacher-main-title');
   var sub=document.getElementById('teacher-main-sub');
   var pro='<span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span>';
-  if(tab==='hub'){ if(title)title.innerHTML='Tutor AI'; if(sub)sub.textContent='Pogłębij to, czego desktop nauczył Cię w ciągu dnia'; }
-  else if(tab==='chat'){ if(title)title.innerHTML='AI Partner'; if(sub)sub.textContent='Swobodna rozmowa z AI dopasowana do Twojego poziomu'; }
+  if(tab==='chat'){ if(title)title.innerHTML='AI Partner'; if(sub)sub.textContent='Swobodna rozmowa z AI dopasowana do Twojego poziomu'; }
   else { if(title)title.innerHTML='Nauczyciel AI '+pro; if(sub)sub.textContent='Lex prowadzi Cię przez retrieval — wydobywasz, nie oglądasz'; }
-  if(tab==='hub' && typeof teacherRenderHub==='function') teacherRenderHub();
   if(tab==='chat' && typeof initChat==='function') initChat();
   if(tab==='teacher') lexInit();
   // Sekcje sidebara
@@ -17781,8 +17821,15 @@ async function lexInit(){
       +'<span style="font-size:13.5px;font-weight:500;color:var(--navy);display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Przeglądaj wszystkie</span>'
       +'<span style="font-size:10.5px;color:var(--dim2)">Języki, poziomy, Twoje zestawy</span></button>';
     if(!chips.length){
-      host.innerHTML='<div style="font-size:12.5px;color:var(--dim2);line-height:1.5;padding:12px 14px;background:var(--paper2);border-radius:12px;margin-bottom:10px">Nie widzę jeszcze świeżo przerabianych fiszek w tym języku — wybierz materiał z katalogu poniżej.</div>'
-        +'<div style="display:flex;justify-content:center">'+browseBtn+'</div>';
+      host.innerHTML='<div style="text-align:center;padding:20px 0 10px">'
+        +'<div style="width:52px;height:52px;border-radius:14px;background:rgba(26,35,64,.06);display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M12 12v4m0-4V8"></path></svg></div>'
+        +'<div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy);margin-bottom:6px">Najpierw przejrzyj fiszki</div>'
+        +'<div style="font-size:13px;color:var(--dim2);line-height:1.55;max-width:340px;margin:0 auto 18px">Lex utrwala to, czego się już uczyłeś — w Twoich zestawach lub w kategoriach Eyelingo. Zacznij od przejrzenia fiszek, a Lex pomoże Ci je zapamiętać na stałe.</div>'
+        +'<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
+        +'<button onclick="if(typeof switchTab===\'function\')switchTab(\'community\',document.getElementById(\'ntab-community\'))" style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;color:var(--navy);font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>Twoje zestawy</button>'
+        +'<button onclick="lexCatalogOpen()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:100px;border:none;background:var(--orange);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Przeglądaj Eyelingo</button>'
+        +'</div>'
+        +'</div>';
       window._lexSources=window._lexSources||[]; return;
     }
     host.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">'+chips.map(function(c,i){
@@ -17830,7 +17877,37 @@ async function lexInit(){
   };
 
   // Minimalny wybór języka dla WŁASNEGO zestawu (brak zapisanego) + trwały zapis → badge na stałe
-  window.lexAskSetLang=function(setId, label, cb){
+  // ── Auto-detect języka zestawu na podstawie słów (heurystyczny, bez API, jednorazowy zapis) ──
+  window.lexDetectSetLang=async function(setId, words, cb){
+    // Heurystyczna mapa znaków/słów charakterystycznych per język
+    var sigs={
+      es:/[áéíóúüñ¿¡]|^(el|la|los|las|un|una|que|de|en|por|con|ser|estar|haber|hacer|guerra|casa|libro|ciudad|tiempo)$/i,
+      nl:/[ĳ]|(ij)|(aa|oe|ui|ei|ou)|^(de|het|een|van|zijn|hebben|worden|maar|ook|dit|niet|wel|bij|door)$/i,
+      jp:/[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/,
+      de:/[äöüß]|^(der|die|das|ein|eine|ist|sind|haben|werden|können|ich|sie|wir|nicht|auch|mit|von|dem|den)$/i,
+      fr:/[àâæçéèêëîïôœùûüÿ]|^(le|la|les|un|une|des|est|sont|avoir|être|mais|aussi|dans|sur|avec|par)$/i,
+      pt:/[ãõâêôàáéíóúç]|^(o|a|os|as|um|uma|é|são|ter|ser|estar|fazer|mas|também|para|com|por)$/i,
+    };
+    var scores={};
+    var sample=(words||[]).slice(0,15).map(function(w){return String(w.word||w||'').toLowerCase().trim();}).filter(Boolean);
+    if(!sample.length){ if(cb) cb(null); return; }
+    for(var lang in sigs){
+      scores[lang]=0;
+      sample.forEach(function(w){ if(sigs[lang].test(w)) scores[lang]++; });
+    }
+    // Wybierz język z najwyższym wynikiem (min 2 trafień = pewna detekcja)
+    var best=null, bestScore=1; // próg 2 dopasowań
+    for(var l in scores){ if(scores[l]>bestScore){bestScore=scores[l];best=l;} }
+    if(best){
+      try{ await db.from('user_sets').update({lang:best}).eq('id', setId); }catch(e){ console.warn('[Lex] auto-detect lang save error:', e&&e.message); }
+      if(cb) cb(best); return;
+    }
+    // Fallback: za mało sygnałów — pokaż modal z pytaniem
+    window.lexAskSetLangModal(setId, words[0]&&words[0].label||'zestaw', cb);
+  };
+
+  // Modal ręcznego wyboru języka (fallback gdy auto-detect za mało pewny)
+  window.lexAskSetLangModal=function(setId, label, cb){
     var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','nl','jp'];
     var old=document.getElementById('lex-setlang'); if(old) old.remove();
     var m=document.createElement('div'); m.id='lex-setlang';
@@ -17839,18 +17916,32 @@ async function lexInit(){
     var btns=codes.map(function(code){
       var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[code])||{name:code};
       var nm=(info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
-      return '<button data-code="'+code+'" style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1.5px solid var(--border2);background:#fff;border-radius:14px;padding:16px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s"><span style="font-size:15px;font-weight:600;color:var(--navy)">'+String(code).toUpperCase()+'</span><span style="font-size:12px;color:var(--dim2)">'+esc(nm)+'</span></button>';
+      return '<button data-code="'+code+'" style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1.5px solid var(--border2);background:#fff;border-radius:14px;padding:16px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s"><span style="font-size:22px">'+(info.flag||'🌐')+'</span><span style="font-size:13px;font-weight:600;color:var(--navy)">'+esc(nm)+'</span></button>';
     }).join('');
     m.innerHTML='<div style="background:#fff;border-radius:20px;padding:26px;width:min(420px,94vw);box-shadow:0 24px 60px rgba(26,35,64,.28)">'
-      +'<div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);margin-bottom:6px">W jakim języku jest „'+esc(label)+'"?</div>'
-      +'<div style="font-size:12.5px;color:var(--dim2);margin-bottom:18px;line-height:1.5">Zapamiętam to — od teraz zestaw będzie miał oznaczenie języka.</div>'
-      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+btns+'</div></div>';
+      +'<div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px">W jakim języku jest „'+esc(label)+'"?</div>'
+      +'<div style="font-size:12.5px;color:var(--dim2);margin-bottom:18px;line-height:1.5">Nie udało mi się automatycznie rozpoznać języka. Zaznacz właściwy — zapamiętam na stałe.</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+btns+'</div></div>';
     document.body.appendChild(m);
     m.querySelectorAll('[data-code]').forEach(function(b){ b.addEventListener('click', async function(){
       var code=b.getAttribute('data-code');
-      try{ await db.from('user_sets').update({lang:code}).eq('id', setId); }catch(e){ console.warn('[Lex] nie zapisano języka zestawu (brak kolumny user_sets.lang?):', e&&e.message); }
+      try{ await db.from('user_sets').update({lang:code}).eq('id', setId); }catch(e){ console.warn('[Lex] zapis języka zestawu błąd:', e&&e.message); }
       m.remove(); if(cb) cb(code);
     }); });
+  };
+
+  // Główna funkcja — wywołuj zamiast lexAskSetLang: sprawdza DB, auto-detect, potem ewentualnie modal
+  window.lexAskSetLang=async function(setId, label, cb){
+    // 1. Sprawdź czy lang jest już w bazie (refresh)
+    try{
+      var res=await db.from('user_sets').select('lang,user_set_cards(word)').eq('id',setId).single();
+      if(res.data&&res.data.lang){ if(cb) cb(res.data.lang); return; }
+      // 2. Auto-detect na podstawie słów zestawu
+      var words=(res.data&&res.data.user_set_cards)||[];
+      if(words.length>0){ window.lexDetectSetLang(setId, words, cb); return; }
+    }catch(e){}
+    // 3. Brak słów — modal
+    window.lexAskSetLangModal(setId, label, cb);
   };
 })();
 </script>
