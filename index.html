@@ -2710,8 +2710,8 @@ window.loadMySets = async function loadMySets(){
     // Get assigned set IDs from collections
     var assignedIds=new Set();
     (_collections||[]).forEach(function(c){ (c.sets||[]).forEach(function(s){ assignedIds.add(s.id); }); });
-    var _selS='id,name,user_id,is_public,likes_count,source,user_set_cards(id,word,translation)';
-    var _selN='id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation)';
+    var _selS='id,name,lang,user_id,is_public,likes_count,source,user_set_cards(id,word,translation)';
+    var _selN='id,name,lang,user_id,is_public,likes_count,user_set_cards(id,word,translation)';
     var {data,error:_e}=await db.from('user_sets').select(_selS).eq('user_id',session.user.id).order('created_at',{ascending:false});
     if(_e){ var _r=await db.from('user_sets').select(_selN).eq('user_id',session.user.id).order('created_at',{ascending:false}); data=_r.data; }
     var _valid=new Set((data||[]).map(function(s){return s.id;}));
@@ -2787,8 +2787,15 @@ function setCard(s){
   const isMineTab = (window._matTab || 'mine') === 'mine';
   const cards = s.user_set_cards || [];
   const cleanName = window.stripEmoji ? stripEmoji(s.name||'') : (s.name||'');
-  const badge = s.source==='lex' ? ' <span style="font-size:9px;font-weight:500;letter-spacing:.5px;background:var(--orange);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle">LEX</span>'
+  // Badge źródła (LEX / ALEX)
+  const srcBadge = s.source==='lex' ? ' <span style="font-size:9px;font-weight:500;letter-spacing:.5px;background:var(--orange);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle">LEX</span>'
     : s.source==='alex' ? ' <span style="font-size:9px;font-weight:500;letter-spacing:.5px;background:var(--navy);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle">ALEX</span>' : '';
+  // Badge języka zestawu
+  const langCode = s.lang||null;
+  const langInfo = (langCode && typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[langCode])||null;
+  const langBadge = langInfo
+    ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
+    : (langCode ? `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langCode.toUpperCase()}</span>` : '');
   const delBtn = (isOwn && isMineTab)
     ? `<span title="Usuń zestaw" onclick="event.stopPropagation();deleteSetConfirm(${s.id})" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500" onmouseover="this.style.opacity=1;this.style.color='#c0392b'" onmouseout="this.style.opacity=.5;this.style.color='var(--dim2)'">&times;</span>`
     : '';
@@ -2799,6 +2806,8 @@ function setCard(s){
   const authorLine = !isOwn && s.username
     ? `<div class="mat-card-count" style="margin-top:1px">${esc(s.username)}</div>`
     : '';
+  // Przycisk Ucz się — otwiera lekcję Lex z tym zestawem
+  const playBtn = `<button onclick="event.stopPropagation();matCardStartLesson(${s.id},${JSON.stringify(s.name||'')},${JSON.stringify(langCode||'')})" title="Zacznij naukę z Lexem" style="display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:100px;border:1.5px solid var(--orange);background:transparent;color:var(--orange);font-size:12px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap;margin-top:10px" onmouseover="this.style.background='var(--orange)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--orange)'"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5,3 19,12 5,21"></polygon></svg>Ucz się</button>`;
   return `<div class="mat-card" onclick="openSet(${s.id})" style="cursor:pointer;position:relative"
     draggable="true"
     ondragstart="matCardDragStart(event,${s.id},'${(s.name||'').replace(/'/g,'')}')"
@@ -2807,13 +2816,33 @@ function setCard(s){
     <div class="mat-card-head" style="display:flex;align-items:center;gap:12px">
       <div style="width:36px;height:36px;border-radius:8px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg></div>
       <div style="flex:1;min-width:0;padding-right:18px">
-        <div class="mat-card-name">${esc(cleanName)}${badge}</div>
+        <div class="mat-card-name" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">${esc(cleanName)}${srcBadge}${langBadge}</div>
         <div class="mat-card-count">${cards.length} fiszek</div>
         ${authorLine}
       </div>
     </div>
+    ${isMineTab ? playBtn : ''}
   </div>`;
 }
+
+// Uruchomienie lekcji Lexa z kafelka zestawu
+window.matCardStartLesson = function(setId, setName, langCode){
+  function go(code){
+    window._lexLang = code || window._lexLang || 'en';
+    window._lexSources = [{kind:'user', id:setId, label:setName, lang:code||null}];
+    try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet('user', setId, setName, null, 0, window._lexLang); }catch(e){}
+    if(typeof switchTab==='function') switchTab('teacher', document.getElementById('ntab-teacher'));
+    setTimeout(function(){
+      if(typeof teacherShowTab==='function') teacherShowTab('teacher');
+      setTimeout(function(){ if(typeof lexStartLesson==='function') lexStartLesson(); }, 120);
+    }, 80);
+  }
+  if(!langCode && typeof lexAskSetLang==='function'){
+    lexAskSetLang(setId, setName, function(code){ go(code); });
+  } else {
+    go(langCode);
+  }
+};
 
 
 </script>
@@ -3818,7 +3847,7 @@ async function initToFixPage(){
 
   <!-- ═══ HUB — AI Tutor (Design Bible W5) ═══ -->
   <div id="teacher-panel-hub" style="display:none">
-    <!-- Hero: Rekomendowane na dziś (most #1) -->
+    <!-- Hero: Rekomendowane na dziś -->
     <div id="hub-hero" onclick="hubStartRecommended()" style="background:linear-gradient(135deg,var(--navy) 0%,#26335c 100%);border-radius:20px;padding:28px 30px;margin-bottom:22px;cursor:pointer;position:relative;overflow:hidden;box-shadow:0 12px 36px rgba(26,35,64,.18)">
       <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
         <div style="width:44px;height:44px;border-radius:12px;background:rgba(201,106,42,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -3833,28 +3862,23 @@ async function initToFixPage(){
       </div>
     </div>
 
-    <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 0 12px">Lub wybierz tryb</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:28px">
-      <!-- AI Partner -->
-      <div onclick="teacherShowTab('chat')" style="background:#fff;border:1.5px solid var(--border);border-radius:18px;padding:24px;cursor:pointer;transition:.2s" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-          <div style="width:38px;height:38px;border-radius:10px;background:rgba(26,35,64,.08);display:flex;align-items:center;justify-content:center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg></div>
-          <div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy)">AI Partner</div>
+    <!-- Sekcja: ostatnie sesje + szybkie linki -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:28px">
+      <div onclick="teacherShowTab('teacher')" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:22px;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:14px" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
+        <div style="width:42px;height:42px;border-radius:11px;background:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">Lex <span style="font-size:10px;font-weight:600;letter-spacing:.06em;background:var(--orange);color:#fff;padding:2px 8px;border-radius:100px;margin-left:4px">PRO</span></div>
+          <div style="font-size:12px;color:var(--dim2);margin-top:2px">Strukturowane lekcje z retrieval practice</div>
         </div>
-        <div style="font-size:13px;color:var(--dim);line-height:1.55;margin-bottom:14px">Swobodna rozmowa. Wybierasz zestaw fiszek (web/desktop), a Alex naturalnie wplata jego słowa w dialog i dopasowuje poziom do tego zestawu.</div>
-        <div style="font-size:10.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);margin-bottom:6px">Idealne na</div>
-        <div style="font-size:12.5px;color:var(--dim);line-height:1.7">płynne mówienie bez stresu · przełamanie bariery · szybką praktykę między zadaniami</div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
       </div>
-      <!-- Lex -->
-      <div onclick="teacherShowTab('teacher')" style="background:#fff;border:2px solid var(--orange);border-radius:18px;padding:24px;cursor:pointer;transition:.2s;position:relative" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
-        <span style="position:absolute;top:14px;right:14px;font-size:10px;font-weight:600;letter-spacing:.06em;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px">PRO</span>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-          <div style="width:38px;height:38px;border-radius:10px;background:var(--navy);display:flex;align-items:center;justify-content:center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>
-          <div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy)">Lex — Twój nauczyciel</div>
+      <div onclick="teacherShowTab('chat')" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:22px;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:14px" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='none'">
+        <div style="width:42px;height:42px;border-radius:11px;background:rgba(26,35,64,.08);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.5-.7L3 21l1.7-5a8.38 8.38 0 0 1-.7-3.5A8.5 8.5 0 0 1 12.5 4 8.38 8.38 0 0 1 21 11.5z"></path></svg></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">Alex — AI Partner</div>
+          <div style="font-size:12px;color:var(--dim2);margin-top:2px">Swobodna rozmowa · przełam barierę</div>
         </div>
-        <div style="font-size:13px;color:var(--dim);line-height:1.55;margin-bottom:14px">Wybierasz zestaw fiszek, a Lex przerabia z Tobą cały materiał — słowo po słowie, przez retrieval, nie oglądanie. Lekcja trwa tyle, ile trzeba, by pokryć zestaw, i kończy się Twoją wolną wypowiedzią, z której Lex wychwytuje luki na następny raz.</div>
-        <div style="font-size:10.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);margin-bottom:6px">Idealne na</div>
-        <div style="font-size:12.5px;color:var(--dim);line-height:1.7">utrwalenie fiszek z desktopu/strony · aktywne użycie słów · trwałą progresję A1→C2</div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
       </div>
     </div>
   </div><!-- /teacher-panel-hub -->
@@ -4046,7 +4070,7 @@ async function initToFixPage(){
           <!-- Audio replay button -->
           <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
             <button onclick="lexReplayAudio()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border2)'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg>Odtwórz</button>
-            <button onclick="lexSkipTyping()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">⏭ Pomiń</button>
+
           </div>
           <!-- Sentence translation panel -->
           <div id="lex-sentence-tr" style="display:none;margin-top:10px;padding:10px 14px;background:var(--paper);border-radius:10px;border-left:3px solid var(--orange);font-size:13px;color:var(--dim);line-height:1.6">
@@ -13284,7 +13308,16 @@ function lexQuickStart(){
           +'<span style="font-size:18px;color:var(--orange)">→</span></div>'; }catch(e){ return ''; } })()
     + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:34px 0 12px">Ostatnio przerabiane</div>'
     + '<div id="lex-source-picker"></div>'
-    + '<button onclick="lexQuickGo()" style="width:100%;margin-top:24px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
+    + '<div style="margin:24px 0 8px;text-align:left;padding:16px 18px;background:var(--paper2);border-radius:14px;border:1px solid var(--border)">'
+    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Poziom języka w przykładach Lexa</div>'
+    + '<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;line-height:1.4">Jak trudne mają być zdania i konteksty, którymi Lex uczy? (Nie dotyczy słówek z Twoich zestawów.)</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="lex-teacher-level-btns">'
+    + '<button onclick="lexSetTeacherLevel(\'basic\',this)" class="lex-tl-btn" style="padding:10px 6px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--navy);transition:.15s;text-align:center"><span style="display:block;font-weight:600;font-size:13px;margin-bottom:2px">Podstawowy</span><span style="font-size:10.5px;color:var(--dim2)">Proste, codzienne zdania</span></button>'
+    + '<button onclick="lexSetTeacherLevel(\'intermediate\',this)" class="lex-tl-btn" data-active="1" style="padding:10px 6px;border-radius:10px;border:2px solid var(--orange);background:#fff8f3;font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--navy);transition:.15s;text-align:center"><span style="display:block;font-weight:600;font-size:13px;margin-bottom:2px">Średniozaaw.</span><span style="font-size:10.5px;color:var(--dim2)">B1–B2, naturalne</span></button>'
+    + '<button onclick="lexSetTeacherLevel(\'advanced\',this)" class="lex-tl-btn" style="padding:10px 6px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--navy);transition:.15s;text-align:center"><span style="display:block;font-weight:600;font-size:13px;margin-bottom:2px">Zaawansowany</span><span style="font-size:10.5px;color:var(--dim2)">C1–C2, złożone</span></button>'
+    + '</div>'
+    + '</div>'
+    + '<button onclick="lexQuickGo()" style="width:100%;margin-top:18px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
     + '<div style="margin-top:18px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap">'
     + '<span style="font-size:11.5px;color:var(--dim2)">Język prowadzenia lekcji:</span>'
     + '<button onclick="lexObSelectLessonLang(\'pl\')" id="lex-ob-langpl" style="font-size:12px;padding:5px 12px;border-radius:100px;border:2px solid var(--orange);background:#fff;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Polski</button>'
@@ -13304,6 +13337,25 @@ function lexQuickDur(d){
     b.style.background = on ? '#fff8f3' : '#fff';
   });
 }
+// Poziom języka w przykładach Lexa (nie dotyczy zestawów Eyelingo)
+window._lexTeacherExLevel = 'intermediate'; // basic | intermediate | advanced
+window.lexSetTeacherLevel = function(level, btn){
+  window._lexTeacherExLevel = level;
+  document.querySelectorAll('.lex-tl-btn').forEach(function(b){
+    var on = b === btn;
+    b.style.border = on ? '2px solid var(--orange)' : '1.5px solid var(--border2)';
+    b.style.background = on ? '#fff8f3' : '#fff';
+    if(on) b.dataset.active='1'; else delete b.dataset.active;
+  });
+  try{ if(typeof uk==='function') localStorage.setItem(uk('lex_teacher_ex_level'), level); }catch(e){}
+};
+// Wczytaj zapisany poziom przykładów
+(function(){
+  try{
+    var saved = typeof uk==='function' ? localStorage.getItem(uk('lex_teacher_ex_level')) : null;
+    if(saved) window._lexTeacherExLevel = saved;
+  }catch(e){}
+})();
 async function lexQuickGo(){
   try{
     if(_lexProfile) _lexProfile.lesson_duration = _lexObDur;
@@ -14982,7 +15034,12 @@ function lexSpeak(text){
 function lexUpdateAudioLangBtn(){
   var btn=document.getElementById('lex-audiolang-btn');
   if(!btn) return;
-  btn.textContent = (_lexAudioLang==='pl') ? 'Lekcja: PL' : 'Lekcja: '+String(_lexLang||'').toUpperCase();
+  var tgtInfo=(typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[_lexLang])||null;
+  var tgtName=tgtInfo ? (tgtInfo.name.charAt(0).toUpperCase()+tgtInfo.name.slice(1)) : String(_lexLang||'').toUpperCase();
+  btn.textContent = (_lexAudioLang==='pl') ? 'Lekcja: PL' : 'Lekcja: '+tgtName;
+  // Sync badge
+  var badge=document.getElementById('lex-lang-badge');
+  if(badge && tgtInfo) badge.textContent='· '+(tgtInfo.flag||'')+(tgtInfo.flag?' ':'')+tgtName;
   btn.title = (_lexAudioLang==='pl')
     ? 'Lex prowadzi i czyta lekcję po polsku; słowa w języku uczonym pokazuje i wymawia w tym języku. Kliknij, aby prowadzić całą lekcję w języku uczonym. Zmiana działa od następnej wypowiedzi Lexa.'
     : 'Lex prowadzi całą lekcję w języku uczonym. Kliknij, aby wrócić do prowadzenia po polsku. Zmiana działa od następnej wypowiedzi Lexa.';
@@ -16739,7 +16796,17 @@ async function lexInit(){
       }
     }
     var lvlGuard = ({A1:'',A2:'',B1:'',B2:'Materiał MUSI być na poziomie B2 — żadnych elementarnych tematów typu "to be", podstawowe czasy teraźniejsze, kolory, liczby.',C1:'Materiał MUSI być na poziomie C1 — zaawansowane kolokacje, phrasal verbs, niuanse rejestru, idiomy. ABSOLUTNIE żadnych podstaw (to be, present simple, podstawowe słownictwo).',C2:'Materiał MUSI być na poziomie C2 — subtelne niuanse, rzadkie kolokacje, styl, ironia, rejestr. ABSOLUTNIE żadnych podstaw.'})[lvl]||'';
-    var exLevelInstr = 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze trzymaj na poziomie '+lvl+' lub niżej — nie wprowadzaj słownictwa trudniejszego niż '+lvl+', żeby przykład tłumaczący nie był trudniejszy niż to, czego uczeń się uczy. ';
+    var _teLvl = window._lexTeacherExLevel || 'intermediate';
+    var _teLvlInstr = _teLvl==='basic'
+      ? 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze MUSZĄ być bardzo proste — poziom A1–A2, krótkie zdania, codzienne sytuacje, bez idiomów i złożonych struktur. Pierwszeństwo ma zrozumienie. '
+      : _teLvl==='advanced'
+      ? 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze mogą być zaawansowane — poziom C1–C2, złożone struktury, kolokacje, idiomy, naturalny rejestr. Uczeń oczekuje intelektualnego wyzwania. '
+      : 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze trzymaj na poziomie '+lvl+' lub niżej — nie wprowadzaj słownictwa trudniejszego niż '+lvl+', żeby przykład tłumaczący nie był trudniejszy niż to, czego uczeń się uczy. ';
+    // Jeśli źródło to zestaw Eyelingo (wbudowany) — ignoruj ustawienie usera, trzymaj poziom zestawu
+    var _fromEyelingo = (window._lexSources||[]).some(function(s){return s.kind==='eyelingo';});
+    var exLevelInstr = _fromEyelingo
+      ? 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze trzymaj na poziomie '+lvl+' lub niżej — nie wprowadzaj słownictwa trudniejszego niż '+lvl+', żeby przykład tłumaczący nie był trudniejszy niż to, czego uczeń się uczy. '
+      : _teLvlInstr;
     var prompt =
       'Jesteś Lex — metodyczny nauczyciel języka '+langName()+'. Uczeń jest na poziomie '+lvl+'. '+lvlGuard+' '+exLevelInstr+' '
       +kmCtx+'Język wyjaśnień: POLSKI. '
