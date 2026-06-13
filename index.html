@@ -2432,6 +2432,10 @@ window.deleteSetConfirm = function deleteSetConfirm(id){
   confirmModal({title:'Usunąć zestaw?', message:'Tej operacji nie można cofnąć — zestaw i jego fiszki zostaną trwale usunięte.', confirmLabel:'Usuń', danger:true, onConfirm:function(){ deleteSet(id); }});
 };
 
+function lexLangOptionsHtml(){
+  var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','nl','jp'];
+  return codes.map(function(c){ var inf=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[c])||{name:c}; var nm=(inf.name||c); nm=nm.charAt(0).toUpperCase()+nm.slice(1); return '<option value="'+c+'">'+nm+' ('+c.toUpperCase()+')</option>'; }).join('');
+}
 window.openCreateSet = function openCreateSet(){
   var modal=document.getElementById('mat-modal');
   var title=document.getElementById('mat-modal-title');
@@ -2440,7 +2444,8 @@ window.openCreateSet = function openCreateSet(){
   if(title) title.textContent='Nowy zestaw';
   if(bodyEl){
     var d=document.createElement('div');
-    d.innerHTML='<div style="margin-bottom:14px"><label style="font-size:13px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px">Nazwa zestawu</label><input id="new-set-name" class="fi" placeholder="np. Angielski A1" style="width:100%;box-sizing:border-box"></div>';
+    d.innerHTML='<div style="margin-bottom:14px"><label style="font-size:13px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px">Nazwa zestawu</label><input id="new-set-name" class="fi" placeholder="np. Angielski A1" style="width:100%;box-sizing:border-box"></div>'
+      +'<div style="margin-bottom:14px"><label style="font-size:13px;font-weight:500;color:var(--navy);display:block;margin-bottom:6px">Język zestawu</label><select id="new-set-lang" class="fi" style="width:100%;box-sizing:border-box">'+lexLangOptionsHtml()+'</select></div>';
     // Column headers
     var hdr=document.createElement('div');
     hdr.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:8px;margin-bottom:6px';
@@ -2523,7 +2528,14 @@ window.saveNewSet = async function saveNewSet(){
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){typeof showToast!=='undefined'&&showToast('Zaloguj się','');return;}
-    var {data:set,error}=await db.from('user_sets').insert({name,user_id:sess.user.id,is_public:false}).select().single();
+    var _nsl=(document.getElementById('new-set-lang')||{}).value||null;
+    var _ins={name:name,user_id:sess.user.id,is_public:false}; if(_nsl) _ins.lang=_nsl;
+    var insRes=await db.from('user_sets').insert(_ins).select().single();
+    if(insRes.error && _nsl){ // kolumna lang może nie istnieć — spróbuj bez niej
+      console.warn('[Eyelingo] user_sets.lang brak? zapis bez języka:', insRes.error.message);
+      insRes=await db.from('user_sets').insert({name:name,user_id:sess.user.id,is_public:false}).select().single();
+    }
+    var set=insRes.data, error=insRes.error;
     if(error||!set) throw error||new Error('Błąd');
     if(cards.length) await db.from('user_set_cards').insert(cards.map(function(c){return Object.assign({},c,{set_id:set.id});}));
     closeMatModal();
@@ -13204,13 +13216,12 @@ async function lexInit(){
   try{ var _al=localStorage.getItem(uk('lex_audio_lang')); if(_al) _lexAudioLang=_al; }catch(e){}
   try{ var _sp2=localStorage.getItem(uk('lex_speech')); if(_sp2==='0') _lexSpeechEnabled=false; else if(_sp2==='1') _lexSpeechEnabled=true; }catch(e){}
 
-  // Show correct screen
-  if(!_lexProfile || !_lexProfile.user_name){
-    lexShowScreen('lex-lang-select');
-  } else {
-    // Returning user — ask language again (might want different one)
-    lexShowScreen('lex-lang-select');
+  // Język wynika z wybranego materiału (badge/katalog) — bez osobnego ekranu wyboru języka.
+  if(!window._lexLang){
+    try{ var ll=localStorage.getItem(uk('lex_last_lang')); window._lexLang = ll || 'en'; }catch(e){ window._lexLang='en'; }
+    try{ var info=LEX_LANG_MAP[_lexLang]; if(info){ _lexLangName=info.name; _lexLangNative=info.native; } }catch(e){}
   }
+  if(typeof lexQuickStart==='function') lexQuickStart();
   lexCheckResumable();
 }
 
@@ -13260,9 +13271,9 @@ function lexQuickStart(){
   if(!host) return;
   host.innerHTML =
     '<div style="max-width:520px;margin:0 auto;padding:48px 0;text-align:center">'
-    + '<div style="font-size:44px;margin-bottom:8px">'+(info.flag||'🌐')+'</div>'
-    + '<h3 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:4px">Gotowy na '+lexEsc(info.name||_lexLangName)+'?</h3>'
-    + '<div style="display:inline-flex;align-items:center;gap:8px;background:var(--navy);color:#fff;border-radius:100px;padding:5px 14px;font-size:12px;margin-top:6px">Twój poziom: <b>'+lvl+'</b></div>'
+    + '<div style="width:64px;height:64px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.7 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>'
+    + '<h3 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:4px">Co dziś utrwalamy?</h3>'
+    + '<div style="font-size:13px;color:var(--dim);max-width:380px;margin:6px auto 0;line-height:1.5">Wybierz zestaw lub kategorię — język rozpozna się z materiału, a Lex przerobi go z Tobą słowo po słowie.</div>'
     + topic
     + (function(){ try{ var st=(typeof lexxHasResume==='function')?lexxHasResume():null; if(!st) return '';
         var nm=(st.sources&&st.sources.length? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'lekcja'));
@@ -13271,8 +13282,7 @@ function lexQuickStart(){
           +'<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--navy)">Kontynuuj przerwaną lekcję</div>'
           +'<div style="font-size:11.5px;color:var(--dim2)">'+lexEsc(nm)+' · porcja '+st.portionNum+' z '+st.portionTarget+'</div></div>'
           +'<span style="font-size:18px;color:var(--orange)">→</span></div>'; }catch(e){ return ''; } })()
-    + '<div style="font-size:12px;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin:34px 0 4px">Co utrwalamy?</div>'
-    + '<div style="font-size:11.5px;color:var(--dim2);margin-bottom:14px;line-height:1.45">Wybierz fiszki przerabiane na stronie lub desktopie — Lex przerobi z Tobą cały zestaw, słowo po słowie, i doprowadzi Cię do ich aktywnego użycia.</div>'
+    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:34px 0 12px">Ostatnio przerabiane</div>'
     + '<div id="lex-source-picker"></div>'
     + '<button onclick="lexQuickGo()" style="width:100%;margin-top:24px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
     + '<div style="margin-top:18px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap">'
@@ -13697,7 +13707,7 @@ function lexEvalStart(){
 function lexEvalAbort(){
   if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
   _lexEval = null;
-  lexShowScreen('lex-lang-select');
+  if(typeof lexQuickStart==='function') lexQuickStart(); else lexShowScreen('lex-onboarding');
 }
 
 function lexEvalSpeak(text){
@@ -14377,6 +14387,7 @@ async function lexStartLesson(){
   if(lexCurrentLevel()==='unknown'){ return lexEvalStart(); }
   _lexLessonFocus = window._lexNextTopic || null; window._lexNextTopic = null;
   window._lexPortionFocuses = [];
+  try{ if(window._lexLang) localStorage.setItem(uk('lex_last_lang'), window._lexLang); }catch(e){}
   // Scaffolding: jeśli uczeń wybrał zestawy fiszek — to one są materiałem lekcji.
   // Poziom przykładów Lexa = poziom zestawów Eyelingo (np. A2→słowa A2), inaczej poziom ucznia.
   window._lexSourceWords=[]; window._lexLessonLevel=null;
@@ -16317,7 +16328,7 @@ async function lexInit(){
     try{ var rp = await db.from('lex_profiles').select('*').eq('user_id', sess.user.id).maybeSingle(); prof = rp.data; }catch(e){ prof = null; }
     _lexProfile = prof || null;
   }catch(e){ _lexProfile = null; }
-  lexShowScreen('lex-lang-select');
+  if(typeof lexQuickStart==='function') lexQuickStart(); else lexShowScreen('lex-onboarding');
 }
 
 </script>
@@ -17405,14 +17416,16 @@ async function lexInit(){
   async function loadUserSets(){
     try{
       var sess=(await db.auth.getSession()).data.session; if(!sess) return [];
-      var us=await db.from('user_sets').select('id,name,lang,target_lang,user_set_cards(id)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(60);
-      return (us.data||[]).map(function(st){ return {id:st.id,label:st.name,count:(st.user_set_cards||[]).length,lang:(st.target_lang||st.lang||null)}; }).filter(function(x){return x.count>0;});
+      var us=null;
+      try{ us=await db.from('user_sets').select('id,name,lang,user_set_cards(id)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(60); }catch(e1){ us=null; }
+      if(!us||us.error){ try{ us=await db.from('user_sets').select('id,name,user_set_cards(id)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(60); }catch(e2){ us={data:[]}; } }
+      return ((us&&us.data)||[]).map(function(st){ return {id:st.id,label:st.name,count:(st.user_set_cards||[]).length,lang:(st.lang||null)}; }).filter(function(x){return x.count>0;});
     }catch(e){ return []; }
   }
 
   function tileEyelingo(c){
     var tok='e'+c.id;
-    _picks[tok]={kind:'eyelingo',id:c.id,label:c.label,level:c.level};
+    _picks[tok]={kind:'eyelingo',id:c.id,label:c.label,level:c.level,lang:(_state.lang||window._lexLang||'en')};
     return '<button class="lexcat-tile'+(isSel('eyelingo',c.id)?' sel':'')+'" data-pick="'+tok+'">'
       +'<span class="lexcat-ic">'+ICO_FOLDER+'</span>'
       +'<span class="nm">'+esc(c.label)+'</span>'
@@ -17420,8 +17433,8 @@ async function lexInit(){
   }
   function tileUserSet(st){
     var tok='u'+st.id;
-    _picks[tok]={kind:'user',id:st.id,label:st.label,level:null};
-    var badge=st.lang?'<span class="lexcat-langbadge">'+esc(langBadge(st.lang))+'</span>':'';
+    _picks[tok]={kind:'user',id:st.id,label:st.label,level:null,lang:st.lang||null};
+    var badge=st.lang?'<span class="lexcat-langbadge">'+esc(langBadge(st.lang))+'</span>':'<span class="lexcat-langbadge" style="opacity:.6">?</span>';
     return '<div class="lexcat-tile'+(isSel('user',st.id)?' sel':'')+'" data-pick="'+tok+'">'
       +'<span class="lexcat-ic">'+ICO_BOOK+'</span>'
       +'<span class="nm">'+esc(st.label)+'</span>'
@@ -17527,20 +17540,21 @@ async function lexInit(){
   // Wybór: toggle do źródeł; learnNow=true → od razu zacznij lekcję z tym jednym materiałem
   function doPick(p, el, learnNow){
     if(!p) return;
-    window._lexSources=window._lexSources||[];
     var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
-    if(learnNow){
-      window._lexSources=[{kind:p.kind,id:p.id,label:p.label,level:p.level||lvlUser}];
-      try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet(p.kind,p.id,p.label,p.level||null,0,(window._lexLang||'en')); }catch(e){}
+    function go(langCode){
+      window._lexLang=langCode||p.lang||window._lexLang||'en';
+      window._lexSources=[{kind:p.kind,id:p.id,label:p.label,level:p.level||lvlUser,lang:window._lexLang}];
+      try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet(p.kind,p.id,p.label,p.level||null,0,window._lexLang); }catch(e){}
       var m=document.getElementById('lexcat-modal'); if(m) m.remove();
       if(typeof lexStartLesson==='function') lexStartLesson();
-      return;
     }
-    var idx=_lexSources.findIndex(function(x){ return x.kind===p.kind && String(x.id)===String(p.id); });
-    if(idx>=0){ _lexSources.splice(idx,1); if(el) el.classList.remove('sel'); }
-    else { _lexSources.push({kind:p.kind,id:p.id,label:p.label,level:p.level||lvlUser}); if(el) el.classList.add('sel'); }
-    try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet(p.kind,p.id,p.label,p.level||null,0,(window._lexLang||'en')); }catch(e){}
-    if(typeof lexRefreshPickerSelection==='function') lexRefreshPickerSelection();
+    // Zawsze startujemy lekcję z jednego materiału (kafelek = start)
+    if(p.kind==='user' && !p.lang){
+      if(typeof lexAskSetLang==='function') lexAskSetLang(p.id, p.label, function(code){ p.lang=code; go(code); });
+      else go('en');
+    } else {
+      go(p.lang);
+    }
   }
   // ekspozycja dla ewentualnych wywołań zewnętrznych
   window.lexCatalogPick=function(kind,id,label,level){ doPick({kind:kind,id:id,label:label,level:level}, null, false); };
@@ -17572,66 +17586,71 @@ async function lexInit(){
     }catch(e){}
   };
 
+  // Wszystkie kody języków (do skanu logów cross-language)
+  function lexAllLangCodes(){ try{ return Object.keys((typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP:{en:1}); }catch(e){ return ['en','es','nl','jp']; } }
+
   window.lexLoadStudySources=async function(){
     var out={eyelingo:[], user:[]};
     try{
       var sess=(await db.auth.getSession()).data.session; if(!sess) return out;
       var uid=sess.user.id;
-      var lang=(window._lexLang||'en');
-      var byCat={}; // cid → {id,label,icon,level,count,recent}
+      var byCat={}; // cid|lang → {id,label,level,count,recent,lang}
 
       function addCat(f, recent){
         if(!f||!f.categories) return;
-        if(f.languages && f.languages.code && f.languages.code!==lang) return;
+        var lc=(f.languages&&f.languages.code)||null;
         var cid=f.categories.id; if(!cid) return;
-        if(!byCat[cid]) byCat[cid]={id:cid, label:f.categories.label||f.categories.code, icon:f.categories.icon||'', level:(f.levels&&f.levels.code)||null, count:0, recent:recent||''};
-        byCat[cid].count++;
-        if(f.levels&&f.levels.code) byCat[cid].level=f.levels.code;
-        if(recent && String(recent)>String(byCat[cid].recent)) byCat[cid].recent=recent;
+        var key=cid+'|'+(lc||'?');
+        if(!byCat[key]) byCat[key]={id:cid, label:f.categories.label||f.categories.code, level:(f.levels&&f.levels.code)||null, count:0, recent:recent||'', lang:lc};
+        byCat[key].count++;
+        if(f.levels&&f.levels.code) byCat[key].level=f.levels.code;
+        if(recent && String(recent)>String(byCat[key].recent)) byCat[key].recent=recent;
       }
 
-      // ── 1. Świeżo OTWIERANE/uczone na TEJ stronie (log lokalny — łapie przeglądanie bez oceniania) ──
-      // To najpewniejszy sygnał „co teraz robię" — ma priorytet.
+      // ── 1. Świeżo otwierane (log lokalny) — skan WSZYSTKICH języków ──
+      var allRecentUser=[]; // {id,label,ts,lang}
       try{
-        var ro=JSON.parse(localStorage.getItem(uk('lex_recent_sets_'+lang))||'[]');
-        ro.forEach(function(it){
-          if(it.kind==='eyelingo' && it.id){
-            if(!byCat[it.id]) byCat[it.id]={id:it.id, label:it.label||'Kategoria', icon:it.icon||'', level:it.level||null, count:it.count||0, recent:it.ts||''};
-            else if(it.ts && String(it.ts)>String(byCat[it.id].recent)) byCat[it.id].recent=it.ts;
-          }
+        lexAllLangCodes().forEach(function(code){
+          var arr=[]; try{ arr=JSON.parse(localStorage.getItem(uk('lex_recent_sets_'+code))||'[]'); }catch(e){}
+          arr.forEach(function(it){
+            if(it.kind==='eyelingo' && it.id){
+              var key=it.id+'|'+code;
+              if(!byCat[key]) byCat[key]={id:it.id, label:it.label||'Kategoria', level:it.level||null, count:it.count||0, recent:it.ts||'', lang:code};
+              else if(it.ts && String(it.ts)>String(byCat[key].recent)) byCat[key].recent=it.ts;
+            } else if(it.kind==='user' && it.id){
+              allRecentUser.push({id:it.id, label:it.label, ts:it.ts||'', lang:code});
+            }
+          });
         });
       }catch(e){}
 
-      // ── 2. srs_progress (updated_at; nauka na stronie/desktopie — sygnał cross-device) ──
+      // ── 2. srs_progress (cross-language; bez filtra języka) ──
       try{
         var sr=await db.from('srs_progress')
           .select('flashcard_id,updated_at,lang').eq('user_id',uid)
-          .not('flashcard_id','is',null).order('updated_at',{ascending:false}).limit(250);
-        var rows=(sr.data||[]).filter(function(r){ return !r.lang || r.lang===lang; });
+          .not('flashcard_id','is',null).order('updated_at',{ascending:false}).limit(300);
         var ids=[]; var recById={};
-        rows.forEach(function(r){ if(r.flashcard_id!=null && ids.indexOf(r.flashcard_id)<0){ ids.push(r.flashcard_id); recById[r.flashcard_id]=r.updated_at||''; } });
+        (sr.data||[]).forEach(function(r){ if(r.flashcard_id!=null && ids.indexOf(r.flashcard_id)<0){ ids.push(r.flashcard_id); recById[r.flashcard_id]=r.updated_at||''; } });
         if(ids.length){
           var fc=await db.from('flashcards')
-            .select('id,category_id,language_id,languages(code),categories(id,label,code,icon),levels(code)')
+            .select('id,category_id,language_id,languages(code),categories(id,label,code),levels(code)')
             .in('id', ids.slice(0,200));
           (fc.data||[]).forEach(function(f){ addCat(f, recById[f.id]||''); });
         }
       }catch(e){}
 
-      // (Wszystko opiera się na srs_progress. word_progress to legacy — desktop jeszcze niepodłączony.)
-
       out.eyelingo=Object.keys(byCat).map(function(k){return byCat[k];})
         .sort(function(a,b){ return String(b.recent).localeCompare(String(a.recent)) || b.count-a.count; })
         .slice(0,8);
 
-      // ── 4. Zestawy własne — priorytet: świeżo otwierane (log), potem ostatnio tworzone ──
+      // ── 3. Zestawy własne (z językiem, jeśli zapisany) — świeżość z logu ──
       try{
-        var recentUser=[];
-        try{ var ru=JSON.parse(localStorage.getItem(uk('lex_recent_sets_'+lang))||'[]'); recentUser=ru.filter(function(x){return x.kind==='user';}); }catch(e){}
-        var us=await db.from('user_sets').select('id,name,created_at,user_set_cards(id)').eq('user_id',uid).order('created_at',{ascending:false}).limit(10);
-        var userSets=(us.data||[]).map(function(st){
-          var hit=recentUser.find(function(x){return String(x.id)===String(st.id);});
-          return {id:st.id, label:st.name, count:(st.user_set_cards||[]).length, recent:(hit&&hit.ts)||''};
+        var us=null;
+        try{ us=await db.from('user_sets').select('id,name,lang,created_at,user_set_cards(id)').eq('user_id',uid).order('created_at',{ascending:false}).limit(20); }catch(e1){ us=null; }
+        if(!us||us.error){ try{ us=await db.from('user_sets').select('id,name,created_at,user_set_cards(id)').eq('user_id',uid).order('created_at',{ascending:false}).limit(20); }catch(e2){ us={data:[]}; } }
+        var userSets=((us&&us.data)||[]).map(function(st){
+          var hit=allRecentUser.find(function(x){return String(x.id)===String(st.id);});
+          return {id:st.id, label:st.name, count:(st.user_set_cards||[]).length, recent:(hit&&hit.ts)||'', lang:(st.lang||(hit&&hit.lang)||null)};
         }).filter(function(x){ return x.count>0; });
         userSets.sort(function(a,b){ return String(b.recent).localeCompare(String(a.recent)); });
         out.user=userSets.slice(0,6);
@@ -17648,7 +17667,8 @@ async function lexInit(){
       for(var i=0;i<window._lexSources.length;i++){
         var src=window._lexSources[i];
         if(src.kind==='eyelingo'){
-          var lr=await db.from('languages').select('id').eq('code',lang).single();
+          var srcLang=src.lang||lang;
+          var lr=await db.from('languages').select('id').eq('code',srcLang).single();
           if(!lr.data) continue;
           var q=db.from('flashcards').select('word,translation').eq('language_id',lr.data.id).eq('category_id',src.id);
           var fc=await q.limit(40);
@@ -17670,12 +17690,13 @@ async function lexInit(){
     host.innerHTML='<div style="font-size:12px;color:var(--dim2);padding:10px 0">Sprawdzam, co ostatnio przerabiałeś…</div>';
     var src=await lexLoadStudySources();
     var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
+    function badgeOf(code){ return code?('<span class="lexcat-langbadge" style="margin-right:6px">'+esc(String(code).toUpperCase())+'</span>'):''; }
     var chips=[];
     src.eyelingo.forEach(function(c){
-      chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, sub:(c.level?c.level+' · ':'')+c.count+' słów'});
+      chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, sub:(c.level?c.level+' · ':'')+c.count+' słów'});
     });
     src.user.forEach(function(u){
-      chips.push({kind:'user', id:u.id, label:u.label, level:lvlUser, count:u.count, sub:'Twój zestaw · '+u.count+' słów'});
+      chips.push({kind:'user', id:u.id, label:u.label, level:lvlUser, count:u.count, lang:u.lang||null, sub:(u.count+' słów')});
     });
     chips=chips.slice(0,6); // tylko kilka najświeższych — resztę przez katalog
     window._lexSourcesAvail=chips;
@@ -17689,8 +17710,8 @@ async function lexInit(){
     }
     host.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">'+chips.map(function(c,i){
       var on=(window._lexSources||[]).some(function(x){return x.kind===c.kind&&String(x.id)===String(c.id);});
-      return '<button type="button" data-src="'+i+'" onclick="lexToggleSource('+i+')" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';border-radius:14px;padding:10px 14px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;min-width:130px;text-align:left">'
-        +'<span style="font-size:13.5px;font-weight:500;color:var(--navy)">'+esc(c.label)+'</span>'
+      return '<button type="button" data-src="'+i+'" onclick="lexToggleSource('+i+')" style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';border-radius:14px;padding:10px 14px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;min-width:140px;text-align:left">'
+        +'<span style="font-size:13.5px;font-weight:500;color:var(--navy);display:flex;align-items:center">'+badgeOf(c.lang)+esc(c.label)+'</span>'
         +'<span style="font-size:10.5px;color:var(--dim2)">'+esc(c.sub)+'</span></button>';
     }).join('')+browseBtn+'</div>';
   };
@@ -17717,10 +17738,42 @@ async function lexInit(){
 
   window.lexToggleSource=function(i){
     var c=(window._lexSourcesAvail||[])[i]; if(!c) return;
-    var btn=document.querySelector('#lex-source-picker [data-src="'+i+'"]');
     var idx=window._lexSources.findIndex(function(x){ return x.kind===c.kind && String(x.id)===String(c.id); });
-    if(idx>=0){ window._lexSources.splice(idx,1); if(btn){ btn.style.border='1.5px solid var(--border2)'; btn.style.background='#fff'; } }
-    else { window._lexSources.push({kind:c.kind,id:c.id,label:c.label,level:c.level,count:c.count}); if(btn){ btn.style.border='2px solid var(--orange)'; btn.style.background='#fff8f3'; } }
+    if(idx>=0){ window._lexSources.splice(idx,1); if(typeof lexRefreshPickerSelection==='function') lexRefreshPickerSelection(); return; }
+    function add(langCode){
+      // Lekcja jest jednojęzyczna: jeśli wybierasz inny język niż dotąd — zacznij od nowa
+      if(langCode && window._lexLang && window._lexLang!==langCode) window._lexSources=[];
+      if(langCode) window._lexLang=langCode;
+      window._lexSources=window._lexSources||[];
+      window._lexSources.push({kind:c.kind,id:c.id,label:c.label,level:c.level,count:c.count,lang:langCode||c.lang||null});
+      if(typeof lexRefreshPickerSelection==='function') lexRefreshPickerSelection();
+    }
+    if(c.kind==='user' && !c.lang){ lexAskSetLang(c.id, c.label, function(code){ c.lang=code; add(code); }); }
+    else add(c.lang);
+  };
+
+  // Minimalny wybór języka dla WŁASNEGO zestawu (brak zapisanego) + trwały zapis → badge na stałe
+  window.lexAskSetLang=function(setId, label, cb){
+    var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','nl','jp'];
+    var old=document.getElementById('lex-setlang'); if(old) old.remove();
+    var m=document.createElement('div'); m.id='lex-setlang';
+    m.style.cssText='position:fixed;inset:0;z-index:10060;background:rgba(26,35,64,.45);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px';
+    m.addEventListener('click',function(ev){ if(ev.target===m) m.remove(); });
+    var btns=codes.map(function(code){
+      var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[code])||{name:code};
+      var nm=(info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
+      return '<button data-code="'+code+'" style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1.5px solid var(--border2);background:#fff;border-radius:14px;padding:16px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s"><span style="font-size:15px;font-weight:600;color:var(--navy)">'+String(code).toUpperCase()+'</span><span style="font-size:12px;color:var(--dim2)">'+esc(nm)+'</span></button>';
+    }).join('');
+    m.innerHTML='<div style="background:#fff;border-radius:20px;padding:26px;width:min(420px,94vw);box-shadow:0 24px 60px rgba(26,35,64,.28)">'
+      +'<div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);margin-bottom:6px">W jakim języku jest „'+esc(label)+'"?</div>'
+      +'<div style="font-size:12.5px;color:var(--dim2);margin-bottom:18px;line-height:1.5">Zapamiętam to — od teraz zestaw będzie miał oznaczenie języka.</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+btns+'</div></div>';
+    document.body.appendChild(m);
+    m.querySelectorAll('[data-code]').forEach(function(b){ b.addEventListener('click', async function(){
+      var code=b.getAttribute('data-code');
+      try{ await db.from('user_sets').update({lang:code}).eq('id', setId); }catch(e){ console.warn('[Lex] nie zapisano języka zestawu (brak kolumny user_sets.lang?):', e&&e.message); }
+      m.remove(); if(cb) cb(code);
+    }); });
   };
 })();
 </script>
@@ -18215,7 +18268,8 @@ async function lexInit(){
     body.innerHTML='';
     var d=document.createElement('div');
     d.innerHTML='<div style="font-size:12px;color:var(--dim2);margin-bottom:12px">Sprawdź i popraw fiszki, a potem zapisz.</div>'
-      +'<div style="margin-bottom:14px"><label class="ai-lab">Nazwa zestawu</label><input id="new-set-name" class="fi" style="width:100%;box-sizing:border-box"></div>';
+      +'<div style="margin-bottom:14px"><label class="ai-lab">Nazwa zestawu</label><input id="new-set-name" class="fi" style="width:100%;box-sizing:border-box"></div>'
+      +'<div style="margin-bottom:14px"><label class="ai-lab">Język zestawu</label><select id="new-set-lang" class="fi" style="width:100%;box-sizing:border-box">'+lexLangOptionsHtml()+'</select></div>';
     var hdr=document.createElement('div'); hdr.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:8px;margin-bottom:6px';
     hdr.innerHTML='<div class="ai-lab" style="margin:0">Słowo</div><div class="ai-lab" style="margin:0">Tłumaczenie</div><div></div>';
     d.appendChild(hdr);
