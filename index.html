@@ -6139,18 +6139,16 @@ async function loadChatWeakWords(){
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){renderWeakWords([]);return;}
     try{
-      var{data:wp}=await db.from('word_progress')
-        .select('flashcard_id,ease_factor,repetitions,flashcards(word,translation,languages(code))')
+      var{data:wp}=await db.from('srs_progress')
+        .select('flashcard_id,word,translation,lang,ease_factor,repetitions,updated_at')
         .eq('user_id',sess.user.id)
-        .order('ease_factor',{ascending:true})
-        .limit(50);
+        .order('updated_at',{ascending:false})
+        .limit(80);
       if(wp&&wp.length){
-        var filtered=wp.filter(function(r){
-          return r.flashcards&&r.flashcards.word&&r.flashcards.languages&&r.flashcards.languages.code===lang;
-        });
-        var pool=filtered.length?filtered:wp.filter(function(r){return r.flashcards&&r.flashcards.word;});
+        var filtered=wp.filter(function(r){ return r.word && (!r.lang || r.lang===lang); });
+        var pool=filtered.length?filtered:wp.filter(function(r){return r.word;});
         _chatFlashcards=pool.map(function(r){return {
-          id:r.flashcard_id, word:r.flashcards.word, translation:r.flashcards.translation||'',
+          id:r.flashcard_id, word:r.word, translation:r.translation||'',
           ease:r.ease_factor||2.5, reps:r.repetitions||0
         };});
         words=_chatFlashcards.slice(0,8).map(function(f){return f.word;});
@@ -16035,22 +16033,36 @@ async function lexEndLesson(){
   // Save to DB
   try{
     var sess = (await db.auth.getSession()).data.session;
-    if(sess && _lexSession){
-      await db.from('lex_lessons').update({
-        ended_at: new Date().toISOString(),
-        vocabulary: _lexVocab, gaps_found: _lexGaps,
-        board: _lexBoard,
-        title: (window._lexSources && _lexSources.length
+    if(sess){
+      var lessonTitle = (window._lexSources && _lexSources.length
                   ? (_lexSources.length===1 ? String(_lexSources[0].label).replace(/^[^\w]+\s*/,'') : (_lexSources.length+' zestawy'))
                   : null)
                || (window._lexPortionFocuses && window._lexPortionFocuses[0])
                || _lexLessonFocus
                || (_lexBoard[0] && _lexBoard[0].content ? String(_lexBoard[0].content).slice(0,42) : null)
                || _lexGaps[0]
-               || ('Lekcja ' + _lexLangName),
+               || ('Lekcja ' + _lexLangName);
+      var lessonPayload = {
+        ended_at: new Date().toISOString(),
+        vocabulary: _lexVocab, gaps_found: _lexGaps,
+        board: _lexBoard,
+        title: lessonTitle,
         messages: _lexHistory.map(function(h){ return h.msg; }),
         score: _lexScore, completed: true
-      }).eq('id', _lexSession);
+      };
+      if(_lexSession){
+        var up=await db.from('lex_lessons').update(lessonPayload).eq('id', _lexSession);
+        if(up && up.error){ console.warn('[Lex] update nieudany, insert:', up.error.message); _lexSession=null; }
+      }
+      if(!_lexSession){
+        lessonPayload.user_id = sess.user.id;
+        lessonPayload.level = lexCurrentLevel();
+        lessonPayload.target_lang = (window._lexLang||'en');
+        lessonPayload.duration_min = (window._lexVocab? Math.max(10, _lexVocab.length*2) : 15);
+        var inr=await db.from('lex_lessons').insert(lessonPayload).select('id').single();
+        if(inr && inr.error){ console.warn('[Lex] insert koncowy nieudany:', inr.error.message); }
+        if(inr && inr.data) _lexSession = inr.data.id;
+      }
 
       // #6 Luki ze statusem; zachowaj wcześniej oznaczone jako 'known'
       var prevGaps = (_lexProfile && _lexProfile.known_gaps) || [];
@@ -16513,14 +16525,8 @@ async function lexInit(){
           if(out.length>=3) return out.slice(0,12);
         }
       }catch(e){}
-      // 2) Fallback: word_progress (stara tabela)
-      var r=await db.from('word_progress')
-        .select('flashcard_id,ease_factor,repetitions,flashcards(word,translation,languages(code))')
-        .eq('user_id',sess.user.id)
-        .order('ease_factor',{ascending:true})
-        .limit(60);
-      var rows=(r.data||[]).filter(function(x){ return x.flashcards&&x.flashcards.word&&x.flashcards.languages&&x.flashcards.languages.code===lang(); });
-      return rows.slice(0,12).map(function(x){ return {word:x.flashcards.word, translation:x.flashcards.translation||''}; });
+      // (Brak danych w srs_progress → pusto. word_progress to legacy; nie używamy go do materiału lekcji.)
+      return [];
     }catch(e){ return []; }
   }
 
@@ -16570,6 +16576,9 @@ async function lexInit(){
         enrichGap:(window._lexEnrichGap||null),
         portionNum:(window._lexxPortionNum||0),
         portionTarget:(window._lexxPortionTarget||5),
+        currentData:(window._lexxData||null),
+        step:(window._lexxStep||0),
+        done:(window._lexxDone||null),
         vocab:(window._lexVocab||[]),
         board:(window._lexBoard||[]),
         gaps:(window._lexGaps||[]),
@@ -16600,7 +16609,21 @@ async function lexInit(){
     if(typeof lexUpdateBoardPanel==='function') lexUpdateBoardPanel();
     var badge=document.getElementById('lex-lesson-badge');
     if(badge) badge.textContent=(st.sources&&st.sources.length? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'Lekcja'));
-    lexxGeneratePortion();
+    // Prawdziwe wznowienie: jeśli mamy zapisaną PORCJĘ — odtwórz ją dokładnie i wróć do kroku przerwania.
+    if(st.currentData && st.currentData.exercises && st.currentData.exercises.length){
+      window._lexxPortionNum=st.portionNum||1; // ta porcja już była wygenerowana — nie zwiększaj
+      window._lexxData=st.currentData;
+      window._lexxSculpt={};
+      // odbuduj pulę sweepa z tej porcji
+      try{ (st.currentData.exercises||[]).forEach(function(ex){ if(ex&&ex.type==='cloze'&&ex.sentence){ var _ga=(typeof lexxGapAnswers==='function')?lexxGapAnswers(ex):(ex.answer?[ex.answer]:[]); if(_ga.length) window._lexxSweepPool.push({sentence:ex.sentence,answer:_ga[0],answers:_ga,wrong:false,portion:window._lexxPortionNum}); } }); }catch(e){}
+      lexxRenderPortion(st.currentData);
+      // wróć do kroku, na którym przerwano (lub do pierwszego nieukończonego)
+      var step=st.step||0;
+      try{ if(Array.isArray(st.done)){ window._lexxDone=st.done.slice(); var fi=st.done.indexOf(false); if(fi>=0) step=fi; } }catch(e){}
+      if(typeof lexxShowStep==='function') lexxShowStep(step);
+    } else {
+      lexxGeneratePortion();
+    }
   };
 
   // Wyciąga JSON nawet z lekko niedomkniętej/uciętej odpowiedzi
@@ -16773,6 +16796,7 @@ async function lexInit(){
 
   function lexxShowStep(s){
     window._lexxStep=s;
+    try{ if(typeof lexxSaveResume==='function') lexxSaveResume(); }catch(e){}
     var w=document.getElementById('lexx-wrap'); if(!w) return;
     var data=window._lexxData||{};
     w.innerHTML='';
@@ -17350,18 +17374,7 @@ async function lexInit(){
         }
       }catch(e){}
 
-      // ── 3. word_progress (desktop + stara nauka) — ZAWSZE scalane, nie tylko fallback ──
-      // Dzięki temu desktop (pisze do word_progress) i web (srs_progress) widać razem.
-      try{
-        var r=null;
-        try{ r=await db.from('word_progress')
-          .select('flashcard_id,updated_at,flashcards(category_id,language_id,languages(code),categories(id,label,code,icon),levels(code))')
-          .eq('user_id',uid).order('updated_at',{ascending:false}).limit(400); }catch(e1){ r=null; }
-        if(!r||r.error){ try{ r=await db.from('word_progress')
-          .select('flashcard_id,flashcards(category_id,language_id,languages(code),categories(id,label,code,icon),levels(code))')
-          .eq('user_id',uid).limit(400); }catch(e2){ r=null; } }
-        (r&&r.data||[]).forEach(function(row){ addCat(row.flashcards, row.updated_at||''); });
-      }catch(e){}
+      // (Wszystko opiera się na srs_progress. word_progress to legacy — desktop jeszcze niepodłączony.)
 
       out.eyelingo=Object.keys(byCat).map(function(k){return byCat[k];})
         .sort(function(a,b){ return String(b.recent).localeCompare(String(a.recent)) || b.count-a.count; })
