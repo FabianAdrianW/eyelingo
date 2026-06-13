@@ -2404,6 +2404,7 @@ window.startStudyFromModal = function startStudyFromModal(id){
   if(!cards.length){typeof showToast!=='undefined'&&showToast('Brak fiszek','');return;}
   _trybExternalCards=cards; _trybExternalName=s.name;
   window._trybSource='community';
+  try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet('user', s.id, s.name, null, cards.length, (window._lexLang||'en')); }catch(_e){}
   typeof RewardSystem!=='undefined'&&RewardSystem.load();
   showPage('tryb');
   setTimeout(function(){startSession('set_external');},300);
@@ -5818,6 +5819,7 @@ async function strefaLoadEyelingoSet(langCode,langLabel,flag,lvl,catId,catLabel)
       _trybExternalName=sn;
       window._trybStudyLang=langCode;
       window._trybSource='strefa';
+      try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet('eyelingo', catId, catLabel, lvl, cc.length, langCode); }catch(_e){}
       RewardSystem&&RewardSystem.load();
       showPage('tryb');
       setTimeout(function(){ startSession('set_external'); },300);
@@ -16422,13 +16424,26 @@ async function lexInit(){
   async function lexxLoadDueWords(){
     try{
       var sess=(await db.auth.getSession()).data.session; if(!sess) return [];
+      // 1) Aktywne: srs_progress — słowa widziane ostatnio na stronie/desktopie (updated_at)
+      try{
+        var sr=await db.from('srs_progress')
+          .select('word,translation,lang,updated_at,ease_factor').eq('user_id',sess.user.id)
+          .order('updated_at',{ascending:false}).limit(120);
+        var rs=(sr.data||[]).filter(function(x){ return x.word && (!x.lang || x.lang===lang()); });
+        if(rs.length){
+          var seen={}, out=[];
+          rs.forEach(function(x){ var k=String(x.word).toLowerCase().trim(); if(k&&!seen[k]){ seen[k]=1; out.push({word:x.word, translation:x.translation||''}); } });
+          if(out.length>=3) return out.slice(0,12);
+        }
+      }catch(e){}
+      // 2) Fallback: word_progress (stara tabela)
       var r=await db.from('word_progress')
         .select('flashcard_id,ease_factor,repetitions,flashcards(word,translation,languages(code))')
         .eq('user_id',sess.user.id)
         .order('ease_factor',{ascending:true})
         .limit(60);
       var rows=(r.data||[]).filter(function(x){ return x.flashcards&&x.flashcards.word&&x.flashcards.languages&&x.flashcards.languages.code===lang(); });
-      return rows.slice(0,8).map(function(x){ return {word:x.flashcards.word, translation:x.flashcards.translation||''}; });
+      return rows.slice(0,12).map(function(x){ return {word:x.flashcards.word, translation:x.flashcards.translation||''}; });
     }catch(e){ return []; }
   }
 
@@ -16484,13 +16499,13 @@ async function lexInit(){
       var dl=(window._lexSourceWords && _lexSourceWords.length) ? _lexSourceWords : (window._lexxDue||[]);
       var fromSets=(window._lexSourceWords && _lexSourceWords.length)>0;
       if(dl.length){
-        var off=((pn-1)*3)%Math.max(1,dl.length);
-        var pick=dl.slice(off,off+4); if(pick.length<2) pick=dl.slice(0,4);
+        var off=((pn-1)*5)%Math.max(1,dl.length);
+        var pick=dl.slice(off,off+6); if(pick.length<3) pick=dl.slice(0,6);
         dueWords=(fromSets
           ? 'MATERIAŁ DO UTRWALENIA (fiszki wybrane przez ucznia — to jest fundament tej lekcji): '
-          : 'SŁOWA Z FISZEK UCZNIA (due wg SRS): ')
+          : 'SŁOWA Z FISZEK UCZNIA (widziane wcześniej na stronie/desktopie): ')
           +pick.map(function(w){return w.word+(w.translation?(' ('+w.translation+')'):'');}).join(', ')
-          +'. Co najmniej DWA z nich MUSZĄ być słowami-celami tej porcji — umieść je w items i przećwicz w ćwiczeniach. Twoja rola to rusztowanie: te słowa uczeń już widział pasywnie, lekcja ma go doprowadzić do ich AKTYWNEGO użycia. ';
+          +'. Uczeń to specjalista 25+ — uniesie więcej materiału. Użyj jak najwięcej z tych słów jako celów tej porcji (idealnie 4-5), resztę zostaw na kolejne porcje, tak by w całej lekcji wróciło co najmniej 5 z nich. Twoja rola to rusztowanie: te słowa uczeń widział już pasywnie, lekcja ma go doprowadzić do ich AKTYWNEGO użycia. ';
       }
     }catch(e){}
     // Luka receptywno-produktywna waży TYPY zadań (Assessment Bible §6.5 → selektor z Pedagogy Bible)
@@ -16522,8 +16537,8 @@ async function lexInit(){
       +(focus? ('Temat lekcji: "'+focus+'". '):'Dobierz praktyczny, przydatny temat porcji. ')
       +(recentGaps? ('Uwzględnij braki ucznia: '+recentGaps+'. '):'')
       +dueWords
-      +'To porcja nr '+pn+'. Zbuduj JEDNĄ porcję skupioną na 2-4 słowach/jednej strukturze. '+weave
-      +'Porcja = 4 beaty mikro-pętli CUE-RETRIEVE-APPLY: (1) cue: odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem, (2) cloze: wydobycie z pamięci bez podpowiedzi, (3) '+(third==='contrast'?'contrast: para zdań native vs polska kalka (przyimki, false friends, szyk)':'cloze: inne słowo porcji w świeżym zdaniu')+', (4) '+(finals==='sculpt'?'sculpt: produkcja z intencji przez ułożenie kafelków słów':'produce: własne zdanie ucznia z docelowym słowem')+'. Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego.\n'
+      +'To porcja nr '+pn+'. Zbuduj JEDNĄ porcję skupioną na 3-5 słowach/jednej strukturze. '+weave
+      +'Porcja = 4 beaty mikro-pętli CUE-RETRIEVE-APPLY: (1) cue: odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem, (2) cloze: wydobycie z pamięci bez podpowiedzi, (3) '+(third==='contrast'?'contrast: para zdań native vs polska kalka (przyimki, false friends, szyk)':'cloze: inne słowo porcji w świeżym zdaniu')+', (4) '+(finals==='sculpt'?'sculpt: produkcja z intencji przez ułożenie kafelków słów':'produce: własne zdanie ucznia z docelowym słowem')+'. Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. WAŻNE: w każdym cloze liczba pozycji w "answers" musi DOKŁADNIE odpowiadać liczbie ___ w "sentence".\n'
       +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
       +'{'
       +'"focus":"krótki temat porcji po polsku",'
@@ -16531,10 +16546,10 @@ async function lexInit(){
       +'"items":[{"word":"słowo w '+langName()+'","translation":"po polsku"}],'
       +'"exercises":['
       +'{"type":"cue","context":"1-2 zdania scenki w '+langName()+' z naturalnym użyciem słowa-celu","source":"skąd pochodzi scenka, po polsku, np. Slack / Mail / W rozmowie","question":"pytanie po polsku sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po polsku; formę docelową w '+langName()+' ujmij w **gwiazdki**"},'
-      +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w miejscu luki","answer":"słowo do luki","hint":"podpowiedź po polsku (pokazywana dopiero po nieudanej próbie)","explain":"wyjaśnienie po polsku"},'
+      +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w każdym miejscu luki (może być 1-2 luki ___ w jednym zdaniu)","answers":["odpowiedź do 1. luki","(opcjonalnie) odpowiedź do 2. luki — DOKŁADNIE tyle pozycji ile jest ___ w zdaniu"],"hint":"podpowiedź po polsku (pokazywana dopiero po nieudanej próbie)","explain":"wyjaśnienie po polsku"},'
       +(third==='contrast'
         ? '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po polsku: które jest native, dlaczego, i jaka polska kalka zdradza nie-native"},'
-        : '{"type":"cloze","sentence":"inne zdanie w '+langName()+' z ___ w miejscu luki (inne słowo porcji)","answer":"słowo do luki","hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"},')
+        : '{"type":"cloze","sentence":"inne zdanie w '+langName()+' z ___ (1-2 luki, inne słowa porcji)","answers":["odpowiedź do 1. luki","(opcjonalnie) do 2."],"hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"},')
       +(finals==='sculpt'
         ? '{"type":"sculpt","intent":"intencja po polsku, np. grzecznie przesuń termin na czwartek","tiles":["lista","4-7 kafelków","ze słowami w '+langName()+'"],"answer":"pełne zdanie = kafelki połączone spacjami we właściwej kolejności"}'
         : '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po polsku co ma zawierać"}')
@@ -16554,7 +16569,7 @@ async function lexInit(){
       try{
         window._lexxSweepPool=window._lexxSweepPool||[];
         (data.exercises||[]).forEach(function(ex){
-          if(ex&&ex.type==='cloze'&&ex.sentence&&ex.answer) window._lexxSweepPool.push({sentence:ex.sentence,answer:ex.answer,wrong:false,portion:window._lexxPortionNum});
+          if(ex&&ex.type==='cloze'&&ex.sentence){ var _ga=lexxGapAnswers(ex); if(_ga.length) window._lexxSweepPool.push({sentence:ex.sentence,answer:_ga[0],answers:_ga,wrong:false,portion:window._lexxPortionNum}); }
         });
       }catch(e){}
       try{ if(data.focus){ window._lexPortionFocuses=window._lexPortionFocuses||[]; if(window._lexPortionFocuses.indexOf(data.focus)===-1) window._lexPortionFocuses.push(data.focus); } }catch(e){}
@@ -16648,8 +16663,22 @@ async function lexInit(){
     return esc(ex.prompt||m[ex.type]||'');
   }
   // Karta scenki z pomarańczowym źródłem (jak cue w MVP)
-  function exScene(src, txt){
-    return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><p class="lexx-scene-txt">'+esc(txt)+'</p></div>';
+  // Odpowiedzi do luk: tablica (wiele luk) lub pojedyncza (kompatybilność)
+  function lexxGapAnswers(ex){
+    if(ex && Array.isArray(ex.answers) && ex.answers.length) return ex.answers.map(function(a){return String(a==null?'':a);});
+    if(ex && ex.answer!=null) return [String(ex.answer)];
+    return [];
+  }
+  function lexxGapInputHtml(i,g,ans){
+    var id = (g===0) ? ('lexx-in-'+i) : ('lexx-in-'+i+'-'+g);
+    return '<input class="lexx-gap" id="'+id+'" data-gap="'+g+'" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="?" style="width:'+Math.max(7,(String(ans||'').length+2))+'ch">';
+  }
+  // Tłumaczenie+audio przykładu (wg „Odkryj"): jeśli langCode podany, owijamy w .tl
+  function exScene(src, txt, langCode){
+    var inner = langCode
+      ? '<span class="tl" data-tl-lang="'+langCode+'">'+(typeof window.tlBuildHTML==='function'?window.tlBuildHTML(String(txt||''),langCode):esc(txt))+'</span>'
+      : esc(txt);
+    return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><p class="lexx-scene-txt">'+inner+'</p></div>';
   }
   function lexxRenderExercise(ex,i){
     var box=document.createElement('div'); box.className='lexx-ex'; box.dataset.i=i;
@@ -16658,7 +16687,7 @@ async function lexInit(){
     var body='', inputHtml='', needCheck=true;
     if(ex.type==='cue'){
       // E1 CUE: odkrycie znaczenia z kontekstu PRZED wyjaśnieniem (pretesting; 1 tap = decyzja, bez oceny)
-      body+=exScene(ex.source||'Kontekst', ex.context||'');
+      body+=exScene(ex.source||'Kontekst', ex.context||'', lang());
       if(ex.question) body+='<div class="lexx-q">'+esc(ex.question)+'</div>';
       inputHtml='<div class="lexx-opts">'+(ex.options||[]).map(function(o,k){
         return '<button type="button" class="lexx-opt" data-k="'+k+'" onclick="lexxCueAnswer('+i+','+k+')">'+esc(o)+'</button>';
@@ -16687,24 +16716,31 @@ async function lexInit(){
         return '<button type="button" class="lexx-opt" data-k="'+k+'" onclick="lexxPick('+i+','+k+')">'+esc(o)+'</button>';
       }).join('')+'</div>';
     } else if(ex.type==='cloze'){
-      // E3 THE GAP: recall bez podpowiedzi; input wpisujemy WPROST W LUKĘ (nie pod tekstem)
-      var gapInput='<input class="lexx-gap" id="lexx-in-'+i+'" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="?" style="width:'+Math.max(7,(String(ex.answer||'').length+2))+'ch">';
+      // E3 THE GAP: recall bez podpowiedzi; input W KAŻDEJ luce (obsługa wielu luk)
+      var answers=lexxGapAnswers(ex);
       var sentRaw=String(ex.sentence||'');
-      var sent;
-      if(/_{2,}|\[\.\.\.\]|\.\.\./.test(sentRaw)){
-        sent=esc(sentRaw).replace(/_{2,}|\[\.\.\.\]|\.\.\./, '\u0001GAP\u0001');
+      var re=/_{2,}|\[\.\.\.\]|\.\.\./g;
+      var html='', gi=0, last=0, mm;
+      if(re.test(sentRaw)){
+        re.lastIndex=0;
+        while((mm=re.exec(sentRaw))!==null){
+          html+=esc(sentRaw.slice(last, mm.index));
+          html+=lexxGapInputHtml(i, gi, answers[gi]||'');
+          gi++; last=mm.index+mm[0].length;
+        }
+        html+=esc(sentRaw.slice(last));
       } else {
-        sent=esc(sentRaw)+' \u0001GAP\u0001'; // brak markera → luka na końcu
+        html=esc(sentRaw)+' '+lexxGapInputHtml(i,0,answers[0]||''); gi=1;
       }
-      sent=sent.replace('\u0001GAP\u0001', gapInput);
-      body+='<p class="lexx-q lexx-cloze">'+sent+'</p>'
+      window._lexxGapN=window._lexxGapN||{}; window._lexxGapN[i]=gi||1;
+      body+='<p class="lexx-q lexx-cloze">'+html+'</p>'
         +'<div class="lexx-hint" id="lexx-hint-'+i+'" style="display:none;margin-top:10px"></div>';
       inputHtml='';
     } else if(ex.type==='translate'){
       body+=exScene('Po polsku', ex.source||'');
       inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoje tłumaczenie po '+langName()+'…">';
     } else if(ex.type==='transform'){
-      body+=exScene('Zdanie wyjściowe', ex.source||'');
+      body+=exScene('Zdanie wyjściowe', ex.source||'', lang());
       if(ex.instruction) body+='<div class="lexx-prompt" style="margin-bottom:14px">'+esc(ex.instruction)+'</div>';
       inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoja wersja…">';
     } else { // produce
@@ -16847,33 +16883,49 @@ async function lexInit(){
       if(!okS) feedGap(window._lexxData.focus||ex.intent);
       markDone(i); return;
     }
-    if(ex.type==='cloze'||ex.type==='transform'){
-      var v=(document.getElementById('lexx-in-'+i)||{}).value||'';
-      if(!v.trim()){ showFb(i,'neutral','Wpisz odpowiedź.'); return; }
-      var ok=lexxAnsMatch(v, ex.answer);
-      var gapEl=document.getElementById('lexx-in-'+i);
-      if(ex.type==='cloze'){ if(gapEl){ gapEl.classList.remove('ok','bad'); gapEl.classList.add(ok?'ok':'bad'); if(ok) gapEl.disabled=true; } }
-      if(ex.type==='cloze' && !ok){
-        // Drabinka fallbacków (Lesson Formats E3): pusto/źle → pierwsza litera + hint → reveal.
-        // Pierwsza nieudana próba NIE kończy ekranu — wysiłkowa pauza jest miejscem konsolidacji.
+    if(ex.type==='cloze'){
+      var answers=lexxGapAnswers(ex);
+      var n=Math.max(1, (window._lexxGapN&&window._lexxGapN[i])||answers.length||1);
+      var vals=[], filled=true;
+      for(var g=0; g<n; g++){
+        var el=document.getElementById(g===0?('lexx-in-'+i):('lexx-in-'+i+'-'+g));
+        var vv=(el&&el.value)||''; vals.push(vv); if(!vv.trim()) filled=false;
+      }
+      if(!filled){ showFb(i,'neutral', n>1?'Uzupełnij wszystkie luki.':'Wpisz odpowiedź.'); return; }
+      var perOk=vals.map(function(vv,g){ return lexxAnsMatch(vv, answers[g]!=null?answers[g]:''); });
+      var ok=perOk.every(Boolean);
+      for(var g2=0; g2<n; g2++){
+        var el2=document.getElementById(g2===0?('lexx-in-'+i):('lexx-in-'+i+'-'+g2));
+        if(el2){ el2.classList.remove('ok','bad'); el2.classList.add(perOk[g2]?'ok':'bad'); if(perOk[g2]) el2.disabled=true; }
+      }
+      if(!ok){
+        // Drabinka fallbacków: 1. próba → pierwsza litera dla błędnych luk + hint, bez kończenia ekranu
         var tries=parseInt((box&&box.dataset.tries)||'0',10);
         if(tries===0){
           if(box) box.dataset.tries='1';
           var hintEl=document.getElementById('lexx-hint-'+i);
-          var first=String(ex.answer||'').trim().charAt(0);
-          if(hintEl){ hintEl.style.display='block'; hintEl.innerHTML='Zaczyna się na „'+esc(first)+'…"'+(ex.hint?(' · '+esc(ex.hint)):''); }
-          showFb(i,'neutral','Jeszcze raz — spróbuj z podpowiedzią.');
+          var hints=answers.map(function(a,g){ return perOk[g]?null:((n>1?('luka '+(g+1)+': '):'')+'„'+String(a).trim().charAt(0)+'…"'); }).filter(Boolean);
+          if(hintEl){ hintEl.style.display='block'; hintEl.innerHTML='Podpowiedź — '+hints.join(' · ')+(ex.hint?(' · '+esc(ex.hint)):''); }
+          showFb(i,'neutral', n>1?'Jeszcze raz — popraw zaznaczone luki.':'Jeszcze raz — spróbuj z podpowiedzią.');
           try{ lexxMarkSweepWrong(ex); }catch(e){}
-          var inEl=document.getElementById('lexx-in-'+i); if(inEl){ inEl.focus(); inEl.select(); }
+          var fw=perOk.indexOf(false);
+          var fe=document.getElementById(fw===0?('lexx-in-'+i):('lexx-in-'+i+'-'+fw)); if(fe){ fe.focus(); fe.select(); }
           return;
         }
-        showFb(i,'bad','Do zapamiętania: <strong>'+esc(ex.answer)+'</strong>. '+esc(ex.explain||'')+' Wróci jeszcze w tej sesji, by ślad się utrwalił.');
+        showFb(i,'bad','Do zapamiętania: <strong>'+esc(answers.join(', '))+'</strong>. '+esc(ex.explain||'')+' Wróci jeszcze w tej sesji, by ślad się utrwalił.');
         if(ex.explain) lexBoardAdd('rule', ex.explain, ex.sentence||'');
         feedGap(window._lexxData.focus||ex.prompt);
         try{ lexxMarkSweepWrong(ex); }catch(e){}
         markDone(i); return;
       }
-      if(!ok && ex.type==='transform'){
+      showFb(i,'ok','Zapamiętaj: '+esc(ex.explain||''));
+      markDone(i); return;
+    }
+    if(ex.type==='transform'){
+      var v=(document.getElementById('lexx-in-'+i)||{}).value||'';
+      if(!v.trim()){ showFb(i,'neutral','Wpisz odpowiedź.'); return; }
+      var ok=lexxAnsMatch(v, ex.answer);
+      if(!ok){
         // Przekształcenie to pełne zdanie — może mieć więcej niż jedną poprawną
         // realizację (skróty, szyk). Klucz nie pasuje → rozstrzyga AI, nie sztywny string.
         var chk0=document.getElementById('lexx-chk-'+i); if(chk0){ chk0.disabled=true; chk0.textContent='Sprawdzam…'; }
@@ -17005,45 +17057,89 @@ async function lexInit(){
 
   // Załaduj „ostatnio przerabiane" zestawy: Eyelingo (przez word_progress) + własne (user_sets).
   // word_progress to wspólna tabela web+desktop — desktop ucząc w tle zapisuje tu postęp.
+  // Log świeżo otwieranych zestawów (samo przeglądanie liczy się do rekomendacji w lekcji Lexa)
+  window.lexLogRecentSet=function(kind, id, label, level, count, langCode){
+    try{
+      var lc=langCode||(window._lexLang||'en');
+      var key=uk('lex_recent_sets_'+lc);
+      var arr=JSON.parse(localStorage.getItem(key)||'[]');
+      arr=arr.filter(function(x){ return !(x.kind===kind && String(x.id)===String(id)); });
+      arr.unshift({kind:kind, id:id, label:label||'', level:level||null, count:count||0, ts:new Date().toISOString()});
+      localStorage.setItem(key, JSON.stringify(arr.slice(0,12)));
+    }catch(e){}
+  };
+
   window.lexLoadStudySources=async function(){
     var out={eyelingo:[], user:[]};
     try{
       var sess=(await db.auth.getSession()).data.session; if(!sess) return out;
       var uid=sess.user.id;
       var lang=(window._lexLang||'en');
+      var byCat={}; // cid → {id,label,icon,level,count,recent}
 
-      // ── 1. Eyelingo: kategorie, które uczeń realnie przerabiał (ma word_progress) ──
-      var wp=null;
-      try{
-        var r=await db.from('word_progress')
-          .select('flashcard_id,updated_at,flashcards(category_id,language_id,languages(code),categories(id,label,code,icon),levels(code))')
-          .eq('user_id',uid).order('updated_at',{ascending:false}).limit(400);
-        wp=r.data;
-      }catch(e){
-        // brak updated_at → bez sortowania
-        try{ var r2=await db.from('word_progress')
-          .select('flashcard_id,flashcards(category_id,language_id,languages(code),categories(id,label,code,icon),levels(code))')
-          .eq('user_id',uid).limit(400); wp=r2.data; }catch(e2){ wp=null; }
+      function addCat(f, recent){
+        if(!f||!f.categories) return;
+        if(f.languages && f.languages.code && f.languages.code!==lang) return;
+        var cid=f.categories.id; if(!cid) return;
+        if(!byCat[cid]) byCat[cid]={id:cid, label:f.categories.label||f.categories.code, icon:f.categories.icon||'', level:(f.levels&&f.levels.code)||null, count:0, recent:recent||''};
+        byCat[cid].count++;
+        if(f.levels&&f.levels.code) byCat[cid].level=f.levels.code;
+        if(recent && String(recent)>String(byCat[cid].recent)) byCat[cid].recent=recent;
       }
-      if(wp&&wp.length){
-        var byCat={};
-        wp.forEach(function(row){
-          var f=row.flashcards; if(!f||!f.categories) return;
-          if(!f.languages||f.languages.code!==lang) return;
-          var cid=f.categories.id;
-          if(!byCat[cid]) byCat[cid]={id:cid, label:f.categories.label||f.categories.code, icon:f.categories.icon||'', level:(f.levels&&f.levels.code)||null, count:0, recent:row.updated_at||''};
-          byCat[cid].count++;
-          if(f.levels&&f.levels.code) byCat[cid].level=f.levels.code; // poziom kategorii
+
+      // ── 1. Aktywne źródło: srs_progress (updated_at; pisze tu nauka na stronie i desktopie) ──
+      // Bierzemy ostatnio dotknięte fiszki Eyelingo i mapujemy je na kategorie.
+      try{
+        var sr=await db.from('srs_progress')
+          .select('flashcard_id,updated_at,lang').eq('user_id',uid)
+          .not('flashcard_id','is',null).order('updated_at',{ascending:false}).limit(250);
+        var rows=(sr.data||[]).filter(function(r){ return !r.lang || r.lang===lang; });
+        var ids=[]; var recById={};
+        rows.forEach(function(r){ if(r.flashcard_id!=null && ids.indexOf(r.flashcard_id)<0){ ids.push(r.flashcard_id); recById[r.flashcard_id]=r.updated_at||''; } });
+        if(ids.length){
+          var fc=await db.from('flashcards')
+            .select('id,category_id,language_id,languages(code),categories(id,label,code,icon),levels(code)')
+            .in('id', ids.slice(0,200));
+          (fc.data||[]).forEach(function(f){ addCat(f, recById[f.id]||''); });
+        }
+      }catch(e){}
+
+      // ── 2. Fallback: word_progress (stara tabela) — jeśli srs_progress puste ──
+      if(!Object.keys(byCat).length){
+        try{
+          var r=await db.from('word_progress')
+            .select('flashcard_id,flashcards(category_id,language_id,languages(code),categories(id,label,code,icon),levels(code))')
+            .eq('user_id',uid).limit(400);
+          (r.data||[]).forEach(function(row){ addCat(row.flashcards, ''); });
+        }catch(e){}
+      }
+
+      // ── 3. Świeżo OTWIERANE na stronie (log lokalny — łapie samo przeglądanie, bez oceniania) ──
+      try{
+        var ro=JSON.parse(localStorage.getItem(uk('lex_recent_sets_'+lang))||'[]');
+        ro.forEach(function(it){
+          if(it.kind==='eyelingo' && it.id){
+            if(!byCat[it.id]) byCat[it.id]={id:it.id, label:it.label||'Kategoria', icon:it.icon||'', level:it.level||null, count:it.count||0, recent:it.ts||''};
+            else if(it.ts && String(it.ts)>String(byCat[it.id].recent)) byCat[it.id].recent=it.ts;
+          }
         });
-        out.eyelingo=Object.keys(byCat).map(function(k){return byCat[k];})
-          .sort(function(a,b){ return String(b.recent).localeCompare(String(a.recent)) || b.count-a.count; })
-          .slice(0,8);
-      }
+      }catch(e){}
 
-      // ── 2. Zestawy własne (ostatnio tworzone/edytowane) ──
+      out.eyelingo=Object.keys(byCat).map(function(k){return byCat[k];})
+        .sort(function(a,b){ return String(b.recent).localeCompare(String(a.recent)) || b.count-a.count; })
+        .slice(0,8);
+
+      // ── 4. Zestawy własne — priorytet: świeżo otwierane (log), potem ostatnio tworzone ──
       try{
-        var us=await db.from('user_sets').select('id,name,created_at,user_set_cards(id)').eq('user_id',uid).order('created_at',{ascending:false}).limit(8);
-        out.user=(us.data||[]).map(function(st){ return {id:st.id, label:st.name, count:(st.user_set_cards||[]).length}; }).filter(function(x){ return x.count>0; });
+        var recentUser=[];
+        try{ var ru=JSON.parse(localStorage.getItem(uk('lex_recent_sets_'+lang))||'[]'); recentUser=ru.filter(function(x){return x.kind==='user';}); }catch(e){}
+        var us=await db.from('user_sets').select('id,name,created_at,user_set_cards(id)').eq('user_id',uid).order('created_at',{ascending:false}).limit(10);
+        var userSets=(us.data||[]).map(function(st){
+          var hit=recentUser.find(function(x){return String(x.id)===String(st.id);});
+          return {id:st.id, label:st.name, count:(st.user_set_cards||[]).length, recent:(hit&&hit.ts)||''};
+        }).filter(function(x){ return x.count>0; });
+        userSets.sort(function(a,b){ return String(b.recent).localeCompare(String(a.recent)); });
+        out.user=userSets.slice(0,6);
       }catch(e){}
     }catch(e){}
     return out;
@@ -17167,13 +17263,34 @@ async function lexInit(){
         await a.play(); return;
       }catch(e){ console.warn('[LexVoice] cloud TTS niedostępne, fallback przeglądarkowy:', e.message); _ttsDown=true; }
     }
-    // Fallback: TTS przeglądarki
+    // Fallback: TTS przeglądarki — wybierz najlepszy dostępny głos PL (Google/neural), nie domyślny robot
     try{
-      var u=new SpeechSynthesisUtterance(text); u.lang='pl-PL'; u.rate=1.0;
+      var u=new SpeechSynthesisUtterance(text); u.lang='pl-PL'; u.rate=1.0; u.pitch=1.0;
+      var bv=lexvBestVoice('pl-PL'); if(bv) u.voice=bv;
       u.onend=function(){ window._lexvPlaying=false; if(onend) onend(); };
       speechSynthesis.speak(u);
     }catch(e){ window._lexvPlaying=false; if(onend) onend(); }
   };
+  // Najlepszy głos dla danego języka: preferuj neural/Google/Microsoft natural, potem dokładny lang
+  function lexvBestVoice(langCode){
+    try{
+      var vs=speechSynthesis.getVoices()||[]; if(!vs.length) return null;
+      var base=langCode.split('-')[0];
+      var rank=function(v){
+        var n=(v.name||''); var sc=0;
+        if(/Natural|Neural/i.test(n)) sc+=6;
+        if(/Google/i.test(n)) sc+=4;
+        if(/Microsoft/i.test(n)) sc+=2;
+        if(v.lang===langCode) sc+=3; else if(v.lang&&v.lang.indexOf(base)===0) sc+=1;
+        if(v.localService===false) sc+=1; // głosy chmurowe zwykle lepsze
+        return sc;
+      };
+      var cand=vs.filter(function(v){ return v.lang&&v.lang.indexOf(base)===0; });
+      if(!cand.length) cand=vs;
+      cand.sort(function(a,b){ return rank(b)-rank(a); });
+      return cand[0]||null;
+    }catch(e){ return null; }
+  }
 
   // ── Wspólny szkielet bottom-sheet ──
   function sheet(id, title, bodyHtml, ctlHtml){
