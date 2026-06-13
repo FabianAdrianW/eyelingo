@@ -3883,13 +3883,14 @@ async function initToFixPage(){
         </div>
         <button class="btn btn-orange" onclick="chatStart()" style="width:100%;justify-content:center;margin-bottom:10px">Zacznij rozmowę</button>
         <button class="btn btn-navy" onclick="chatReset()" style="width:100%;margin-top:8px;font-size:13px;padding:10px">Nowa rozmowa</button>
-        <!-- Most #2: Alex naturalnie wplata słowa z fiszek (Design Bible W6) -->
+        <!-- Most #2: Alex wplata słowa z ostatnio przerabianych zestawów (web + desktop) -->
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
-            <span id="chat-weak-label" style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2)">Z Twoich fiszek</span>
+            <span id="chat-weak-label" style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2)">Wplać ostatnie fiszki</span>
           </div>
-          <div style="font-size:11px;color:var(--dim2);margin-bottom:8px;line-height:1.4">Alex użyje tych słów w naturalny sposób</div>
+          <div style="font-size:11px;color:var(--dim2);margin-bottom:8px;line-height:1.4">Wybierz zestaw — Alex naturalnie wplecie jego słowa w rozmowę. Zestaw Eyelingo dobiera też poziom języka.</div>
+          <div id="chat-set-picker" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
           <div id="chat-weak-words" style="display:flex;flex-wrap:wrap;gap:5px"></div>
         </div>
       </div>
@@ -6053,8 +6054,64 @@ function chatUpdatePersona(){
 async function initChat(){
   chatUpdatePersona();
   await loadChatWeakWords();
+  await chatRenderSetPicker();
   if(!_chatHistory.length) chatReset();
   updateChatLimitUI();
+}
+
+// Picker ostatnio przerabianych zestawów dla AI Partnera (ten sam mechanizm co Lex)
+window._chatSources=[];
+async function chatRenderSetPicker(){
+  var host=document.getElementById('chat-set-picker'); if(!host) return;
+  if(typeof lexLoadStudySources!=='function'){ host.style.display='none'; return; }
+  host.innerHTML='<div style="font-size:11px;color:var(--dim2)">Sprawdzam ostatnie zestawy…</div>';
+  // lexLoadStudySources używa window._lexLang — zsynchronizuj z językiem rozmowy
+  var prevLang=window._lexLang;
+  window._lexLang=(document.getElementById('chat-lang')?document.getElementById('chat-lang').value:(window._chatLang||'en'));
+  var src=await lexLoadStudySources();
+  window._lexLang=prevLang;
+  var lvlUser=((document.getElementById('chat-level')||{}).value)||'B1';
+  var chips=[];
+  (src.eyelingo||[]).forEach(function(c){ chips.push({kind:'eyelingo',id:c.id,label:(c.icon?c.icon+' ':'')+c.label,level:c.level||lvlUser,sub:(c.level?c.level+' · ':'')+c.count+' słów'}); });
+  (src.user||[]).forEach(function(u){ chips.push({kind:'user',id:u.id,label:u.label,level:lvlUser,sub:'Twój zestaw · '+u.count+' słów'}); });
+  window._chatSourcesAvail=chips;
+  if(!chips.length){ host.style.display='none'; return; }
+  host.style.display='flex';
+  host.innerHTML=chips.slice(0,6).map(function(c,i){
+    return '<button type="button" data-csrc="'+i+'" onclick="chatToggleSet('+i+')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;border:1.5px solid var(--border2);background:#fff;border-radius:10px;padding:8px 11px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;text-align:left">'
+      +'<span style="font-size:12.5px;font-weight:500;color:var(--navy)">'+escH(c.label)+'</span>'
+      +'<span style="font-size:10px;color:var(--dim2);white-space:nowrap">'+escH(c.sub)+'</span></button>';
+  }).join('');
+}
+window.chatToggleSet=async function(i){
+  var c=(window._chatSourcesAvail||[])[i]; if(!c) return;
+  var btn=document.querySelector('#chat-set-picker [data-csrc="'+i+'"]');
+  var idx=(window._chatSources||[]).findIndex(function(x){ return x.kind===c.kind&&String(x.id)===String(c.id); });
+  if(idx>=0){ _chatSources.splice(idx,1); if(btn){ btn.style.border='1.5px solid var(--border2)'; btn.style.background='#fff'; } }
+  else { (window._chatSources=window._chatSources||[]).push(c); if(btn){ btn.style.border='2px solid var(--orange)'; btn.style.background='#fff8f3'; } }
+  // Zestaw Eyelingo → dostosuj poziom rozmowy do poziomu kategorii (najniższy z wybranych)
+  try{
+    var ey=_chatSources.filter(function(x){return x.kind==='eyelingo'&&x.level;});
+    if(ey.length){
+      var ORD=['A1','A2','B1','B2','C1','C2'];
+      var low=ey.map(function(x){return x.level;}).sort(function(a,b){return ORD.indexOf(a)-ORD.indexOf(b);})[0];
+      var sel=document.getElementById('chat-level'); if(sel&&low){ sel.value=low; if(typeof chatLevelChanged==='function') chatLevelChanged(); }
+    }
+  }catch(e){}
+  // Zbierz słowa z wybranych zestawów → seed words wplatane w rozmowę
+  await chatLoadSeedFromSets();
+};
+async function chatLoadSeedFromSets(){
+  try{
+    if(!window._chatSources || !_chatSources.length){ window._chatSeedWords=null; renderWeakWords(_chatFlashcards.slice(0,8).map(function(f){return f.word;}), _chatLang); return; }
+    var prevLang=window._lexLang, prevSrc=window._lexSources;
+    window._lexLang=(document.getElementById('chat-lang')?document.getElementById('chat-lang').value:(window._chatLang||'en'));
+    window._lexSources=_chatSources.map(function(c){return {kind:c.kind,id:c.id,label:c.label,level:c.level};});
+    var words=(typeof lexFetchSourceWords==='function')?await lexFetchSourceWords():[];
+    window._lexLang=prevLang; window._lexSources=prevSrc;
+    window._chatSeedWords=words.map(function(w){return w.word;}).filter(Boolean);
+    renderWeakWords(window._chatSeedWords.slice(0,10), window._chatLang);
+  }catch(e){}
 }
 
 // Wywoływane przyciskiem „Zacznij rozmowę" (wcześniej niezdefiniowane → błąd)
@@ -16486,6 +16543,44 @@ async function lexInit(){
     var ct=document.getElementById('lex-card-text'); if(ct) ct.innerHTML='<span style="color:var(--dim2)">…</span>';
   }
 
+  // Wyciąga JSON nawet z lekko niedomkniętej/uciętej odpowiedzi
+  function lexxParseJSON(raw){
+    if(!raw) return null;
+    var a=raw.indexOf('{'); if(a<0) return null;
+    var b=raw.lastIndexOf('}');
+    if(b>a){ try{ return JSON.parse(raw.slice(a,b+1)); }catch(e){} }
+    // próba domknięcia uciętego JSON (brakujące } / ])
+    var frag=raw.slice(a);
+    try{
+      var fixed=frag.replace(/,\s*$/,'');
+      var opens=(fixed.match(/{/g)||[]).length, closes=(fixed.match(/}/g)||[]).length;
+      var bo=(fixed.match(/\[/g)||[]).length, bc=(fixed.match(/\]/g)||[]).length;
+      fixed += ']'.repeat(Math.max(0,bo-bc)) + '}'.repeat(Math.max(0,opens-closes));
+      return JSON.parse(fixed);
+    }catch(e){ return null; }
+  }
+  // Prosty, krótki generator porcji (awaryjny) — minimalny schemat, mała szansa na ucięcie
+  async function lexxGenerateSimple(focus, lvl, dueWords){
+    try{
+      var prompt='Jesteś Lex — nauczyciel języka '+langName()+'. Poziom ucznia: '+lvl+'. Wyjaśnienia po POLSKU. '
+        +(focus?('Temat: "'+focus+'". '):'')+(dueWords||'')
+        +'Zbuduj jedną krótką porcję na 3-4 słowach. Zwróć WYŁĄCZNIE poprawny, KOMPLETNY JSON (bez backticków):\n'
+        +'{"focus":"temat po polsku","intro":"1 zdanie po polsku; słowa w '+langName()+' w **gwiazdki**",'
+        +'"items":[{"word":"słowo w '+langName()+'","translation":"po polsku"}],'
+        +'"exercises":['
+        +'{"type":"cue","context":"zdanie w '+langName()+'","source":"W rozmowie","question":"pytanie po polsku","options":["a","b"],"answer":0,"key":"reguła po polsku"},'
+        +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___","answers":["słowo"],"hint":"podpowiedź po polsku","explain":"po polsku"},'
+        +'{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo w '+langName()+'","hint":"po polsku"}'
+        +']}';
+      var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:2000})});
+      if(!res.ok) return null;
+      var d=await res.json();
+      var raw=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
+      return lexxParseJSON(raw);
+    }catch(e){ return null; }
+  }
+
   window.lexxGeneratePortion = async function(){
     window._lexxPortionNum++;
     lexxLoading();
@@ -16557,7 +16652,7 @@ async function lexInit(){
       +(recentGaps? ('Uwzględnij braki ucznia: '+recentGaps+'. '):'')
       +dueWords
       +'To porcja nr '+pn+'. Zbuduj JEDNĄ porcję skupioną na 3-5 słowach/jednej strukturze. '+weave
-      +'Porcja = 4 beaty mikro-pętli CUE-RETRIEVE-APPLY: (1) cue: odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem, (2) cloze: wydobycie z pamięci bez podpowiedzi, (3) '+(third==='contrast'?'contrast: para zdań native vs polska kalka (przyimki, false friends, szyk)':'cloze: inne słowo porcji w świeżym zdaniu')+', (4) '+(finals==='sculpt'?'sculpt: produkcja z intencji przez ułożenie kafelków słów':'produce: własne zdanie ucznia z docelowym słowem')+'. Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. WAŻNE: w każdym cloze liczba pozycji w "answers" musi DOKŁADNIE odpowiadać liczbie ___ w "sentence".\n'
+      +'Porcja = 4 beaty mikro-pętli CUE-RETRIEVE-APPLY: (1) cue: odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem, (2) cloze: wydobycie z pamięci bez podpowiedzi, (3) '+(third==='contrast'?'contrast: para zdań native vs polska kalka (przyimki, false friends, szyk)':'cloze: inne słowo porcji w świeżym zdaniu')+', (4) '+(finals==='sculpt'?'sculpt: produkcja z intencji przez ułożenie kafelków słów':'produce: własne zdanie ucznia z docelowym słowem')+'. Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. Zwykle 1 luka na cloze; jeśli dasz 2 luki ___, dodaj 2 pozycje w "answers" (tyle ile ___).\n'
       +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
       +'{'
       +'"focus":"krótki temat porcji po polsku",'
@@ -16565,22 +16660,26 @@ async function lexInit(){
       +'"items":[{"word":"słowo w '+langName()+'","translation":"po polsku"}],'
       +'"exercises":['
       +'{"type":"cue","context":"1-2 zdania scenki w '+langName()+' z naturalnym użyciem słowa-celu","source":"skąd pochodzi scenka, po polsku, np. Slack / Mail / W rozmowie","question":"pytanie po polsku sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po polsku; formę docelową w '+langName()+' ujmij w **gwiazdki**"},'
-      +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w każdym miejscu luki (może być 1-2 luki ___ w jednym zdaniu)","answers":["odpowiedź do 1. luki","(opcjonalnie) odpowiedź do 2. luki — DOKŁADNIE tyle pozycji ile jest ___ w zdaniu"],"hint":"podpowiedź po polsku (pokazywana dopiero po nieudanej próbie)","explain":"wyjaśnienie po polsku"},'
+      +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w miejscu luki","answers":["słowo do luki"],"hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"},'
       +(third==='contrast'
         ? '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po polsku: które jest native, dlaczego, i jaka polska kalka zdradza nie-native"},'
-        : '{"type":"cloze","sentence":"inne zdanie w '+langName()+' z ___ (1-2 luki, inne słowa porcji)","answers":["odpowiedź do 1. luki","(opcjonalnie) do 2."],"hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"},')
+        : '{"type":"cloze","sentence":"inne zdanie w '+langName()+' z ___ (inne słowo porcji)","answers":["słowo do luki"],"hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"},')
       +(finals==='sculpt'
         ? '{"type":"sculpt","intent":"intencja po polsku, np. grzecznie przesuń termin na czwartek","tiles":["lista","4-7 kafelków","ze słowami w '+langName()+'"],"answer":"pełne zdanie = kafelki połączone spacjami we właściwej kolejności"}'
         : '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po polsku co ma zawierać"}')
       +']}';
     try{
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
-      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:1400})});
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:3000})});
       if(!res.ok) throw new Error('proxy '+res.status);
       var d=await res.json();
       var raw=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
-      var a=raw.indexOf('{'), b=raw.lastIndexOf('}');
-      var data=null; if(a>=0&&b>a){ try{ data=JSON.parse(raw.slice(a,b+1)); }catch(e){} }
+      var data=lexxParseJSON(raw);
+      if(!data||!data.exercises||!data.exercises.length){
+        console.warn('[Lex] Porcja pusta z 1. próby. Surowa odpowiedź (początek):', String(raw).slice(0,400));
+        // Retry: prostszy, krótszy prompt — większa szansa na poprawny, kompletny JSON
+        data=await lexxGenerateSimple(focus, lvl, dueWords);
+      }
       if(!data||!data.exercises||!data.exercises.length) throw new Error('Pusta porcja');
       window._lexxData=data;
       window._lexxSculpt={}; // reset stanu kafelków na nową porcję
@@ -17189,8 +17288,11 @@ async function lexInit(){
         }
       }catch(e){}
 
-      // ── 3. Fallback: word_progress (stara tabela) — TYLKO gdy nie ma żadnej świeżej aktywności ──
-      if(!Object.keys(byCat).length){
+      // ── 3. Fallback: word_progress (stara tabela) — TYLKO gdy nie ma ŻADNEJ świeżej aktywności ──
+      // (ani świeżych kategorii Eyelingo, ani świeżo otwartych zestawów własnych w logu)
+      var hasRecentLog=false;
+      try{ var rl=JSON.parse(localStorage.getItem(uk('lex_recent_sets_'+lang))||'[]'); hasRecentLog=rl.length>0; }catch(e){}
+      if(!Object.keys(byCat).length && !hasRecentLog){
         try{
           var r=await db.from('word_progress')
             .select('flashcard_id,flashcards(category_id,language_id,languages(code),categories(id,label,code,icon),levels(code))')
