@@ -16823,15 +16823,17 @@ async function lexInit(){
   // Prosty, krótki generator porcji (awaryjny) — minimalny schemat, mała szansa na ucięcie
   async function lexxGenerateSimple(focus, lvl, dueWords){
     try{
-      var prompt='Jesteś Lex — nauczyciel języka '+langName()+'. Poziom ucznia: '+lvl+'. Wyjaśnienia po POLSKU. '
+      var _ctS=(typeof _lexAudioLang!=='undefined' && _lexAudioLang===lang());
+      var L=_ctS ? lexxAdv(lang()) : 'polsku';
+      var prompt='Jesteś Lex — nauczyciel języka '+langName()+'. Poziom ucznia: '+lvl+'. Wyjaśnienia po '+L+'. '
         +(focus?('Temat: "'+focus+'". '):'')+(dueWords||'')
         +'Zbuduj jedną krótką porcję na 3-4 słowach. Zwróć WYŁĄCZNIE poprawny, KOMPLETNY JSON (bez backticków):\n'
-        +'{"focus":"temat po polsku","intro":"1 zdanie po polsku; słowa w '+langName()+' w **gwiazdki**",'
-        +'"items":[{"word":"słowo w '+langName()+'","translation":"po polsku"}],'
+        +'{"focus":"temat po '+L+'","intro":"1 zdanie po '+L+'; słowa w '+langName()+' w **gwiazdki**",'
+        +'"items":[{"word":"słowo w '+langName()+'","translation":"po '+L+'"}],'
         +'"exercises":['
-        +'{"type":"cue","context":"zdanie w '+langName()+'","source":"W rozmowie","question":"pytanie po polsku","options":["a","b"],"answer":0,"key":"reguła po polsku"},'
-        +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___","answers":["słowo"],"hint":"podpowiedź po polsku","explain":"po polsku"},'
-        +'{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo w '+langName()+'","hint":"po polsku"}'
+        +'{"type":"cue","context":"zdanie w '+langName()+'","source":"W rozmowie","question":"pytanie po '+L+'","options":["a","b"],"answer":0,"key":"reguła po '+L+'"},'
+        +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___","answers":["słowo"],"hint":"podpowiedź po '+L+'","explain":"po '+L+'"},'
+        +'{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo w '+langName()+'","hint":"po '+L+'"}'
         +']}';
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
       var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:2000})});
@@ -16846,6 +16848,11 @@ async function lexInit(){
   // Klient ustala SEKWENCJĘ typów; LLM tylko wypełnia dokładnie tę sekwencję (wariant B).
   // E1 cue zawsze otwiera; produkcja (sculpt/produce) zawsze zamyka; żaden kształt nie
   // powtarza się POD RZĄD; recognition (contrast/mc) ≤ ~15% beatów w skali lekcji.
+  // Forma przyslowkowa nazwy jezyka do zwrotu po-... (po polsku / po hiszpansku / po angielsku).
+  function lexxAdv(code){
+    var m={en:'angielsku',es:'hiszpańsku',de:'niemiecku',fr:'francusku',it:'włosku',pt:'portugalsku',nl:'niderlandzku',ru:'rosyjsku',ja:'japońsku',uk:'ukraińsku',cs:'czesku',sv:'szwedzku',no:'norwesku',pl:'polsku'};
+    return m[code] || (typeof langName==='function'?langName():'docelowym języku');
+  }
   function lexxComposeShape(){
     var S=window._lexxShape||(window._lexxShape={lastShape:null,recog:0,total:0});
     var pn=window._lexxPortionNum;
@@ -16879,12 +16886,13 @@ async function lexInit(){
     return pick;
   }
   // Fragment JSON kontraktu dla danego typu beatu (Stage 1: cue/cloze/contrast/sculpt/produce).
-  function lexxSpecFor(type){
-    if(type==='cue') return '{"type":"cue","context":"1-2 zdania scenki w '+langName()+' z naturalnym użyciem słowa-celu","source":"skąd pochodzi scenka, po polsku, np. Slack / Mail / W rozmowie","question":"pytanie po polsku sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po polsku; formę docelową w '+langName()+' ujmij w **gwiazdki**"}';
-    if(type==='cloze') return '{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w miejscu luki (słowo-cel, którego jeszcze NIE ćwiczono w tej porcji)","answers":["słowo do luki"],"hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"}';
-    if(type==='contrast') return '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po polsku: które jest native, dlaczego, i jaka polska kalka zdradza nie-native"}';
-    if(type==='sculpt') return '{"type":"sculpt","intent":"intencja po polsku, np. grzecznie przesuń termin na czwartek","answer":"POPRAWNE gramatycznie zdanie w '+langName()+' realizujące intencję","tiles":["DOKŁADNIE słowa z answer w losowej kolejności","tyle samo kafelków co słów w answer","te same formy, bez odmiany"]}';
-    if(type==='produce') return '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po polsku co ma zawierać"}';
+  function lexxSpecFor(type, L){
+    L=L||'polski';
+    if(type==='cue') return '{"type":"cue","context":"1-2 zdania scenki w '+langName()+' z naturalnym użyciem słowa-celu","source":"skąd pochodzi scenka, po '+L+', np. Slack / Mail / W rozmowie","question":"pytanie po '+L+' sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po '+L+'; formę docelową w '+langName()+' ujmij w **gwiazdki**"}';
+    if(type==='cloze') return '{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w miejscu luki (słowo-cel, którego jeszcze NIE ćwiczono w tej porcji)","answers":["słowo do luki"],"hint":"podpowiedź po '+L+'","explain":"wyjaśnienie po '+L+'"}';
+    if(type==='contrast') return '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po '+L+': które jest native, dlaczego, i jaka polska kalka zdradza nie-native"}';
+    if(type==='sculpt') return '{"type":"sculpt","intent":"intencja po '+L+', np. grzecznie przesuń termin na czwartek","answer":"POPRAWNE gramatycznie zdanie w '+langName()+' realizujące intencję","tiles":["DOKŁADNIE słowa z answer w losowej kolejności","tyle samo kafelków co słów w answer","te same formy, bez odmiany"]}';
+    if(type==='produce') return '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po '+L+' co ma zawierać"}';
     return '';
   }
 
@@ -16934,6 +16942,8 @@ async function lexInit(){
     // Kształt porcji = kompozytor kliencki (deterministyczny, §1.3.2). LLM NIE wybiera sekwencji.
     var _shape=(typeof lexxComposeShape==='function')?lexxComposeShape():['cue','cloze',(gapRp>=2?'produce':'sculpt')];
     try{ console.log('[Lex] porcja '+pn+' kształt:', _shape.join(' → ')); }catch(e){}
+    var _conductTarget=(typeof _lexAudioLang!=='undefined' && _lexAudioLang===lang());
+    var L=_conductTarget ? lexxAdv(lang()) : 'polsku';   // forma po-...: instrukcje/wyjaśnienia/glosy w jęz. prowadzenia
     var weave = '';
     try{ if(pn>1 && Array.isArray(window._lexVocab) && window._lexVocab.length){ var wv=window._lexVocab[Math.max(0,window._lexVocab.length-3)]; if(wv&&wv.word) weave='WEAVE (lag effect): w ćwiczeniu cloze ponownie użyj słowa z poprzedniej porcji: "'+wv.word+'". '; } }catch(e){}
     var kmCtx = '';
@@ -16972,10 +16982,10 @@ async function lexInit(){
       +'Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. Zwykle 1 luka na cloze; jeśli dasz 2 luki ___, dodaj 2 pozycje w "answers" (tyle ile ___).\n'
       +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
       +'{'
-      +'"focus":"krótki temat porcji po polsku",'
-      +'"intro":"1-2 zdania po polsku wprowadzające; słowa docelowe w języku '+langName()+' ujmij w **gwiazdki**",'
-      +'"items":[{"word":"słowo w '+langName()+'","translation":"po polsku"}],'
-      +'"exercises":['+_shape.map(lexxSpecFor).join(',')+']}';
+      +'"focus":"krótki temat porcji po '+L+'",'
+      +'"intro":"1-2 zdania po '+L+' wprowadzające; słowa docelowe w języku '+langName()+' ujmij w **gwiazdki**",'
+      +'"items":[{"word":"słowo w '+langName()+'","translation":"po '+L+'"}],'
+      +'"exercises":['+_shape.map(function(_t){return lexxSpecFor(_t,L);}).join(',')+']}';
     try{
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
       var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:3000})});
@@ -17489,6 +17499,8 @@ async function lexInit(){
 
   window.lexxAIEval=async function(ex, answer){
     try{
+      var _ct=(typeof _lexAudioLang!=='undefined' && _lexAudioLang===lang());
+      var CL=_ct ? lexxAdv(lang()) : 'polsku';
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
       var focus=(window._lexxData&&window._lexxData.focus)||'';
       var trMap={}; try{ ((window._lexxData&&window._lexxData.items)||[]).forEach(function(it){ if(it&&it.word) trMap[String(it.word).toLowerCase().trim()]=it.translation||''; }); }catch(e){}
@@ -17500,9 +17512,9 @@ async function lexInit(){
         : ('Zadanie: ułóż poprawne zdanie w '+langName()+' używając "'+(ex.target||'')+'"'+(tgtTr?(' (znaczenie po polsku: '+tgtTr+')'):'')+'. Temat porcji: "'+(focus||'codzienna komunikacja')+'". Odpowiedź ucznia: "'+answer+'".');
       var prompt='Jesteś nauczycielem '+langName()+' uczącym Polaków. '+task+'\n'
         +'Oceń odpowiedź ucznia. Bądź wyrozumiały dla drobnych literówek i alternatywnych poprawnych form. '
-        +'Komentarz pisz naturalną, poprawną POLSZCZYZNĄ. NIE twórz hybryd polsko-angielskich (np. nigdy nie pisz "roastujesz", "forwardować") — używaj polskiego znaczenia słowa. '
+        +'Komentarz pisz poprawnie i naturalnie po '+CL+'. NIE twórz hybryd polsko-angielskich (np. nigdy nie pisz "roastujesz", "forwardować") — używaj polskiego znaczenia słowa. '
         +'Trzymaj się tematu porcji; jeśli zdanie ucznia jest poprawne, ale poza tematem, zaakceptuj i delikatnie zaproponuj wersję w temacie. '
-        +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po polsku: co dobrze, co poprawić","gap":"jeśli błąd — krótki temat braku, inaczej pusty"}';
+        +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po '+CL+': co dobrze, co poprawić","gap":"jeśli błąd — krótki temat braku, inaczej pusty"}';
       var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:300})});
       if(!res.ok) throw new Error('proxy '+res.status);
       var d=await res.json();
