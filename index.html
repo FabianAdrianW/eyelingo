@@ -2838,7 +2838,7 @@ function setCard(s){
     : '';
   // Przycisk Ucz się (SRS) + Utrwal z Lexem (modal wyboru poziomu → Lex)
   const playBtn = `<div style="display:flex;gap:7px;margin-top:10px" onclick="event.stopPropagation()">
-    <button onclick="matCardStartSRS(${s.id},&#39;${nmA}&#39;)" title="Tryb fiszek SRS" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;color:var(--dim);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.borderColor='var(--navy)';this.style.color='var(--navy)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--dim)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Ucz się</button>
+    <button onclick="matCardStartSRS(${s.id},&#39;${nmA}&#39;)" title="Tryb fiszek SRS" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--navy);background:transparent;color:var(--navy);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.background='var(--navy)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--navy)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Ucz się</button>
     <button onclick="matCardLexModal(${s.id},&#39;${nmA}&#39;,&#39;${langCode||''}&#39;)" title="Utrwal z nauczycielem Lex" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--orange);background:transparent;color:var(--orange);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.background='var(--orange)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--orange)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Utrwal z Lexem</button>
   </div>`;
   return `<div class="mat-card" onclick="openSet(${s.id})" style="cursor:pointer;position:relative"
@@ -2934,14 +2934,18 @@ window.matCardLexGo=function(setId, langCode){
 };
 
 // Ucz się — wybór trybu nauki (przeglądanie / multiwybór / wpisywanie / zapamiętywanie) dla tego zestawu
-window.matCardStartSRS=function(setId, setName){
-  if(typeof switchTab==='function') switchTab('strefa', document.getElementById('ntab-strefa'));
-  setTimeout(function(){
-    try{
-      if(typeof strefaSelectUserSet==='function') strefaSelectUserSet(setId, encodeURIComponent(setName||''));
-      else if(typeof startStrefaSession==='function') startStrefaSession();
-    }catch(e){}
-  }, 200);
+window.matCardStartSRS=async function(setId, setName){
+  // Zestaw wybrany → od razu ekran wyboru 4 trybow nauki (bez podgladu slow).
+  try{
+    var {data:cards} = await db.from('user_set_cards').select('word,translation').eq('set_id', setId);
+    if(!cards||!cards.length){ if(typeof showToast==='function') showToast('Brak fiszek w tym zestawie',''); return; }
+    _trybExternalCards = cards.map(function(c){ return {word:c.word||'', translation:c.translation||''}; });
+    _trybExternalName = setName||'';
+    window._trybSource='strefa';
+    if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
+    if(typeof showPage==='function') showPage('tryb');
+    setTimeout(function(){ if(typeof startSession==='function') startSession('set_external'); }, 300);
+  }catch(e){ console.error('[matCardStartSRS]', e); }
 };
 
 // Picker języka zestawu (zastępuje usunięty modal auto-detekcji) — klik w badge na kafelku.
@@ -2979,6 +2983,7 @@ window.matSetLangApply=async function(setId, code){
   try{ await db.from('user_sets').update({lang:code}).eq('id', setId); }catch(e){ console.warn('[Eyelingo] zapis języka zestawu:', e&&e.message); }
   try{ var i=(_matSets||[]).findIndex(function(x){ return String(x.id)===String(setId); }); if(i>=0) _matSets[i].lang=code; }catch(e){}
   if(typeof matRenderMine==='function' && document.getElementById('mat-grid')) matRenderMine();
+  try{ var _cvL=document.getElementById('mat-collection-view'); if(_cvL && _cvL.style.display!=='none' && _matActiveCollection!=null && typeof openCollectionView==='function') openCollectionView(_matActiveCollection); }catch(e){}
   if(window._strefaCur && typeof strefaShowCatalogSets==='function'){ try{ strefaShowCatalogSets(window._strefaCur.colIdx, window._strefaCur.colName, window._strefaCur.mode); }catch(e){} }
   if(typeof showToast==='function') showToast('Zapisano język zestawu','success');
 };
@@ -9626,7 +9631,7 @@ function openCollectionView(colIdx){
     var setIds = (col.sets||[]).map(function(s){ return s.id; });
     if(!setIds.length){ colSets.innerHTML = '<div class="mat-empty">Brak zestawów</div>'; return; }
     var {data:sets} = await db.from('user_sets')
-      .select('id,name,likes_count,user_id,is_public,user_set_cards(id,word,translation)')
+      .select('id,name,lang,likes_count,user_id,is_public,user_set_cards(id,word,translation)')
       .in('id', setIds);
     colSets.innerHTML = '';
     if(!sets||!sets.length){ colSets.innerHTML = '<div class="mat-empty">Nie znaleziono zestawów</div>'; return; }
@@ -17191,6 +17196,7 @@ async function lexInit(){
     if(ex.key) lexBoardAdd('rule', ex.key, ex.context||'');
     showFb(i,'neutral',(hit?'Sam to rozkminiłeś z kontekstu. ':'Teraz już wiesz — zgadywanie przed wyjaśnieniem buduje ślad. ')+(keyHtml?'':esc(ex.explain||'')));
     if(keyHtml){ var fb=document.getElementById('lexx-fb-'+i); if(fb) fb.insertAdjacentHTML('afterend',keyHtml); }
+    lexxRecordBeat(ex, hit, 0);
     markDone(i);
   };
 
@@ -17207,6 +17213,7 @@ async function lexInit(){
     showFb(i, correct?'ok':'bad', (correct?'Zapamiętaj: ':'Do zapamiętania — to częsta pułapka: ')+esc(ex.explain||''));
     if(ex.explain) lexBoardAdd('rule', ex.explain, (ex.options||[])[ex.native]||'');
     if(!correct) feedGap((window._lexxData&&window._lexxData.focus)||'kalka językowa');
+    lexxRecordBeat(ex, correct, 0);
     markDone(i);
   };
 
@@ -17261,6 +17268,58 @@ async function lexInit(){
     }catch(e){}
   };
 
+  // ── Krok 0: ocena beatu → SM-2 (istniejacy sink: sm2Local → usrsRecord → srs_progress) ──
+  // Skala quality wg wizji „lekcja zbiera": produkcja = najsilniejszy slad, rozpoznanie = slabe,
+  // odkrycie (cue) bez kary za pudlo. To SM-2 realnie awansuje slowa-cele po lekcji.
+  function lexxBeatNorm(s){ return String(s||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim(); }
+  function lexxBeatTargets(ex){
+    var items=(window._lexxData&&window._lexxData.items)||[];
+    if(!items.length||!ex) return [];
+    var byWord={};
+    items.forEach(function(it){ if(it&&it.word){ byWord[lexxBeatNorm(it.word)]=it; } });
+    var hits=[], seen={};
+    function add(it){ if(it&&it.word){ var k=lexxBeatNorm(it.word); if(k&&!seen[k]){ seen[k]=1; hits.push({word:it.word, translation:it.translation||''}); } } }
+    [ex.target, ex.word].forEach(function(w){ if(w){ var it=byWord[lexxBeatNorm(w)]; if(it) add(it); } });
+    if(ex.type==='cloze' && typeof lexxGapAnswers==='function'){ (lexxGapAnswers(ex)||[]).forEach(function(a){ var it=byWord[lexxBeatNorm(a)]; if(it) add(it); }); }
+    if(!hits.length){
+      var hay=' '+lexxBeatNorm([ex.sentence,ex.answer,ex.context,ex.intent,ex.key,ex.prompt,ex.target].filter(Boolean).join(' '))+' ';
+      items.forEach(function(it){ var w=lexxBeatNorm(it.word); if(w && hay.indexOf(' '+w+' ')>=0) add(it); });
+    }
+    return hits;
+  }
+  function lexxBeatQuality(ex, correct, attempts){
+    var t=ex&&ex.type;
+    if(t==='cue') return correct?3:null;                 // odkrycie — bez kary za pudlo
+    if(t==='scenario') return correct?5:1;               // spontaniczna integracja = najsilniejszy slad
+    if(t==='cloze'||t==='sculpt'||t==='transform'||t==='produce'||t==='translate')
+      return correct ? ((attempts&&attempts>0)?3:4) : 1; // produkcja: od razu=4, po podpowiedzi=3, pudlo=1
+    if(t==='warmfire') return correct?4:1;               // E2 rapid recall (Krok 3)
+    if(t==='contrast'||t==='mc') return correct?3:2;     // rozpoznanie = slabe swiadectwo
+    return correct?3:2;
+  }
+  async function lexxRecordSM2(word, translation, quality){
+    try{
+      if(!word||quality==null||typeof sm2Local!=='function'||typeof usrsRecord!=='function') return;
+      var uid=(typeof _usrsUid==='function')?await _usrsUid():null; if(!uid) return;
+      var key=_usrsCK(word, translation||'');
+      var cur=(_usrsLoad(uid)||{})[key]||{};
+      var card={ word:word, translation:translation||'', lang:lang(),
+        ease_factor:(typeof cur.ef==='number'?cur.ef:2.5),
+        repetitions:(typeof cur.reps==='number'?cur.reps:0),
+        interval_days:(typeof cur.interval==='number'?cur.interval:1),
+        id:(cur.fc!=null?cur.fc:null) };
+      var ns=sm2Local(card, quality);
+      await usrsRecord(card, ns);
+    }catch(e){ /* nie blokuj lekcji */ }
+  }
+  function lexxRecordBeat(ex, correct, attempts){
+    try{
+      var q=lexxBeatQuality(ex, !!correct, attempts||0);
+      if(q==null) return;
+      lexxBeatTargets(ex).forEach(function(t){ lexxRecordSM2(t.word, t.translation, q); });
+    }catch(e){}
+  }
+
   window.lexxCheck=async function(i){
     var ex=(window._lexxData&&window._lexxData.exercises||[])[i]; if(!ex) return;
     var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(box&&box.dataset.checked) return;
@@ -17274,6 +17333,7 @@ async function lexInit(){
       });
       showFb(i, correct?'ok':'bad', (correct?'Zapamiętaj: ':'Do zapamiętania: ')+esc(ex.explain||''));
       if(!correct) feedGap(window._lexxData.focus||ex.question);
+      lexxRecordBeat(ex, correct, 0);
       markDone(i); return;
     }
     if(ex.type==='sculpt'){
@@ -17286,6 +17346,7 @@ async function lexInit(){
         ? ('Zapamiętaj: „'+esc(ex.answer)+'" — dokładnie tak.')
         : ('Do zapamiętania — wzorzec: <strong>'+esc(ex.answer)+'</strong>.'));
       if(!okS) feedGap(window._lexxData.focus||ex.intent);
+      lexxRecordBeat(ex, okS, 0);
       markDone(i); return;
     }
     if(ex.type==='cloze'){
@@ -17321,9 +17382,11 @@ async function lexInit(){
         if(ex.explain) lexBoardAdd('rule', ex.explain, ex.sentence||'');
         feedGap(window._lexxData.focus||ex.prompt);
         try{ lexxMarkSweepWrong(ex); }catch(e){}
+        lexxRecordBeat(ex, false, 1);
         markDone(i); return;
       }
       showFb(i,'ok','Zapamiętaj: '+esc(ex.explain||''));
+      lexxRecordBeat(ex, true, parseInt((box&&box.dataset.tries)||'0',10));
       markDone(i); return;
     }
     if(ex.type==='transform'){
@@ -17340,10 +17403,12 @@ async function lexInit(){
           ? esc(v2.comment||('Zapamiętaj: '+(ex.explain||'')))
           : ('Do zapamiętania — wzór: <strong>'+esc(ex.answer)+'</strong>. '+esc(v2.comment||ex.explain||'')));
         if(!ok) feedGap(v2.gap||window._lexxData.focus||ex.prompt);
+        lexxRecordBeat(ex, ok, 0);
         markDone(i); return;
       }
       showFb(i, ok?'ok':'bad', ok?('Zapamiętaj: '+esc(ex.explain||'')):('Do zapamiętania: <strong>'+esc(ex.answer)+'</strong> '+esc(ex.explain||'')));
       if(!ok) feedGap(window._lexxData.focus||ex.prompt);
+      lexxRecordBeat(ex, ok, 0);
       markDone(i); return;
     }
     // translate / produce → ocena AI (constrained: AI ocenia, klucz/wzorzec widoczny przy pudle)
@@ -17355,6 +17420,7 @@ async function lexInit(){
       + (ex.answer&&!verdict.ok? ' <span style="color:var(--dim2)">(wzór: '+esc(ex.answer)+')</span>':''));
     if(!verdict.ok) feedGap(verdict.gap||window._lexxData.focus||ex.prompt);
     if(chk){ chk.textContent='Sprawdzone'; }
+    lexxRecordBeat(ex, verdict.ok, 0);
     markDone(i);
   };
 
