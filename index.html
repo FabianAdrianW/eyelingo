@@ -16883,7 +16883,7 @@ async function lexInit(){
     if(type==='cue') return '{"type":"cue","context":"1-2 zdania scenki w '+langName()+' z naturalnym użyciem słowa-celu","source":"skąd pochodzi scenka, po polsku, np. Slack / Mail / W rozmowie","question":"pytanie po polsku sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po polsku; formę docelową w '+langName()+' ujmij w **gwiazdki**"}';
     if(type==='cloze') return '{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w miejscu luki (słowo-cel, którego jeszcze NIE ćwiczono w tej porcji)","answers":["słowo do luki"],"hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"}';
     if(type==='contrast') return '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po polsku: które jest native, dlaczego, i jaka polska kalka zdradza nie-native"}';
-    if(type==='sculpt') return '{"type":"sculpt","intent":"intencja po polsku, np. grzecznie przesuń termin na czwartek","tiles":["lista","4-7 kafelków","ze słowami w '+langName()+'"],"answer":"pełne zdanie = kafelki połączone spacjami we właściwej kolejności"}';
+    if(type==='sculpt') return '{"type":"sculpt","intent":"intencja po polsku, np. grzecznie przesuń termin na czwartek","answer":"POPRAWNE gramatycznie zdanie w '+langName()+' realizujące intencję","tiles":["DOKŁADNIE słowa z answer w losowej kolejności","tyle samo kafelków co słów w answer","te same formy, bez odmiany"]}';
     if(type==='produce') return '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po polsku co ma zawierać"}';
     return '';
   }
@@ -17155,7 +17155,12 @@ async function lexInit(){
       body+=exScene('Intencja', ex.intent||'');
       window._lexxSculpt=window._lexxSculpt||{};
       if(!window._lexxSculpt[i]){
-        var pool=(ex.tiles||[]).slice();
+        var _ansTok=String(ex.answer||'').trim().split(/\s+/).filter(Boolean);
+        var _llmTiles=(ex.tiles||[]).map(function(t){return String(t).trim();}).filter(Boolean);
+        var _ms=function(arr){ var m={}; arr.forEach(function(x){var k=x.toLowerCase(); m[k]=(m[k]||0)+1;}); return m; };
+        var _msEq=function(a,b){ var ka=Object.keys(a); if(ka.length!==Object.keys(b).length) return false; for(var k in a){ if(a[k]!==b[k]) return false; } return true; };
+        // Kafelki MUSZĄ złożyć się w answer; inaczej odbuduj pulę z answer (anty „like to chops").
+        var pool=_ansTok.length ? (_msEq(_ms(_llmTiles), _ms(_ansTok)) ? _llmTiles.slice() : _ansTok.slice()) : _llmTiles.slice();
         for(var z=pool.length-1;z>0;z--){ var r=Math.floor(Math.random()*(z+1)); var tmp=pool[z]; pool[z]=pool[r]; pool[r]=tmp; }
         window._lexxSculpt[i]={built:[],pool:pool};
       }
@@ -17286,6 +17291,7 @@ async function lexInit(){
   function showFb(i, kind, html){
     var fb=document.getElementById('lexx-fb-'+i); if(!fb) return;
     fb.className='lexx-fb '+kind; fb.style.display='block'; fb.innerHTML=lexxBoldKey(html);
+    try{ fb.scrollIntoView({behavior:'smooth', block:'nearest'}); }catch(e){}
   }
   function markDone(i){
     window._lexxDone[i]=true;
@@ -17299,7 +17305,7 @@ async function lexInit(){
     if(i<total-1){ nx.textContent='Dalej →'; nx.onclick=function(){ lexxShowStep(i+1); }; }
     else { nx.textContent=(window._lexxPortionNum>=window._lexxPortionTarget)?'Zakończ lekcję':'Następna porcja →'; nx.onclick=lexxNext; }
     stage.appendChild(nx);
-    setTimeout(function(){ try{ nx.focus(); }catch(e){} },60);
+    setTimeout(function(){ try{ nx.focus({preventScroll:true}); }catch(e){ try{ nx.focus(); }catch(_){} } },60);
   }
   function feedGap(topic){
     try{ if(topic && Array.isArray(window._lexGaps)) window._lexGaps.push(topic); }catch(e){}
@@ -17484,13 +17490,18 @@ async function lexInit(){
   window.lexxAIEval=async function(ex, answer){
     try{
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
+      var focus=(window._lexxData&&window._lexxData.focus)||'';
+      var trMap={}; try{ ((window._lexxData&&window._lexxData.items)||[]).forEach(function(it){ if(it&&it.word) trMap[String(it.word).toLowerCase().trim()]=it.translation||''; }); }catch(e){}
+      var tgtTr=trMap[String(ex.target||'').toLowerCase().trim()]||'';
       var task = ex.type==='translate'
         ? ('Zadanie: przetłumacz na '+langName()+' frazę: "'+(ex.source||'')+'". Wzorcowe tłumaczenie: "'+(ex.answer||'')+'". Odpowiedź ucznia: "'+answer+'".')
         : ex.type==='transform'
-        ? ('Zadanie: przekształć zdanie "'+(ex.source||'')+'". Polecenie: '+(ex.instruction||ex.prompt||'')+'. Wzorcowa odpowiedź: "'+(ex.answer||'')+'". Odpowiedź ucznia: "'+answer+'". WAŻNE: każda poprawna gramatycznie realizacja polecenia jest OK (np. forma ściągnięta "I\'m not" zamiast "I am not", inny poprawny szyk).')
-        : ('Zadanie: ułóż poprawne zdanie w '+langName()+' używając "'+(ex.target||'')+'". Odpowiedź ucznia: "'+answer+'".');
-      var prompt='Jesteś nauczycielem '+langName()+'. '+task+'\n'
+        ? ('Zadanie: przekształć zdanie "'+(ex.source||'')+'". Polecenie: '+(ex.instruction||ex.prompt||'')+'. Wzorcowa odpowiedź: "'+(ex.answer||'')+'". Odpowiedź ucznia: "'+answer+'". WAŻNE: każda poprawna gramatycznie realizacja polecenia jest OK.')
+        : ('Zadanie: ułóż poprawne zdanie w '+langName()+' używając "'+(ex.target||'')+'"'+(tgtTr?(' (znaczenie po polsku: '+tgtTr+')'):'')+'. Temat porcji: "'+(focus||'codzienna komunikacja')+'". Odpowiedź ucznia: "'+answer+'".');
+      var prompt='Jesteś nauczycielem '+langName()+' uczącym Polaków. '+task+'\n'
         +'Oceń odpowiedź ucznia. Bądź wyrozumiały dla drobnych literówek i alternatywnych poprawnych form. '
+        +'Komentarz pisz naturalną, poprawną POLSZCZYZNĄ. NIE twórz hybryd polsko-angielskich (np. nigdy nie pisz "roastujesz", "forwardować") — używaj polskiego znaczenia słowa. '
+        +'Trzymaj się tematu porcji; jeśli zdanie ucznia jest poprawne, ale poza tematem, zaakceptuj i delikatnie zaproponuj wersję w temacie. '
         +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po polsku: co dobrze, co poprawić","gap":"jeśli błąd — krótki temat braku, inaczej pusty"}';
       var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:300})});
       if(!res.ok) throw new Error('proxy '+res.status);
