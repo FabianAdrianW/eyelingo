@@ -2891,7 +2891,7 @@ window.matCardLexModal = function(setId, setName, langCode){
   ];
   var lvlBtns=levels.map(function(lv){
     var on=lv.id===curLevel;
-    return '<button data-lvl="'+lv.id+'" onclick="matLexModalPickLevel(this,\''+lv.id+'\')" style="border-radius:12px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';padding:12px 14px;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left;transition:.15s">'
+    return '<button data-lvl="'+lv.id+'" onclick="matLexModalPickLevel(this,\''+lv.id+'\','+setId+',\''+(langCode||'')+'\')" style="border-radius:12px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';padding:12px 14px;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left;transition:.15s">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-size:13.5px;font-weight:600;color:var(--navy)">'+lv.label+'</span><span style="font-size:10px;font-weight:600;background:rgba(26,35,64,.08);color:var(--navy);padding:2px 8px;border-radius:100px">'+lv.desc+'</span></div>'
       +'<div style="font-size:12px;color:var(--dim2)">'+lv.sub+'</div>'
       +'</button>';
@@ -2909,14 +2909,16 @@ window.matCardLexModal = function(setId, setName, langCode){
     +'</div>'
     +'<div style="font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Jak trudne mają być przykłady Lexa?</div>'
     +'<div id="mat-lex-lvl-btns" style="display:flex;flex-direction:column;gap:8px;margin-bottom:22px">'+lvlBtns+'</div>'
-    +'<button onclick="matCardLexGo('+setId+','+JSON.stringify(setName)+','+JSON.stringify(langCode||'')+')" style="width:100%;padding:14px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zacznij lekcję →</button>'
+    +'<button onclick="matCardLexGo('+setId+',\''+(langCode||'')+'\')" style="width:100%;padding:14px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zacznij lekcję →</button>'
     +'</div>';
   document.body.appendChild(m);
 };
 
-window.matLexModalPickLevel=function(btn, level){
+window.matLexModalPickLevel=function(btn, level, setId, langCode){
   window._lexTeacherExLevel=level;
   try{ if(typeof uk==='function') localStorage.setItem(uk('lex_teacher_ex_level'), level); }catch(e){}
+  // Klik w poziom = od razu start lekcji z tym poziomem trudności przykładów Lexa.
+  if(setId!=null && typeof matCardLexGo==='function'){ matCardLexGo(setId, langCode); return; }
   document.querySelectorAll('#mat-lex-lvl-btns button').forEach(function(b){
     var on=b===btn;
     b.style.border=on?'2px solid var(--orange)':'1.5px solid var(--border2)';
@@ -2924,22 +2926,22 @@ window.matLexModalPickLevel=function(btn, level){
   });
 };
 
-window.matCardLexGo=function(setId, setName, langCode){
+window.matCardLexGo=function(setId, langCode){
   var m=document.getElementById('mat-lex-modal'); if(m) m.remove();
-  window.matCardStartLesson(setId, setName, langCode);
+  var nm='';
+  try{ var hit=(window._matSets||[]).find(function(x){ return String(x.id)===String(setId); }); if(hit) nm=hit.name||''; }catch(e){}
+  window.matCardStartLesson(setId, nm, langCode||null);
 };
 
-// Ucz się — otwiera Strefę Nauki SRS z tym zestawem
+// Ucz się — wybór trybu nauki (przeglądanie / multiwybór / wpisywanie / zapamiętywanie) dla tego zestawu
 window.matCardStartSRS=function(setId, setName){
-  // Przekieruj do Strefy Nauki z tym zestawem jako źródłem
   if(typeof switchTab==='function') switchTab('strefa', document.getElementById('ntab-strefa'));
-  // Ustaw zestaw jako aktywny jeśli możliwe
-  try{
-    setTimeout(function(){
-      if(typeof strefaStartWithSet==='function') strefaStartWithSet(setId, setName);
+  setTimeout(function(){
+    try{
+      if(typeof strefaSelectUserSet==='function') strefaSelectUserSet(setId, encodeURIComponent(setName||''));
       else if(typeof startStrefaSession==='function') startStrefaSession();
-    }, 150);
-  }catch(e){}
+    }catch(e){}
+  }, 200);
 };
 
 // Picker języka zestawu (zastępuje usunięty modal auto-detekcji) — klik w badge na kafelku.
