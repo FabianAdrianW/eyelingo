@@ -2724,24 +2724,30 @@ window.loadMySets = async function loadMySets(){
     var createBtn=document.getElementById('mat-create-btn');
     if(createBtn) createBtn.style.display='block';
     var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='inline-flex';
-    // Auto-detect języka w tle dla zestawów bez lang (heurystyka, jednorazowo)
-    setTimeout(async function(){
-      var noLang=_matSets.filter(function(s){return !s.lang;});
-      for(var i=0;i<noLang.length;i++){
-        var st=noLang[i];
-        try{
-          var cards=st.user_set_cards||[];
-          if(!cards.length){ var r=await db.from('user_set_cards').select('word').eq('set_id',st.id).limit(15); cards=r.data||[]; }
-          if(cards.length && typeof window.lexDetectSetLang==='function'){
-            window.lexDetectSetLang(st.id, cards, function(detected){
-              if(detected){
-                var idx=_matSets.findIndex(function(x){return x.id===st.id;});
-                if(idx>=0){ _matSets[idx].lang=detected; matRenderMine(); }
-              }
-            });
-          }
-        }catch(e){}
-      }
+    // Auto-detekcja języka w tle (heurystyka): uzupełnij brakujące i popraw ewidentnie błędne badge.
+    setTimeout(function(){
+      (_matSets||[]).forEach(function(st){
+        (async function(){
+          try{
+            if(typeof window.lexGuessLang!=='function') return;
+            var cards=st.user_set_cards||[];
+            if(!cards.length){ var r=await db.from('user_set_cards').select('word').eq('set_id',st.id).limit(20); cards=(r&&r.data)||[]; }
+            if(!cards.length) return;
+            var g=window.lexGuessLang(cards);
+            if(!g||!g.code||!g.confident) return;
+            var cur=st.lang||null;
+            var strong=(g.scores && (g.scores[g.code]>=4 || g.code==='jp'));
+            if(!cur){
+              try{ await db.from('user_sets').update({lang:g.code}).eq('id', st.id); }catch(e){}
+              st.lang=g.code; if(typeof matRenderMine==='function') matRenderMine();
+            } else if(cur!==g.code && strong){
+              try{ await db.from('user_sets').update({lang:g.code}).eq('id', st.id); }catch(e){}
+              console.info('[Eyelingo] poprawiono jezyk zestawu', st.id, cur, '->', g.code);
+              st.lang=g.code; if(typeof matRenderMine==='function') matRenderMine();
+            }
+          }catch(e){}
+        })();
+      });
     }, 600);
   }catch(e){
     if(grid) grid.innerHTML='<div class="mat-empty">Błąd: '+(e.message||e)+'</div>';
@@ -2812,9 +2818,13 @@ function setCard(s){
   // Badge języka zestawu
   const langCode = s.lang||null;
   const langInfo = (langCode && typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[langCode])||null;
-  const langBadge = langInfo
-    ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
-    : (langCode ? `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langCode.toUpperCase()}</span>` : '');
+  const langBadge = isOwn
+    ? (langInfo
+        ? `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'${langCode}')" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
+        : `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'')" title="Ustaw język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(201,106,42,.10);color:var(--orange);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer;border:1px dashed rgba(201,106,42,.45)">+ język</span>`)
+    : (langInfo
+        ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
+        : (langCode ? `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langCode.toUpperCase()}</span>` : ''));
   const delBtn = (isOwn && isMineTab)
     ? `<span title="Usuń zestaw" onclick="event.stopPropagation();deleteSetConfirm(${s.id})" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500" onmouseover="this.style.opacity=1;this.style.color='#c0392b'" onmouseout="this.style.opacity=.5;this.style.color='var(--dim2)'">&times;</span>`
     : '';
@@ -2929,6 +2939,45 @@ window.matCardStartSRS=function(setId, setName){
       else if(typeof startStrefaSession==='function') startStrefaSession();
     }, 150);
   }catch(e){}
+};
+
+// Picker języka zestawu (zastępuje usunięty modal auto-detekcji) — klik w badge na kafelku.
+window.matSetLangPicker=function(setId, currentLang){
+  var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','nl','jp'];
+  var old=document.getElementById('mat-setlang-modal'); if(old) old.remove();
+  var m=document.createElement('div'); m.id='mat-setlang-modal';
+  m.style.cssText='position:fixed;inset:0;z-index:10070;background:rgba(26,35,64,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px';
+  m.addEventListener('click',function(e){ if(e.target===m) m.remove(); });
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:20px;padding:26px;width:min(420px,94vw);box-shadow:0 24px 60px rgba(26,35,64,.28)';
+  var h=document.createElement('div');
+  h.style.cssText='font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px';
+  h.textContent='Język fiszek w tym zestawie';
+  var sub=document.createElement('div');
+  sub.style.cssText='font-size:12.5px;color:var(--dim2);margin-bottom:18px;line-height:1.5';
+  sub.textContent='Lex użyje go do prowadzenia lekcji i tłumaczeń. Ustaw, jeśli badge jest błędny.';
+  var grid=document.createElement('div');
+  grid.style.cssText='display:grid;grid-template-columns:repeat(2,1fr);gap:10px';
+  codes.forEach(function(code){
+    var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[code])||{name:code};
+    var nm=(info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
+    var on=String(code)===String(currentLang||'');
+    var b=document.createElement('button');
+    b.style.cssText='display:flex;flex-direction:column;align-items:center;gap:6px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';border-radius:14px;padding:16px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s';
+    b.innerHTML='<span style="font-size:24px">'+(info.flag||'🌐')+'</span><span style="font-size:13px;font-weight:600;color:var(--navy)">'+nm+'</span>';
+    b.onclick=function(){ window.matSetLangApply(setId, code); };
+    grid.appendChild(b);
+  });
+  box.appendChild(h); box.appendChild(sub); box.appendChild(grid);
+  m.appendChild(box); document.body.appendChild(m);
+};
+window.matSetLangApply=async function(setId, code){
+  var m=document.getElementById('mat-setlang-modal'); if(m) m.remove();
+  try{ await db.from('user_sets').update({lang:code}).eq('id', setId); }catch(e){ console.warn('[Eyelingo] zapis języka zestawu:', e&&e.message); }
+  try{ var i=(_matSets||[]).findIndex(function(x){ return String(x.id)===String(setId); }); if(i>=0) _matSets[i].lang=code; }catch(e){}
+  if(typeof matRenderMine==='function' && document.getElementById('mat-grid')) matRenderMine();
+  if(window._strefaCur && typeof strefaShowCatalogSets==='function'){ try{ strefaShowCatalogSets(window._strefaCur.colIdx, window._strefaCur.colName, window._strefaCur.mode); }catch(e){} }
+  if(typeof showToast==='function') showToast('Zapisano język zestawu','success');
 };
 
 
@@ -5630,7 +5679,7 @@ async function strefaShowCatalogSets(colIdx, colName, mode){
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){center.innerHTML='<div style="padding:20px">Zaloguj się</div>';return;}
     window._matMyUid=sess.user.id;
-    var {data:allSets}=await db.from('user_sets').select('id,name,user_id,user_set_cards(id,word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false});
+    var {data:allSets}=await db.from('user_sets').select('id,name,lang,user_id,user_set_cards(id,word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false});
     var sets=allSets||[];
     if(colIdx!==null && _collections[colIdx]){
       var ids=(_collections[colIdx].sets||[]).map(function(s){return s.id;});
@@ -5670,35 +5719,34 @@ async function strefaShowCatalogSets(colIdx, colName, mode){
 
 function stripEmoji(n){ return (n||'').replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{200D}]/gu,'').replace(/\s{2,}/g,' ').trim(); }
 window.stripEmoji=stripEmoji;
-function strefaSetCardTryb(s){
+function strefaSetCardLangBadge(s){
+  var code=s.lang||null;
+  var info=(code&&typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[code])||null;
+  if(info){
+    var nm=(info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
+    return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;'+code+'&#39;)" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">'+(info.flag||'')+' '+esc(nm)+'</span>';
+  }
+  return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;&#39;)" title="Ustaw język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(201,106,42,.10);color:var(--orange);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer;border:1px dashed rgba(201,106,42,.45)">+ język</span>';
+}
+function strefaSetCard(s, mode){
   var cnt=s.user_set_cards?s.user_set_cards.length:0;
-  var div=document.createElement('div');
-  div.className='mat-card'; div.style.cursor='pointer'; div.setAttribute('draggable','true');
-  div.setAttribute('onclick','strefaSelectUserSet('+s.id+',"'+encodeURIComponent(s.name)+'")');
-  div.setAttribute('ondragstart','matCardDragStart(event,'+s.id+',"'+(s.name||'').replace(/"/g,'')+'")')
-  div.setAttribute('ondragend','matCardDragEnd(event)');
-  div.style.position='relative';
-  div.innerHTML='<span title="Usuń zestaw" onclick="event.stopPropagation();deleteSetConfirm('+s.id+')" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500" onmouseover="this.style.opacity=1;this.style.color=&#39;#c0392b&#39;" onmouseout="this.style.opacity=.5;this.style.color=&#39;var(--dim2)&#39;">&times;</span>'
+  var enc=encodeURIComponent(s.name);
+  var learnFn=(mode==='tryb'?'strefaSelectUserSet(':'strefaStartKontekstowaFromSet(')+s.id+',&#39;'+enc+'&#39;)';
+  var nmJS=(s.name||'').replace(/['"\\<>]/g,'');
+  var lc=s.lang||'';
+  var badge=strefaSetCardLangBadge(s);
+  return '<div class="mat-card" style="cursor:pointer;position:relative" draggable="true" onclick="'+learnFn+'" ondragstart="matCardDragStart(event,'+s.id+',&#39;'+nmJS+'&#39;)" ondragend="matCardDragEnd(event)">'
+    +'<span title="Usuń zestaw" onclick="event.stopPropagation();deleteSetConfirm('+s.id+')" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500" onmouseover="this.style.opacity=1;this.style.color=&#39;#c0392b&#39;" onmouseout="this.style.opacity=.5;this.style.color=&#39;var(--dim2)&#39;">&times;</span>'
     +'<div class="mat-card-head" style="display:flex;align-items:center;gap:12px">'
     +'<div style="width:36px;height:36px;border-radius:8px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg></div>'
-    +'<div style="flex:1;min-width:0;padding-right:16px"><div class="mat-card-name">'+esc(stripEmoji(s.name))+'</div><div class="mat-card-count">'+cnt+' fiszek</div></div></div>';
-  return div.outerHTML;
+    +'<div style="flex:1;min-width:0;padding-right:16px"><div class="mat-card-name" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">'+esc(stripEmoji(s.name))+badge+'</div><div class="mat-card-count">'+cnt+' fiszek</div></div></div>'
+    +'<div style="display:flex;gap:7px;margin-top:10px" onclick="event.stopPropagation()">'
+    +'<button onclick="'+learnFn+'" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;color:var(--dim);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Ucz się</button>'
+    +'<button onclick="matCardLexModal('+s.id+',&#39;'+nmJS+'&#39;,&#39;'+lc+'&#39;)" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--orange);background:transparent;color:var(--orange);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Utrwal z Lexem</button>'
+    +'</div></div>';
 }
-
-function strefaSetCardKontekstowa(s){
-  var cnt=s.user_set_cards?s.user_set_cards.length:0;
-  var div=document.createElement('div');
-  div.className='mat-card'; div.style.cursor='pointer'; div.setAttribute('draggable','true');
-  div.setAttribute('onclick','strefaStartKontekstowaFromSet('+s.id+',"'+encodeURIComponent(s.name)+'")');
-  div.setAttribute('ondragstart','matCardDragStart(event,'+s.id+',"'+(s.name||'').replace(/"/g,'')+'")')
-  div.setAttribute('ondragend','matCardDragEnd(event)');
-  div.style.position='relative';
-  div.innerHTML='<span title="Usuń zestaw" onclick="event.stopPropagation();deleteSetConfirm('+s.id+')" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500" onmouseover="this.style.opacity=1;this.style.color=&#39;#c0392b&#39;" onmouseout="this.style.opacity=.5;this.style.color=&#39;var(--dim2)&#39;">&times;</span>'
-    +'<div class="mat-card-head" style="display:flex;align-items:center;gap:12px">'
-    +'<div style="width:36px;height:36px;border-radius:8px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg></div>'
-    +'<div style="flex:1;min-width:0;padding-right:16px"><div class="mat-card-name">'+esc(stripEmoji(s.name))+'</div><div class="mat-card-count">'+cnt+' fiszek</div></div></div>';
-  return div.outerHTML;
-}
+function strefaSetCardTryb(s){ return strefaSetCard(s,'tryb'); }
+function strefaSetCardKontekstowa(s){ return strefaSetCard(s,'kontekstowa'); }
 
 
 
@@ -9478,13 +9526,7 @@ window.loadCollections = async function loadCollections(){
     if(!sidebar) return;
     sidebar.innerHTML = '';
 
-    if(!_collections.length){
-      var hint = document.createElement('div');
-      hint.style.cssText = 'font-size:11px;color:var(--dim2);padding:8px 0;line-height:1.4';
-      hint.textContent = 'Brak katalogów. Kliknij + aby dodać.';
-      sidebar.appendChild(hint);
-      return;
-    }
+    // Stały katalog bazowy „Wszystkie zestawy" budowany jest poniżej ZAWSZE — także dla nowych użytkowników.
 
     // "Wszystkie" tile - same style as catalogs
     var allBtn = document.createElement('button');
@@ -9503,6 +9545,7 @@ window.loadCollections = async function loadCollections(){
     allBtn.className = 'sb-catalog-tile';
     allBtn.style.background='rgba(229,106,28,.12)'; allBtn.dataset.active='1';
     sidebar.appendChild(allBtn);
+    if(!_collections.length){ var _ch=document.createElement('div'); _ch.style.cssText='font-size:11px;color:var(--dim2);padding:8px 2px;line-height:1.4'; _ch.textContent='Dodaj katalog przyciskiem +, aby pogrupować zestawy.'; sidebar.appendChild(_ch); }
 
     _collections.forEach(function(col, cidx){
       var btn = document.createElement('button');
@@ -14788,6 +14831,13 @@ function lexBuildSystemPrompt(flashcardSets){
   var isEval = (level === 'unknown');
   var nBlocks = (dur === 10) ? 3 : (dur === 25) ? 6 : 9;
 
+  // Poziom trudności PRZYKŁADÓW Lexa (z modala „Utrwal z Lexem") — realnie wpływa na prompt.
+  var _exLvl = (typeof window._lexTeacherExLevel!=='undefined' && window._lexTeacherExLevel) || 'intermediate';
+  var exGuide = '\nPOZIOM PRZYKŁADÓW (nie dotyczy słów z zestawu — te zostają): '
+    + (_exLvl==='basic' ? 'buduj zdania-przykłady z PROSTEGO, codziennego słownictwa i krótkich konstrukcji (A1-A2); unikaj rzadkich słów i złożonej składni.'
+      : _exLvl==='advanced' ? 'buduj zdania-przykłady z BOGATEGO, naturalnego słownictwa, idiomów i złożonych struktur (C1-C2).'
+      : 'buduj zdania-przykłady z naturalnego słownictwa średniego poziomu (B1-B2).')
+    + '\n';
   var common = 'You are Lex, an expert language teacher. You teach ONLY the ' + _lexLangNative + ' language.\n'
     + 'CRITICAL RULES:\n'
     + rule1
@@ -14795,7 +14845,8 @@ function lexBuildSystemPrompt(flashcardSets){
     + 'KRYTYCZNE: NIE używaj markdown headers (#, ##). NIE używaj bloków kodu (```). NIE pisz tagów HTML. NIE pisz \\n dosłownie — używaj zwykłych enterów. Pisz czysty tekst.\n'
     + 'VOCAB: [WORD]słowo_po_' + _lexLangNative + '|tłumaczenie_PL|przykład[/WORD]\n'
     + 'CORE (do zeszytu ucznia): reguła/kluczowe słowo → [CORE]typ|treść|przykład[/CORE], typ=rule lub word, treść PO POLSKU. 1-3 na lekcję, zwięźle.\n'
-    + 'KEY (wyróżnienie pomarańczowe): najważniejszą rzecz do ZAPAMIĘTANIA w danej karcie owiń w [KEY]...[/KEY]. Max JEDEN na kartę, często zero. Oszczędnie.\n';
+    + 'KEY (wyróżnienie pomarańczowe): najważniejszą rzecz do ZAPAMIĘTANIA w danej karcie owiń w [KEY]...[/KEY]. Max JEDEN na kartę, często zero. Oszczędnie.\n'
+    + exGuide;
 
   if(isEval){
     return common
@@ -14811,7 +14862,7 @@ function lexBuildSystemPrompt(flashcardSets){
   // STRUKTURALNA LEKCJA (poziom ustalony) — blok = wprowadzenie + 4 zadania
   return common
     + '2. STRUKTURALNA LEKCJA. Poziom ucznia jest USTALONY (' + level + ') — NIE rób już diagnostyki ani [CONV]. KAŻDA Twoja odpowiedź = JEDEN blok lekcji o jednym, wąskim temacie:\n'
-    + '   (a) 2-4 zdania wprowadzenia/wyjaśnienia tematu po ' + conductLang + ' (słowa w ' + _lexLangNative + ' owijaj w **...**).\n'
+    + '   (a) 2-4 zdania wprowadzenia/wyjaśnienia tematu po ' + conductLang + ' (słowa w ' + _lexLangNative + ' owijaj w **...**). Gdy blok dotyczy GRAMATYKI (odmiana czasownika, czas, reguła, przyimki, deklinacja) — podaj NAJPIERW zwięzły, KOMPLETNY model jako worked example: pełną odmianę przez wszystkie osoby albo całą regułę w 1-2 liniach (np. present simple: w 3. os. l.poj. dodaj -s/-es). Sam zdecyduj, ile podać — tyle, by uczeń zobaczył cały wzorzec, ale bez ściany tekstu. Tę kompletną regułę dołóż też jako [CORE]rule|treść po polsku|przykład[/CORE].\n'
     + '   (b) Następnie DOKŁADNIE 4 zadania, każde w osobnym znaczniku [TASK]...[/TASK]. Typy MIESZANE i WSZYSTKIE samosprawdzalne (mc, fig, trans). KAŻDE zadanie MUSI mieć ANS i WHY (jedno zdanie po polsku — co zapamiętać).\n'
     + 'FORMATY ZADAŃ (użyj 4, mieszając typy, np. mc, fig, trans, mc):\n'
     + '[TASK]\nTYPE: mc\nQ: pytanie po ' + _lexLangNative + '\nA: opcja\nB: opcja\nC: opcja\nD: opcja\nANS: A\nWHY: po polsku, co zapamiętać\n[/TASK]\n'
@@ -17878,57 +17929,55 @@ async function lexInit(){
 
   // Minimalny wybór języka dla WŁASNEGO zestawu (brak zapisanego) + trwały zapis → badge na stałe
   // ── Auto-detect języka zestawu na podstawie słów (heurystyczny, bez API, jednorazowy zapis) ──
-  window.lexDetectSetLang=async function(setId, words, cb){
-    // Heurystyczna mapa znaków/słów charakterystycznych per język
-    var sigs={
-      es:/[áéíóúüñ¿¡]|^(el|la|los|las|un|una|que|de|en|por|con|ser|estar|haber|hacer|guerra|casa|libro|ciudad|tiempo)$/i,
-      nl:/[ĳ]|(ij)|(aa|oe|ui|ei|ou)|^(de|het|een|van|zijn|hebben|worden|maar|ook|dit|niet|wel|bij|door)$/i,
-      jp:/[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/,
-      de:/[äöüß]|^(der|die|das|ein|eine|ist|sind|haben|werden|können|ich|sie|wir|nicht|auch|mit|von|dem|den)$/i,
-      fr:/[àâæçéèêëîïôœùûüÿ]|^(le|la|les|un|une|des|est|sont|avoir|être|mais|aussi|dans|sur|avec|par)$/i,
-      pt:/[ãõâêôàáéíóúç]|^(o|a|os|as|um|uma|é|são|ter|ser|estar|fazer|mas|também|para|com|por)$/i,
+  // ── Heurystyka języka zestawu (po słowach z fiszek; en/es/nl/jp + de/fr/pt bonus) ──
+  window.lexGuessLang=function(words){
+    var sample=(words||[]).slice(0,40).map(function(w){ return String((w&&(w.word!=null?w.word:w))||'').toLowerCase().trim(); }).filter(Boolean);
+    if(!sample.length) return {code:null, confident:false, scores:{}};
+    var sc={es:0,nl:0,jp:0,de:0,fr:0,pt:0,en:0};
+    var wl={
+      es:/^(el|la|los|las|un|una|que|de|en|por|con|para|ser|estar|haber|hacer|pero|tambien|muy|guerra|casa|libro|ciudad|tiempo|hombre|mujer|nino|agua|comida|trabajo|amor|vida|dia|noche|hola|gracias)$/,
+      nl:/^(de|het|een|van|zijn|hebben|worden|maar|ook|dit|dat|niet|wel|bij|door|naar|met|voor|huis|water|tijd|man|vrouw|kind|werk|dag|nacht|hallo|dank)$/,
+      de:/^(der|die|das|ein|eine|ist|sind|haben|werden|koennen|ich|sie|wir|nicht|auch|mit|von|dem|den|und|haus|wasser|zeit|mann|frau|kind|arbeit|tag|nacht|hallo|danke)$/,
+      fr:/^(le|la|les|un|une|des|est|sont|avoir|etre|mais|aussi|dans|sur|avec|par|pour|maison|eau|temps|homme|femme|enfant|travail|jour|nuit|bonjour|merci)$/,
+      pt:/^(o|a|os|as|um|uma|sao|ter|ser|estar|fazer|mas|tambem|para|com|por|casa|agua|tempo|homem|mulher|crianca|trabalho|dia|noite|ola|obrigado)$/,
+      en:/^(the|a|an|and|or|is|are|to|of|in|on|with|for|you|he|she|it|we|they|war|house|water|time|man|woman|child|work|day|night|love|life|hello|please|thanks)$/
     };
-    var scores={};
-    var sample=(words||[]).slice(0,15).map(function(w){return String(w.word||w||'').toLowerCase().trim();}).filter(Boolean);
-    if(!sample.length){ if(cb) cb(null); return; }
-    for(var lang in sigs){
-      scores[lang]=0;
-      sample.forEach(function(w){ if(sigs[lang].test(w)) scores[lang]++; });
+    sample.forEach(function(w){
+      if(/[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(w)){ sc.jp+=4; return; }
+      if(/[\u00f1\u00bf\u00a1]/.test(w)) sc.es+=3;
+      if(/[\u00e1\u00e9\u00ed\u00f3\u00fa]/.test(w)) sc.es+=1;
+      if(/\u00df/.test(w)) sc.de+=3;
+      if(/[\u00e7\u0153]/.test(w)) sc.fr+=3;
+      if(/[\u00e3\u00f5]/.test(w)) sc.pt+=2;
+      if(/ij/.test(w)||/\u0133/.test(w)) sc.nl+=1;
+      if(/(aa|ee|oo|uu|oe|ui)/.test(w)) sc.nl+=0.5;
+      for(var L in wl){ if(wl[L].test(w)) sc[L]+=1; }
+    });
+    var best=null, bestS=0, second=0;
+    for(var L in sc){ if(sc[L]>bestS){ second=bestS; bestS=sc[L]; best=L; } else if(sc[L]>second){ second=sc[L]; } }
+    if(bestS<1){
+      var ascii=sample.filter(function(w){ return /^[a-z][a-z .'\-]*$/.test(w); }).length;
+      if(ascii>=Math.max(2, Math.ceil(sample.length*0.6))) return {code:'en', confident:true, scores:sc};
+      return {code:null, confident:false, scores:sc};
     }
-    // Wybierz język z najwyższym wynikiem (min 2 trafień = pewna detekcja)
-    var best=null, bestScore=1; // próg 2 dopasowań
-    for(var l in scores){ if(scores[l]>bestScore){bestScore=scores[l];best=l;} }
-    if(best){
-      try{ await db.from('user_sets').update({lang:best}).eq('id', setId); }catch(e){ console.warn('[Lex] auto-detect lang save error:', e&&e.message); }
-      if(cb) cb(best); return;
+    var confident=(bestS>=2 && bestS>=second+1) || (best==='jp' && bestS>=4) || (bestS>=3);
+    return {code:best, confident:confident, scores:sc};
+  };
+
+  // Auto-detect języka zestawu — zapis TYLKO przy pewnej detekcji; bez modala.
+  window.lexDetectSetLang=async function(setId, words, cb){
+    var g=window.lexGuessLang(words);
+    if(g && g.code && g.confident){
+      try{ await db.from('user_sets').update({lang:g.code}).eq('id', setId); }catch(e){ console.warn('[Lex] auto-detect lang save error:', e&&e.message); }
+      if(cb) cb(g.code); return;
     }
-    // Fallback: za mało sygnałów — pokaż modal z pytaniem
-    window.lexAskSetLangModal(setId, words[0]&&words[0].label||'zestaw', cb);
+    // Brak pewnej detekcji — nie pokazuj okna i nie zapisuj domysłu.
+    if(cb) cb(null);
   };
 
   // Modal ręcznego wyboru języka (fallback gdy auto-detect za mało pewny)
-  window.lexAskSetLangModal=function(setId, label, cb){
-    var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','nl','jp'];
-    var old=document.getElementById('lex-setlang'); if(old) old.remove();
-    var m=document.createElement('div'); m.id='lex-setlang';
-    m.style.cssText='position:fixed;inset:0;z-index:10060;background:rgba(26,35,64,.45);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px';
-    m.addEventListener('click',function(ev){ if(ev.target===m) m.remove(); });
-    var btns=codes.map(function(code){
-      var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[code])||{name:code};
-      var nm=(info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
-      return '<button data-code="'+code+'" style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1.5px solid var(--border2);background:#fff;border-radius:14px;padding:16px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s"><span style="font-size:22px">'+(info.flag||'🌐')+'</span><span style="font-size:13px;font-weight:600;color:var(--navy)">'+esc(nm)+'</span></button>';
-    }).join('');
-    m.innerHTML='<div style="background:#fff;border-radius:20px;padding:26px;width:min(420px,94vw);box-shadow:0 24px 60px rgba(26,35,64,.28)">'
-      +'<div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);margin-bottom:4px">W jakim języku jest „'+esc(label)+'"?</div>'
-      +'<div style="font-size:12.5px;color:var(--dim2);margin-bottom:18px;line-height:1.5">Nie udało mi się automatycznie rozpoznać języka. Zaznacz właściwy — zapamiętam na stałe.</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+btns+'</div></div>';
-    document.body.appendChild(m);
-    m.querySelectorAll('[data-code]').forEach(function(b){ b.addEventListener('click', async function(){
-      var code=b.getAttribute('data-code');
-      try{ await db.from('user_sets').update({lang:code}).eq('id', setId); }catch(e){ console.warn('[Lex] zapis języka zestawu błąd:', e&&e.message); }
-      m.remove(); if(cb) cb(code);
-    }); });
-  };
+  // Modal wyboru języka USUNIĘTY (mylił użytkowników). Cichy fallback do bieżącego języka.
+  window.lexAskSetLangModal=function(setId, label, cb){ if(cb) cb(window._lexLang||'en'); };
 
   // Główna funkcja — wywołuj zamiast lexAskSetLang: sprawdza DB, auto-detect, potem ewentualnie modal
   window.lexAskSetLang=async function(setId, label, cb){
@@ -17938,7 +17987,7 @@ async function lexInit(){
       if(res.data&&res.data.lang){ if(cb) cb(res.data.lang); return; }
       // 2. Auto-detect na podstawie słów zestawu
       var words=(res.data&&res.data.user_set_cards)||[];
-      if(words.length>0){ window.lexDetectSetLang(setId, words, cb); return; }
+      if(words.length>0){ window.lexDetectSetLang(setId, words, function(code){ if(cb) cb(code || window._lexLang || 'en'); }); return; }
     }catch(e){}
     // 3. Brak słów — modal
     window.lexAskSetLangModal(setId, label, cb);
@@ -18397,7 +18446,7 @@ async function lexInit(){
       var a=rawTxt.indexOf('['), b=rawTxt.lastIndexOf(']'), cards=[];
       if(a>=0&&b>a){ try{ var arr=JSON.parse(rawTxt.slice(a,b+1)); cards=arr.map(function(c){return {word:String(c.word||c.term||'').trim(), translation:String(c.translation||c.tr||c.pl||'').trim()};}).filter(function(c){return c.word&&c.translation;}); }catch(e){} }
       if(!cards.length){ msg.textContent='Nie udało się wygenerować. Spróbuj ponownie.'; btn.disabled=false; btn.textContent=oldT; return; }
-      _aiRenderSetEditor(defaultName, cards);
+      _aiRenderSetEditor(defaultName, cards, lang);
     }catch(e){ msg.textContent='Błąd generowania: '+(e.message||e); btn.disabled=false; btn.textContent=oldT; }
   };
 
@@ -18425,11 +18474,11 @@ async function lexInit(){
       var a=rawTxt.indexOf('['), b=rawTxt.lastIndexOf(']'), cards=[];
       if(a>=0&&b>a){ try{ var arr=JSON.parse(rawTxt.slice(a,b+1)); cards=arr.map(function(c){return {word:String(c.word||c.term||'').trim(), translation:String(c.translation||c.tr||c.pl||'').trim()};}).filter(function(c){return c.word&&c.translation;}); }catch(e){} }
       if(!cards.length){ if(msg) msg.textContent='Nie udało się rozpoznać obiektów. Spróbuj wyraźniejszego zdjęcia.'; btn.disabled=false; btn.textContent=oldT; return; }
-      _aiRenderSetEditor(langName+' — ze zdjęcia', cards);
+      _aiRenderSetEditor(langName+' — ze zdjęcia', cards, lang);
     }catch(e){ if(msg) msg.textContent='Błąd analizy zdjęcia: '+(e.message||e); btn.disabled=false; btn.textContent=oldT; }
   };
 
-  window._aiRenderSetEditor=function(name, cards){
+  window._aiRenderSetEditor=function(name, cards, lang){
     var body=document.getElementById('mat-modal-body'), title=document.getElementById('mat-modal-title');
     if(!body) return;
     if(title) title.textContent='Podgląd zestawu — '+cards.length+' fiszek';
@@ -18454,6 +18503,7 @@ async function lexInit(){
     footer.appendChild(saveBtn); d.appendChild(footer);
     body.appendChild(d);
     document.getElementById('new-set-name').value=name||'';
+    try{ var _nsl=document.getElementById('new-set-lang'); if(_nsl && lang) _nsl.value=lang; }catch(e){}
     cards.forEach(function(){ window.addNewSetRow(); });
     var rows=document.querySelectorAll('#new-set-rows > div');
     cards.forEach(function(c,i){ if(!rows[i])return; var ins=rows[i].querySelectorAll('input'); if(ins[0])ins[0].value=c.word; if(ins[1])ins[1].value=c.translation; });
