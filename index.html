@@ -16863,23 +16863,25 @@ async function lexInit(){
     var noRecog=[
       ['cue','cloze','sculpt'],
       ['cue','cloze','produce'],
-      ['cue','cloze','cloze','produce'],
-      ['cue','cloze','cloze','sculpt']
+      ['cue','warmfire','cloze','produce'],
+      ['cue','cloze','cloze','sculpt'],
+      ['cue','cloze','scenario'],
+      ['cue','warmfire','cloze','scenario']
     ];
     var withRecog=[
       ['cue','cloze','contrast','produce'],
-      ['cue','cloze','contrast','sculpt']
+      ['cue','cloze','contrast','scenario']
     ];
-    if(gapRp>=2){ // luka R-P → ciężar na wolną produkcję: tylko kształty domykane 'produce'
-      noRecog=noRecog.filter(function(s){return s[s.length-1]==='produce';});
-      withRecog=withRecog.filter(function(s){return s[s.length-1]==='produce';});
+    if(gapRp>=2){ // luka R-P → ciężar na wolną produkcję: domknięcia produce/scenario
+      var _pe=function(s){ var e=s[s.length-1]; return e==='produce'||e==='scenario'; };
+      noRecog=noRecog.filter(_pe); withRecog=withRecog.filter(_pe);
     }
     var pool=recogAllowed(1)?noRecog.concat(withRecog):noRecog;
     var start=(pn-1)%pool.length, pick=null;
     for(var off=0; off<pool.length; off++){ var c=pool[(start+off)%pool.length]; if(key(c)!==S.lastShape){ pick=c.slice(); break; } }
     if(!pick) pick=pool[start].slice();
     if(pick[0]!=='cue') pick.unshift('cue');                                       // twarda gwarancja: cue otwiera
-    var lt=pick[pick.length-1]; if(lt!=='sculpt'&&lt!=='produce') pick.push(gapRp>=2?'produce':'sculpt'); // produkcja zamyka
+    var lt=pick[pick.length-1]; if(lt!=='sculpt'&&lt!=='produce'&&lt!=='scenario') pick.push(gapRp>=2?'produce':'sculpt'); // produkcja zamyka
     var recogN=pick.filter(function(t){return t==='contrast'||t==='mc';}).length;
     S.recog+=recogN; S.total+=pick.length; S.lastShape=key(pick);
     try{ window._lexxShapeLog=(window._lexxShapeLog||[]); window._lexxShapeLog.push({pn:pn,shape:pick.slice(),recogRatio:+(S.recog/Math.max(1,S.total)).toFixed(3)}); }catch(e){}
@@ -16893,6 +16895,8 @@ async function lexInit(){
     if(type==='contrast') return '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po '+L+': które jest native, dlaczego, i jaka polska kalka zdradza nie-native"}';
     if(type==='sculpt') return '{"type":"sculpt","intent":"intencja po '+L+', np. grzecznie przesuń termin na czwartek","answer":"POPRAWNE gramatycznie zdanie w '+langName()+' realizujące intencję","tiles":["DOKŁADNIE słowa z answer w losowej kolejności","tyle samo kafelków co słów w answer","te same formy, bez odmiany"]}';
     if(type==='produce') return '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po '+L+' co ma zawierać"}';
+    if(type==='warmfire') return '{"type":"warmfire","prompt":"krótkie, szybkie wezwanie po '+L+' do wydobycia MOCNEGO słowa porcji (np. Szybko: jak powiesz X?)","answer":"słowo-cel w '+langName()+'","explain":"1 krótka nuta po '+L+'"}';
+    if(type==='scenario') return '{"type":"scenario","role":"krótka etykieta sceny po '+L+' (np. W kawiarni)","situation":"2-3 zdania sytuacji/roli po '+L+', w której uczeń ma zareagować","must_use":["2-3 słowa-cele porcji w '+langName()+' do wplecenia"],"skeleton":"szkielet zdania po '+langName()+' z ___ jako fallback","answer":"wzorcowa naturalna realizacja po '+langName()+'"}';
     return '';
   }
 
@@ -17101,10 +17105,10 @@ async function lexInit(){
   function badge(t){ var b={cue:'Odkrycie',mc:'Multiwybór',cloze:'Uzupełnij lukę',contrast:'Native czy nie?',translate:'Tłumaczenie',produce:'Twoje zdanie',sculpt:'Produkcja',transform:'Przekształć'}; return b[t]||'Ćwiczenie'; }
 
   // Eyebrow „intencji" w stylu MVP — nie suchy typ, tylko cel kognitywny
-  function exEyebrow(t){ var m={cue:'Odkrycie',mc:'Rozpoznanie',cloze:'Wydobycie z pamięci',contrast:'Wiedza insidera',translate:'Produkcja',produce:'Twoje zdanie',sculpt:'Produkcja',transform:'Przekształcenie'}; return m[t]||'Ćwiczenie'; }
+  function exEyebrow(t){ var m={cue:'Odkrycie',mc:'Rozpoznanie',cloze:'Wydobycie z pamięci',contrast:'Wiedza insidera',translate:'Produkcja',produce:'Twoje zdanie',sculpt:'Produkcja',transform:'Przekształcenie',warmfire:'Rozgrzewka',scenario:'Scenariusz'}; return m[t]||'Ćwiczenie'; }
   function exObjective(ex){
     if(ex.objective) return esc(ex.objective);
-    var m={cue:'Co to znaczy w tym kontekście?',mc:'Wybierz właściwą odpowiedź',cloze:'Uzupełnij — z pamięci, bez podpowiedzi',contrast:'Które zdanie powie native?',translate:'Przetłumacz na '+langName(),produce:'Ułóż własne zdanie',sculpt:'Ułóż zdanie z intencji',transform:'Przekształć zdanie'};
+    var m={cue:'Co to znaczy w tym kontekście?',mc:'Wybierz właściwą odpowiedź',cloze:'Uzupełnij — z pamięci, bez podpowiedzi',contrast:'Które zdanie powie native?',translate:'Przetłumacz na '+langName(),produce:'Ułóż własne zdanie',sculpt:'Ułóż zdanie z intencji',transform:'Przekształć zdanie',warmfire:'Szybko — z pamięci',scenario:'Zareaguj w tej sytuacji'};
     return esc(ex.prompt||m[ex.type]||'');
   }
   // Karta scenki z pomarańczowym źródłem (jak cue w MVP)
@@ -17219,6 +17223,17 @@ async function lexInit(){
       body+=exScene('Zdanie wyjściowe', ex.source||'', lang());
       if(ex.instruction) body+='<div class="lexx-prompt" style="margin-bottom:14px">'+esc(ex.instruction)+'</div>';
       inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoja wersja…">';
+    } else if(ex.type==='warmfire'){
+      // E2 WARM FIRE: szybkie wydobycie słowa mocnego (tempo + baseline latencji)
+      if(ex.prompt) body+='<div class="lexx-prompt" style="margin-bottom:14px">'+esc(ex.prompt)+'</div>';
+      inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Szybko — po '+langName()+'…" autocomplete="off">';
+    } else if(ex.type==='scenario'){
+      // E7 THE SCENARIO: role-play, szczyt — integracja kilku słów-celów
+      body+=exScene(ex.role||'Sytuacja', ex.situation||ex.prompt||'');
+      var _mu=[].concat(ex.must_use||ex.target||[]).filter(Boolean);
+      if(_mu.length) body+='<div style="margin:8px 0 14px">Wpleć: '+_mu.map(function(w){return '<span class="lexx-target">'+esc(w)+'</span>';}).join(' ')+'</div>';
+      if(ex.skeleton) body+='<div class="lexx-hint" style="margin-bottom:10px">Szkielet: '+esc(ex.skeleton)+'</div>';
+      inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="3" placeholder="Twoja odpowiedź po '+langName()+'…"></textarea>';
     } else { // produce
       if(ex.target) body+='<div style="margin-bottom:16px">Użyj: <span class="lexx-target">'+esc(ex.target)+'</span></div>';
       if(ex.hint) body+='<div class="lexx-hint" style="margin-bottom:10px">'+esc(ex.hint)+'</div>';
@@ -17353,6 +17368,7 @@ async function lexInit(){
     var hits=[], seen={};
     function add(it){ if(it&&it.word){ var k=lexxBeatNorm(it.word); if(k&&!seen[k]){ seen[k]=1; var ctr=(srcTr[k]!=null&&srcTr[k]!=='')?srcTr[k]:(it.translation||''); hits.push({word:it.word, translation:ctr}); } } }
     [ex.target, ex.word].forEach(function(w){ if(w){ var it=byWord[lexxBeatNorm(w)]; if(it) add(it); } });
+    if(Array.isArray(ex.must_use)) ex.must_use.forEach(function(w){ var it=byWord[lexxBeatNorm(w)]; if(it) add(it); });
     if(ex.type==='cloze' && typeof lexxGapAnswers==='function'){ (lexxGapAnswers(ex)||[]).forEach(function(a){ var it=byWord[lexxBeatNorm(a)]; if(it) add(it); }); }
     if(!hits.length){
       var hay=' '+lexxBeatNorm([ex.sentence,ex.answer,ex.context,ex.intent,ex.key,ex.prompt,ex.target].filter(Boolean).join(' '))+' ';
@@ -17484,6 +17500,38 @@ async function lexInit(){
       lexxRecordBeat(ex, ok, 0);
       markDone(i); return;
     }
+    if(ex.type==='warmfire'){
+      var vw=(document.getElementById('lexx-in-'+i)||{}).value||'';
+      if(!vw.trim()){ showFb(i,'neutral','Szybko — wpisz słowo.'); return; }
+      var okw=lexxAnsMatch(vw, ex.answer);
+      var inw=document.getElementById('lexx-in-'+i); if(inw){ inw.classList.remove('ok','bad'); inw.classList.add(okw?'ok':'bad'); }
+      showFb(i, okw?'ok':'bad', okw?('Tempo. '+esc(ex.explain||'')):('To: <strong>'+esc(ex.answer)+'</strong>. '+esc(ex.explain||'')));
+      if(!okw) feedGap(window._lexxData.focus||ex.answer);
+      lexxRecordBeat(ex, okw, 0);
+      markDone(i); return;
+    }
+    if(ex.type==='scenario'){
+      var vs=(document.getElementById('lexx-in-'+i)||{}).value||'';
+      if(!vs.trim()){ showFb(i,'neutral','Napisz swoją odpowiedź w tej sytuacji.'); return; }
+      var must=[].concat(ex.must_use||ex.target||[]).filter(Boolean);
+      var low=vs.toLowerCase();
+      var missing=must.filter(function(w){ return low.indexOf(String(w).toLowerCase())<0; });
+      var triesS=parseInt((box&&box.dataset.tries)||'0',10);
+      if(missing.length && triesS===0){
+        if(box) box.dataset.tries='1';
+        showFb(i,'neutral','Wpleć jeszcze: <strong>'+esc(missing.join(', '))+'</strong>'+(ex.skeleton?(' · szkielet: '+esc(ex.skeleton)):''));
+        return;
+      }
+      var chkS=document.getElementById('lexx-chk-'+i); if(chkS){ chkS.disabled=true; chkS.textContent='Sprawdzam…'; }
+      var verdict=await lexxAIEval(ex, vs);
+      var okSc=(verdict.ok && !missing.length);
+      showFb(i, okSc?'ok':'bad', esc(verdict.comment||(okSc?'Świetna integracja.':'Popraw wg wskazówki.'))
+        + (ex.answer&&!okSc? ' <span style="color:var(--dim2)">(wzór: '+esc(ex.answer)+')</span>':''));
+      if(!okSc) feedGap(verdict.gap||window._lexxData.focus);
+      if(chkS){ chkS.textContent='Sprawdzone'; }
+      lexxRecordBeat(ex, okSc, 0);
+      markDone(i); return;
+    }
     // translate / produce → ocena AI (constrained: AI ocenia, klucz/wzorzec widoczny przy pudle)
     var val=(document.getElementById('lexx-in-'+i)||{}).value||'';
     if(!val.trim()){ showFb(i,'neutral','Najpierw napisz odpowiedź.'); return; }
@@ -17509,6 +17557,8 @@ async function lexInit(){
         ? ('Zadanie: przetłumacz na '+langName()+' frazę: "'+(ex.source||'')+'". Wzorcowe tłumaczenie: "'+(ex.answer||'')+'". Odpowiedź ucznia: "'+answer+'".')
         : ex.type==='transform'
         ? ('Zadanie: przekształć zdanie "'+(ex.source||'')+'". Polecenie: '+(ex.instruction||ex.prompt||'')+'. Wzorcowa odpowiedź: "'+(ex.answer||'')+'". Odpowiedź ucznia: "'+answer+'". WAŻNE: każda poprawna gramatycznie realizacja polecenia jest OK.')
+        : ex.type==='scenario'
+        ? ('Zadanie: w sytuacji "'+(ex.situation||ex.prompt||'')+'" uczeń ma zareagować po '+langName()+', wplatając słowa: '+([].concat(ex.must_use||ex.target||[]).join(', '))+'. Temat porcji: "'+(focus||'')+'". Odpowiedź ucznia: "'+answer+'".')
         : ('Zadanie: ułóż poprawne zdanie w '+langName()+' używając "'+(ex.target||'')+'"'+(tgtTr?(' (znaczenie po polsku: '+tgtTr+')'):'')+'. Temat porcji: "'+(focus||'codzienna komunikacja')+'". Odpowiedź ucznia: "'+answer+'".');
       var prompt='Jesteś nauczycielem '+langName()+' uczącym Polaków. '+task+'\n'
         +'Oceń odpowiedź ucznia. Bądź wyrozumiały dla drobnych literówek i alternatywnych poprawnych form. '
