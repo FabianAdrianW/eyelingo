@@ -2812,6 +2812,7 @@ function setCard(s){
   const isMineTab = (window._matTab || 'mine') === 'mine';
   const cards = s.user_set_cards || [];
   const cleanName = window.stripEmoji ? stripEmoji(s.name||'') : (s.name||'');
+  const nmA = String(s.name||'').replace(/['"\\<>]/g,'');
   // Badge źródła (LEX / ALEX)
   const srcBadge = s.source==='lex' ? ' <span style="font-size:9px;font-weight:500;letter-spacing:.5px;background:var(--orange);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle">LEX</span>'
     : s.source==='alex' ? ' <span style="font-size:9px;font-weight:500;letter-spacing:.5px;background:var(--navy);color:#fff;padding:2px 6px;border-radius:6px;vertical-align:middle">ALEX</span>' : '';
@@ -2837,8 +2838,8 @@ function setCard(s){
     : '';
   // Przycisk Ucz się (SRS) + Utrwal z Lexem (modal wyboru poziomu → Lex)
   const playBtn = `<div style="display:flex;gap:7px;margin-top:10px" onclick="event.stopPropagation()">
-    <button onclick="matCardStartSRS(${s.id},${JSON.stringify(s.name||'')})" title="Tryb fiszek SRS" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;color:var(--dim);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.borderColor='var(--navy)';this.style.color='var(--navy)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--dim)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Ucz się</button>
-    <button onclick="matCardLexModal(${s.id},${JSON.stringify(s.name||'')},${JSON.stringify(langCode||'')})" title="Utrwal z nauczycielem Lex" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--orange);background:transparent;color:var(--orange);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.background='var(--orange)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--orange)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Utrwal z Lexem</button>
+    <button onclick="matCardStartSRS(${s.id},&#39;${nmA}&#39;)" title="Tryb fiszek SRS" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;color:var(--dim);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.borderColor='var(--navy)';this.style.color='var(--navy)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--dim)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Ucz się</button>
+    <button onclick="matCardLexModal(${s.id},&#39;${nmA}&#39;,&#39;${langCode||''}&#39;)" title="Utrwal z nauczycielem Lex" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--orange);background:transparent;color:var(--orange);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.background='var(--orange)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--orange)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Utrwal z Lexem</button>
   </div>`;
   return `<div class="mat-card" onclick="openSet(${s.id})" style="cursor:pointer;position:relative"
     draggable="true"
@@ -4138,7 +4139,7 @@ async function initToFixPage(){
           <button id="lex-speech-toggle" onclick="lexToggleSpeech()" style="font-size:16px;padding:4px 8px;background:transparent;border:1px solid var(--border2);border-radius:100px;cursor:pointer" title="Włącz/wyłącz czytanie"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>
           <button id="lex-audiolang-btn" onclick="lexToggleAudioLang()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Lekcja: PL</button>
           <button onclick="lexAskOpen()" style="font-size:11px;padding:4px 12px;background:var(--orange);border:1px solid var(--orange);border-radius:100px;color:#fff;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Zadaj pytanie Lexowi — głosem lub tekstem"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 11a7 7 0 0 1-14 0M12 18v4"></path></svg>Zapytaj</button>
-          <button onclick="lexBookOpen(9999)" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Twoje słowa i Mapa Językowa"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"></path><path d="M8 4v16M11 9h5M11 13h5"></path></svg>Zeszyt</button>
+          <button onclick="lexBookOpen(9999)" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Twoje słowa z lekcji"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"></path><path d="M8 4v16M11 9h5M11 13h5"></path></svg>Zeszyt</button>
           <button onclick="lexToggleBoard()" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"></path><path d="M8 21h8M12 17v4"></path></svg>Tablica</button>
           <button onclick="lexEndLesson()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">Zakończ</button>
         </div>
@@ -13264,19 +13265,13 @@ var OPENROUTER_API = 'https://openrouter.ai/api/v1/chat/completions';
 // State
 var _lexProfile = null;
 function lexCurrentLevel(){
+  // Ewaluacja poziomu usunięta. Poziom z wybranego materiału (kategoria Eyelingo ma poziom) albo domyślnie B1.
   try{
-    if(_lexProfile && _lexProfile.levels_by_lang && _lexProfile.levels_by_lang[_lexLang]) return _lexProfile.levels_by_lang[_lexLang];
-    // Fallback 1: model wiedzy z ewaluacji (per-język) — źródło prawdy gdy mapa per-język pusta
-    try{ var km=JSON.parse(localStorage.getItem(uk('lex_km_'+_lexLang))||'null'); if(km && km.cefr) return km.cefr; }catch(e){}
-    // Fallback 2: starszy profil bez levels_by_lang (migracja danych) — tylko jeśli to JEDYNY uczony język
-    if(_lexProfile && _lexProfile.user_level && _lexProfile.user_level!=='unknown'){
-      var lbl=_lexProfile.levels_by_lang||{};
-      // Tylko gdy mapa per-język jest PUSTA (migracja starego profilu) — jeśli ma już
-      // wpisy dla innych języków, ten język jest faktycznie nowy → 'unknown' (ewaluacja).
-      if(!Object.keys(lbl).length) return _lexProfile.user_level;
-    }
-    return 'unknown';
-  }catch(e){ return 'unknown'; }
+    var src=(window._lexSources||[]).find(function(s){ return s && s.level; });
+    if(src && src.level) return src.level;
+  }catch(e){}
+  try{ if(window._lexLessonLevel) return window._lexLessonLevel; }catch(e){}
+  return 'B1';
 }
 var _lexSession = null;
 var _lexLang = 'en';
@@ -14519,7 +14514,7 @@ function lexEvalChooseDur(d){
 // ── Lesson start ──────────────────────────────────────────
 async function lexStartLesson(){
   // Poziom nieustalony → ewaluacja ekranowa (Assessment Bible), nie czat [CONV]
-  if(lexCurrentLevel()==='unknown'){ return lexEvalStart(); }
+  // Ewaluacja poziomu usunięta — lekcja startuje od razu.
   _lexLessonFocus = window._lexNextTopic || null; window._lexNextTopic = null;
   window._lexPortionFocuses = [];
   try{ if(window._lexLang) localStorage.setItem(uk('lex_last_lang'), window._lexLang); }catch(e){}
@@ -14602,11 +14597,7 @@ async function lexStartLesson(){
   var sets = await lexLoadFlashcardSets();
 
   // First card — ewaluacja: pisana rozmowa (wykrywanie luk); lekcja: 4 ćwiczenia na porcję
-  if(lexCurrentLevel()==='unknown'){
-    await lexRequestNextCard(null, sets);
-  } else {
-    await lexxStartPortions(sets);
-  }
+  await lexxStartPortions(sets);
 }
 
 // ── Flashcard loading ─────────────────────────────────────
@@ -15702,6 +15693,7 @@ function lexNextCardWithAnswer(answer, isCorrect){
 var _lexNotebookIdx = 0;
 // Powrót do zapisanej Mapy Językowej (strona 1 Zeszytu — Assessment Bible E10)
 function lexShowSavedMap(){
+  return; // Mapa Językowa usunięta
   var km = null;
   try{ km = JSON.parse(localStorage.getItem(uk('lex_km_'+(_lexLang||'en')))||'null'); }catch(e){}
   if(!km || !km.cats) return;
@@ -15710,6 +15702,7 @@ function lexShowSavedMap(){
 }
 
 function lexRenderSidebarMap(){
+  return; // Mapa Językowa usunięta
   var box = document.getElementById('lex-sb-resume'); if(!box) return;
   var km = null;
   try{ km = JSON.parse(localStorage.getItem(uk('lex_km_'+(_lexLang||'en')))||'null'); }catch(e){}
@@ -17808,6 +17801,7 @@ async function lexInit(){
       }catch(e){}
 
       out.eyelingo=Object.keys(byCat).map(function(k){return byCat[k];})
+        .filter(function(c){ return (c.count||0)>0; })
         .sort(function(a,b){ return String(b.recent).localeCompare(String(a.recent)) || b.count-a.count; })
         .slice(0,8);
 
@@ -17913,18 +17907,14 @@ async function lexInit(){
 
   window.lexToggleSource=function(i){
     var c=(window._lexSourcesAvail||[])[i]; if(!c) return;
-    var idx=window._lexSources.findIndex(function(x){ return x.kind===c.kind && String(x.id)===String(c.id); });
-    if(idx>=0){ window._lexSources.splice(idx,1); if(typeof lexRefreshPickerSelection==='function') lexRefreshPickerSelection(); return; }
-    function add(langCode){
-      // Lekcja jest jednojęzyczna: jeśli wybierasz inny język niż dotąd — zacznij od nowa
-      if(langCode && window._lexLang && window._lexLang!==langCode) window._lexSources=[];
-      if(langCode) window._lexLang=langCode;
-      window._lexSources=window._lexSources||[];
-      window._lexSources.push({kind:c.kind,id:c.id,label:c.label,level:c.level,count:c.count,lang:langCode||c.lang||null});
+    // Pojedynczy wybór: kafelek = jedyny materiał lekcji (kręgosłup). Klik zastępuje poprzedni wybór.
+    function pick(langCode){
+      window._lexLang = langCode || c.lang || window._lexLang || 'en';
+      window._lexSources=[{kind:c.kind,id:c.id,label:c.label,level:c.level,count:c.count,lang:window._lexLang}];
       if(typeof lexRefreshPickerSelection==='function') lexRefreshPickerSelection();
     }
-    if(c.kind==='user' && !c.lang){ lexAskSetLang(c.id, c.label, function(code){ c.lang=code; add(code); }); }
-    else add(c.lang);
+    if(c.kind==='user' && !c.lang){ lexAskSetLang(c.id, c.label, function(code){ c.lang=code; pick(code); }); }
+    else pick(c.lang);
   };
 
   // Minimalny wybór języka dla WŁASNEGO zestawu (brak zapisanego) + trwały zapis → badge na stałe
