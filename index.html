@@ -16716,6 +16716,7 @@ async function lexInit(){
   var LEXX_WORDS_PER_PORTION = 4; // ile słów-celów przerabiamy w jednej porcji
   window.lexxStartPortions = async function(sets){
     window._lexxPortionNum = 0;
+    window._lexxShape={lastShape:null,recog:0,total:0}; window._lexxShapeLog=[]; // Krok 1: reset kompozytora
     window._lexxSweepPool = [];
     window._lexxSweepDone = false;
     window._lexxReflectionDone = false;
@@ -16841,6 +16842,52 @@ async function lexInit(){
     }catch(e){ return null; }
   }
 
+  // ── Krok 1: kompozytor kliencki kształtu porcji (deterministyczny, §1.3.2) ──
+  // Klient ustala SEKWENCJĘ typów; LLM tylko wypełnia dokładnie tę sekwencję (wariant B).
+  // E1 cue zawsze otwiera; produkcja (sculpt/produce) zawsze zamyka; żaden kształt nie
+  // powtarza się POD RZĄD; recognition (contrast/mc) ≤ ~15% beatów w skali lekcji.
+  function lexxComposeShape(){
+    var S=window._lexxShape||(window._lexxShape={lastShape:null,recog:0,total:0});
+    var pn=window._lexxPortionNum;
+    var km=null; try{ km=JSON.parse(localStorage.getItem(uk('lex_km_'+(window._lexLang||'en')))||'null'); }catch(e){}
+    var gapRp=(km&&typeof km.gap_rp==='number')?km.gap_rp:1;
+    function key(a){ return a.join('>'); }
+    function recogAllowed(extra){ var proj=S.total+4; return ((S.recog+extra)/Math.max(1,proj))<=0.15; }
+    var noRecog=[
+      ['cue','cloze','sculpt'],
+      ['cue','cloze','produce'],
+      ['cue','cloze','cloze','produce'],
+      ['cue','cloze','cloze','sculpt']
+    ];
+    var withRecog=[
+      ['cue','cloze','contrast','produce'],
+      ['cue','cloze','contrast','sculpt']
+    ];
+    if(gapRp>=2){ // luka R-P → ciężar na wolną produkcję: tylko kształty domykane 'produce'
+      noRecog=noRecog.filter(function(s){return s[s.length-1]==='produce';});
+      withRecog=withRecog.filter(function(s){return s[s.length-1]==='produce';});
+    }
+    var pool=recogAllowed(1)?noRecog.concat(withRecog):noRecog;
+    var start=(pn-1)%pool.length, pick=null;
+    for(var off=0; off<pool.length; off++){ var c=pool[(start+off)%pool.length]; if(key(c)!==S.lastShape){ pick=c.slice(); break; } }
+    if(!pick) pick=pool[start].slice();
+    if(pick[0]!=='cue') pick.unshift('cue');                                       // twarda gwarancja: cue otwiera
+    var lt=pick[pick.length-1]; if(lt!=='sculpt'&&lt!=='produce') pick.push(gapRp>=2?'produce':'sculpt'); // produkcja zamyka
+    var recogN=pick.filter(function(t){return t==='contrast'||t==='mc';}).length;
+    S.recog+=recogN; S.total+=pick.length; S.lastShape=key(pick);
+    try{ window._lexxShapeLog=(window._lexxShapeLog||[]); window._lexxShapeLog.push({pn:pn,shape:pick.slice(),recogRatio:+(S.recog/Math.max(1,S.total)).toFixed(3)}); }catch(e){}
+    return pick;
+  }
+  // Fragment JSON kontraktu dla danego typu beatu (Stage 1: cue/cloze/contrast/sculpt/produce).
+  function lexxSpecFor(type){
+    if(type==='cue') return '{"type":"cue","context":"1-2 zdania scenki w '+langName()+' z naturalnym użyciem słowa-celu","source":"skąd pochodzi scenka, po polsku, np. Slack / Mail / W rozmowie","question":"pytanie po polsku sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po polsku; formę docelową w '+langName()+' ujmij w **gwiazdki**"}';
+    if(type==='cloze') return '{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w miejscu luki (słowo-cel, którego jeszcze NIE ćwiczono w tej porcji)","answers":["słowo do luki"],"hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"}';
+    if(type==='contrast') return '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po polsku: które jest native, dlaczego, i jaka polska kalka zdradza nie-native"}';
+    if(type==='sculpt') return '{"type":"sculpt","intent":"intencja po polsku, np. grzecznie przesuń termin na czwartek","tiles":["lista","4-7 kafelków","ze słowami w '+langName()+'"],"answer":"pełne zdanie = kafelki połączone spacjami we właściwej kolejności"}';
+    if(type==='produce') return '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po polsku co ma zawierać"}';
+    return '';
+  }
+
   window.lexxGeneratePortion = async function(){
     window._lexxPortionNum++;
     lexxLoading();
@@ -16884,11 +16931,9 @@ async function lexInit(){
     }catch(e){}
     // Luka receptywno-produktywna waży TYPY zadań (Assessment Bible §6.5 → selektor z Pedagogy Bible)
     var gapRp = (km && typeof km.gap_rp==='number') ? km.gap_rp : 1;
-    // Kształt porcji (Lesson Formats §1.3.2): zawsze E1 CUE na wejściu, koniec produkcją,
-    // beat 3 i modalność produkcji naprzemienne między porcjami (anty-worksheet, anti-fatigue).
-    var third = (pn % 2 === 1) ? 'contrast' : 'cloze';
-    var finals = (pn % 2 === 1) ? 'sculpt' : 'produce';
-    if(gapRp >= 2) finals = 'produce'; // luka receptywno-produktywna → ciężar na wolną produkcję
+    // Kształt porcji = kompozytor kliencki (deterministyczny, §1.3.2). LLM NIE wybiera sekwencji.
+    var _shape=(typeof lexxComposeShape==='function')?lexxComposeShape():['cue','cloze',(gapRp>=2?'produce':'sculpt')];
+    try{ console.log('[Lex] porcja '+pn+' kształt:', _shape.join(' → ')); }catch(e){}
     var weave = '';
     try{ if(pn>1 && Array.isArray(window._lexVocab) && window._lexVocab.length){ var wv=window._lexVocab[Math.max(0,window._lexVocab.length-3)]; if(wv&&wv.word) weave='WEAVE (lag effect): w ćwiczeniu cloze ponownie użyj słowa z poprzedniej porcji: "'+wv.word+'". '; } }catch(e){}
     var kmCtx = '';
@@ -16922,22 +16967,15 @@ async function lexInit(){
       +(recentGaps? ('Uwzględnij braki ucznia: '+recentGaps+'. '):'')
       +dueWords
       +'To porcja nr '+pn+'. Zbuduj JEDNĄ porcję skupioną na 3-5 słowach/jednej strukturze. '+weave
-      +'Porcja = 4 beaty mikro-pętli CUE-RETRIEVE-APPLY: (1) cue: odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem, (2) cloze: wydobycie z pamięci bez podpowiedzi, (3) '+(third==='contrast'?'contrast: para zdań native vs polska kalka (przyimki, false friends, szyk)':'cloze: inne słowo porcji w świeżym zdaniu')+', (4) '+(finals==='sculpt'?'sculpt: produkcja z intencji przez ułożenie kafelków słów':'produce: własne zdanie ucznia z docelowym słowem')+'. Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. Zwykle 1 luka na cloze; jeśli dasz 2 luki ___, dodaj 2 pozycje w "answers" (tyle ile ___).\n'
+      +'Wygeneruj ćwiczenia DOKŁADNIE w tej kolejności i tych typach (nie zmieniaj kolejności, nie dodawaj ani nie usuwaj ćwiczeń): '+_shape.join(', ')+'. '
+      +'Role typów: cue = odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem; cloze = wydobycie z pamięci bez podpowiedzi (każdy kolejny cloze dotyczy INNEGO słowa porcji); contrast = para zdań native vs polska kalka (przyimki, false friends, szyk); sculpt = produkcja z intencji przez ułożenie kafelków słów; produce = własne zdanie ucznia z docelowym słowem. '
+      +'Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. Zwykle 1 luka na cloze; jeśli dasz 2 luki ___, dodaj 2 pozycje w "answers" (tyle ile ___).\n'
       +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
       +'{'
       +'"focus":"krótki temat porcji po polsku",'
       +'"intro":"1-2 zdania po polsku wprowadzające; słowa docelowe w języku '+langName()+' ujmij w **gwiazdki**",'
       +'"items":[{"word":"słowo w '+langName()+'","translation":"po polsku"}],'
-      +'"exercises":['
-      +'{"type":"cue","context":"1-2 zdania scenki w '+langName()+' z naturalnym użyciem słowa-celu","source":"skąd pochodzi scenka, po polsku, np. Slack / Mail / W rozmowie","question":"pytanie po polsku sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po polsku; formę docelową w '+langName()+' ujmij w **gwiazdki**"},'
-      +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___ w miejscu luki","answers":["słowo do luki"],"hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"},'
-      +(third==='contrast'
-        ? '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po polsku: które jest native, dlaczego, i jaka polska kalka zdradza nie-native"},'
-        : '{"type":"cloze","sentence":"inne zdanie w '+langName()+' z ___ (inne słowo porcji)","answers":["słowo do luki"],"hint":"podpowiedź po polsku","explain":"wyjaśnienie po polsku"},')
-      +(finals==='sculpt'
-        ? '{"type":"sculpt","intent":"intencja po polsku, np. grzecznie przesuń termin na czwartek","tiles":["lista","4-7 kafelków","ze słowami w '+langName()+'"],"answer":"pełne zdanie = kafelki połączone spacjami we właściwej kolejności"}'
-        : '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langName()+'","hint":"po polsku co ma zawierać"}')
-      +']}';
+      +'"exercises":['+_shape.map(lexxSpecFor).join(',')+']}';
     try{
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
       var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:3000})});
