@@ -2862,13 +2862,19 @@ function setCard(s){
 window.matCardStartLesson = function(setId, setName, langCode){
   function go(code){
     window._lexLang = code || window._lexLang || 'en';
-    window._lexSources = [{kind:'user', id:setId, label:setName, lang:code||null}];
+    window._lexSources = [{kind:'user', id:setId, label:setName, lang:window._lexLang}];
+    window._lexDirectStart = true;   // pomin ekran wyboru — lekcja z DOKLADNIE tego jednego zestawu
+    window._lexNextTopic = null;
     try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet('user', setId, setName, null, 0, window._lexLang); }catch(e){}
     if(typeof switchTab==='function') switchTab('teacher', document.getElementById('ntab-teacher'));
     setTimeout(function(){
       if(typeof teacherShowTab==='function') teacherShowTab('teacher');
-      setTimeout(function(){ if(typeof lexStartLesson==='function') lexStartLesson(); }, 120);
-    }, 80);
+      setTimeout(function(){
+        // Kregoslup = jeden zestaw. Potwierdz tuz przed startem (gdyby cokolwiek nadpisalo).
+        window._lexSources = [{kind:'user', id:setId, label:setName, lang:window._lexLang}];
+        if(typeof lexStartLesson==='function') lexStartLesson();
+      }, 220);
+    }, 90);
   }
   if(!langCode && typeof lexAskSetLang==='function'){
     lexAskSetLang(setId, setName, function(code){ go(code); });
@@ -5574,12 +5580,14 @@ async function updatePowtorkiTile(){
   }catch(e){}
 }
 
-function strefaStartPowtorki(){
-  var tile=document.getElementById('sb-powtorki-tile');
-  var cnt=parseInt((document.getElementById('sb-due-count')||{}).textContent||'0');
-  if(tile && tile.style.opacity==='0.55' || cnt===0){
-    // Show friendly message in center
-    var center=document.getElementById('strefa-center-content');
+async function strefaStartPowtorki(){
+  // Powtorki czerpia NA ZYWO z srs_progress — zrodla, do ktorego pisze i Tryb, i lekcja Lexa (Krok 0).
+  var center=document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--dim2)"><div style="font-size:14px">Sprawdzam, co jest dzis do powtorki...</div></div>';
+  try{ if(typeof usrsSync==='function') await usrsSync(); }catch(e){}
+  var due=[];
+  try{ if(typeof usrsDueList==='function') due=await usrsDueList(200); }catch(e){ due=[]; }
+  if(!due || !due.length){
     if(center) center.innerHTML='<div style="text-align:center;padding:72px 24px">'
       +'<div style="width:48px;height:48px;border-radius:12px;background:var(--green-bg,#E1F5EE);color:var(--green-dark,#0F6E56);display:flex;align-items:center;justify-content:center;margin:0 auto 16px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>'
       +'<div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:8px">Wszystko na bieżąco</div>'
@@ -5587,10 +5595,13 @@ function strefaStartPowtorki(){
       +'</div>';
     return;
   }
-  _trybExternalCards=null;
+  // Sa slowa do powtorki → ekran wyboru trybu nauki z DOKLADNIE tymi slowami.
+  _trybExternalCards=due.map(function(c){ return {word:c.word||'', translation:c.translation||'', flashcard_id:(c.id!=null?c.id:null)}; });
+  _trybExternalName='Powtórki na dziś';
   window._trybSource='strefa';
+  if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
   showPage('tryb');
-  setTimeout(function(){ startSession('due'); },300);
+  setTimeout(function(){ if(typeof startSession==='function') startSession('set_external'); }, 200);
 }
 
 // ── Moje zestawy accordion (Tryb Nauki) ──
@@ -13373,6 +13384,8 @@ function lexSelectLanguage(code, name){
 
 // Smart start: poziom znamy, cel pamiętamy — pytamy tylko o czas (1 tap), z opcją „dostosuj".
 function lexQuickStart(){
+  if(window._lexDirectStart) return;                 // start z kafelka/poziomu — nie pokazuj wyboru, nie czysc _lexSources
+  try{ var _engQ=document.getElementById('lex-card-engine'); if(window._lexLessonRunning && _engQ && _engQ.style.display!=='none') return; }catch(e){} // lekcja w toku
   var info = (typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[_lexLang]) || {flag:'🌐', name:_lexLangName||'język'};
   var lvl = lexCurrentLevel();
   var topic = window._lexNextTopic ? ('<div style="font-size:13px;color:var(--dim);margin-top:8px">Temat: <b style="color:var(--navy)">'+lexEsc(window._lexNextTopic)+'</b></div>') : '';
@@ -14522,6 +14535,8 @@ function lexEvalChooseDur(d){
 async function lexStartLesson(){
   // Poziom nieustalony → ewaluacja ekranowa (Assessment Bible), nie czat [CONV]
   // Ewaluacja poziomu usunięta — lekcja startuje od razu.
+  window._lexDirectStart = false;     // start przejety przez lekcje
+  window._lexLessonRunning = true;    // chron lekcje przed nadpisaniem ekranem wyboru
   _lexLessonFocus = window._lexNextTopic || null; window._lexNextTopic = null;
   window._lexPortionFocuses = [];
   try{ if(window._lexLang) localStorage.setItem(uk('lex_last_lang'), window._lexLang); }catch(e){}
@@ -16132,6 +16147,7 @@ function lexHideHistory(){
 
 // ── End lesson ────────────────────────────────────────────
 async function lexEndLesson(){
+  window._lexLessonRunning = false;
   lexShowScreen('lex-summary');
   var scoreEl = document.getElementById('lex-summary-score');
   if(scoreEl){
@@ -16259,6 +16275,7 @@ async function lexSaveProgress(){
 
 // Sprawdź czy jest przerwana lekcja do kontynuacji (dla bieżącego języka)
 async function lexCheckResumable(){
+  if(window._lexDirectStart || window._lexLessonRunning) return;
   var banner=document.getElementById('lex-continue-banner');
   if(!banner) return;
   banner.style.display='none';
@@ -17277,8 +17294,10 @@ async function lexInit(){
     if(!items.length||!ex) return [];
     var byWord={};
     items.forEach(function(it){ if(it&&it.word){ byWord[lexxBeatNorm(it.word)]=it; } });
+    var srcTr={};
+    try{ (window._lexSourceWords||[]).forEach(function(s){ if(s&&s.word){ srcTr[lexxBeatNorm(s.word)]=s.translation||''; } }); }catch(e){}
     var hits=[], seen={};
-    function add(it){ if(it&&it.word){ var k=lexxBeatNorm(it.word); if(k&&!seen[k]){ seen[k]=1; hits.push({word:it.word, translation:it.translation||''}); } } }
+    function add(it){ if(it&&it.word){ var k=lexxBeatNorm(it.word); if(k&&!seen[k]){ seen[k]=1; var ctr=(srcTr[k]!=null&&srcTr[k]!=='')?srcTr[k]:(it.translation||''); hits.push({word:it.word, translation:ctr}); } } }
     [ex.target, ex.word].forEach(function(w){ if(w){ var it=byWord[lexxBeatNorm(w)]; if(it) add(it); } });
     if(ex.type==='cloze' && typeof lexxGapAnswers==='function'){ (lexxGapAnswers(ex)||[]).forEach(function(a){ var it=byWord[lexxBeatNorm(a)]; if(it) add(it); }); }
     if(!hits.length){
