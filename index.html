@@ -1884,7 +1884,7 @@ var db;
 // Każdy klucz localStorage z danymi usera MUSI być namespace'owany jego user.id.
 window._uid = null;
 function uidNow(){ return window._uid || ''; }
-function uk(base){ return base+'_'+uidNow(); }
+function uk(base){ return base+'_'+(window._uid || 'anon'); }
 // Usuwa per-user dane z localStorage przy wylogowaniu, by następny user na tej samej
 // przeglądarce ich nie dziedziczył. Kolekcji NIE czyścimy (są tylko w localStorage —
 // czyszczenie = utrata danych; docelowo idą do DB z RLS).
@@ -1893,7 +1893,11 @@ function clearUserLocalData(){
     for(var i=localStorage.length-1;i>=0;i--){
       var k=localStorage.key(i);
       if(!k) continue;
-      if(k==='teacher_conversations' || k.indexOf('teacher_conversations_')===0 || k.indexOf('chat_usage')===0 || k.indexOf('strefa_last_session')===0){
+      if( k==='teacher_conversations' || k.indexOf('teacher_conversations_')===0
+        || k.indexOf('chat_usage')===0 || k.indexOf('strefa_last_session')===0
+        || k.indexOf('lex_')===0                 // cały cache Lexa (km, resume, profil) — re-sync z Supabase po zalogowaniu
+        || k.indexOf('eyelingo_lang_levels')===0
+        || /_(anon|undefined|null)$/.test(k) ){  // wspólne kubełki powstałe z pustego uid
         localStorage.removeItem(k);
       }
     }
@@ -1928,9 +1932,18 @@ function reloadUserScopedState(){
         reloadUserScopedState();
       });
       db.auth.onAuthStateChange(function(event, session){
-        window._uid = session ? session.user.id : null;
+        var _prev = window._uid;
+        var _new = session ? session.user.id : null;
+        window._uid = _new;
         killLegacyLeakKeys();
         if(event==='SIGNED_OUT') clearUserLocalData();
+        // Przełączenie konta na tej samej przeglądarce (inny user wszedł, gdy aktywny był poprzedni)
+        // → twardy reset, by stan w pamięci/DOM poprzedniego konta nie przeciekł do nowego.
+        if(_prev && _new && _prev !== _new){
+          clearUserLocalData();
+          try{ history.replaceState(null,'','#home'); }catch(e){}
+          try{ window.location.reload(); return; }catch(e){}
+        }
         reloadUserScopedState();
       });
     }catch(e){}
@@ -2254,7 +2267,7 @@ function setActiveTab(page){
   if(btn) btn.classList.add('active');
 }
 
-async function logout(){await db.auth.signOut();updateNav(false);showPage('home')}
+async function logout(){ try{ await db.auth.signOut(); }catch(e){} try{ clearUserLocalData(); }catch(e){} try{ history.replaceState(null,'','#home'); }catch(e){} try{ window.location.reload(); return; }catch(e){} updateNav(false); showPage('home'); }
 
 async function activateCode(){
   const code=document.getElementById('code-input').value.trim().toUpperCase();
@@ -8545,7 +8558,7 @@ async function _usrsCurrentCustomKeys(uid){
 }
 async function usrsDueList(limit){
   var uid=await _usrsUid(); if(!uid) return [];
-  var today=new Date().toISOString().slice(0,10);
+  var _d=new Date(); var today=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
   var rows=null;
   // 1) Chmura — autorytatywne (wspólne web↔desktop)
   try{
@@ -8561,9 +8574,9 @@ async function usrsDueList(limit){
       .filter(function(r){return r.next_review&&r.next_review<=today;});
   }
   if(!rows.length) return [];
-  var cur=await _usrsCurrentCustomKeys(uid);
-  // eyelingo (flashcard_id != null) zawsze dostępne; własne tylko jeśli wciąż w zestawach
-  rows=rows.filter(function(r){ return (r.flashcard_id!=null) || cur[_usrsCK(r.word,r.translation)]; });
+  // PEŁNY CARRYOVER: powtórki obejmują WSZYSTKIE zaległe karty z srs_progress — także słowa
+  // ćwiczone w lekcjach Lexa, których nie zapisano jako fiszki ("lekcja zbiera"). Wcześniejszy
+  // filtr wymagał obecności w aktualnym zestawie i gubił zaległości (75 due → pokazywał ~9).
   rows.sort(function(a,b){ return a.next_review<b.next_review?-1:(a.next_review>b.next_review?1:0); });
   return rows.slice(0,limit||50).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1}; });
 }
