@@ -1347,11 +1347,10 @@ window.dailyReadDone = function(){
     <!-- Zakładki: w jednym rzędzie obok logo, widoczne dla zalogowanych -->
     <div class="nav-tabs" id="nav-tabs">
       <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Twoje zestawy</button>
-      <button class="nav-tab" id="ntab-strefa" onclick="switchTab('strefa',this)">Strefa Nauki</button>
-      <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)" style="display:none">Porcja dnia</button>
-      <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
       <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">Nauczyciel AI <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
+      <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
       <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
+      <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)" style="display:none">Porcja dnia</button>
     </div>
     <div style="flex:1;min-width:8px"></div>
     <div class="nav-global">
@@ -2288,6 +2287,8 @@ function showPage(name){
   if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
   // Stop any audio elements
   document.querySelectorAll('audio').forEach(function(a){try{a.pause();a.currentTime=0;}catch(e){}});
+  // Strefa Nauki scalona z „Twoje zestawy": każde wejście do 'strefa' renderuje się jako powierzchnia nauki w community.
+  if(name==='strefa'){ name='community'; window._matPendingLearn=true; }
   // Update URL hash
   try{history.replaceState(null,'','#'+name);}catch(e){}
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -2295,7 +2296,14 @@ function showPage(name){
   if(pg){pg.classList.add('active');window.scrollTo(0,0);}
   if(name==='community'){
     loadCollections();
-    switchMatTab('mine');
+    if(window._matPendingLearn){
+      window._matPendingLearn=false;
+      if(typeof matEnterLearn==='function') matEnterLearn();
+    } else {
+      var _ls0=document.getElementById('mat-learn-surface'); if(_ls0) _ls0.style.display='none';
+      switchMatTab('mine');
+    }
+    if(typeof updatePowtorkiTile==='function'){ try{ updatePowtorkiTile(); }catch(e){} }
   }
   if(name==='messages'){ if(typeof loadTcpConvList==='function') loadTcpConvList(); if(typeof tcpRenderMyIdentity==='function') tcpRenderMyIdentity(); }
   if(name==='strefa') strefaSidebarMode('tryb');
@@ -3005,6 +3013,17 @@ window.matSetLangApply=async function(setId, code){
     <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
     <div id="mat-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
       <div id="mat-sidebar-inner" style="padding:88px 0 64px 16px;min-width:200px;position:relative">
+      <!-- Powtórki SM-2 (przeniesione ze Strefy Nauki) -->
+      <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:.2s;margin-bottom:20px;margin-right:16px" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="width:30px;height:30px;border-radius:8px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500;color:var(--navy)" id="sb-powtorki-label">Powtórki na dziś</div>
+          <div style="font-size:11px;color:var(--dim2)" id="sb-powtorki-sub">Algorytm SM-2</div>
+        </div>
+        <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--dim);background:rgba(26,35,64,.05);border-radius:7px;padding:2px 8px;display:none">0</div>
+      </div>
       <!-- Katalogi -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-family:DM Sans,sans-serif;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-3)">Katalogi</div>
@@ -3012,6 +3031,14 @@ window.matSetLangApply=async function(setId, code){
       </div>
       <div id="mat-sidebar-collections" style="display:flex;flex-direction:column;gap:6px;padding-right:16px">
         <div style="font-size:12px;color:var(--dim2);padding:8px 0">Ładowanie...</div>
+      </div>
+      <!-- Zestawy Eyelingo (przeniesione ze Strefy Nauki) -->
+      <div style="margin-top:18px;padding-right:16px">
+        <div id="sb-eyelingo-tile" onclick="strefaToggleEyelingo('tryb')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;cursor:pointer">
+          <span style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2)">Zestawy Eyelingo</span>
+          <span id="sb-eyelingo-arrow" style="font-size:10px;color:var(--dim2);transition:transform .2s">▼</span>
+        </div>
+        <div id="sb-eyelingo-list" style="display:none"></div>
       </div>
       </div><!-- /sidebar-inner -->
     </div>
@@ -3075,6 +3102,12 @@ window.matSetLangApply=async function(setId, code){
           <button onclick="openCreateSetInCollection()" class="btn btn-orange" style="font-size:13px;padding:8px 16px">+ Nowy zestaw</button>
         </div>
         <div id="mat-collection-sets" class="mat-grid"><div class="mat-empty">Brak zestawów w tym katalogu</div></div>
+      </div>
+
+      <!-- Powierzchnia nauki (scalona ze Strefy Nauki) — host dla strefa-center-content -->
+      <div id="mat-learn-surface" style="display:none">
+        <button onclick="matExitLearn()" style="background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:18px;display:flex;align-items:center;gap:6px"><span style="font-size:15px">←</span> Wróć do zestawów</button>
+        <div id="mat-learn-mount"></div>
       </div>
     </div>
     <!-- RIGHT SIDEBAR: balance -->
@@ -3511,41 +3544,8 @@ async function initToFixPage(){
   <div style="display:flex;width:100%;align-items:stretch;min-height:100vh">
 
     <!-- QUIET CATALOG SIDEBAR (220px, in-flow) -->
-    <aside id="strefa-sidebar" style="width:220px;flex-shrink:0;border-right:.5px solid var(--border);padding:88px 0 64px 0">
-      <div id="strefa-sidebar-inner" style="padding:0 16px">
-        <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Katalog</div>
-
-        <!-- Wznów przerwaną sesję — pojawia się tylko gdy istnieje zapis -->
-        <div id="sb-continue-wrap"></div>
-
-        <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:.2s;margin-bottom:16px" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
-          <div style="width:30px;height:30px;border-radius:8px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-          </div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:500;color:var(--navy)" id="sb-powtorki-label">Powtórki na dziś</div>
-            <div style="font-size:11px;color:var(--dim2)" id="sb-powtorki-sub">Algorytm SM-2</div>
-          </div>
-          <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--dim);background:rgba(26,35,64,.05);border-radius:7px;padding:2px 8px;display:none">0</div>
-        </div>
-
-        <div style="margin-top:4px">
-          <div id="sb-mine-tile" onclick="strefaToggleMine()" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;cursor:pointer;border:none">
-            <span style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2)">Moje katalogi</span>
-            <span id="sb-mine-arrow" style="font-size:10px;color:var(--dim2);transition:transform .2s">▼</span>
-          </div>
-          <div id="sb-mine-list" style="display:none"><div style="font-size:11px;color:var(--dim2);padding:8px 8px">Ładowanie...</div></div>
-        </div>
-
-        <div style="margin-top:8px">
-          <div id="sb-eyelingo-tile" onclick="strefaToggleEyelingo('tryb')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;cursor:pointer">
-            <span style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2)">Zestawy Eyelingo</span>
-            <span id="sb-eyelingo-arrow" style="font-size:10px;color:var(--dim2);transition:transform .2s">▼</span>
-          </div>
-          <div id="sb-eyelingo-list" style="display:none"></div>
-        </div>
-      </div>
-    </aside>
+    <!-- Sidebar Strefy usunięty — Powtórki SM-2 i Zestawy Eyelingo przeniesione do sidebara „Twoje zestawy". Strefa nie jest już celem nawigacji (patrz redirect strefa→community w showPage). -->
+    <aside id="strefa-sidebar" style="display:none"></aside>
 
     <div id="strefa-main-col" style="flex:1;min-width:0;padding:88px 40px 64px 40px">
       <div class="page-head">
@@ -18972,3 +18972,65 @@ async function lexInit(){
   #chat-messages{ max-width: 100%; }
 }
 </style>
+<script>
+/* ═══ SCALENIE STREFA NAUKI → TWOJE ZESTAWY ═══
+   Powierzchnia nauki: w runtime przenosimy żywy węzeł #strefa-center-content
+   (i #strefa-breadcrumb-bar) do #mat-learn-mount w page-community.
+   Te same ID → wszystkie funkcje strefa* działają bez zmian. */
+(function(){
+  if(window._matLearnMergeReady) return;
+  window._matLearnMergeReady = true;
+
+  function matMountLearnSurface(){
+    try{
+      var mount=document.getElementById('mat-learn-mount');
+      var center=document.getElementById('strefa-center-content');
+      if(!mount || !center) return;
+      if(center.parentNode!==mount){
+        var bc=document.getElementById('strefa-breadcrumb-bar');
+        if(bc && bc.parentNode!==mount) mount.appendChild(bc);
+        mount.appendChild(center);
+      }
+    }catch(e){}
+  }
+
+  function matEnterLearn(){
+    matMountLearnSurface();
+    ['mat-grid','mat-collection-view','mat-voices','mat-source-filter','mat-continue-wrap','mat-count','mat-drag-hint'].forEach(function(id){
+      var e=document.getElementById(id); if(e) e.style.display='none';
+    });
+    var tabs=document.querySelector('#page-community .mat-tabs'); if(tabs) tabs.style.display='none';
+    var cb=document.getElementById('mat-create-btn'); if(cb) cb.style.display='none';
+    var ab=document.getElementById('mat-create-ai-btn'); if(ab) ab.style.display='none';
+    var srch=document.getElementById('mat-search'); if(srch) srch.style.display='none';
+    var surf=document.getElementById('mat-learn-surface'); if(surf) surf.style.display='block';
+    var title=document.getElementById('mat-main-title'); if(title) title.textContent='Nauka';
+    var sub=document.getElementById('mat-main-sub'); if(sub) sub.textContent='Powtórki i zestawy Eyelingo';
+  }
+
+  function matExitLearn(){
+    var surf=document.getElementById('mat-learn-surface'); if(surf) surf.style.display='none';
+    var tabs=document.querySelector('#page-community .mat-tabs'); if(tabs) tabs.style.display='';
+    var srch=document.getElementById('mat-search'); if(srch) srch.style.display='';
+    var title=document.getElementById('mat-main-title'); if(title) title.textContent='Twoje zestawy';
+    var sub=document.getElementById('mat-main-sub'); if(sub) sub.textContent='Twoje fiszki i zestawy';
+    if(typeof switchMatTab==='function') switchMatTab('mine');
+  }
+
+  window.matMountLearnSurface=matMountLearnSurface;
+  window.matEnterLearn=matEnterLearn;
+  window.matExitLearn=matExitLearn;
+
+  // Punkty wejścia do nauki (z sidebara „Twoje zestawy" lub legacy showPage('strefa')).
+  // Opakowujemy tak, by przed renderem do #strefa-center-content powierzchnia była widoczna.
+  function wrapEnter(name){
+    var orig=window[name];
+    if(typeof orig!=='function') return;
+    if(orig._matWrapped) return;
+    var wrapped=function(){ try{ matEnterLearn(); }catch(e){} return orig.apply(this,arguments); };
+    wrapped._matWrapped=true;
+    window[name]=wrapped;
+  }
+  ['strefaStartPowtorki','strefaSelectLang','strefaShowCatalogSets'].forEach(wrapEnter);
+})();
+</script>
