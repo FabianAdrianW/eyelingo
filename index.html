@@ -3013,21 +3013,25 @@ window.matSetLangApply=async function(setId, code){
     <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
     <div id="mat-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
       <div id="mat-sidebar-inner" style="padding:88px 0 64px 16px;min-width:200px;position:relative">
-      <!-- Powtórki SM-2 (przeniesione ze Strefy Nauki) -->
-      <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:.2s;margin-bottom:20px;margin-right:16px" onmouseover="this.style.borderColor='var(--border2)'" onmouseout="this.style.borderColor='var(--border)'">
-        <div style="width:30px;height:30px;border-radius:8px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+      <!-- Powtórki SM-2 (styl Eyelingo) -->
+      <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="position:relative;display:flex;align-items:center;gap:11px;padding:13px 14px;border-radius:14px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:border-color .2s, box-shadow .2s, transform .2s;margin-bottom:22px;margin-right:16px;overflow:hidden" onmouseover="this.style.borderColor='var(--orange)';this.style.boxShadow='0 4px 14px rgba(26,35,64,.07)';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor=(this.dataset.due==='1'?'rgba(201,106,42,.35)':'var(--border)');this.style.boxShadow='none';this.style.transform='none'">
+        <span id="sb-powtorki-accent" style="position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--orange);border-radius:3px 0 0 3px;opacity:0;transition:opacity .2s"></span>
+        <div id="sb-powtorki-icon" style="width:34px;height:34px;border-radius:10px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
         </div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:500;color:var(--navy)" id="sb-powtorki-label">Powtórki na dziś</div>
-          <div style="font-size:11px;color:var(--dim2)" id="sb-powtorki-sub">Algorytm SM-2</div>
+          <div style="font-family:DM Sans,sans-serif;font-size:13.5px;font-weight:500;color:var(--navy);line-height:1.2" id="sb-powtorki-label">Powtórki na dziś</div>
+          <div style="font-size:11px;color:var(--dim2);margin-top:2px" id="sb-powtorki-sub">Algorytm SM-2</div>
         </div>
-        <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--dim);background:rgba(26,35,64,.05);border-radius:7px;padding:2px 8px;display:none">0</div>
+        <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:600;color:#fff;background:var(--orange);border-radius:8px;min-width:22px;text-align:center;padding:3px 8px;display:none;flex-shrink:0">0</div>
       </div>
-      <!-- Katalogi -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-family:DM Sans,sans-serif;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-3)">Katalogi</div>
-        <button onclick="openCreateCollection()" style="background:var(--orange);border:none;color:#fff;width:26px;height:26px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:500;flex-shrink:0" title="Nowy katalog">+</button>
+      <!-- Katalogi (zwijane) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-right:16px">
+        <div onclick="matToggleCatalogs()" style="display:flex;align-items:center;gap:7px;cursor:pointer;flex:1;min-width:0;user-select:none">
+          <span id="mat-cat-arrow" style="font-size:10px;color:var(--dim2);transition:transform .2s;flex-shrink:0">▼</span>
+          <div style="font-family:DM Sans,sans-serif;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-3)">Katalogi</div>
+        </div>
+        <button onclick="event.stopPropagation();openCreateCollection()" style="background:var(--orange);border:none;color:#fff;width:26px;height:26px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:500;flex-shrink:0" title="Nowy katalog">+</button>
       </div>
       <div id="mat-sidebar-collections" style="display:flex;flex-direction:column;gap:6px;padding-right:16px">
         <div style="font-size:12px;color:var(--dim2);padding:8px 0">Ładowanie...</div>
@@ -5563,17 +5567,25 @@ async function updatePowtorkiTile(){
       }catch(e){}
     }
     if(cnt>0){
-      tile.style.background='linear-gradient(135deg,#e8701a,#f08020)';
+      tile.dataset.due='1';
+      tile.style.background='var(--white)';
+      tile.style.borderColor='rgba(201,106,42,.35)';
       tile.style.opacity='1';
-      if(countEl){countEl.style.display='block';countEl.textContent=cnt;countEl.style.color='#fff';}
-      if(subEl){subEl.style.color='rgba(255,255,255,.8)';}
+      var acc=document.getElementById('sb-powtorki-accent'); if(acc) acc.style.opacity='1';
+      var ico=document.getElementById('sb-powtorki-icon'); if(ico){ ico.style.background='rgba(201,106,42,.12)'; ico.style.color='var(--orange)'; }
+      if(countEl){countEl.style.display='block';countEl.textContent=cnt;}
+      if(subEl){subEl.textContent=(cnt===1?'1 słowo do powtórki':cnt+' słów do powtórki');subEl.style.color='var(--orange)';}
       var label=document.getElementById('sb-powtorki-label');
-      if(label){label.style.color='#fff';}
+      if(label){label.style.color='var(--navy)';}
     } else {
-      tile.style.background='rgba(26,35,64,.06)';
-      tile.style.opacity='.55';
+      tile.dataset.due='0';
+      tile.style.background='var(--white)';
+      tile.style.borderColor='var(--border)';
+      tile.style.opacity='.7';
+      var acc2=document.getElementById('sb-powtorki-accent'); if(acc2) acc2.style.opacity='0';
+      var ico2=document.getElementById('sb-powtorki-icon'); if(ico2){ ico2.style.background='rgba(26,35,64,.06)'; ico2.style.color='var(--navy)'; }
       if(countEl) countEl.style.display='none';
-      if(subEl){subEl.textContent='Brak powtórek na dziś';subEl.style.color='var(--dim2)';}
+      if(subEl){subEl.textContent='Wszystko na bieżąco';subEl.style.color='var(--dim2)';}
       var label2=document.getElementById('sb-powtorki-label');
       if(label2){label2.style.color='var(--navy)';}
     }
@@ -5607,10 +5619,11 @@ async function strefaStartPowtorki(){
 // ── Moje zestawy accordion (Tryb Nauki) ──
 var _sbMineOpen=false;
 function strefaToggleMine(){
-  _sbMineOpen=!_sbMineOpen;
   var list=document.getElementById('sb-mine-list');
   var arrow=document.getElementById('sb-mine-arrow');
   var tile=document.getElementById('sb-mine-tile');
+  if(!list) return; // element usunięty po scaleniu Strefy → no-op (bez błędu)
+  _sbMineOpen=!_sbMineOpen;
   if(_sbMineOpen){
     list.style.display='block';
     if(arrow) arrow.style.transform='rotate(180deg)';
@@ -8584,19 +8597,14 @@ async function loadDueCardsForTryb(){
   }catch(e){return[];}
 }
 
-// ── TRYB NAUKI — powrót do wyboru zestawu (Strefa Nauki) ──
+// ── TRYB NAUKI — powrót do wyboru zestawu (scalone z „Twoje zestawy") ──
 function trybBackToStrefa(){
   if(window.speechSynthesis) try{ window.speechSynthesis.cancel(); }catch(e){}
   if(typeof trybSaveSnapshot==='function') trybSaveSnapshot();
   window._trybExternalCards=null;
-  if(typeof showPage==='function') showPage('strefa');
-  // Otwórz od razu katalog „Wszystkie zestawy", zamiast pustego ekranu wyboru.
-  setTimeout(function(){
-    try{
-      if(typeof strefaSetActiveCat==='function') strefaSetActiveCat('all');
-      if(typeof strefaShowCatalogSets==='function') strefaShowCatalogSets(null,'Wszystkie zestawy','tryb');
-    }catch(e){}
-  },220);
+  // Po scaleniu wracamy do czystego widoku „Twoje zestawy" (nie do starego katalogu Strefy,
+  // który dublował siatkę i miał zepsuty przycisk „← Katalogi").
+  if(typeof showPage==='function') showPage('community');
 }
 window.trybBackToStrefa=trybBackToStrefa;
 
@@ -19020,6 +19028,16 @@ async function lexInit(){
   window.matMountLearnSurface=matMountLearnSurface;
   window.matEnterLearn=matEnterLearn;
   window.matExitLearn=matExitLearn;
+
+  // Zwijanie sekcji „Katalogi" w sidebarze (jak akordeon Eyelingo).
+  window.matToggleCatalogs=function(){
+    var list=document.getElementById('mat-sidebar-collections');
+    var arrow=document.getElementById('mat-cat-arrow');
+    if(!list) return;
+    var hidden=(list.style.display==='none');
+    list.style.display=hidden?'flex':'none';
+    if(arrow) arrow.style.transform=hidden?'rotate(0deg)':'rotate(-90deg)';
+  };
 
   // Punkty wejścia do nauki (z sidebara „Twoje zestawy" lub legacy showPage('strefa')).
   // Opakowujemy tak, by przed renderem do #strefa-center-content powierzchnia była widoczna.
