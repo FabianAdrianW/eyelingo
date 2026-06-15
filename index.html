@@ -4393,7 +4393,6 @@ function toggleStrefaSidebar(){
   }
 }
 
-// (Usunięto martwą, nadpisywaną definicję strefaSidebarMode — żywa wersja jest niżej.)
 
 async function updatePowtorkiTile(){
   var tile=document.getElementById('sb-powtorki-tile');
@@ -4584,11 +4583,7 @@ async function strefaShowCatalogSets(colIdx, colName, mode){
       wrap.insertBefore(backBtn, wrap.firstChild);
       var grid=document.createElement('div');
       grid.className='mat-grid';
-      if(mode==='tryb'){
-        grid.innerHTML=sets.map(function(s){ return strefaSetCardTryb(s); }).join('');
-      } else {
-        grid.innerHTML=sets.map(function(s){ return strefaSetCardKontekstowa(s); }).join('');
-      }
+      grid.innerHTML=sets.map(function(s){ return strefaSetCardTryb(s); }).join('');
       wrap.appendChild(grid);
     }
     center.innerHTML=''; center.appendChild(wrap);
@@ -4609,7 +4604,7 @@ function strefaSetCardLangBadge(s){
 function strefaSetCard(s, mode){
   var cnt=s.user_set_cards?s.user_set_cards.length:0;
   var enc=encodeURIComponent(s.name);
-  var learnFn=(mode==='tryb'?'strefaSelectUserSet(':'strefaStartKontekstowaFromSet(')+s.id+',&#39;'+enc+'&#39;)';
+  var learnFn='strefaSelectUserSet('+s.id+',&#39;'+enc+'&#39;)';
   var nmJS=(s.name||'').replace(/['"\\<>]/g,'');
   var lc=s.lang||'';
   var badge=strefaSetCardLangBadge(s);
@@ -4624,7 +4619,6 @@ function strefaSetCard(s, mode){
     +'</div></div>';
 }
 function strefaSetCardTryb(s){ return strefaSetCard(s,'tryb'); }
-function strefaSetCardKontekstowa(s){ return strefaSetCard(s,'kontekstowa'); }
 
 
 
@@ -4632,9 +4626,7 @@ function strefaSetCardKontekstowa(s){ return strefaSetCard(s,'kontekstowa'); }
 function sbSetTile(s,mode){
   var cnt=s.user_set_cards?s.user_set_cards.length:0;
   var enc=encodeURIComponent(s.name);
-  var fn=mode==='tryb'
-    ?'strefaSelectUserSet('+s.id+',"'+enc+'")'
-    :'strefaStartKontekstowaFromSet('+s.id+',"'+enc+'")';
+  var fn='strefaSelectUserSet('+s.id+',"'+enc+'")';
   var div=document.createElement('div');
   div.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s';
   div.innerHTML='<div style="font-size:13px;font-weight:500;color:var(--navy)">'+(window.esc?esc(stripEmoji(s.name)):stripEmoji(s.name))+'</div>'
@@ -4705,44 +4697,12 @@ function strefaSelectLang(code,label,flag,mode){
     div.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)';};
     div.onmouseout=function(){this.style.borderColor='var(--border)';this.style.transform='none';};
     div.onclick=(function(lc,ll,lf,lv,m){ return function(){
-      if(m==='tryb') strefaShowEyelingoCategories(lc,ll,lf,lv);
-      else strefaKontekstowaCategories(lc,ll,lf,lv);
+      strefaShowEyelingoCategories(lc,ll,lf,lv);
     }; })(code,label,flag,lvl,mode);
     grid.appendChild(div);
   });
   wrap.appendChild(grid);
   center.innerHTML=''; center.appendChild(wrap);
-}
-
-// ── Kontekstowa - Moje zestawy accordion ──
-var _sbMineKOpen=false;
-function strefaToggleMineKontekstowa(){
-  _sbMineKOpen=!_sbMineKOpen;
-  var list=document.getElementById('sb-mine-k-list');
-  var arrow=document.getElementById('sb-mine-k-arrow');
-  if(_sbMineKOpen){
-    list.style.display='block';
-    if(arrow) arrow.style.transform='rotate(180deg)';
-    strefaLoadMineList('kontekstowa');
-  } else {
-    list.style.display='none';
-    if(arrow) arrow.style.transform='rotate(0)';
-  }
-}
-
-function strefaLoadMineKontekstowaList(){ /* called on mode switch - loads lazily */ }
-
-async function strefaStartKontekstowaFromSet(setId, setNameEnc){
-  var setName=decodeURIComponent(setNameEnc);
-  var center=document.getElementById('strefa-center-content');
-  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie...</div>';
-  try{
-    var {data:s}=await db.from('user_sets').select('id,name,user_set_cards(word,translation)').eq('id',setId).single();
-    var cards=(s&&s.user_set_cards)||[];
-    if(!cards.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak fiszek w zestawie</div>';return;}
-    window._strefaWords=cards; window._strefaIdx=0;
-    renderStrefaKontekstowaCard(cards[0],'en','B1',0,cards.length,setName,setName,'📂','B1','custom');
-  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
 }
 
 // ── Eyelingo categories in center (Tryb Nauki) ──
@@ -8576,289 +8536,6 @@ function filterCollectionSets(query){
   });
 }
 
-async function strefaKontekstowaShowMySets(){
-  setBreadcrumb('Kontekstowa → Moje zestawy');
-  var center=document.getElementById('strefa-center-content');
-  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie...</div>';
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess){if(center)center.innerHTML='<div style="padding:20px">Zaloguj się</div>';return;}
-    var {data:sets}=await db.from('user_sets').select('id,name,user_set_cards(word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false});
-    if(!sets||!sets.length){if(center)center.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:48px;margin-bottom:12px">📂</div><div style="font-size:16px;font-weight:500;color:var(--navy)">Brak zestawów</div></div>';return;}
-    var wrap=document.createElement('div');
-    var grid=document.createElement('div');
-    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px';
-    sets.forEach(function(s){
-      var div=document.createElement('div');
-      div.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;transition:all .2s';
-      div.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy);margin-bottom:4px">'+s.name+'</div>'
-        +'<div style="font-size:12px;color:var(--dim2)">'+(s.user_set_cards?s.user_set_cards.length:0)+' fiszek</div>';
-      div.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)';};
-      div.onmouseout=function(){this.style.borderColor='var(--border)';this.style.transform='none';};
-      div.onclick=(function(setId,setName,cards){return function(){
-        if(!cards||!cards.length){strefaShowCenter('<div style="padding:20px;color:var(--dim2)">Brak fiszek</div>');return;}
-        setBreadcrumb('Kontekstowa → '+setName);
-        window._strefaWords=cards;window._strefaIdx=0;
-        renderStrefaKontekstowaCard(cards[0],'en','B1',0,cards.length,setName,setName,'📂','B1','custom');
-      };})(s.id,s.name,s.user_set_cards||[]);
-      grid.appendChild(div);
-    });
-    wrap.appendChild(grid);
-    if(center){center.innerHTML='';center.appendChild(wrap);}
-  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
-}
-
-function strefaKontekstowaLevels(langCode, langLabel, flag){
-  var center = document.getElementById('strefa-center-content');
-  if(!center) return;
-  var wrap = document.createElement('div');
-  var backBtn = document.createElement('button');
-  backBtn.style.cssText = 'background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
-  backBtn.textContent = '← Języki';
-  backBtn.onclick = function(){ strefaLoadSidebarLangs(); setBreadcrumb('Kontekstowa Nauka'); };
-  wrap.appendChild(backBtn);
-  var title = document.createElement('div');
-  title.style.cssText = 'font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:16px';
-  title.textContent = flag + ' ' + langLabel + ' — wybierz poziom';
-  wrap.appendChild(title);
-  var grid = document.createElement('div');
-  grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px';
-  ['A1','A2','B1','B2','C1','C2'].forEach(function(lvl){
-    var div = document.createElement('div');
-    div.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;text-align:center;transition:all .2s';
-    div.innerHTML = '<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy)">'+lvl+'</div>';
-    div.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
-    div.onmouseout = function(){ this.style.borderColor='var(--border)'; };
-    div.onclick = (function(lc,ll,lf,lv){ return function(){ strefaKontekstowaCategories(lc,ll,lf,lv); }; })(langCode,langLabel,flag,lvl);
-    grid.appendChild(div);
-  });
-  wrap.appendChild(grid);
-  center.innerHTML = ''; center.appendChild(wrap);
-  setBreadcrumb('Kontekstowa → '+flag+' '+langLabel);
-}
-
-async function strefaKontekstowaCategories(langCode, langLabel, flag, lvl){
-  var center = document.getElementById('strefa-center-content');
-  if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie kategorii...</div>';
-  setBreadcrumb(flag+' '+langLabel+' → '+lvl);
-  try{
-    // Get lang and level IDs
-    var {data:langRow} = await db.from('languages').select('id').eq('code',langCode).single();
-    var {data:lvlRow} = await db.from('levels').select('id').eq('code',lvl).maybeSingle();
-    if(!langRow){ if(center) center.innerHTML='<div style="padding:20px;color:#c33">Nie znaleziono języka</div>'; return; }
-    var q = db.from('flashcards').select('category_id').eq('language_id',langRow.id);
-    if(lvlRow) q = q.eq('level_id',lvlRow.id);
-    var {data:rows} = await q.limit(500);
-    if(!rows||!rows.length){ if(center) center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak kategorii</div>'; return; }
-    var ids = [...new Set(rows.map(function(r){return r.category_id;}).filter(Boolean))];
-    var {data:cats} = await db.from('categories').select('id,code,label,icon').in('id',ids).order('label');
-    if(!cats||!cats.length){ if(center) center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak kategorii</div>'; return; }
-    var wrap = document.createElement('div');
-    var backBtn = document.createElement('button');
-    backBtn.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
-    backBtn.textContent='← Poziomy';
-    backBtn.onclick=(function(lc,ll,lf){return function(){strefaKontekstowaLevels(lc,ll,lf);};})(langCode,langLabel,flag);
-    wrap.appendChild(backBtn);
-    var grid = document.createElement('div');
-    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px';
-    cats.forEach(function(cat){
-      var div=document.createElement('div');
-      div.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:all .2s';
-      div.innerHTML='<div style="font-size:18px;margin-bottom:6px">'+(cat.icon||'📂')+'</div><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">'+(cat.label||cat.code)+'</div>';
-      div.onmouseover=function(){this.style.borderColor='var(--orange)';};
-      div.onmouseout=function(){this.style.borderColor='var(--border)';};
-      div.onclick=(function(lc,ll,lf,lv,catCode,catLabel){return function(){
-        startStrefaKontekstowaCards(lc,ll,lf,lv,catCode,catLabel);
-      };})(langCode,langLabel,flag,lvl,cat.code,cat.label||cat.code);
-      grid.appendChild(div);
-    });
-    wrap.appendChild(grid);
-    if(center){center.innerHTML='';center.appendChild(wrap);}
-  }catch(e){ if(center) center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>'; }
-}
-
-async function startStrefaKontekstowaCards(langCode, langLabel, flag, lvl, catCode, catLabel){
-  var center = document.getElementById('strefa-center-content');
-  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie słów...</div>';
-  setBreadcrumb(flag+' '+langLabel+' '+lvl+' → '+catLabel);
-  // Set global strefa state for loadStrefaCard compatibility
-  window._strefaLang = langCode;
-  window._strefaLevel = lvl;
-  window._strefaCat = catCode;
-  window._strefaIdx = 0;
-  try{
-    var {data:langRow}=await db.from('languages').select('id').eq('code',langCode).single();
-    var {data:lvlRow}=await db.from('levels').select('id').eq('code',lvl).maybeSingle();
-    var {data:catArr}=await db.from('categories').select('id').eq('code',catCode).limit(1);
-    if(!langRow||!catArr||!catArr[0]){if(center)center.innerHTML='<div style="padding:20px;color:#c33">Błąd danych</div>';return;}
-    var q2=db.from('flashcards').select('word,translation').eq('language_id',langRow.id).eq('category_id',catArr[0].id);
-    if(lvlRow) q2=q2.eq('level_id',lvlRow.id);
-    var {data:words}=await q2.limit(30);
-    if(!words||!words.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak słów</div>';return;}
-    window._strefaWords=words;
-    window._strefaIdx=0;
-    // Render kontekstowa card view inside strefa-center-content
-    renderStrefaKontekstowaCard(words[0], langCode, lvl, 0, words.length, catLabel, langLabel, flag, lvl, catCode);
-  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
-}
-
-function renderStrefaKontekstowaCard(word, langCode, lvl, idx, total, catLabel, langLabel, flag, level, catCode){
-  var center=document.getElementById('strefa-center-content');
-  if(!center) return;
-  var langYG={en:'english',es:'spanish',nl:'dutch',jp:'japanese'}[langCode]||'english';
-
-  var wrap=document.createElement('div');
-  wrap.style.cssText='width:100%;max-width:860px;margin:0 auto';
-
-  // Progress header
-  var hdr=document.createElement('div');
-  hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:20px';
-  var dots=document.createElement('div');
-  dots.style.cssText='display:flex;gap:5px;align-items:center';
-  for(var d=0;d<Math.min(total,12);d++){
-    var dot=document.createElement('div');
-    dot.style.cssText='width:'+(d===idx?'20':'7')+'px;height:7px;border-radius:100px;background:'+(d===idx?'var(--navy)':'var(--border)');
-    dots.appendChild(dot);
-  }
-  hdr.appendChild(dots);
-  hdr.innerHTML+='<div style="font-size:13px;color:var(--dim2);background:var(--paper);border-radius:100px;padding:4px 14px">'+(idx+1)+' / '+total+'</div>';
-  wrap.appendChild(hdr);
-
-  // 2-column layout
-  var cols=document.createElement('div');
-  cols.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px';
-  if(window.innerWidth<768) cols.style.gridTemplateColumns='1fr';
-
-  // LEFT: Eyelingo-style flashcard + sentence
-  var left=document.createElement('div');
-  left.style.cssText='display:flex;flex-direction:column;gap:12px';
-
-  // Eyelingo dark flashcard
-  var card=document.createElement('div');
-  card.style.cssText='background:var(--navy);border-radius:20px;padding:32px 28px;text-align:center;box-shadow:0 16px 48px rgba(26,35,64,.25)';
-  card.innerHTML=
-    '<div style="font-size:11px;font-weight:500;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px">'+flag+' '+catLabel+'</div>'
-    +'<div style="font-family:DM Sans,sans-serif;font-size:44px;font-weight:500;color:#fff;line-height:1.15;margin-bottom:10px">'+word.word+'</div>'
-    +'<div style="font-size:18px;color:var(--orange);font-weight:500">'+word.translation+'</div>';
-  left.appendChild(card);
-
-  // Sentence box
-  var sentBox=document.createElement('div');
-  sentBox.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;flex:1';
-  sentBox.innerHTML=
-    '<div style="font-size:10px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">📖 Zdanie kontekstowe</div>'
-    +'<div id="kontekstowa-sent-text" style="font-size:16px;color:var(--navy);line-height:1.75">⏳ Generuję zdanie...</div>'
-    +'<div id="kontekstowa-sent-tr" style="font-size:13px;color:var(--dim2);margin-top:8px;font-style:italic"></div>'
-    +'<button onclick="playSentenceAudio()" style="margin-top:14px;background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:6px 16px;font-size:12px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px">🔊 Wymowa</button>';
-  left.appendChild(sentBox);
-  cols.appendChild(left);
-
-  // RIGHT: YouGlish
-  var right=document.createElement('div');
-  right.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:16px;overflow:hidden';
-  right.innerHTML=
-    '<div style="font-size:10px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.07em;padding:14px 18px 10px">🎬 Użycie w filmach · Playphrase</div>'
-    +'<div id="kontekstowa-yg-widget" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px"></div>';
-  cols.appendChild(right);
-  wrap.appendChild(cols);
-
-  // Nav
-  var navRow=document.createElement('div');
-  navRow.style.cssText='display:flex;gap:10px;align-items:center;justify-content:space-between';
-  if(idx>0){
-    var prevBtn=document.createElement('button');
-    prevBtn.style.cssText='padding:10px 20px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;font-size:13px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
-    prevBtn.textContent='← Poprzednie';
-    prevBtn.onclick=function(){ window._strefaIdx--; renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode); };
-    navRow.appendChild(prevBtn);
-  } else { navRow.appendChild(document.createElement('div')); }
-  var nextBtn=document.createElement('button');
-  nextBtn.style.cssText='padding:10px 28px;border-radius:100px;background:var(--navy);color:#fff;border:none;font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif';
-  nextBtn.textContent=idx>=total-1?'Zakończ ✓':'Następne →';
-  nextBtn.onclick=function(){
-    if(idx>=total-1){ strefaKontekstowaCategories(langCode,langLabel,flag,level); }
-    else { window._strefaIdx++; renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode); }
-  };
-  navRow.appendChild(nextBtn);
-  wrap.appendChild(navRow);
-
-  center.innerHTML=''; center.appendChild(wrap);
-
-  // Load AI sentence
-  loadKontekstowaSentence(word.word, word.translation, langCode, lvl);
-
-  // YouGlish public iframe (no API key needed)
-  (function(w,ly){
-    setTimeout(function(){
-      var c=document.getElementById('kontekstowa-yg-widget');
-      if(!c) return;
-      // Use YouGlish public search page embedded
-      var ygUrl='https://youglish.com/pronounce/'+encodeURIComponent(w)+'/'+ly;
-      c.innerHTML=
-        '<div style="width:100%;text-align:center;padding:10px 0">'+
-        '<a href="'+ygUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:var(--navy);color:#fff;border-radius:100px;text-decoration:none;font-family:DM Sans,sans-serif;font-size:13px;font-weight:500">🎬 Zobacz "'+w+'" w filmach</a></div>'+
-        '<div style="font-size:11px;color:var(--dim2);text-align:center;margin-top:6px">Otwiera YouGlish w nowej karcie</div>'+
-        '<div style="margin-top:14px;padding:0 4px">'+
-        '<iframe src="https://youglish.com/api/loader?version=1" style="display:none"></iframe>'+
-        '<div style="background:var(--paper);border-radius:12px;padding:16px;text-align:center">'+
-        '<div style="font-size:32px;margin-bottom:8px">🎬</div>'+
-        '<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:4px">'+w+'</div>'+
-        '<div style="font-size:12px;color:var(--dim2)">Kliknij powyżej aby zobaczyć w prawdziwych filmach</div>'+
-        '</div></div>';
-    },200);
-  })(word.word, langYG);
-}
-
-
-async function loadKontekstowaSentence(word, translation, lang, level){
-  var textEl=document.getElementById('kontekstowa-sent-text');
-  var trEl=document.getElementById('kontekstowa-sent-tr');
-  try{
-    // Check cache
-    var {data:cached}=await db.from('context_sentences').select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).limit(1);
-    var c=Array.isArray(cached)?cached[0]:cached;
-    if(c&&c.sentence){
-      if(textEl) textEl.innerHTML=c.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
-      if(trEl) trEl.textContent=c.translation;
-      window._currentSentence=c.sentence.replace(/\*\*/g,'');
-      window._currentLang={en:'en-US',es:'es-ES',jp:'ja-JP',nl:'nl-NL'}[lang]||'en-US';
-      return;
-    }
-    // Generate via AI proxy
-    var sess=(await db.auth.getSession()).data.session;
-    var tok=sess?sess.access_token:'';
-    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
-    var res=await fetch(AI_PROXY_URL,{method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-      body:JSON.stringify({messages:[{role:'user',content:'Write ONE simple '+langNames[lang]+' sentence (level '+level+') using the word "'+word+'" (meaning: '+translation+'). Bold the target word with **word**. Then on a new line write: PL: [Polish translation of the sentence]. Keep it short.'}],max_tokens:100})
-    });
-    var d=await res.json();
-    var raw=(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim();
-    var plMatch=raw.match(/PL:\s*(.+)/); 
-    var sentence=raw.replace(/PL:.*/,'').trim();
-    var plTr=plMatch?plMatch[1].trim():'';
-    if(textEl) textEl.innerHTML=sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
-    if(trEl) trEl.textContent=plTr;
-    window._currentSentence=sentence.replace(/\*\*/g,'');
-    window._currentLang={en:'en-US',es:'es-ES',jp:'ja-JP',nl:'nl-NL'}[lang]||'en-US';
-    // Cache
-    try{await db.from('context_sentences').upsert({word,language:lang,level,sentence,translation:plTr},{onConflict:'word,language,level'});}catch(e){}
-  }catch(e){
-    if(textEl) textEl.textContent='Nie udało się wygenerować zdania.';
-  }
-}
-
-function playSentenceAudio(){
-  if(!window._currentSentence||!window.speechSynthesis) return;
-  speechSynthesis.cancel();
-  var u=new SpeechSynthesisUtterance(window._currentSentence);
-  u.lang=window._currentLang||'en-US'; u.rate=0.85;
-  var voices=speechSynthesis.getVoices();
-  var pref=voices.find(function(v){return v.lang===u.lang&&v.name.includes('Google');})||voices.find(function(v){return v.lang.startsWith(u.lang.split('-')[0]);});
-  if(pref) u.voice=pref;
-  speechSynthesis.speak(u);
-}
-
 function updateChallengeMode(on){var sl=document.getElementById('tryb-toggle-slider');var kn=document.getElementById('tryb-toggle-knob');if(sl)sl.style.background=on?'var(--orange)':'rgba(255,255,255,.2)';if(kn)kn.style.left=on?'25px':'3px';}
 
 function renderTrybBadges(){
@@ -10476,85 +10153,6 @@ function odkryjLoadLyrics(){
 }
 
 // ── STREFA NAUKI ──
-// ─── STREFA NAUKI SIDEBAR ────────────────────────────
-var _strefaSidebarMode = 'tryb';
-
-async function strefaLoadSidebarLangs(){
-  var container = document.getElementById('sb-strefa-langs');
-  if(!container) return;
-  container.innerHTML = '';
-  
-  // Add "Moje zestawy" tile
-  var mineBtn = document.createElement('button');
-  mineBtn.style.cssText='width:100%;text-align:left;padding:12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px;margin-bottom:6px';
-  mineBtn.innerHTML='<span style="font-size:16px">📂</span><div><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">Moje zestawy</div><div style="font-size:11px;color:var(--dim2)">Kontekstowo</div></div>';
-  mineBtn.onmouseover=function(){this.style.borderColor='var(--orange)';};
-  mineBtn.onmouseout=function(){this.style.borderColor='var(--border)';};
-  mineBtn.onclick=function(){ strefaKontekstowaShowMySets(); };
-  container.appendChild(mineBtn);
-  
-  // Add "Zestawy Eyelingo" tile
-  var eyeBtn = document.createElement('button');
-  eyeBtn.style.cssText='width:100%;text-align:left;padding:12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px;margin-bottom:12px';
-  eyeBtn.innerHTML='<span style="font-size:16px">🌍</span><div><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">Zestawy Eyelingo</div><div style="font-size:11px;color:var(--dim2)">Program językowy</div></div>';
-  eyeBtn.onmouseover=function(){this.style.borderColor='var(--orange)';};
-  eyeBtn.onmouseout=function(){this.style.borderColor='var(--border)';};
-  eyeBtn.onclick=function(){ strefaShowEyelingoLangs(); setBreadcrumb('Kontekstowa → Zestawy Eyelingo'); };
-  container.appendChild(eyeBtn);
-
-  // Separator
-  var sep=document.createElement('div');
-  sep.style.cssText='font-size:10px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-left:4px';
-  sep.textContent='🌐 Języki';
-  container.appendChild(sep);
-
-  var LANGS = [{code:'en',label:'Angielski',flag:'🇬🇧'},{code:'es',label:'Hiszpański',flag:'🇪🇸'},{code:'jp',label:'Japoński',flag:'🇯🇵'},{code:'nl',label:'Niderlandzki',flag:'🇳🇱'}];
-  LANGS.forEach(function(l){
-    var btn = document.createElement('button');
-    btn.style.cssText = 'width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px;margin-bottom:6px';
-    btn.innerHTML = '<span style="font-size:18px">'+l.flag+'</span><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">'+l.label+'</div>';
-    btn.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
-    btn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
-    btn.onclick = (function(lc,ll,lf){ return function(){
-      setBreadcrumb('Kontekstowa Nauka → '+lf+' '+ll);
-      // Kontekstowa uses old strefa system (AI sentences + playphrase)
-      window._strefaLang = lc;
-      var center = document.getElementById('strefa-center-content');
-      if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie poziomów...</div>';
-      // Show levels for kontekstowa
-      strefaKontekstowaLevels(lc, ll, lf);
-    }; })(l.code,l.label,l.flag);
-    container.appendChild(btn);
-  });
-  strefaShowCenter('<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">🧠</div><div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:8px">Kontekstowa Nauka</div><div style="font-size:14px">Wybierz język po lewej</div></div>');
-}
-
-function strefaSidebarMode(mode){
-  _strefaSidebarMode = mode;
-  // Toggle header buttons
-  var btnTryb = document.getElementById('sb-btn-tryb');
-  var btnStrefa = document.getElementById('sb-btn-strefa');
-  var sbTryb = document.getElementById('sb-tryb-content');
-  var sbStrefa = document.getElementById('sb-strefa-content');
-  if(btnTryb && btnStrefa){
-    if(mode === 'tryb'){
-      btnTryb.style.borderBottomColor='var(--navy)'; btnTryb.style.color='var(--navy)'; btnTryb.style.fontWeight='500';
-      btnStrefa.style.borderBottomColor='transparent'; btnStrefa.style.color='var(--dim2)'; btnStrefa.style.fontWeight='500';
-    } else {
-      btnStrefa.style.borderBottomColor='var(--navy)'; btnStrefa.style.color='var(--navy)'; btnStrefa.style.fontWeight='500';
-      btnTryb.style.borderBottomColor='transparent'; btnTryb.style.color='var(--dim2)'; btnTryb.style.fontWeight='500';
-    }
-  }
-  if(sbTryb) sbTryb.style.display = mode==='tryb' ? 'flex' : 'none';
-  if(sbStrefa) sbStrefa.style.display = mode==='strefa' ? 'flex' : 'none';
-  // Show content
-  if(mode === 'strefa'){
-    strefaLoadSidebarLangs();
-  } else {
-    strefaShowCenter(strefaEmpty('Wybierz zestaw'));
-  }
-}
-
 function strefaEmpty(title){
   return '<div style="text-align:center;padding:64px 24px;color:var(--dim2)">'
     +'<div style="width:48px;height:48px;border-radius:12px;background:rgba(26,35,64,.06);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'
