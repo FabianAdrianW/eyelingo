@@ -2319,13 +2319,11 @@ function showPage(name){
     if(typeof updatePowtorkiTile==='function'){ try{ updatePowtorkiTile(); }catch(e){} }
   }
   if(name==='messages'){ if(typeof loadTcpConvList==='function') loadTcpConvList(); if(typeof tcpRenderMyIdentity==='function') tcpRenderMyIdentity(); }
-  if(name==='strefa') strefaSidebarMode('tryb');
   if(name==='ranking'){
     if(typeof loadRanking==='function') loadRanking();
     else setTimeout(function(){ if(typeof loadRanking==='function') loadRanking(); },300);
   }
   if(name==='tofix') initToFixPage();
-  if(name==='strefa'){ initStrefa(); strefaShowTab('tryb'); setTimeout(function(){ if(typeof strefaRenderContinue==='function') strefaRenderContinue(); },60); }
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
   if(name==='daily'){ setTimeout(function(){ var ind=document.getElementById('daily-loading-indicator'); if(ind) ind.style.display='none'; initDaily(); dailyShowTab('daily'); }, 50); }
   if(name==='teacher'){ setTimeout(function(){ teacherShowTab('teacher'); }, 50); }
@@ -2659,19 +2657,56 @@ window.saveEditSet = async function saveEditSet(id){
 
 window.deleteSet = async function deleteSet(id){
   try{
+    // Zbierz słowa zestawu PRZED usunięciem — do sprzątnięcia powtórek (srs_progress) i „ostatnio przeglądane".
+    var delCards=[];
+    try{ var {data:dc}=await db.from('user_set_cards').select('word,translation').eq('set_id',id); delCards=dc||[]; }catch(e){}
     await db.from('user_set_cards').delete().eq('set_id',id);
     await db.from('user_sets').delete().eq('id',id);
     closeMatModal();
     _matSets=_matSets.filter(function(s){return s.id!==id;});
     (_collections||[]).forEach(function(c){ c.sets=(c.sets||[]).filter(function(x){return x.id!==id;}); });
     if(_matMyUid && typeof saveCollections==='function') saveCollections(_matMyUid);
+    // Usuń słowa skasowanego zestawu z powtórek SM-2 — ale TYLKO te, których nie ma w innym zestawie
+    // (słowa z lekcji Lexa, nigdy nieprzypisane do zestawu, zostają — "lekcja zbiera").
+    try{ await purgeDeletedSetReviews(delCards); }catch(e){}
+    // Usuń zestaw z „ostatnio przeglądane" (log lokalny per-język, widoczny w Nauczycielu PRO).
+    try{ purgeRecentSet('user', id); }catch(e){}
     typeof showToast!=='undefined'&&showToast('Zestaw usunięty','success');
     if(window.loadMySets) loadMySets();
     if(typeof loadCollections==='function') loadCollections();
-    if(typeof strefaRefreshCurrent==='function') strefaRefreshCurrent();
-    if(typeof strefaLoadMineList==='function'){ var _ml=document.getElementById('sb-mine-list'); if(_ml && _ml.style.display!=='none') strefaLoadMineList('tryb'); }
+    if(typeof updatePowtorkiTile==='function') updatePowtorkiTile();
   }catch(e){typeof showToast!=='undefined'&&showToast('Błąd: '+(e.message||e),'');}
 };
+
+// Usuwa z powtórek (srs_progress + cache) słowa skasowanego zestawu, pomijając te wciąż obecne
+// w innych zestawach oraz wpisy Eyelingo (flashcard_id != null).
+async function purgeDeletedSetReviews(delCards){
+  if(!delCards||!delCards.length) return;
+  var uid=(typeof _usrsUid==='function')?await _usrsUid():(window._uid||null);
+  if(!uid) return;
+  var stillIn={};
+  try{
+    var {data}=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',uid);
+    (data||[]).forEach(function(s){ (s.user_set_cards||[]).forEach(function(c){ stillIn[_usrsCK(c.word,c.translation)]=1; }); });
+  }catch(e){}
+  var keys=[];
+  delCards.forEach(function(c){ var k=_usrsCK(c.word,c.translation); if(!stillIn[k] && keys.indexOf(k)<0) keys.push(k); });
+  if(!keys.length) return;
+  try{ await db.from('srs_progress').delete().eq('user_id',uid).is('flashcard_id',null).in('card_key',keys); }catch(e){}
+  try{ var store=_usrsLoad(uid); keys.forEach(function(k){ delete store[k]; }); _usrsSaveAll(uid,store); }catch(e){}
+}
+// Usuwa zestaw z logów „ostatnio przeglądane" we wszystkich językach.
+function purgeRecentSet(kind, id){
+  try{
+    var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','nl','jp'];
+    codes.forEach(function(code){
+      var key=uk('lex_recent_sets_'+code);
+      var arr=[]; try{ arr=JSON.parse(localStorage.getItem(key)||'[]'); }catch(e){ arr=[]; }
+      var filtered=arr.filter(function(x){ return !(x.kind===kind && String(x.id)===String(id)); });
+      if(filtered.length!==arr.length) localStorage.setItem(key, JSON.stringify(filtered));
+    });
+  }catch(e){}
+}
 
 window.toggleLike = async function toggleLike(id){
   if(!_matMyUid){ showToast&&showToast('Zaloguj się',''); return; }
@@ -5538,29 +5573,7 @@ function toggleStrefaSidebar(){
   }
 }
 
-function strefaSidebarMode(mode){
-  var btnTryb=document.getElementById('sb-btn-tryb');
-  var btnStrefa=document.getElementById('sb-btn-strefa');
-  var tryb=document.getElementById('sb-tryb-content');
-  var strefa=document.getElementById('sb-strefa-content');
-  var center=document.getElementById('strefa-center-content');
-  if(mode==='tryb'){
-    if(btnTryb){btnTryb.style.borderBottomColor='var(--navy)';btnTryb.style.color='var(--navy)';btnTryb.style.fontWeight='500';}
-    if(btnStrefa){btnStrefa.style.borderBottomColor='transparent';btnStrefa.style.color='var(--dim2)';btnStrefa.style.fontWeight='500';}
-    if(tryb) tryb.style.display='flex';
-    if(strefa) strefa.style.display='none';
-    updatePowtorkiTile();
-    if(center) center.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">📚</div><div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:8px">Tryb Nauki</div><div style="font-size:14px">Wybierz zestaw po lewej</div></div>';
-  } else {
-    if(btnStrefa){btnStrefa.style.borderBottomColor='var(--navy)';btnStrefa.style.color='var(--navy)';btnStrefa.style.fontWeight='500';}
-    if(btnTryb){btnTryb.style.borderBottomColor='transparent';btnTryb.style.color='var(--dim2)';btnTryb.style.fontWeight='500';}
-    if(tryb) tryb.style.display='none';
-    if(strefa){strefa.style.display='flex';}
-    if(center) center.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">🧠</div><div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:8px">Kontekstowa Nauka</div><div style="font-size:14px">Wybierz zestaw po lewej</div></div>';
-    strefaLoadMineKontekstowaList();
-    strefaLoadEyelingoLangsList('kontekstowa');
-  }
-}
+// (Usunięto martwą, nadpisywaną definicję strefaSidebarMode — żywa wersja jest niżej.)
 
 async function updatePowtorkiTile(){
   var tile=document.getElementById('sb-powtorki-tile');
@@ -8547,14 +8560,6 @@ function usrsRecommend(uid, lang, n){
     });
     return pool.slice(0,n||7).map(function(r){ return {word:r.word,translation:r.translation||''}; });
   }catch(e){ return []; }
-}
-async function _usrsCurrentCustomKeys(uid){
-  var set={};
-  try{
-    var {data}=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',uid);
-    (data||[]).forEach(function(s){ (s.user_set_cards||[]).forEach(function(c){ set[_usrsCK(c.word,c.translation)]=1; }); });
-  }catch(e){}
-  return set;
 }
 async function usrsDueList(limit){
   var uid=await _usrsUid(); if(!uid) return [];
