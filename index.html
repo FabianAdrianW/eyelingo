@@ -12212,22 +12212,6 @@ function strefaShowWordPreview(cards, title, onStart){
 }
 
 
-function strefaShowTab(tab){
-  // With new sidebar layout, activate appropriate sidebar mode
-  if(tab === 'strefa'){
-    strefaSidebarMode('strefa');
-  } else {
-    strefaSidebarMode('tryb');
-  }
-  // Legacy panels (hidden)
-  var panelS=document.getElementById('strefa-panel-strefa');
-  var panelT=document.getElementById('strefa-panel-tryb');
-  if(panelS) panelS.style.display = tab==='strefa' ? '' : 'none';
-  if(panelT) panelT.style.display = tab==='tryb'   ? '' : 'none';
-  tileActivate('strefa-btn-'+tab,'strefa-btn-');
-  if(tab==='tryb') strefaLoadTryb();
-}
-
 function strefaLoadTryb(){
   var embed=document.getElementById('strefa-tryb-embed');
   if(!embed) return;
@@ -12420,148 +12404,6 @@ let _strefaIdx = 0;
 let _strefaLevels = [];
 let _strefaProfile = null;
 
-async function initStrefa(){
-  const{data:{session}}=await db.auth.getSession();
-  if(!session){
-    var _am0=document.getElementById('strefa-access-msg'); if(_am0) _am0.style.display='block';
-    var _me0=document.getElementById('strefa-main'); if(_me0) _me0.style.display='none';
-    return;
-  }
-  const{data:p}=await db.from('profiles')
-    .select('is_premium,premium_until,levels_bought')
-    .eq('user_id',session.user.id).maybeSingle();
-  _strefaProfile=p;
-  const levels=p?.levels_bought||[];
-  const isPremium=p?.is_premium&&p?.premium_until&&new Date(p.premium_until)>new Date();
-  if(!isPremium&&!levels.length){
-    var accessMsg=document.getElementById('strefa-access-msg');
-    var mainEl=document.getElementById('strefa-main');
-    if(accessMsg) accessMsg.style.display='block';
-    if(mainEl) mainEl.style.display='none';
-    return;
-  }
-  var accessMsg2=document.getElementById('strefa-access-msg');
-  var mainEl2=document.getElementById('strefa-main');
-  if(accessMsg2) accessMsg2.style.display='none';
-  if(mainEl2) mainEl2.style.display='block';
-  _strefaLevels=levels;
-  // showStrefaLangs is only for old layout - new layout handled by strefaSidebarMode
-}
-
-function showStrefaLangs(isPremium){
-  _strefaState='langs';
-  var cardView=document.getElementById('strefa-card-view');
-  var selector=document.getElementById('strefa-selector');
-  if(cardView) cardView.style.display='none';
-  if(selector) selector.style.display='block';
-  const langs=['en','es','jp','nl'];
-  document.getElementById('strefa-langs').innerHTML=langs.map(l=>{
-    const hasAny=isPremium||_strefaLevels.some(lv=>lv.startsWith(l+'_'));
-    return`<div class="strefa-tile${hasAny?'':' locked'}" onclick="${hasAny?`showStrefaLevels('${l}')`:''}">
-      <div class="strefa-tile-icon">${LANG_FLAGS[l]}</div>
-      <div class="strefa-tile-name">${LANG_LABELS[l]}</div>
-      <div class="strefa-tile-meta">${hasAny?'Dostępny':'Brak zakupów'}</div>
-      ${hasAny?'':'<div class="strefa-tile-lock">🔒 Odblokuj poziom</div>'}
-    </div>`;
-  }).join('');
-}
-
-function showStrefaLevels(lang){
-  _strefaLang=lang;
-  _strefaState='levels';
-  var bb=document.getElementById('strefa-back-btn');
-  if(bb){bb.style.display='inline-flex';bb.onclick=function(){showStrefaLangs(_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date());};}
-  const levels=['A1','A2','B1','B2','C1','C2'];
-  const isPremium=_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date();
-  document.getElementById('strefa-langs').innerHTML=`
-    <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <button class="btn btn-ghost" onclick="showStrefaLangs(${isPremium})" style="font-size:13px">← Języki</button>
-      <span style="font-size:18px">${LANG_FLAGS[lang]} ${LANG_LABELS[lang]}</span>
-    </div>
-    ${levels.map(lv=>{
-      const key=`${lang}_${lv}`;
-      const unlocked=isPremium||_strefaLevels.includes(key);
-      return`<div class="strefa-tile${unlocked?'':' locked'}" onclick="${unlocked?`showStrefaCats('${lang}','${lv}')`:''}">
-        <div class="strefa-tile-icon">${unlocked?'📖':'🔒'}</div>
-        <div class="strefa-tile-name">Poziom ${lv}</div>
-        <div class="strefa-tile-meta">${LEVEL_DESC[lv]}</div>
-        ${unlocked?'':'<div class="strefa-tile-lock">Odblokuj w aplikacji</div>'}
-      </div>`;
-    }).join('')}`;
-}
-
-async function showStrefaCats(lang,level){
-  _strefaLang=lang;_strefaLevel=level;
-  _strefaState='cats';
-  var bb=document.getElementById('strefa-back-btn');
-  if(bb){bb.style.display='inline-flex';bb.onclick=function(){showStrefaLevels(lang);};}
-  const{data:cats}=await db.from('flashcards')
-    .select('category_id,categories(code,label,icon)')
-    .eq('language_id',['en','es','jp','nl'].indexOf(lang)+1)
-    .eq('level_id',['A1','A2','B1','B2','C1','C2'].indexOf(level)+1)
-    .limit(200);
-  const seen=new Set();
-  const uniq=(cats||[]).filter(c=>{
-    if(!c.categories||seen.has(c.category_id))return false;
-    seen.add(c.category_id);return true;
-  });
-  const isPremium=_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date();
-  document.getElementById('strefa-langs').innerHTML=`
-    <div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <button class="btn btn-ghost" onclick="showStrefaLevels('${lang}')" style="font-size:13px">← Poziomy</button>
-      <span style="font-size:16px;font-weight:500;color:var(--navy)">${LANG_FLAGS[lang]} ${LANG_LABELS[lang]} · Poziom ${level}</span>
-    </div>
-    ${uniq.map(c=>`
-      <div class="strefa-tile" onclick="startStrefaCards('${lang}','${level}','${c.categories.code}','${c.categories.label}')">
-        <div class="strefa-tile-icon">${c.categories.icon||'📚'}</div>
-        <div class="strefa-tile-name">${c.categories.label}</div>
-        <div class="strefa-tile-meta">Kliknij aby ćwiczyć</div>
-      </div>`).join('')}`;
-}
-
-async function startStrefaCards(lang,level,catCode,catLabel){
-  _strefaLang=lang;_strefaLevel=level;_strefaCat=catCode;
-  _strefaIdx=0;
-  document.getElementById('strefa-breadcrumb').textContent=`${LANG_FLAGS[lang]} ${LANG_LABELS[lang]} · ${level} · ${catLabel}`;
-  document.getElementById('strefa-back-btn').style.display='inline-flex';
-  const langId=['en','es','jp','nl'].indexOf(lang)+1;
-  const levelId=['A1','A2','B1','B2','C1','C2'].indexOf(level)+1;
-  const{data:catsArr}=await db.from('categories').select('id').eq('code',catCode).limit(1);
-  const cats=catsArr?.[0];
-  if(!cats){return;}
-  const{data:words}=await db.from('flashcards')
-    .select('word,translation')
-    .eq('language_id',langId).eq('level_id',levelId).eq('category_id',cats.id)
-    .limit(30);
-  _strefaWords=words||[];
-  document.getElementById('strefa-selector').style.display='none';
-  document.getElementById('strefa-card-view').style.display='block';
-  loadStrefaCard();
-}
-
-async function loadStrefaCard(){
-  if(!_strefaWords.length)return;
-  const w=_strefaWords[_strefaIdx];
-  document.getElementById('strefa-progress').textContent=`${_strefaIdx+1} / ${_strefaWords.length}`;
-  document.getElementById('sc-word').textContent=w.word;
-  document.getElementById('sc-word-tr').textContent=w.translation;
-  document.getElementById('sc-sentence').innerHTML='<div class="strefa-loading">🤖 Gemini generuje zdanie...</div>';
-  document.getElementById('sc-sentence-tr').textContent='';
-  document.getElementById('sc-audio').style.display='none';
-  document.getElementById('sc-video-wrap').innerHTML='<div class="strefa-video-placeholder"><div style="font-size:32px;margin-bottom:8px">🎬</div><div style="font-size:13px;color:var(--dim2)">Szukam wideo...</div></div>';
-  const prevBtn=document.getElementById('btn-prev');
-  if(prevBtn){
-    prevBtn.style.visibility=_strefaIdx===0?'hidden':'visible';
-  }
-  document.getElementById('btn-next').textContent=_strefaIdx===_strefaWords.length-1?'Zakończ':'Następna →';
-
-  // Równolegle: zdanie AI + wideo
-  Promise.all([
-    loadContextSentence(w.word, w.translation, _strefaLang, _strefaLevel),
-    loadYouTubeVideo(w.word, _strefaLang)
-  ]);
-}
-
 async function loadContextSentence(word, translation, lang, level){
   const scEl=document.getElementById('sc-sentence');
 
@@ -12716,17 +12558,11 @@ function renderYouglish(word, lang){
     </div>`;
 }
 
-function strefaNext(){
-  if(_strefaIdx<_strefaWords.length-1){_strefaIdx++;loadStrefaCard();}
-  else{strefaBack();}
-}
-function strefaPrev(){if(_strefaIdx>0){_strefaIdx--;loadStrefaCard();}}
 function strefaBack(){
-  document.getElementById('strefa-card-view').style.display='none';
-  document.getElementById('strefa-selector').style.display='block';
-  if(_strefaLevel) showStrefaCats(_strefaLang,_strefaLevel);
-  else showStrefaLangs(_strefaProfile?.is_premium&&_strefaProfile?.premium_until&&new Date(_strefaProfile.premium_until)>new Date());
-  speechSynthesis.cancel();
+  // Po scaleniu Strefy: „Wybierz inny zestaw" wraca do czystego widoku „Twoje zestawy".
+  // (Wcześniej sięgało do usuniętego #strefa-card-view i rzucało błędem.)
+  try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
+  if(typeof showPage==='function') showPage('community');
 }
 </script>
 <script>
