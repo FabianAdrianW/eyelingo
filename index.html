@@ -4020,21 +4020,14 @@ async function initToFixPage(){
 
     <!-- ── SUMMARY ── -->
     <div id="lex-summary" style="display:none;padding:0 24px">
-      <div style="max-width:520px;margin:0 auto;padding:32px 0;text-align:center">
-        <div style="margin-bottom:12px;display:flex;justify-content:center"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>
-        <h3 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:6px">To jest zmiana z tej sesji.</h3>
-        <div id="lex-summary-score" style="font-size:15px;color:var(--dim);margin-bottom:24px"></div>
-        <div id="lex-summary-vocab" style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;text-align:left"></div>
-        <div id="lex-summary-gaps-wrap" style="display:none;background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;text-align:left"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:12px">
-          <button onclick="lexSaveVocab('all')" style="padding:10px 20px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Dodaj do fiszek desktopa</button>
-          <button onclick="lexSaveVocab('select')" style="padding:10px 16px;background:transparent;border:1.5px solid var(--border2);color:var(--dim);border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Wybierz zestaw</button>
-          <button onclick="lexSaveVocab('skip')" style="padding:10px 14px;background:transparent;border:none;color:var(--dim2);font-size:12px;cursor:pointer;font-family:DM Sans,sans-serif">Pomiń</button>
-        </div>
-        <button onclick="lexExtraTen()" style="width:100%;padding:14px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Jeszcze 10 minut →</button>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button onclick="teacherShowTab('chat')" style="flex:1;padding:12px;background:transparent;border:1.5px solid var(--border2);color:var(--navy);border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Porozmawiaj z Alexem →</button>
-          <button onclick="lexStartNewLesson()" style="flex:1;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:13px;cursor:pointer;font-family:DM Sans,sans-serif">Nowa lekcja</button>
+      <div style="max-width:600px;margin:0 auto;padding:32px 0;text-align:center">
+        <div style="margin-bottom:12px;display:flex;justify-content:center"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>
+        <h3 style="font-family:DM Sans,sans-serif;font-size:23px;font-weight:500;color:var(--navy);margin-bottom:6px">Co zmieniło się w tej sesji</h3>
+        <div id="lex-summary-headline" style="font-size:14px;color:var(--dim);margin-bottom:22px;line-height:1.5"></div>
+        <div id="lex-summary-chart"></div>
+        <div style="display:flex;gap:8px;margin-top:22px">
+          <button onclick="lexStartNewLesson()" style="flex:1;padding:14px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Nowa lekcja</button>
+          <button onclick="teacherShowTab('teacher')" style="padding:14px 18px;background:transparent;border:1.5px solid var(--border2);color:var(--navy);border-radius:100px;font-size:14px;cursor:pointer;font-family:DM Sans,sans-serif">Zakończ</button>
         </div>
         <p style="font-size:12px;color:var(--dim2);margin-top:14px">Twój postęp jest zapisany. Możesz wrócić w każdej chwili.</p>
       </div>
@@ -13214,14 +13207,15 @@ function lexStartLessonOnGapTopic(topic){
 // #3 Zeszyt — przewijane kartki lekcji
 function lexRenderNotebook(){
   var box=document.getElementById('lex-sb-notebook'); if(!box) return;
+  var gram=(typeof lexGrammarSidebarHTML==='function')?lexGrammarSidebarHTML():'';
   if(!_lexLessonsCache.length){
-    box.innerHTML='<div style="font-size:11px;color:var(--dim2);padding:4px 8px;line-height:1.5">Zeszyt zapełni się po pierwszej lekcji.</div>';
+    box.innerHTML=gram+(gram?'':'<div style="font-size:11px;color:var(--dim2);padding:4px 8px;line-height:1.5">Zeszyt zapełni się po pierwszej lekcji.</div>');
     return;
   }
   var n=_lexLessonsCache.length;
   var langCount=(typeof lexBookLangsAvailable==='function')?lexBookLangsAvailable().length:1;
   var sub=(langCount>1)?(langCount+' języki · przełączaj na okładce'):(n+' '+(n===1?'lekcja':(n<5?'lekcje':'lekcji')));
-  box.innerHTML='<button onclick="lexBookOpen(0)" style="width:100%;text-align:left;background:linear-gradient(135deg,#fffdf8,#f3ead7);border:1px solid #e6dcc6;border-radius:12px;padding:14px;cursor:pointer;font-family:DM Sans,sans-serif;box-shadow:0 4px 14px rgba(120,90,40,.12);transition:.15s" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'none\'">'
+  box.innerHTML=gram+'<button onclick="lexBookOpen(0)" style="width:100%;text-align:left;background:linear-gradient(135deg,#fffdf8,#f3ead7);border:1px solid #e6dcc6;border-radius:12px;padding:14px;cursor:pointer;font-family:DM Sans,sans-serif;box-shadow:0 4px 14px rgba(120,90,40,.12);transition:.15s" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'none\'">'
     +'<div style="display:flex;align-items:center;gap:11px">'
     +'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b07a32" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"></path><path d="M8 4v16M11 9h5M11 13h5"></path></svg>'
     +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--navy)">Otwórz Zeszyt</div>'
@@ -13545,60 +13539,74 @@ function lexHideHistory(){
 }
 
 // ── End lesson ────────────────────────────────────────────
+// ── Wykres przed/po: znajomość słowa szacowana ze stanu SM-2 (reps/interval/ease) ──
+// Transparentne, monotoniczne: więcej poprawnych wydobyć + dłuższy odstęp = wyższa znajomość.
+function lexKnowPct(s){
+  var reps=(s&&s.reps)||0, iv=(s&&s.interval)||0, ef=(s&&typeof s.ef==='number')?s.ef:2.5;
+  if(reps<=0) return 8;                       // nieznane / dopiero zasiane
+  var base=22+reps*13;                        // każde poprawne wydobycie podnosi
+  var mat=Math.min(35, iv*1.2);               // im dłużej „trzyma się" między powtórkami
+  var ease=(ef-2.5)*8;                         // łatwość zapamiętywania
+  return Math.max(8, Math.min(97, Math.round(base+mat+ease)));
+}
+async function lexRenderKnowChart(){
+  var host=document.getElementById('lex-summary-chart'); if(!host) return;
+  var head=document.getElementById('lex-summary-headline');
+  var before=window._lexKnowBefore||{};
+  var uid=(typeof _usrsUid==='function')?await _usrsUid():null;
+  var store=(uid&&typeof _usrsLoad==='function')?(_usrsLoad(uid)||{}):{};
+  var rows=Object.keys(before).map(function(k){
+    var b=before[k]||{}, a=store[k]||{};
+    var bp=lexKnowPct({ef:b.ef,reps:b.reps,interval:b.interval});
+    var ap=lexKnowPct({ef:a.ef,reps:a.reps,interval:a.interval});
+    return {word:(b.word||String(k).split('|')[0]), tr:(b.translation||''), before:bp, after:ap, delta:ap-bp};
+  }).filter(function(r){ return r.word; }).sort(function(x,y){ return y.delta-x.delta; });
+
+  if(!rows.length){
+    if(head) head.textContent='';
+    host.innerHTML='<div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:22px;color:var(--dim2);font-size:13px">Ta sesja nie zmieniła jeszcze znajomości słów — ślad został założony.</div>';
+    return;
+  }
+  var up=rows.filter(function(r){return r.delta>0;}).length;
+  var avgB=Math.round(rows.reduce(function(s,r){return s+r.before;},0)/rows.length);
+  var avgA=Math.round(rows.reduce(function(s,r){return s+r.after;},0)/rows.length);
+  if(head){
+    var pl=(typeof plWord==='function')?plWord(rows.length,'słowem','słowami','słowami'):'słowami';
+    head.innerHTML='Pracowałeś z <b style="color:var(--navy)">'+rows.length+'</b> '+pl+
+      '. Średnia znajomość: <b>'+avgB+'%</b> → <b style="color:var(--orange)">'+avgA+'%</b>'+
+      (up?(' · '+up+' w górę'):'')+'.';
+  }
+  function rowH(r){
+    var lo=Math.min(r.before,r.after), hi=Math.max(r.before,r.after);
+    var col=r.delta>0?'#2e7d52':(r.delta<0?'#c0532a':'#9a8c70');
+    return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="width:118px;flex-shrink:0;text-align:left;overflow:hidden">'
+        +'<div style="font-size:13.5px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.word)+'</div>'
+        +(r.tr?'<div style="font-size:11px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.tr)+'</div>':'')
+      +'</div>'
+      +'<div style="flex:1;position:relative;height:22px">'
+        +'<div style="position:absolute;top:10px;left:0;right:0;height:2px;background:var(--border)"></div>'
+        +'<div style="position:absolute;top:10px;height:2px;background:'+col+';left:'+lo+'%;width:'+(hi-lo)+'%"></div>'
+        +'<div title="przed" style="position:absolute;top:5px;left:'+r.before+'%;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #9a8c70;transform:translateX(-50%)"></div>'
+        +'<div title="po" style="position:absolute;top:4px;left:'+r.after+'%;width:14px;height:14px;border-radius:50%;background:'+col+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transform:translateX(-50%)"></div>'
+      +'</div>'
+      +'<div style="width:44px;flex-shrink:0;text-align:right;font-size:12px;font-weight:600;color:'+col+'">'+(r.delta>0?'+':'')+r.delta+'%</div>'
+    +'</div>';
+  }
+  host.innerHTML='<div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px 20px;text-align:left">'
+    +'<div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;font-size:10.5px;color:var(--dim2);letter-spacing:.04em">'
+      +'<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid #9a8c70"></span>przed</span>'
+      +'<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#2e7d52"></span>po lekcji</span>'
+      +'<span style="margin-left:auto">znajomość 0–100%</span>'
+    +'</div>'
+    + rows.map(rowH).join('')
+    +'</div>';
+}
+
 async function lexEndLesson(){
   window._lexLessonRunning = false;
   lexShowScreen('lex-summary');
-  var scoreEl = document.getElementById('lex-summary-score');
-  if(scoreEl){
-    // E9 MIRROR: konkretny moment kompetencji, nie punkty (Lesson Bible §11 — punkty zakazane)
-    var nW=_lexVocab.length, nG=_lexGaps.length;
-    var t = nW
-      ? ('Pracowałeś dziś z '+nW+' '+(typeof plWord==='function'?plWord(nW,'słowem','słowami','słowami'):'słowami')+' — i to Ty je wydobywałeś z pamięci, nie tylko oglądałeś.')
-      : 'Ślad się utrwalił — te formy wrócą wkrótce, by usiąść na stałe.';
-    if(nG) t += ' Lex zanotował, gdzie następna sesja da najwięcej.';
-    try{
-      var due=window._lexxDue||[];
-      var used=_lexVocab.filter(function(v){ return due.some(function(w){ return String(w.word).toLowerCase().trim()===String(v.word).toLowerCase().trim(); }); }).length;
-      if(used) t += ' '+used+' z nich pochodzi z Twoich fiszek.';
-    }catch(e){}
-    scoreEl.textContent = t;
-  }
-
-  var vocabEl = document.getElementById('lex-summary-vocab');
-  if(vocabEl){
-    if(_lexVocab.length === 0){
-      vocabEl.innerHTML = '<p style="font-size:13px;color:var(--dim2);margin:0">Brak nowych słów w tej lekcji.</p>';
-    } else {
-      vocabEl.innerHTML = '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Słowa z tej sesji</div>'
-        + _lexVocab.map(function(w){
-          return '<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">'
-            + '<span style="font-size:14px;font-weight:500;color:var(--navy);min-width:100px">' + w.word + '</span>'
-            + '<span style="font-size:13px;color:var(--dim2)">' + w.translation + '</span>'
-            + '</div>';
-        }).join('');
-    }
-  }
-
-  if(_lexGaps.length > 0){
-    var gWrap = document.getElementById('lex-summary-gaps-wrap');
-    if(gWrap){
-      gWrap.style.display = 'block';
-      gWrap.innerHTML = '<div style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Tu lekcja da najwięcej</div>'
-        + _lexGaps.map(function(g,i){
-          return '<div style="font-size:13px;color:var(--dim);padding:4px 0">' + (i+1) + '. ' + g + '</div>';
-        }).join('');
-    }
-  }
-
-  // Most #7: propozycja ustrukturyzowanej lekcji na najważniejszej luce
-  if(_lexGaps.length){
-    if(!_lexTopGap) _lexTopGap = _lexGaps[0];
-    var gWrap2 = document.getElementById('lex-summary-gaps-wrap');
-    if(gWrap2){
-      gWrap2.style.display = 'block';
-      gWrap2.innerHTML += '<button onclick="lexStartLessonOnGap()" style="margin-top:14px;width:100%;padding:12px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:14px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zacznij lekcję: ' + _lexTopGap + '</button>';
-    }
-  }
+  try{ lexRenderKnowChart(); }catch(e){ console.warn('[Lex] wykres:', e); }
 
   // Save to DB
   try{
@@ -14115,6 +14123,7 @@ async function lexInit(){
   var LEXX_WORDS_PER_PORTION = 4; // ile słów-celów przerabiamy w jednej porcji
   window.lexxStartPortions = async function(sets){
     window._lexxPortionNum = 0;
+    window._lexKnowBefore = {}; // migawka znajomości SM-2 sprzed lekcji (do wykresu przed/po)
     window._lexxShape={lastShape:null,recog:0,total:0}; window._lexxShapeLog=[]; // Krok 1: reset kompozytora
     window._lexxSweepPool = [];
     window._lexxSweepDone = false;
@@ -14384,11 +14393,13 @@ async function lexInit(){
       +'Role typów: cue = odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem; cloze = wydobycie z pamięci bez podpowiedzi (każdy kolejny cloze dotyczy INNEGO słowa porcji); contrast = para zdań native vs polska kalka (przyimki, false friends, szyk); sculpt = produkcja z intencji przez ułożenie kafelków słów; produce = własne zdanie ucznia z docelowym słowem. '
       +'Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. Zwykle 1 luka na cloze; jeśli dasz 2 luki ___, dodaj 2 pozycje w "answers" (tyle ile ___).\n'
       +'GRAMATYKA: jeśli porcja dotyczy gramatyki (odmiana, czas, reguła, przyimki, deklinacja), w polu "intro" podaj NAJPIERW zwięzły, KOMPLETNY model jako worked example — pełną odmianę przez wszystkie osoby albo całą regułę w 1-2 liniach (np. present simple: 3. os. l.poj. +s/-es) — dopiero potem ćwiczenia. '
+      +'Jeśli porcja uczy zagadnienia gramatycznego, WYPEŁNIJ też pole "grammar": {"topic":"krótka, kanoniczna nazwa zagadnienia PO POLSKU (np. \\"Present Simple\\", \\"Czasownik ser — odmiana\\", \\"Rodzajniki el/la\\")","note":"zwięzła, KOMPLETNA reguła/odmiana PO POLSKU — ta sama treść co model w intro, gotowa do zapisania w zeszycie","complete":true gdy to pełne zagadnienie, false gdy tylko fragment do uzupełnienia w kolejnych lekcjach}. Gdy porcja NIE dotyczy gramatyki, ustaw "grammar":null. Używaj SPÓJNEJ nazwy topic dla tego samego zagadnienia (kontynuacja = ten sam topic). '
       +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
       +'{'
       +'"focus":"krótki temat porcji po '+L+'",'
       +'"intro":"1-2 zdania po '+L+' wprowadzające; słowa docelowe w języku '+langName()+' ujmij w **gwiazdki**",'
       +'"items":[{"word":"słowo w '+langName()+'","translation":"po '+L+'"}],'
+      +'"grammar":null,'
       +'"exercises":['+_shape.map(function(_t){return lexxSpecFor(_t,L);}).join(',')+']}';
     try{
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
@@ -14414,6 +14425,8 @@ async function lexInit(){
       }catch(e){}
       try{ if(data.focus){ window._lexPortionFocuses=window._lexPortionFocuses||[]; if(window._lexPortionFocuses.indexOf(data.focus)===-1) window._lexPortionFocuses.push(data.focus); } }catch(e){}
       try{ if(data.items&&Array.isArray(window._lexVocab)) data.items.forEach(function(it){ if(it&&it.word&&it.translation){ window._lexVocab.push({word:it.word,translation:it.translation}); if(typeof lexBoardAdd==='function') lexBoardAdd('word', it.word+' — '+it.translation,''); } }); }catch(e){}
+      // Gramatyka → Zeszyt (strony per zagadnienie, dopisywanie/dedup; NIE na Tablicę, NIE słówka)
+      try{ var _g=data.grammar; if(_g && _g.topic && _g.note && typeof lexGrammarSave==='function') lexGrammarSave(_g.topic, _g.note, _g.complete===true); }catch(e){}
       lexxRenderPortion(data);
     }catch(e){
       var w=document.getElementById('lexx-wrap');
@@ -14792,6 +14805,8 @@ async function lexInit(){
       var uid=(typeof _usrsUid==='function')?await _usrsUid():null; if(!uid) return;
       var key=_usrsCK(word, translation||'');
       var cur=(_usrsLoad(uid)||{})[key]||{};
+      // migawka „przed" — tylko za pierwszym razem w tej lekcji (stan sprzed pierwszego wydobycia)
+      try{ window._lexKnowBefore=window._lexKnowBefore||{}; if(!(key in window._lexKnowBefore)) window._lexKnowBefore[key]={ef:cur.ef,reps:cur.reps,interval:cur.interval,word:word,translation:(translation||'')}; }catch(e){}
       var card={ word:word, translation:translation||'', lang:lang(),
         ease_factor:(typeof cur.ef==='number'?cur.ef:2.5),
         repetitions:(typeof cur.reps==='number'?cur.reps:0),
@@ -15583,6 +15598,75 @@ async function lexInit(){
     }catch(e){}
     // 3. Brak słów — modal
     window.lexAskSetLangModal(setId, label, cb);
+  };
+})();
+</script>
+
+<!-- ═══ EYELINGO — Zeszyt: GRAMATYKA (strony per zagadnienie, dopisywanie + dedup, oznaczenie kompletności) ═══ -->
+<script>
+(function(){
+  function gkey(){ try{ return uk('lex_grammar_'+(window._lexLang||'en')); }catch(e){ return 'lex_grammar_en'; } }
+  function gload(){ try{ return JSON.parse(localStorage.getItem(gkey())||'{}'); }catch(e){ return {}; } }
+  function gstore(o){ try{ localStorage.setItem(gkey(), JSON.stringify(o)); }catch(e){} }
+  function gtopic(t){ return String(t||'').trim().toLowerCase().replace(/\s+/g,' ').replace(/[.;:!?]+$/,''); }
+  function gesc(s){ return (typeof esc==='function')?esc(s):String(s==null?'':s); }
+
+  // Zapis zagadnienia gramatycznego: ten sam temat → dopisz do strony (z dedupem); inny temat → nowa strona.
+  window.lexGrammarSave=function(topic, note, complete){
+    topic=String(topic||'').trim(); note=String(note||'').trim();
+    if(!topic || !note) return;
+    var key=gtopic(topic); if(!key) return;
+    var all=gload();
+    var page=all[key]||{ title:topic, notes:[], complete:false, created:Date.now() };
+    var nn=note.toLowerCase().replace(/\s+/g,' ');
+    var dup=(page.notes||[]).some(function(x){ return String(x.text||'').toLowerCase().replace(/\s+/g,' ')===nn; });
+    if(!dup) page.notes.push({ text:note, ts:Date.now() });   // kontynuacja dopisana do strony
+    if(complete===true) page.complete=true;                   // kompletność narasta między lekcjami
+    page.updated=Date.now();
+    all[key]=page; gstore(all);
+    try{ if(typeof lexRenderNotebook==='function') lexRenderNotebook(); }catch(e){}
+  };
+
+  window.lexGrammarSidebarHTML=function(){
+    var all=gload(); var keys=Object.keys(all);
+    if(!keys.length) return '';
+    keys.sort(function(a,b){ return (all[b].updated||0)-(all[a].updated||0); });
+    var items=keys.map(function(k){
+      var p=all[k];
+      var badge=p.complete
+        ? '<span style="font-size:9px;color:#2e7d52;border:1px solid #2e7d52;border-radius:6px;padding:1px 5px;margin-left:6px">komplet</span>'
+        : '';
+      return '<button onclick="lexGrammarOpen(\''+String(k).replace(/\\/g,"\\\\").replace(/'/g,"\\'")+'\')" '
+        +'style="width:100%;text-align:left;background:#fff;border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-bottom:6px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:8px" '
+        +'onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
+        +'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>'
+        +'<span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+gesc(p.title)+'</span>'+badge
+        +'<span style="font-size:10px;color:var(--dim2)">'+(p.notes?p.notes.length:0)+'</span>'
+      +'</button>';
+    }).join('');
+    return '<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin:0 0 7px 4px">Gramatyka</div>'+items+'</div>';
+  };
+
+  window.lexGrammarOpen=function(key){
+    var all=gload(); var p=all[key]; if(!p) return;
+    var ov=document.getElementById('lex-grammar-modal'); if(ov) ov.remove();
+    ov=document.createElement('div'); ov.id='lex-grammar-modal';
+    ov.style.cssText='position:fixed;inset:0;z-index:10020;background:rgba(26,35,64,.45);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    var notes=(p.notes||[]).map(function(n){
+      return '<div style="font-size:14px;line-height:1.75;color:var(--navy);padding:13px 0;border-bottom:1px solid #e6dcc6">'+gesc(n.text).replace(/\n/g,'<br>')+'</div>';
+    }).join('');
+    var done=p.complete
+      ? '<span style="font-size:11px;color:#2e7d52;border:1px solid #2e7d52;border-radius:7px;padding:2px 8px;margin-left:8px">komplet</span>'
+      : '<span style="font-size:11px;color:var(--dim2);border:1px solid var(--border2);border-radius:7px;padding:2px 8px;margin-left:8px">uzupełniane</span>';
+    ov.innerHTML='<div style="background:linear-gradient(180deg,#fffdf8,#fbf7ee);border-radius:18px;max-width:560px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(26,35,64,.3)">'
+      +'<div style="display:flex;align-items:center;gap:8px;padding:18px 22px;border-bottom:1px solid #e6dcc6">'
+        +'<span style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:600;color:var(--navy)">'+gesc(p.title)+'</span>'+done
+        +'<button onclick="var m=document.getElementById(\'lex-grammar-modal\');if(m)m.remove();" style="margin-left:auto;background:transparent;border:none;font-size:24px;color:var(--dim2);cursor:pointer;line-height:1">×</button>'
+      +'</div>'
+      +'<div style="padding:6px 22px 22px;overflow-y:auto;font-family:Georgia,serif">'+(notes||'<div style="color:var(--dim2);font-size:13px;padding:14px 0">Pusto.</div>')+'</div>'
+    +'</div>';
+    document.body.appendChild(ov);
   };
 })();
 </script>
