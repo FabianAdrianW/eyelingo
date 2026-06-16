@@ -1918,7 +1918,6 @@ function renderStarsDisplay(r){ return window.renderStarsDisplay(r); }
 
 var authMode='login';
 
-function _showPageBasic(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
 function navHome(){showPage('home');return false}
 function navSection(sel){showPage('home');setTimeout(()=>{const el=document.querySelector(sel);if(el)el.scrollIntoView({behavior:'smooth'})},60);return false}
 function showAuth(m){authMode=m;showPage('auth');updateAuthUI();clearMsg('auth-msg')}
@@ -2294,29 +2293,6 @@ function showPage(name){
 }
 
 // ── Stub functions (safe fallbacks) ──
-async function loadNotifications(){
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess) return;
-    var{data:notifs,error}=await db.from('notifications')
-      .select('id,type,message,read_at,created_at')
-      .eq('user_id',sess.user.id)
-      .order('created_at',{ascending:false})
-      .limit(20);
-    if(error) return; // Table may not exist yet - silent fail
-    if(!notifs||!notifs.length) return;
-    var badge=document.getElementById('notif-badge');
-    var unread=notifs.filter(function(n){return !n.read_at;}).length;
-    if(badge) badge.textContent=unread>0?unread:'';
-    var list=document.getElementById('notif-list');
-    if(list) list.innerHTML=notifs.map(function(n){
-      return '<div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px">'
-        +'<div style="color:var(--navy)">'+(n.message||n.type||'')+'</div>'
-        +'<div style="font-size:11px;color:var(--dim2);margin-top:3px">'+new Date(n.created_at).toLocaleString('pl')+'</div>'
-        +'</div>';
-    }).join('');
-  }catch(e){ /* notifications not available */ }
-}
 
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -4256,15 +4232,6 @@ function loadLangLevels(){
   } catch(e){}
 }
 
-function saveLangLevel(){
-  var lang = document.getElementById('daily-lang-select')?.value;
-  var level = document.getElementById('daily-level-select')?.value;
-  if(!lang || !level) return;
-  LANG_LEVELS[lang] = level;
-  try { if(uidNow()) localStorage.setItem(uk('eyelingo_lang_levels'), JSON.stringify(LANG_LEVELS)); } catch(e){}
-  // Save to Supabase profile if logged in
-  saveLangLevelsToProfile();
-}
 
 async function saveLangLevelsToProfile(){
   try {
@@ -4301,43 +4268,6 @@ function getCurrentLevel(){
 
 
 // Level settings modal
-function openLevelSettings(){
-  var existing = document.getElementById('level-settings-modal');
-  if(existing){ existing.style.display='flex'; return; }
-  
-  var modal = document.createElement('div');
-  modal.id = 'level-settings-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.onclick = function(e){ if(e.target===modal) modal.style.display='none'; };
-  
-  var langs = [
-    {code:'en', flag:'🇬🇧', name:'Angielski'},
-    {code:'es', flag:'🇪🇸', name:'Hiszpański'},
-    {code:'nl', flag:'🇳🇱', name:'Holenderski'},
-    {code:'jp', flag:'🇯🇵', name:'Japoński'},
-  ];
-  var levels = ['A1','A2','B1','B2','C1','C2'];
-  
-  modal.innerHTML = '<div style="background:#fff;border-radius:20px;padding:32px;max-width:460px;width:100%;box-shadow:0 24px 80px rgba(26,35,64,.2)">'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">'
-    + '<h3 style="font-family:DM Sans,sans-serif;font-size:22px;font-weight:500;color:var(--navy)">Twoje poziomy językowe</h3>'
-    + '<button onclick="document.getElementById(\"level-settings-modal\").style.display=\"none\"" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--dim2)">×</button>'
-    + '</div>'
-    + '<p style="font-size:14px;color:var(--dim2);margin-bottom:20px;line-height:1.5">Ustaw swój poziom dla każdego języka. Porcja dnia i quizy będą dopasowane do Twojego poziomu.</p>'
-    + langs.map(function(l){
-        var current = LANG_LEVELS[l.code] || 'B1';
-        return '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:12px 16px;background:var(--paper);border-radius:12px">'
-          + '<span style="font-size:22px">' + l.flag + '</span>'
-          + '<span style="font-size:15px;font-weight:500;color:var(--navy);flex:1">' + l.name + '</span>'
-          + '<select id="lvl-modal-'+l.code+'" style="padding:7px 12px;border-radius:10px;border:1.5px solid var(--border2);font-size:13px;background:#fff;color:var(--navy);font-weight:500">'
-          + levels.map(function(lv){ return '<option value="'+lv+'"'+(lv===current?' selected':'')+'>'+lv+'</option>'; }).join('')
-          + '</select></div>';
-      }).join('')
-    + '<button onclick="saveAllLevels()" style="width:100%;padding:14px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;margin-top:8px">Zapisz ustawienia</button>'
-    + '</div>';
-  
-  document.body.appendChild(modal);
-}
 
 function saveAllLevels(){
   var langs = ['en','es','nl','jp'];
@@ -4870,17 +4800,6 @@ function renderWeakWords(words, lang){
 
 var _chatLevel='beginner';
 
-function setChatLevel(level, el){
-  _chatLevel=level;
-  ['beginner','intermediate','advanced'].forEach(function(l){
-    var btn=document.getElementById('lvl-'+l);
-    if(!btn)return;
-    if(l===level){ btn.style.borderColor='var(--orange)'; btn.style.background='#faeeda'; btn.style.color='var(--orange)'; }
-    else { btn.style.borderColor='var(--border-2,#ccc)'; btn.style.background='transparent'; btn.style.color='var(--dim2,#888)'; }
-  });
-  if(level==='advanced'){ var brave=document.querySelector('input[name="chat-mode"][value="brave"]'); if(brave) brave.checked=true; }
-  else if(level==='beginner'){ var hints=document.querySelector('input[name="chat-mode"][value="hints"]'); if(hints) hints.checked=true; }
-}
 
 function chatLevelChanged(){
   var lvl=((document.getElementById('chat-level')||{}).value)||'B1';
@@ -4919,10 +4838,6 @@ function chatRenderHistory(){
 // ── Renderowanie odpowiedzi AI z podświetleniem fiszek ──
 function _escFcRegex(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
 
-function _fcWordRegex(word){
-  try{ return new RegExp('(?<![\\p{L}\\p{N}_])('+_escFcRegex(word)+')(?![\\p{L}\\p{N}_])','giu'); }
-  catch(e){ return new RegExp('\\b('+_escFcRegex(word)+')\\b','gi'); } // fallback gdy brak lookbehind/\p
-}
 
 // Zwraca {html, used:[słowa fiszek użyte w odpowiedzi]}
 function renderAiHtml(text){
@@ -4988,30 +4903,6 @@ function parseKnownSentinel(reply){
 }
 
 // Boost SM-2 dla słów, które user zademonstrował poprawnie
-async function boostDemonstrated(demos){
-  if(!demos||!demos.length)return [];
-  var boostMap={high:{reps:2,ease:0.15},medium:{reps:1,ease:0.10},low:{reps:0,ease:0.05}};
-  var applied=[];
-  var sess=(await db.auth.getSession()).data.session;
-  if(!sess)return [];
-  for(var i=0;i<demos.length;i++){
-    var d=demos[i];
-    var fc=(_chatFlashcards||[]).find(function(f){return f.word&&f.word.toLowerCase()===d.word.toLowerCase();});
-    if(!fc||!fc.id) continue; // tylko realne fiszki word_progress
-    var b=boostMap[d.confidence]||boostMap.medium;
-    var newEase=Math.min(2.8,(fc.ease||2.5)+b.ease);
-    var newReps=(fc.reps||0)+b.reps;
-    try{
-      await db.from('word_progress')
-        .update({ease_factor:newEase, repetitions:newReps})
-        .eq('user_id',sess.user.id)
-        .eq('flashcard_id',fc.id);
-      fc.ease=newEase; fc.reps=newReps; // odśwież cache
-      applied.push(fc.word);
-    }catch(e){}
-  }
-  return applied;
-}
 
 function showChatHints(){
   var hintsWrap=document.getElementById('chat-hints-wrap');
@@ -5409,10 +5300,6 @@ function showLyricAnalysis(idx){
   sidebar.innerHTML=html;
 }
 
-function toggleLyric(i){
-  var el=document.getElementById('lyric-'+i);
-  if(el) el.classList.toggle('open');
-}
 
 function renderLyricsWords(){
   var panel=document.getElementById('lyrics-words-panel');
@@ -5678,46 +5565,6 @@ function showSrsDone(){
 // ═══════════════════════════════════════
 // GENERATOR FISZEK + WYZWANIE TYGODNIA
 // ═══════════════════════════════════════
-async function challengeOpenGenerator(){
-  var sess=(await db.auth.getSession()).data.session;
-  if(!sess){showToast('Zaloguj sie aby generowac fiszki','error');return;}
-  var challenges=[
-    {name:'Mistrz Podrozy',topic:'travel vocabulary',goal:50},
-    {name:'Biznes Pro',topic:'business English',goal:40},
-    {name:'Naukowy Umysl',topic:'science vocabulary',goal:30},
-  ];
-  var week=Math.floor(Date.now()/604800000)%challenges.length;
-  var ch=challenges[week];
-  var existing=document.getElementById('challenge-gen-modal');
-  if(existing)existing.remove();
-  var modal=document.createElement('div');
-  modal.id='challenge-gen-modal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  var inner=document.createElement('div');
-  inner.style.cssText='background:#fff;border-radius:20px;padding:32px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto';
-  inner.innerHTML=''
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'
-    +'<h3 style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy)">Generator fiszek</h3>'
-    +'<button id="gen-close-btn" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--dim2)">x</button>'
-    +'</div>'
-    +'<div style="padding:14px;background:#faeeda;border-radius:10px;margin-bottom:16px">'
-    +'<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:4px">'+ch.name+'</div>'
-    +'<div style="font-size:13px;color:var(--dim)">AI wygeneruje <strong style="color:var(--orange)">'+ch.goal+' slowek</strong> z tematu <em>'+ch.topic+'</em> — dokladnie tyle ile wymaga wyzwanie.</div>'
-    +'</div>'
-    +'<div style="margin-bottom:20px">'
-    +'<label style="font-size:12px;font-weight:500;color:var(--dim2);display:block;margin-bottom:6px">Poziom</label>'
-    +'<select id="gen-level" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--border2);font-size:13px">'
-    +'<option value="A2">A2 — Podstawowy</option>'
-    +'<option value="B1" selected>B1 — Sredniozaawansowany</option>'
-    +'<option value="B2">B2 — Wyzszy sredni</option>'
-    +'</select></div>'
-    +'<div id="gen-status" style="font-size:13px;color:var(--dim2);text-align:center;margin-bottom:12px;min-height:20px"></div>'
-    +'<button id="gen-submit-btn" class="btn btn-orange" style="width:100%;justify-content:center;padding:14px">🤖 Generuj '+ch.goal+' fiszek</button>';
-  modal.appendChild(inner);
-  document.body.appendChild(modal);
-  document.getElementById('gen-close-btn').onclick=function(){modal.remove();};
-  document.getElementById('gen-submit-btn').onclick=function(){runChallengeGenerator(ch.topic,ch.name,ch.goal);};
-}
 
 
 // ═══════════════════════════════════════
@@ -6584,87 +6431,9 @@ window.postLogin=function(){if(_origPostLogin2)_origPostLogin2();setTimeout(upda
 // ═══════════════════════════════════════════════════════
 // ── helper: dostępność — kompaktowe pilulki dni ──
 // Psychologia: chunking — grupujemy info w łatwe do skanowania jednostki
-function buildAvailBars(avail){
-  var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
-  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
-  var activeDays=[];
-  DAYS_EN.forEach(function(d,i){
-    var day=(avail||{})[d];
-    if(day&&day.active) activeDays.push({label:DAYS_PL[i].slice(0,2),from:day.from,to:day.to});
-  });
-  if(!activeDays.length) return '<div style="font-size:11px;color:var(--dim2)">Brak podanej dostępności</div>';
-
-  // Wypisz tylko aktywne dni jako kompaktowe pilulki
-  // Jeśli godziny są te same dla kilku dni — grupuj
-  var groups={};
-  DAYS_EN.forEach(function(d,i){
-    var day=(avail||{})[d];
-    if(!day||!day.active)return;
-    var key=(day.from||'')+'–'+(day.to||'');
-    if(!groups[key])groups[key]=[];
-    groups[key].push(DAYS_PL[i].slice(0,2));
-  });
-
-  var html='<div style="display:flex;flex-direction:column;gap:5px">';
-  Object.keys(groups).forEach(function(hours){
-    var days=groups[hours];
-    html+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
-    html+='<div style="display:flex;gap:3px">';
-    days.forEach(function(d){
-      html+='<span style="font-size:10px;font-weight:500;background:rgba(22,163,74,.12);color:#15803d;padding:2px 6px;border-radius:5px;border:1px solid rgba(22,163,74,.25)">'+d+'</span>';
-    });
-    html+='</div>';
-    html+='<span style="font-size:10px;color:var(--dim2);font-weight:500">⏰ '+hours+'</span>';
-    html+='</div>';
-  });
-  html+='</div>';
-  return html;
-}
 
 // ── helper: tygodniowa siatka dostępności (modal) ──
 // Psychologia: spatial memory — 7 kolumn = 7 dni, natychmiastowy pattern recognition
-function buildFullAvailCalendar(avail){
-  var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
-  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
-
-  // Tygodniowa siatka — 7 kafelków
-  var html='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">';
-  DAYS_EN.forEach(function(d,i){
-    var day=avail[d];
-    var active=day&&day.active;
-    var isWeekend=i>=5;
-
-    html+='<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 6px;border-radius:12px;'
-      +(active
-        ?'background:rgba(22,163,74,.1);border:1.5px solid rgba(22,163,74,.3)'
-        :'background:var(--paper2);border:1.5px solid var(--border)')
-      +'">';
-
-    // Nazwa dnia
-    html+='<span style="font-size:11px;font-weight:500;color:'+(active?'#15803d':'var(--dim2)')+'">'+DAYS_PL[i]+'</span>';
-
-    // Ikona
-    html+='<span style="font-size:16px">'+(active?'✅':'—')+'</span>';
-
-    // Godziny
-    if(active&&day.from&&day.to){
-      html+='<span style="font-size:9px;font-weight:500;color:#15803d;text-align:center;line-height:1.4">'+day.from+'<br>'+day.to+'</span>';
-    } else {
-      html+='<span style="font-size:9px;color:var(--dim2)">—</span>';
-    }
-    html+='</div>';
-  });
-  html+='</div>';
-
-  // Podsumowanie tekstowe pod siatką
-  var activeDays=DAYS_EN.filter(function(d){return avail[d]&&avail[d].active;});
-  if(activeDays.length){
-    html+='<div style="margin-top:10px;font-size:11px;color:var(--dim2);text-align:center">';
-    html+='Dostępny <strong style="color:var(--navy)">'+activeDays.length+' dni</strong> w tygodniu';
-    html+='</div>';
-  }
-  return html;
-}
 
 // ═══════════════════════════════════════════════════════
 // renderTutors — redesign v3.0
@@ -7482,15 +7251,6 @@ function trybFlipReveal(backText){
 }
 
 
-function trybFlipNext(known){
-  _trybIdx++;
-  if(_trybIdx >= _trybCards.length){ showTrybSessionSummary(); return; }
-  loadTrybFlipCard();
-}
-function trybFlipPrev(){
-  _trybIdx = Math.max(0, _trybIdx-1);
-  loadTrybFlipCard();
-}
 
 // ── TRYB: MULTIWYBÓR ─────────────────────────────────
 function loadTrybMCCard(){
@@ -7882,11 +7642,6 @@ function showTrybHint(){
   document.querySelectorAll('.tryb-rate-btn').forEach(function(b){var max=Math.max(1,4-_trybHintPenalty);b.style.opacity=parseInt(b.dataset.q)>max?'0.45':'1';});
 }
 
-function saveTrybMnemonic(){
-  var card=_trybCards[_trybIdx];if(!card)return;
-  var val=(document.getElementById('tryb-mnemonic-input')||{}).value||'';
-  localStorage.setItem('mnem_'+encodeURIComponent(card.word||''),val);
-}
 
 async function showTrybMiniStory(){
   var box=document.getElementById('tryb-story-box');if(!box)return;
@@ -8193,67 +7948,7 @@ function openCollectionView(colIdx){
 }
 
 
-function buildMatCard(s, inCollection, colIdx){
-  var card = document.createElement('div');
-  card.className = 'mat-card';
-  card.innerHTML = '<div class="mat-card-name">' + (window.escH ? escH(s.name) : s.name) + '</div>'
-    + '<div class="mat-card-count">' + (s.user_set_cards ? s.user_set_cards.length : '?') + ' fiszek</div>';
-  var btnRow = document.createElement('div');
-  btnRow.style.cssText = 'display:flex;gap:6px;margin-top:10px;flex-wrap:wrap';
 
-  var studyBtn = document.createElement('button');
-  studyBtn.className = 'btn btn-orange'; studyBtn.style.cssText = 'font-size:12px;padding:6px 12px';
-  studyBtn.textContent = '▶ Ucz się';
-  studyBtn.onclick = async function(){
-    // Load cards and start flip mode directly
-    var {data:cards} = await db.from('user_set_cards').select('word,translation').eq('set_id',s.id);
-    if(!cards||!cards.length){ if(typeof showToast==='function') showToast('Zestaw jest pusty',''); return; }
-    _trybExternalCards = cards;
-    _trybExternalName = s.name;
-    RewardSystem.load();
-    showPage('tryb');
-    setTimeout(function(){
-      startSession('set_external');
-      // After cards loaded, auto-select flip mode
-      setTimeout(function(){ startTrybMode('flip'); }, 300);
-    }, 150);
-  };
-  btnRow.appendChild(studyBtn);
-
-  if(inCollection){
-    var removeBtn = document.createElement('button');
-    removeBtn.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
-    removeBtn.textContent = '× Usuń z katalogu';
-    removeBtn.onclick = async function(){
-      var sess=(await db.auth.getSession()).data.session; if(!sess) return;
-      _collections[colIdx].sets = _collections[colIdx].sets.filter(function(x){ return x.id !== s.id; });
-      saveCollections(sess.user.id);
-      openCollectionView(colIdx);
-      loadCollections();
-    };
-    btnRow.appendChild(removeBtn);
-  } else {
-    var moveBtn = document.createElement('button');
-    moveBtn.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
-    moveBtn.textContent = '📁 Przenieś';
-    moveBtn.onclick = async function(){ await moveSetToCollection(s.id, s.name); };
-    btnRow.appendChild(moveBtn);
-  }
-
-  card.appendChild(btnRow);
-  return card;
-}
-
-function promptMoveSet(setId){
-  // Get set name from DOM
-  var cards = document.querySelectorAll('.mat-card');
-  var setName = 'Zestaw';
-  cards.forEach(function(c){
-    var btn = c.querySelector('[data-sid="'+setId+'"]');
-    if(btn){ var nameEl = c.querySelector('.mat-card-name'); if(nameEl) setName = nameEl.textContent; }
-  });
-  moveSetToCollection(setId, setName);
-}
 
 async function moveSetToCollection(setId, setName){
   if(!_collections.length){ alert('Najpierw stwórz katalog.'); return; }
@@ -8426,17 +8121,7 @@ function openCreateSetInCollection(){
   }
 }
 
-function filterCollectionSets(query){
-  var cards = document.querySelectorAll('#mat-collection-sets .mat-card');
-  cards.forEach(function(card){
-    var name = card.querySelector('.mat-card-name');
-    if(!name){ card.style.display=''; return; }
-    var match = !query || name.textContent.toLowerCase().includes(query.toLowerCase());
-    card.style.display = match ? '' : 'none';
-  });
-}
 
-function updateChallengeMode(on){var sl=document.getElementById('tryb-toggle-slider');var kn=document.getElementById('tryb-toggle-knob');if(sl)sl.style.background=on?'var(--orange)':'rgba(255,255,255,.2)';if(kn)kn.style.left=on?'25px':'3px';}
 
 function renderTrybBadges(){
   RewardSystem.load();var defs=RewardSystem.getBadgeDefs();var s=RewardSystem._state;
@@ -8711,20 +8396,7 @@ async function showTrybSetPicker(){
   }catch(e){if(list)list.innerHTML='<div style="color:#c33;font-size:13px">Błąd: '+e.message+'</div>';}
 }
 
-function fireConfetti(){ return; /* gaming off */
-  var canvas=document.getElementById('tryb-confetti');if(!canvas)return;
-  canvas.style.display='block';canvas.width=window.innerWidth;canvas.height=window.innerHeight;
-  var ctx=canvas.getContext('2d');var pieces=[];
-  for(var i=0;i<120;i++)pieces.push({x:Math.random()*canvas.width,y:-20,w:Math.random()*8+4,h:Math.random()*12+6,color:['#c96a2a','#f5c842','#1a2340','#fff','#e07830'][Math.floor(Math.random()*5)],vx:(Math.random()-.5)*4,vy:Math.random()*4+2,rot:Math.random()*360,rotV:(Math.random()-.5)*8});
-  var frames=0;
-  function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);pieces.forEach(function(p){ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot*Math.PI/180);ctx.fillStyle=p.color;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();p.x+=p.vx;p.y+=p.vy;p.rot+=p.rotV;p.vy+=.05;});frames++;if(frames<120)requestAnimationFrame(draw);else{canvas.style.display='none';}}
-  draw();
-}
 
-async function awardGoldBonus(amount){
-  try{var sess=(await db.auth.getSession()).data.session;if(!sess)return;await db.rpc('increment_gold',{p_user_id:sess.user.id,p_amount:amount});}
-  catch(e){try{var sess2=(await db.auth.getSession()).data.session;if(!sess2)return;var {data:ls}=await db.from('learning_stats').select('gold').eq('user_id',sess2.user.id).maybeSingle();var ng=((ls&&ls.gold)||0)+amount;await db.from('learning_stats').update({gold:ng}).eq('user_id',sess2.user.id);}catch(e2){}}
-}
 
 // Tryb Nauki page HTML injection
 function injectTrybPage(){
@@ -9216,133 +8888,10 @@ async function uploadTutorPhoto(file){
 // ═══════════════════════════════════════════════════════
 
 // ── Inline quiz dnia (obok słówek) ──
-var _inlineQuizState = {step:0, done:false, words:[]};
 
-async function loadInlineQuiz(){
-  var box = document.getElementById('dc-quiz-inline-body');
-  if(!box) return;
 
-  box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">⏳ Ładuję quiz z Twoich materiałów...</div>';
 
-  // Pobierz słówka z materiałów użytkownika (user_set_cards)
-  var quizWords = [];
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(sess){
-      var lang = (document.getElementById('daily-lang-select')||{}).value||'en';
-      var {data:cards} = await db.from('user_set_cards')
-        .select('word,translation,user_sets(user_id)')
-        .limit(40);
-      // Filtruj: słowa w wybranym języku (zakładamy angielskie słowa dla EN itp.)
-      if(cards && cards.length >= 4){
-        // Losuj 4 słówka
-        var shuffled = cards.sort(function(){return Math.random()-.5;}).slice(0,4);
-        quizWords = shuffled.map(function(c){return{w:c.word||'',t:c.translation||''};});
-      }
-    }
-  }catch(e){}
 
-  // Fallback: słówka dnia
-  if(quizWords.length < 2){
-    var w1El = document.getElementById('dc-word-text');
-    var t1El = document.getElementById('dc-word-translation');
-    var w2El = document.getElementById('dc-word-text2');
-    var t2El = document.getElementById('dc-word-translation2');
-    var w1 = w1El && w1El.textContent;
-    var t1 = t1El && t1El.textContent;
-    var w2 = w2El && w2El.textContent;
-    var t2 = t2El && t2El.textContent;
-    if(w1&&t1) quizWords.push({w:w1,t:t1});
-    if(w2&&t2) quizWords.push({w:w2,t:t2});
-  }
-
-  if(quizWords.length < 2){
-    box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Dodaj słówka do materiałów, aby quiz działał!</div>';
-    return;
-  }
-
-  _inlineQuizState = {step:0, done:false, words:quizWords};
-  renderInlineQuizStep(0);
-}
-
-function renderInlineQuizStep(step){
-  var box = document.getElementById('dc-quiz-inline-body');
-  if(!box || _inlineQuizState.done) return;
-
-  var words = _inlineQuizState.words.filter(function(x){return x.w&&x.t;});
-  if(!words.length) return;
-
-  if(step === 0){
-    // Krok 1: wielokrotny wybór — podaj tłumaczenie słowa (opcje po polsku z innych słówek)
-    var target = words[0];
-    // Fałszywe odpowiedzi z tłumaczeń innych słówek (po polsku!)
-    var otherTranslations = words.slice(1).map(function(x){return x.t;})
-      .concat(['dom','czas','dobry','praca','życie','dzień','droga','człowiek','pomoc','wiedzieć'])
-      .filter(function(x){return x && x.toLowerCase()!==target.t.toLowerCase();});
-    var fakes = otherTranslations.slice(0,3);
-    var opts = [target.t].concat(fakes).sort(function(){return Math.random()-.5;});
-    var html = '<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:500">Pytanie 1/2 — Wybierz tłumaczenie:</div>'
-      +'<div style="font-size:20px;font-weight:500;color:var(--navy);font-family:DM Sans,sans-serif;margin-bottom:14px">'+target.w+'</div>'
-      +'<div style="display:flex;flex-direction:column;gap:6px" id="iq-opts">';
-    opts.forEach(function(o,i){
-      html+='<button onclick="checkInlineOpt(\''+o.replace(/'/g,"\\'")+'\',\''+target.t.replace(/'/g,"\\'")+'\','+step+')" '
-        +'style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:13px;cursor:pointer;text-align:left;transition:.15s;font-family:\'DM Sans\',sans-serif" '
-        +'onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'+o+'</button>';
-    });
-    html+='</div>';
-    box.innerHTML=html;
-
-  } else if(step === 1 && words.length >= 2){
-    // Krok 2: uzupełnij lukę
-    var target2 = words[1];
-    var hint = target2.w[0].toUpperCase()+'_'.repeat(Math.max(1,target2.w.length-1));
-    var html2 = '<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:500">Pytanie 2/2 — Wpisz słowo po angielsku:</div>'
-      +'<div style="font-size:14px;color:var(--dim);margin-bottom:10px;font-style:italic">"'+target2.t+'"</div>'
-      +'<div style="font-size:12px;color:var(--dim2);margin-bottom:8px">Podpowiedź: '+hint+'</div>'
-      +'<div style="display:flex;gap:6px">'
-      +'<input id="iq-fill" type="text" placeholder="Wpisz odpowiedź..." style="flex:1;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;font-family:\'DM Sans\',sans-serif" onkeydown="if(event.key===\'Enter\')checkInlineFill(\''+target2.w.replace(/'/g,"\\'")+'\','+step+')">'
-      +'<button onclick="checkInlineFill(\''+target2.w.replace(/'/g,"\\'")+'\','+step+')" class="btn btn-orange" style="padding:8px 14px;font-size:13px">✓</button>'
-      +'</div>';
-    box.innerHTML=html2;
-    setTimeout(function(){var i=document.getElementById('iq-fill');if(i)i.focus();},100);
-
-  } else {
-    // Ukończono
-    _inlineQuizState.done=true;
-    var doneEl=document.getElementById('dc-quiz-done2');
-    if(doneEl)doneEl.style.display='inline';
-    box.innerHTML='<div style="text-align:center;padding:16px">'
-      +'<div style="font-size:36px;margin-bottom:8px">🎉</div>'
-      +'<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:4px">Quiz ukończony!</div>'
-      +'<div style="font-size:12px;color:var(--dim2)">+10 XP za dziś</div>'
-      +'</div>';
-    if(typeof addDailyXP==='function') addDailyXP(10);
-    if(typeof updateDailyProgress==='function') updateDailyProgress();
-  }
-}
-
-function checkInlineOpt(chosen, correct, step){
-  var isOk = chosen.trim().toLowerCase() === correct.trim().toLowerCase();
-  var opts = document.querySelectorAll('#iq-opts button');
-  opts.forEach(function(b){
-    b.disabled=true;
-    if(b.textContent.trim().toLowerCase()===correct.trim().toLowerCase())
-      b.style.cssText=b.style.cssText+'background:#dcfce7;border-color:#86efac;color:#166534;font-weight:500';
-    else if(b.textContent.trim()===chosen&&!isOk)
-      b.style.cssText=b.style.cssText+'background:#fee2e2;border-color:#fca5a5;color:#991b1b';
-  });
-  setTimeout(function(){renderInlineQuizStep(step+1);}, 800);
-}
-
-function checkInlineFill(correct, step){
-  var inp = document.getElementById('iq-fill');
-  if(!inp) return;
-  var val = inp.value.trim().toLowerCase();
-  var ok = val === correct.trim().toLowerCase() || (val.length>2 && correct.toLowerCase().includes(val));
-  inp.style.borderColor = ok ? '#86efac' : '#fca5a5';
-  inp.style.background = ok ? '#dcfce7' : '#fee2e2';
-  setTimeout(function(){renderInlineQuizStep(step+1);}, 700);
-}
 
 // ═══════════════════════════════════════════════════════
 // GŁOSÓWKI — z filtrami języka, avatarami, pseudonimami
@@ -9488,30 +9037,6 @@ window.loadVoiceRecordings = async function loadVoiceRecordings(){
 // PROFIL UŻYTKOWNIKA — upload zdjęcia profilowego
 // ═══════════════════════════════════════════════════════
 
-async function uploadUserAvatar(file){
-  if(!file) return;
-  if(file.size>2*1024*1024){if(typeof showToast==='function')showToast('Plik za duży — max 2MB','error');return;}
-  var label=document.getElementById('user-avatar-label');
-  var preview=document.getElementById('user-avatar-preview');
-  if(label)label.textContent='⏳ Przesyłanie...';
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess){showToast&&showToast('Zaloguj się','error');return;}
-    var ext=file.name.split('.').pop()||'jpg';
-    var path='avatars/'+sess.user.id+'_'+Date.now()+'.'+ext;
-    var {error}=await db.storage.from('recordings').upload(path,file,{contentType:file.type,upsert:true});
-    if(error)throw error;
-    var {data:urlData}=db.storage.from('recordings').getPublicUrl(path);
-    var url=urlData.publicUrl;
-    // Zapisz do profiles
-    await db.from('profiles').upsert({user_id:sess.user.id,avatar_url:url},{onConflict:'user_id'});
-    if(preview){preview.src=url;preview.style.display='block';}
-    if(label)label.textContent='✅ Zdjęcie zapisane!';
-    showToast&&showToast('Zdjęcie profilowe zaktualizowane!','success');
-  }catch(e){
-    if(label)label.textContent='Błąd: '+e.message;
-  }
-}
 
 // ── SQL hint: dodaj kolumnę avatar_url do profiles ──
 // ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url text;
@@ -9844,22 +9369,6 @@ function kkRenderFull(wrap, d, color){
   kkLoadArchiveOdkryj(d.date);
 }
 
-function kkUpdateStreakOdkryj(todayDate){
-  try{
-    var last=localStorage.getItem(uk('kk_last_read'));
-    var count=parseInt(localStorage.getItem(uk('kk_streak'))||'0',10);
-    var yesterday=new Date(Date.now()-86400000).toISOString().split('T')[0];
-    if(last===todayDate){}
-    else if(last===yesterday){count+=1;}
-    else{count=1;}
-    localStorage.setItem(uk('kk_last_read'),todayDate);
-    localStorage.setItem(uk('kk_streak'),String(count));
-    var sn=document.getElementById('kk-streak-num-odkryj');
-    var ss=document.getElementById('kk-streak-sub-odkryj');
-    if(sn)sn.textContent=count+(count===1?' dzień':' dni');
-    if(ss)ss.textContent=count>=7?'🏆 Odznaka "Kulturoznawca tygodnia" odblokowana!':'Jeszcze '+(7-count)+' '+(7-count===1?'dzień':'dni')+' do odznaki tygodnia';
-  }catch(e){}
-}
 
 async function kkLoadArchiveOdkryj(todayDate){
   try{
@@ -10599,14 +10108,6 @@ async function loadContextSentence(word, translation, lang, level){
   }
 }
 
-async function loadYouTubeVideo(word,lang){
-  try{
-    const{data:cached}=await db.from('youtube_cache')
-      .select('video_id,video_title').eq('word',word).eq('language',lang).limit(1);
-    var cv=Array.isArray(cached)?cached[0]:cached; if(cv?.video_id){renderVideo(cv.video_id,cv.video_title);return;}
-  }catch(e){}
-  // Video zostanie załadowane po renderSentence z oczyszczonym słowem
-}
 
 
 function renderSentence(word, sentence, translation, searchWord){
@@ -10644,20 +10145,6 @@ async function reportTranslation(word, sentence, translation){
   }catch(e){showToast('Błąd: '+e.message,'error');}
 }
 
-function playAudio(){
-  if(!window._currentSentence) return;
-  speechSynthesis.cancel();
-  var utt = new SpeechSynthesisUtterance(window._currentSentence);
-  utt.lang = window._currentLang || 'en-US';
-  utt.rate = 0.82;
-  utt.pitch = 1.0;
-  var voices = speechSynthesis.getVoices();
-  var langCode = (window._currentLang || 'en').split('-')[0];
-  var google = voices.find(function(v){return v.lang.startsWith(langCode) && v.name.includes('Google');});
-  var any = voices.find(function(v){return v.lang.startsWith(langCode);});
-  utt.voice = google || any || null;
-  speechSynthesis.speak(utt);
-}
 
 function renderVideo(videoId, title){
   // Używamy Youglish - pokazuje to słowo w kontekście w filmach
@@ -11147,26 +10634,6 @@ function openOdkryjArticle(art){
   addOdkryjAudioBtn(art.content, _odkryjLang);
 }
 
-function buildOdkryjArticleHTML(text, lang){
-  // Strip ```json wrapping
-  var bt='`';
-  text=(text||'').replace(new RegExp(bt+bt+bt+'json','g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
-  if(text.startsWith('{')){try{var p=JSON.parse(text);text=p.content||p.text||text;}catch(e){}}
-  var sentences=text.match(/[^.!?]+[.!?]+/g)||[text];
-  return sentences.map(function(sent,idx){
-    var trimmed=sent.trim();
-    if(!trimmed)return'';
-    var words=trimmed.split(/(\s+)/);
-    var wordsHtml=words.map(function(w){
-      if(/^\s+$/.test(w))return w;
-      var clean=w.replace(/[^a-zA-ZÀ-žа-яА-Я]/g,'');
-      if(clean.length<2)return w;
-      return'<span class="hover-word" data-word="'+clean+'" data-lang="'+lang+'">'+w+'</span>';
-    }).join('');
-    var safeS=trimmed.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-    return'<span class="sent" data-sentence="'+safeS+'" onclick="analyzeOdkryjSentence(this,this.dataset.sentence)" title="Kliknij aby przeanalizować">'+wordsHtml+'</span> ';
-  }).join('');
-}
 
 async function analyzeOdkryjSentence(el, sentence){
   var panel=document.getElementById('odkryj-sent-analysis');
@@ -13169,27 +12636,9 @@ function lexAfterTyping(){
   }
 }
 
-function lexAddTranslateCardBtn(){
-  // Add "Translate this card" button below card text
-  var existing = document.getElementById('lex-translate-card-btn');
-  if(existing) existing.remove();
-
-  var cardEl = document.getElementById('lex-card-lex');
-  if(!cardEl) return;
-
-  var btn = document.createElement('button');
-  btn.id = 'lex-translate-card-btn';
-  btn.style.cssText = 'display:inline-flex;align-items:center;gap:5px;margin-top:10px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s';
-  btn.innerHTML = '🌐 Przetłumacz całą kartę';
-  btn.onclick = lexTranslateWholeCard;
-  cardEl.appendChild(btn);
-}
 
 var _lexCardTranslation = null;
 
-function lexAddTranslateCardBtn(){
-  // Automatyczne tłumaczenie — bez przycisku (uruchamiane w lexAfterTyping)
-}
 
 function lexRenderFeedbackBlock(card){
   var old = document.getElementById('lex-feedback-block');
@@ -16395,7 +15844,6 @@ async function lexInit(){
       return d;
     }catch(e){ return null; }
   }
-  window.trybGetSnapshot=function(){ return getSnap(); };
   window.trybResumeSession=function(){
     var d=getSnap(); if(!d) return;
     window._trybExternalCards=d.remaining;
@@ -16771,12 +16219,6 @@ async function lexInit(){
   };
 
   // Przygotuj kontener (klasa + język + treść)
-  window.tlPrepare = function(el, text, lang){
-    if(!el) return;
-    el.classList.add('tl');
-    el.dataset.tlLang=lang||'en';
-    el.innerHTML=window.tlBuildHTML(text, lang||'en');
-  };
 
   function langOf(node){
     var c=node.closest && node.closest('[data-tl-lang]');
