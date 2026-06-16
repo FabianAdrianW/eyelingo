@@ -15652,7 +15652,15 @@ async function lexInit(){
     var topic=window._lexNextTopic||null; window._lexNextTopic=null;
     mount(); loading('Przygotowuję lekcję…');
     window._lexLessonRunning=true;
-    var res=await call('lesson-start',{format_min:fmt,target_lang:lang,topic_override:topic});
+    // słowa z wybranego zestawu → materiał lekcji (engine utrwala TWÓJ materiał)
+    var seed=[];
+    try{
+      if(window._lexSources && window._lexSources.length && typeof lexFetchSourceWords==='function'){
+        var sw=await lexFetchSourceWords();
+        seed=(sw||[]).map(function(x){ return {word:String(x.word||'').trim(), gloss:(x.translation||'')}; }).filter(function(x){return x.word;}).slice(0,80);
+      }
+    }catch(e){ console.warn('[lexv3] seed words',e); }
+    var res=await call('lesson-start',{format_min:fmt,target_lang:lang,topic_override:topic,seed_words:seed});
     if(!res.ok||!res.data||!res.data.lesson_id){ return fatal('lesson-start',res); }
     var d=res.data;
     window._v3={active:true,lessonId:d.lesson_id,plan:d.plan||[],idx:d.screen_index||0,rolling:d.rolling_accuracy,fmt:d.format_min||fmt,lang:lang,topic:d.topic_container};
