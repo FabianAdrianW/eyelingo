@@ -1252,8 +1252,6 @@ window.switchMatTab = function(tab){
   if(colView) colView.style.display='none';
   if(createBtn) createBtn.style.display='none';
   var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='none';
-  var srcf=document.getElementById('mat-source-filter');
-  if(srcf) srcf.style.display='none';
   var search=document.getElementById('mat-search');
   if(search) search.value='';
   if(tab==='mine'){
@@ -1262,7 +1260,6 @@ window.switchMatTab = function(tab){
     if(grid){ grid.style.display='grid'; }
     if(createBtn&&window._matMyUid) createBtn.style.display='block';
     var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display=(window._matMyUid?'inline-flex':'none');
-    if(srcf) srcf.style.display='flex';
     if(typeof loadMySets==='function') loadMySets();
     else setTimeout(function(){ if(typeof loadMySets==='function') loadMySets(); }, 300);
     if(typeof window.matRenderContinue==='function') window.matRenderContinue();
@@ -2728,32 +2725,15 @@ window.loadMySets = async function loadMySets(){
   }
 };
 
-var _matSourceFilter='all';
 function matRenderMine(){
   var grid=document.getElementById('mat-grid');
   if(!grid)return;
-  var f=_matSourceFilter||'all';
-  var list=(_matSets||[]).filter(function(s){
-    var src=(s.source||'manual').toLowerCase();
-    if(f==='all') return true;
-    if(f==='manual') return !s.source||src==='manual'||src==='web_srs'||src==='community';
-    if(f==='lex') return src.indexOf('lex')===0;
-    if(f==='alex') return src.indexOf('alex')===0;
-    return true;
-  });
+  var list=(_matSets||[]);
   if(!list.length){
-    var msg = f==='lex' ? 'Brak zestawów z lekcji Lexa.<br><small>Pojawią się tu, gdy dodasz fiszki z lekcji.</small>'
-      : f==='alex' ? 'Brak zestawów z rozmów z Alexem.<br><small>Pojawią się tu po rozmowach z AI.</small>'
-      : 'Nie masz jeszcze żadnych zestawów.<br><small>Kliknij + Nowy zestaw</small>';
-    grid.innerHTML='<div class="mat-empty">'+msg+'</div>';
+    grid.innerHTML='<div class="mat-empty">Nie masz jeszcze żadnych zestawów.<br><small>Kliknij + Nowy zestaw</small></div>';
   } else {
     grid.innerHTML=list.map(function(s){ return setCard(s); }).join('');
   }
-}
-function matFilterSource(src, btn){
-  _matSourceFilter=src;
-  document.querySelectorAll('.mat-srcf').forEach(function(b){ b.classList.toggle('active', b===btn); });
-  matRenderMine();
 }
 
 window.loadCommunity = async function loadCommunity(){
@@ -2980,16 +2960,16 @@ window.matSetLangApply=async function(setId, code){
     <div id="mat-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
       <div id="mat-sidebar-inner" style="padding:88px 0 64px 16px;min-width:200px;position:relative">
       <!-- Powtórki SM-2 (styl Eyelingo) -->
-      <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="position:relative;display:flex;align-items:center;gap:11px;padding:13px 14px;border-radius:14px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:border-color .2s, box-shadow .2s, transform .2s;margin-bottom:22px;margin-right:16px;overflow:hidden" onmouseover="this.style.borderColor='var(--orange)';this.style.boxShadow='0 4px 14px rgba(26,35,64,.07)';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor=(this.dataset.due==='1'?'rgba(201,106,42,.35)':'var(--border)');this.style.boxShadow='none';this.style.transform='none'">
+      <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="position:relative;display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:12px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:border-color .2s, box-shadow .2s, transform .2s;margin-bottom:14px;margin-right:16px;overflow:hidden" onmouseover="this.style.borderColor='var(--orange)';this.style.boxShadow='0 4px 14px rgba(26,35,64,.07)';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor=(this.dataset.due==='1'?'rgba(201,106,42,.35)':'var(--border)');this.style.boxShadow='none';this.style.transform='none'">
         <span id="sb-powtorki-accent" style="position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--orange);border-radius:3px 0 0 3px;opacity:0;transition:opacity .2s"></span>
-        <div id="sb-powtorki-icon" style="width:34px;height:34px;border-radius:10px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+        <div id="sb-powtorki-icon" style="width:27px;height:27px;border-radius:9px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
         </div>
         <div style="flex:1;min-width:0">
-          <div style="font-family:DM Sans,sans-serif;font-size:13.5px;font-weight:500;color:var(--navy);line-height:1.2" id="sb-powtorki-label">Powtórki na dziś</div>
-          <div style="font-size:11px;color:var(--dim2);margin-top:2px" id="sb-powtorki-sub">Algorytm SM-2</div>
+          <div style="font-family:DM Sans,sans-serif;font-size:12.5px;font-weight:500;color:var(--navy);line-height:1.2" id="sb-powtorki-label">Powtórki SM-2</div>
+          <div style="font-size:10.5px;color:var(--dim2);margin-top:1px" id="sb-powtorki-sub">System powtórek SM-2</div>
         </div>
-        <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:600;color:#fff;background:var(--orange);border-radius:8px;min-width:22px;text-align:center;padding:3px 8px;display:none;flex-shrink:0">0</div>
+        <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:12px;font-weight:600;color:#fff;background:var(--orange);border-radius:7px;min-width:20px;text-align:center;padding:2px 7px;display:none;flex-shrink:0">0</div>
       </div>
       <!-- Katalogi (zwijane) -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-right:16px">
@@ -3035,14 +3015,6 @@ window.matSetLangApply=async function(setId, code){
         <button class="mat-tab" data-tab="mine" onclick="switchMatTab('mine')">Moje materiały</button>
         <button class="mat-tab" data-tab="community" onclick="switchMatTab('community')" style="display:none">Społeczność</button>
         <button class="mat-tab" data-tab="voices" onclick="switchMatTab('voices')" style="display:none">Głosówki</button>
-      </div>
-
-      <!-- Source filter (Most #2/#5: skąd pochodzą fiszki) -->
-      <div id="mat-source-filter" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        <button class="mat-srcf active" data-src="all" onclick="matFilterSource('all',this)">Wszystkie</button>
-        <button class="mat-srcf" data-src="manual" onclick="matFilterSource('manual',this)">Manualne</button>
-        <button class="mat-srcf" data-src="lex" onclick="matFilterSource('lex',this)">Z lekcji Lexa</button>
-        <button class="mat-srcf" data-src="alex" onclick="matFilterSource('alex',this)">Z rozmów z Alexem</button>
       </div>
 
       <!-- 9.4 Kontynuuj ostatnią sesję nauki -->
@@ -3370,9 +3342,6 @@ window.matSetLangApply=async function(setId, code){
 .modal-close:hover{background:rgba(0,0,0,.15)}
 /* Materiały */
 .mat-tabs{display:flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:14px;width:fit-content}
-.mat-srcf{padding:6px 13px;border-radius:100px;border:1.5px solid var(--border);background:var(--white,#fff);color:var(--dim2,#666);font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;transition:.15s}
-.mat-srcf:hover{border-color:var(--orange);color:var(--orange)}
-.mat-srcf.active{background:var(--orange);border-color:var(--orange);color:#fff}
 .mat-tab{background:transparent;border:none;padding:10px 22px;border-radius:10px;font-weight:500;font-size:14px;color:var(--dim2);cursor:pointer;transition:.2s}
 .mat-tab.active{background:#fff;color:var(--navy);box-shadow:0 2px 8px rgba(0,0,0,.1)}
 .mat-tab:hover:not(.active){color:var(--navy)}
@@ -16391,7 +16360,7 @@ async function lexInit(){
 
   function matEnterLearn(){
     matMountLearnSurface();
-    ['mat-grid','mat-collection-view','mat-voices','mat-source-filter','mat-continue-wrap','mat-count','mat-drag-hint'].forEach(function(id){
+    ['mat-grid','mat-collection-view','mat-voices','mat-continue-wrap','mat-count','mat-drag-hint'].forEach(function(id){
       var e=document.getElementById(id); if(e) e.style.display='none';
     });
     var tabs=document.querySelector('#page-community .mat-tabs'); if(tabs) tabs.style.display='none';
