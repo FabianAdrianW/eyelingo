@@ -9882,7 +9882,7 @@ function teacherShowTab(tab){
   var sub=document.getElementById('teacher-main-sub');
   var pro='<span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span>';
   if(tab==='chat'){ if(title)title.innerHTML='AI Partner'; if(sub)sub.textContent='Swobodna rozmowa z AI dopasowana do Twojego poziomu'; }
-  else { if(title)title.innerHTML='Nauczyciel AI '+pro; if(sub)sub.textContent='Lex prowadzi Cię przez retrieval — wydobywasz, nie oglądasz'; }
+  else { if(title)title.innerHTML='Nauczyciel AI '+pro; if(sub)sub.textContent='Lex utrwala słowa, które przerabiasz na stronie i na desktopie — wydobywasz je z pamięci, nie tylko oglądasz.'; }
   if(tab==='chat' && typeof initChat==='function') initChat();
   if(tab==='teacher') lexInit();
   // Sekcje sidebara
@@ -10777,23 +10777,20 @@ function lexQuickStart(){
   try{ var _engQ=document.getElementById('lex-card-engine'); if(window._lexLessonRunning && _engQ && _engQ.style.display!=='none') return; }catch(e){} // lekcja w toku
   var info = (typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[_lexLang]) || {flag:'🌐', name:_lexLangName||'język'};
   var lvl = lexCurrentLevel();
-  var topic = window._lexNextTopic ? ('<div style="font-size:13px;color:var(--dim);margin-top:8px">Temat: <b style="color:var(--navy)">'+lexEsc(window._lexNextTopic)+'</b></div>') : '';
+  var topic = window._lexNextTopic ? ('<div style="font-size:13px;color:var(--dim);margin:0 0 16px;text-align:center">Temat: <b style="color:var(--navy)">'+lexEsc(window._lexNextTopic)+'</b></div>') : '';
   var host = document.getElementById('lex-onboarding');
   if(!host) return;
   host.innerHTML =
-    '<div style="max-width:520px;margin:0 auto;padding:48px 0;text-align:center">'
-    + '<div style="width:64px;height:64px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.7 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>'
-    + '<h3 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:4px">Co dziś utrwalamy?</h3>'
-    + '<div style="font-size:13px;color:var(--dim);max-width:380px;margin:6px auto 0;line-height:1.5">Wybierz zestaw lub kategorię — język rozpozna się z materiału, a Lex przerobi go z Tobą słowo po słowie.</div>'
-    + topic
+    '<div style="max-width:540px;margin:0 auto;padding:28px 0 48px">'
     + (function(){ try{ var st=(typeof lexxHasResume==='function')?lexxHasResume():null; if(!st) return '';
         var nm=(st.sources&&st.sources.length? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'lekcja'));
-        return '<div onclick="lexxResume()" style="margin:28px 0 4px;cursor:pointer;background:var(--paper2);border:1.5px solid var(--orange);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left">'
+        return '<div onclick="lexxResume()" style="margin:0 0 22px;cursor:pointer;background:var(--paper2);border:1.5px solid var(--orange);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left">'
           +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>'
           +'<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--navy)">Kontynuuj przerwaną lekcję</div>'
           +'<div style="font-size:11.5px;color:var(--dim2)">'+lexEsc(nm)+' · porcja '+st.portionNum+' z '+st.portionTarget+'</div></div>'
           +'<span style="font-size:18px;color:var(--orange)">→</span></div>'; }catch(e){ return ''; } })()
-    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:34px 0 12px">Ostatnio przerabiane</div>'
+    + topic
+    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 12px">Wybierz zestaw lub kategorię</div>'
     + '<div id="lex-source-picker"></div>'
     + '<div style="margin:24px 0 8px;text-align:left;padding:16px 18px;background:var(--paper2);border-radius:14px;border:1px solid var(--border)">'
     + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Poziom języka w przykładach Lexa</div>'
@@ -10804,16 +10801,15 @@ function lexQuickStart(){
     + '<button onclick="lexSetTeacherLevel(\'advanced\',this)" class="lex-tl-btn" style="padding:10px 6px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--navy);transition:.15s;text-align:center"><span style="display:block;font-weight:600;font-size:13px;margin-bottom:2px">Zaawansowany</span><span style="font-size:10.5px;color:var(--dim2)">C1–C2, złożone</span></button>'
     + '</div>'
     + '</div>'
-    + '<button onclick="lexQuickGo()" style="width:100%;margin-top:18px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
-    + '<div style="margin-top:18px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap">'
-    + '<span style="font-size:11.5px;color:var(--dim2)">Język prowadzenia lekcji:</span>'
-    + '<button onclick="lexObSelectLessonLang(\'pl\')" id="lex-ob-langpl" style="font-size:12px;padding:5px 12px;border-radius:100px;border:2px solid var(--orange);background:#fff;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Polski</button>'
-    + '<button onclick="lexObSelectLessonLang(\'target\')" id="lex-ob-langtgt" style="font-size:12px;padding:5px 12px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">'+lexEsc(info.name||_lexLangName)+'</button>'
+    + '<div style="margin:18px 0 8px;text-align:left">'
+    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Język prowadzenia lekcji</div>'
+    + '<div id="lex-lessonlang-row" style="display:flex;gap:10px"></div>'
     + '</div>'
+    + '<button onclick="lexQuickGo()" style="width:100%;margin-top:20px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
     + '</div>';
   lexShowScreen('lex-onboarding');
   window._lexSources=[]; // reset wyboru na każdym wejściu
-  if(typeof lexSyncLessonLangBtns==='function') lexSyncLessonLangBtns();
+  if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
   if(typeof lexRenderSourcePicker==='function') lexRenderSourcePicker();
 }
 function lexQuickDur(d){
@@ -10873,7 +10869,7 @@ function lexPrefillSetup(){
   lexSyncLessonLangBtns();
 }
 
-// Język prowadzenia lekcji na ekranie startu (PL ↔ język uczony)
+// Język prowadzenia lekcji na ekranie startu (PL ↔ język uczony) — stary markup (lexFullSetup)
 function lexSyncLessonLangBtns(){
   var info = (typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[_lexLang]) || null;
   var tgtBtn = document.getElementById('lex-ob-langtgt');
@@ -10884,10 +10880,42 @@ function lexSyncLessonLangBtns(){
   if(tgtBtn) tgtBtn.style.border = targetActive ? '2px solid var(--orange)' : '1.5px solid var(--border2)';
 }
 
+// Nowy wiersz języka prowadzenia — zależny od wybranego zestawu.
+// Brak zestawu → drugi język = „Język obcy" (nieaktywny, prowadzenie wymuszone na PL).
+// Po wyborze zestawu system zna język docelowy → przycisk pokazuje jego nazwę i daje się włączyć.
+window.lexRenderLessonLangButtons=function(){
+  var row=document.getElementById('lex-lessonlang-row'); if(!row) return;
+  var esc=(typeof lexEsc==='function')?lexEsc:function(x){return String(x==null?'':x);};
+  var hasSource=!!(window._lexSources && window._lexSources.length>0);
+  var info=(typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[window._lexLang]) || null;
+  var tgtName = (hasSource && info && info.name) ? (info.name.charAt(0).toUpperCase()+info.name.slice(1)) : 'Język obcy';
+  if(!hasSource && typeof _lexAudioLang!=='undefined' && _lexAudioLang!=='pl') _lexAudioLang='pl'; // bez zestawu prowadzimy po PL
+  var tgtActive = hasSource && (typeof _lexAudioLang!=='undefined' && _lexAudioLang===window._lexLang);
+  var plActive = !tgtActive;
+  function btn(label, caption, active, onclick, disabled){
+    var bd = active ? '2px solid var(--orange)' : '1.5px solid var(--border2)';
+    var bg = active ? '#fff8f3' : '#fff';
+    var op = disabled ? '.5' : '1';
+    var cur = disabled ? 'default' : 'pointer';
+    var capColor = active ? 'var(--navy)' : 'var(--dim2)';
+    return '<button '+(disabled?'':'onclick="'+onclick+'"')+' style="flex:1;min-width:0;padding:10px 12px;border-radius:12px;border:'+bd+';background:'+bg+';cursor:'+cur+';opacity:'+op+';font-family:DM Sans,sans-serif;text-align:left;transition:.15s">'
+      +'<span style="display:block;font-size:13.5px;font-weight:600;color:var(--navy);margin-bottom:2px">'+esc(label)+'</span>'
+      +'<span style="display:block;font-size:10.5px;color:'+capColor+';line-height:1.3">'+esc(caption)+'</span></button>';
+  }
+  var tgtCaption = hasSource ? ('Lex prowadzi po: '+tgtName.toLowerCase()) : 'Najpierw wybierz zestaw';
+  row.innerHTML = btn('Polski', 'Lex tłumaczy po polsku', plActive, "lexObSelectLessonLang('pl')", false)
+                + btn(tgtName, tgtCaption, tgtActive, "lexObSelectLessonLang('target')", !hasSource);
+};
+
 function lexObSelectLessonLang(which){
+  if(which==='target' && !(window._lexSources && window._lexSources.length>0)){
+    if(typeof showToast==='function') showToast('Najpierw wybierz zestaw — wtedy Lex pozna język','info');
+    return; // bez zestawu nie znamy języka docelowego
+  }
   _lexAudioLang = (which==='target') ? (_lexLang||'en') : 'pl';
   try{ if(typeof uk==='function') localStorage.setItem(uk('lex_audio_lang'), _lexAudioLang); }catch(e){}
   lexSyncLessonLangBtns();
+  if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
   if(typeof lexUpdateAudioLangBtn==='function') lexUpdateAudioLangBtn();
 }
 
@@ -15160,7 +15188,7 @@ async function lexInit(){
     return '<button class="lexcat-tile'+(isSel('eyelingo',c.id)?' sel':'')+'" data-pick="'+tok+'">'
       +'<span class="lexcat-ic">'+ICO_FOLDER+'</span>'
       +'<span class="nm">'+esc(c.label)+'</span>'
-      +'<span class="mt">'+(c.level?esc(c.level)+' · ':'')+c.count+' słów · ucz się →</span></button>';
+      +'<span class="mt">'+(c.level?esc(c.level)+' · ':'')+c.count+' słów · wybierz →</span></button>';
   }
   function tileUserSet(st){
     var tok='u'+st.id;
@@ -15170,7 +15198,7 @@ async function lexInit(){
       +'<span class="lexcat-ic">'+ICO_BOOK+'</span>'
       +'<span class="nm">'+esc(st.label)+'</span>'
       +'<span class="mt">'+badge+(badge?' · ':'')+st.count+' słów</span>'
-      +'<button class="lexcat-learn" data-learn="'+tok+'">Ucz się →</button></div>';
+      +'<button class="lexcat-learn" data-learn="'+tok+'">Wybierz →</button></div>';
   }
 
   window.lexCatalogOpen=function(){
@@ -15268,23 +15296,24 @@ async function lexInit(){
     body.innerHTML=html;
   };
 
-  // Wybór: toggle do źródeł; learnNow=true → od razu zacznij lekcję z tym jednym materiałem
+  // Wybór z katalogu: zaznacz materiał, zamknij okno i wróć do ekranu ustawień (bez auto-startu lekcji).
   function doPick(p, el, learnNow){
     if(!p) return;
     var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
-    function go(langCode){
+    function select(langCode){
       window._lexLang=langCode||p.lang||window._lexLang||'en';
       window._lexSources=[{kind:p.kind,id:p.id,label:p.label,level:p.level||lvlUser,lang:window._lexLang}];
       try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet(p.kind,p.id,p.label,p.level||null,0,window._lexLang); }catch(e){}
       var m=document.getElementById('lexcat-modal'); if(m) m.remove();
-      if(typeof lexStartLesson==='function') lexStartLesson();
+      // Wróć do ekranu startu z zaznaczonym materiałem; user dokończy poziom/język i kliknie „Zaczynamy".
+      if(typeof lexRefreshPickerSelection==='function') lexRefreshPickerSelection();
+      if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
     }
-    // Zawsze startujemy lekcję z jednego materiału (kafelek = start)
     if(p.kind==='user' && !p.lang){
-      if(typeof lexAskSetLang==='function') lexAskSetLang(p.id, p.label, function(code){ p.lang=code; go(code); });
-      else go('en');
+      if(typeof lexAskSetLang==='function') lexAskSetLang(p.id, p.label, function(code){ p.lang=code; select(code); });
+      else select('en');
     } else {
-      go(p.lang);
+      select(p.lang);
     }
   }
   // ekspozycja dla ewentualnych wywołań zewnętrznych
@@ -15425,11 +15454,13 @@ async function lexInit(){
     function badgeOf(code){ return code?('<span class="lexcat-langbadge" style="margin-right:6px">'+esc(String(code).toUpperCase())+'</span>'):''; }
     var chips=[];
     src.eyelingo.forEach(function(c){
-      chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, sub:(c.level?c.level+' · ':'')+c.count+' słów'});
+      chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, recent:(c.recent||''), sub:(c.level?c.level+' · ':'')+c.count+' słów'});
     });
     src.user.forEach(function(u){
-      chips.push({kind:'user', id:u.id, label:u.label, level:lvlUser, count:u.count, lang:u.lang||null, sub:(u.count+' słów')});
+      chips.push({kind:'user', id:u.id, label:u.label, level:lvlUser, count:u.count, lang:u.lang||null, recent:(u.recent||''), sub:(u.count+' słów')});
     });
+    // Jednolita kolejność wg świeżości — ostatnio oglądany pierwszy, niezależnie czy zestaw, czy kategoria Eyelingo.
+    chips.sort(function(a,b){ return String(b.recent||'').localeCompare(String(a.recent||'')); });
     chips=chips.slice(0,6); // tylko kilka najświeższych — resztę przez katalog
     window._lexSourcesAvail=chips;
     var browseBtn='<button type="button" onclick="lexCatalogOpen()" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:1.5px dashed var(--border2);background:var(--paper2);border-radius:14px;padding:10px 14px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;min-width:130px;text-align:left" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'
@@ -15473,6 +15504,7 @@ async function lexInit(){
         row.insertBefore(b, row.lastChild);
       });
     }catch(e){}
+    if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
   };
 
   window.lexToggleSource=function(i){
