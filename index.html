@@ -15497,6 +15497,7 @@ async function lexInit(){
   // Odśwież zaznaczenie kafelków pickera po wyborze z katalogu (i pokaż wybrane spoza listy)
   window.lexRefreshPickerSelection=function(){
     if(typeof lexRenderSourcePicker==='function') lexRenderSourcePicker();
+    if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons(); // ZAWSZE — przed ewentualnymi wczesnymi return niżej
     // dołóż wybrane z katalogu, których nie ma wśród świeżych — jako oznaczone kafelki
     try{
       var host=document.getElementById('lex-source-picker'); if(!host) return;
@@ -15512,7 +15513,6 @@ async function lexInit(){
         row.insertBefore(b, row.lastChild);
       });
     }catch(e){}
-    if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
   };
 
   window.lexToggleSource=function(i){
