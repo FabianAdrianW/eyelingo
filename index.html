@@ -1252,6 +1252,8 @@ window.switchMatTab = function(tab){
   if(colView) colView.style.display='none';
   if(createBtn) createBtn.style.display='none';
   var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='none';
+  var srcf=document.getElementById('mat-source-filter');
+  if(srcf) srcf.style.display='none';
   var search=document.getElementById('mat-search');
   if(search) search.value='';
   if(tab==='mine'){
@@ -1260,6 +1262,7 @@ window.switchMatTab = function(tab){
     if(grid){ grid.style.display='grid'; }
     if(createBtn&&window._matMyUid) createBtn.style.display='block';
     var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display=(window._matMyUid?'inline-flex':'none');
+    if(srcf) srcf.style.display='flex';
     if(typeof loadMySets==='function') loadMySets();
     else setTimeout(function(){ if(typeof loadMySets==='function') loadMySets(); }, 300);
     if(typeof window.matRenderContinue==='function') window.matRenderContinue();
@@ -1278,7 +1281,62 @@ window.switchMatTab = function(tab){
   }
 };
 </script>
-
+<script>
+// ═══ GLOBAL STUBS — loaded first, before all other scripts ═══
+// Version: 2026-05-26-v4
+// Restore today's progress from localStorage
+// Per-language daily progress (klucz = data + język)
+window._dailyProgKey = function(){
+  var lang='en';
+  try{ var sel=document.getElementById('daily-lang-select'); lang=(sel&&sel.value)||localStorage.getItem('daily_lang')||'en'; }catch(e){}
+  return 'daily_progress_'+new Date().toISOString().slice(0,10)+'_'+lang;
+};
+window._dailyLoadProgress = function(){
+  try{
+    var s=localStorage.getItem(window._dailyProgKey());
+    if(s){ var p=JSON.parse(s); window._dailyDone=p.done||{word:false,read:false,quiz:false}; window._dailyXP=p.xp||0; }
+    else { window._dailyDone={word:false,read:false,quiz:false}; window._dailyXP=0; }
+  }catch(e){ window._dailyDone={word:false,read:false,quiz:false}; window._dailyXP=0; }
+  return window._dailyDone;
+};
+window._dailySaveProgress = function(){
+  try{ localStorage.setItem(window._dailyProgKey(), JSON.stringify({done:window._dailyDone||{word:false,read:false,quiz:false}, xp:window._dailyXP||0})); }catch(e){}
+};
+window._dailyDone = window._dailyDone || {word:false, read:false, quiz:false};
+window._dailyXP = window._dailyXP || 0;
+window._challengeTimer = window._challengeTimer || null;
+window.updateDailyProgress = function(){
+  try{
+    var d = window._dailyDone || {};
+    var done = (d.word?1:0)+(d.read?1:0)+(d.quiz?1:0);
+    var el;
+    el=document.getElementById('daily-progress-label'); if(el) el.textContent=done+' z 3 aktywności ukończone';
+    el=document.getElementById('daily-progress-bar'); if(el) el.style.width=Math.round((done/3)*100)+'%';
+    el=document.getElementById('daily-xp'); if(el) el.textContent=(window._dailyXP||0)+' XP';
+    window._dailySaveProgress();
+  }catch(e){}
+};
+window.dailyWordDone = function(){
+  try{
+    if(window._dailyDone) window._dailyDone.word = true;
+    window._dailyXP = (window._dailyXP||0) + 20;
+    var doneEl=document.getElementById('dc-word-done'); if(doneEl) doneEl.style.display='inline-flex';
+    var btn=document.getElementById('dc-word-btn'); if(btn) btn.style.display='none';
+    window.updateDailyProgress();
+    if(typeof showToast==='function') showToast('Słówka dnia zaliczone!','success');
+  }catch(e){}
+};
+window.dailyReadDone = function(){
+  try{
+    if(window._dailyDone) window._dailyDone.read = true;
+    window._dailyXP = (window._dailyXP||0) + 30;
+    var doneEl=document.getElementById('dc-read-done'); if(doneEl) doneEl.style.display='inline-flex';
+    var btn=document.getElementById('dc-read-btn'); if(btn) btn.style.display='none';
+    window.updateDailyProgress();
+    if(typeof showToast==='function') showToast('Czytanka zaliczona!','success');
+  }catch(e){}
+};
+</script>
 
 <!-- NAV -->
 <nav>
@@ -1292,6 +1350,7 @@ window.switchMatTab = function(tab){
       <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">Nauczyciel AI <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
       <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
       <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
+      <button class="nav-tab" id="ntab-daily" onclick="switchTab('daily',this)" style="display:none">Porcja dnia</button>
     </div>
     <div style="flex:1;min-width:8px"></div>
     <div class="nav-global">
@@ -1915,6 +1974,7 @@ function renderStarsDisplay(r){ return window.renderStarsDisplay(r); }
 
 var authMode='login';
 
+function _showPageBasic(n){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const p=document.getElementById('page-'+n);if(p)p.classList.add('active');window.scrollTo(0,0)}
 function navHome(){showPage('home');return false}
 function navSection(sel){showPage('home');setTimeout(()=>{const el=document.querySelector(sel);if(el)el.scrollIntoView({behavior:'smooth'})},60);return false}
 function showAuth(m){authMode=m;showPage('auth');updateAuthUI();clearMsg('auth-msg')}
@@ -2265,22 +2325,24 @@ function showPage(name){
   }
   if(name==='tofix') initToFixPage();
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
+  if(name==='daily'){ setTimeout(function(){ var ind=document.getElementById('daily-loading-indicator'); if(ind) ind.style.display='none'; initDaily(); dailyShowTab('daily'); }, 50); }
   if(name==='teacher'){ setTimeout(function(){ teacherShowTab('teacher'); }, 50); }
   if(name==='dash'){ try{ loadDashboard(); }catch(e){} }
   if(name==='tutors') initTutors();
   // Redirects for merged pages — route to parent hub
   if(name==='kultura'){showPage('odkryj');setTimeout(function(){odkryjShowTab('kultura');},50);return false;}
+  if(name==='challenge'){showPage('daily');setTimeout(function(){dailyShowTab('challenge');},50);return false;}
   if(name==='chat'){showPage('teacher');setTimeout(function(){teacherShowTab('chat');},50);return false;}
   if(name==='lyrics'){showPage('odkryj');setTimeout(function(){odkryjShowTab('lyrics');},50);return false;}
   if(name==='tryb'){ /* page-tryb handles itself */ }
   setActiveTab(name);
   // Show only sidebar toggle for current page, hide others
-  ['mat-sidebar-toggle','strefa-sidebar-toggle','odkryj-sidebar-toggle',
-   'mat-sidebar','strefa-sidebar','odkryj-sidebar'].forEach(function(id){
+  ['mat-sidebar-toggle','strefa-sidebar-toggle','daily-sidebar-toggle','odkryj-sidebar-toggle',
+   'mat-sidebar','strefa-sidebar','daily-sidebar','odkryj-sidebar'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.style.display='none';
   });
   var _sidebarToggleMap={};
-  var _sidebarMap={community:'mat-sidebar',strefa:'strefa-sidebar',odkryj:'odkryj-sidebar'};
+  var _sidebarMap={community:'mat-sidebar',strefa:'strefa-sidebar',daily:'daily-sidebar',odkryj:'odkryj-sidebar'};
   if(_sidebarToggleMap[name]){ var _t=document.getElementById(_sidebarToggleMap[name]); if(_t) _t.style.display='flex'; }
   if(_sidebarMap[name]){ 
     var _s=document.getElementById(_sidebarMap[name]); 
@@ -2290,6 +2352,29 @@ function showPage(name){
 }
 
 // ── Stub functions (safe fallbacks) ──
+async function loadNotifications(){
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess) return;
+    var{data:notifs,error}=await db.from('notifications')
+      .select('id,type,message,read_at,created_at')
+      .eq('user_id',sess.user.id)
+      .order('created_at',{ascending:false})
+      .limit(20);
+    if(error) return; // Table may not exist yet - silent fail
+    if(!notifs||!notifs.length) return;
+    var badge=document.getElementById('notif-badge');
+    var unread=notifs.filter(function(n){return !n.read_at;}).length;
+    if(badge) badge.textContent=unread>0?unread:'';
+    var list=document.getElementById('notif-list');
+    if(list) list.innerHTML=notifs.map(function(n){
+      return '<div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px">'
+        +'<div style="color:var(--navy)">'+(n.message||n.type||'')+'</div>'
+        +'<div style="font-size:11px;color:var(--dim2);margin-top:3px">'+new Date(n.created_at).toLocaleString('pl')+'</div>'
+        +'</div>';
+    }).join('');
+  }catch(e){ /* notifications not available */ }
+}
 
 
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -2725,15 +2810,32 @@ window.loadMySets = async function loadMySets(){
   }
 };
 
+var _matSourceFilter='all';
 function matRenderMine(){
   var grid=document.getElementById('mat-grid');
   if(!grid)return;
-  var list=(_matSets||[]);
+  var f=_matSourceFilter||'all';
+  var list=(_matSets||[]).filter(function(s){
+    var src=(s.source||'manual').toLowerCase();
+    if(f==='all') return true;
+    if(f==='manual') return !s.source||src==='manual'||src==='web_srs'||src==='community';
+    if(f==='lex') return src.indexOf('lex')===0;
+    if(f==='alex') return src.indexOf('alex')===0;
+    return true;
+  });
   if(!list.length){
-    grid.innerHTML='<div class="mat-empty">Nie masz jeszcze żadnych zestawów.<br><small>Kliknij + Nowy zestaw</small></div>';
+    var msg = f==='lex' ? 'Brak zestawów z lekcji Lexa.<br><small>Pojawią się tu, gdy dodasz fiszki z lekcji.</small>'
+      : f==='alex' ? 'Brak zestawów z rozmów z Alexem.<br><small>Pojawią się tu po rozmowach z AI.</small>'
+      : 'Nie masz jeszcze żadnych zestawów.<br><small>Kliknij + Nowy zestaw</small>';
+    grid.innerHTML='<div class="mat-empty">'+msg+'</div>';
   } else {
     grid.innerHTML=list.map(function(s){ return setCard(s); }).join('');
   }
+}
+function matFilterSource(src, btn){
+  _matSourceFilter=src;
+  document.querySelectorAll('.mat-srcf').forEach(function(b){ b.classList.toggle('active', b===btn); });
+  matRenderMine();
 }
 
 window.loadCommunity = async function loadCommunity(){
@@ -2960,16 +3062,16 @@ window.matSetLangApply=async function(setId, code){
     <div id="mat-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
       <div id="mat-sidebar-inner" style="padding:88px 0 64px 16px;min-width:200px;position:relative">
       <!-- Powtórki SM-2 (styl Eyelingo) -->
-      <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="position:relative;display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:12px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:border-color .2s, box-shadow .2s, transform .2s;margin-bottom:14px;margin-right:16px;overflow:hidden" onmouseover="this.style.borderColor='var(--orange)';this.style.boxShadow='0 4px 14px rgba(26,35,64,.07)';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor=(this.dataset.due==='1'?'rgba(201,106,42,.35)':'var(--border)');this.style.boxShadow='none';this.style.transform='none'">
+      <div id="sb-powtorki-tile" onclick="strefaStartPowtorki()" style="position:relative;display:flex;align-items:center;gap:11px;padding:13px 14px;border-radius:14px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:border-color .2s, box-shadow .2s, transform .2s;margin-bottom:22px;margin-right:16px;overflow:hidden" onmouseover="this.style.borderColor='var(--orange)';this.style.boxShadow='0 4px 14px rgba(26,35,64,.07)';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor=(this.dataset.due==='1'?'rgba(201,106,42,.35)':'var(--border)');this.style.boxShadow='none';this.style.transform='none'">
         <span id="sb-powtorki-accent" style="position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--orange);border-radius:3px 0 0 3px;opacity:0;transition:opacity .2s"></span>
-        <div id="sb-powtorki-icon" style="width:27px;height:27px;border-radius:9px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+        <div id="sb-powtorki-icon" style="width:34px;height:34px;border-radius:10px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
         </div>
         <div style="flex:1;min-width:0">
-          <div style="font-family:DM Sans,sans-serif;font-size:12.5px;font-weight:500;color:var(--navy);line-height:1.2" id="sb-powtorki-label">Powtórki SM-2</div>
-          <div style="font-size:10.5px;color:var(--dim2);margin-top:1px" id="sb-powtorki-sub">System powtórek SM-2</div>
+          <div style="font-family:DM Sans,sans-serif;font-size:13.5px;font-weight:500;color:var(--navy);line-height:1.2" id="sb-powtorki-label">Powtórki na dziś</div>
+          <div style="font-size:11px;color:var(--dim2);margin-top:2px" id="sb-powtorki-sub">Algorytm SM-2</div>
         </div>
-        <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:12px;font-weight:600;color:#fff;background:var(--orange);border-radius:7px;min-width:20px;text-align:center;padding:2px 7px;display:none;flex-shrink:0">0</div>
+        <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:600;color:#fff;background:var(--orange);border-radius:8px;min-width:22px;text-align:center;padding:3px 8px;display:none;flex-shrink:0">0</div>
       </div>
       <!-- Katalogi (zwijane) -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-right:16px">
@@ -3015,6 +3117,14 @@ window.matSetLangApply=async function(setId, code){
         <button class="mat-tab" data-tab="mine" onclick="switchMatTab('mine')">Moje materiały</button>
         <button class="mat-tab" data-tab="community" onclick="switchMatTab('community')" style="display:none">Społeczność</button>
         <button class="mat-tab" data-tab="voices" onclick="switchMatTab('voices')" style="display:none">Głosówki</button>
+      </div>
+
+      <!-- Source filter (Most #2/#5: skąd pochodzą fiszki) -->
+      <div id="mat-source-filter" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="mat-srcf active" data-src="all" onclick="matFilterSource('all',this)">Wszystkie</button>
+        <button class="mat-srcf" data-src="manual" onclick="matFilterSource('manual',this)">Manualne</button>
+        <button class="mat-srcf" data-src="lex" onclick="matFilterSource('lex',this)">Z lekcji Lexa</button>
+        <button class="mat-srcf" data-src="alex" onclick="matFilterSource('alex',this)">Z rozmów z Alexem</button>
       </div>
 
       <!-- 9.4 Kontynuuj ostatnią sesję nauki -->
@@ -3342,6 +3452,9 @@ window.matSetLangApply=async function(setId, code){
 .modal-close:hover{background:rgba(0,0,0,.15)}
 /* Materiały */
 .mat-tabs{display:flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:14px;width:fit-content}
+.mat-srcf{padding:6px 13px;border-radius:100px;border:1.5px solid var(--border);background:var(--white,#fff);color:var(--dim2,#666);font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;transition:.15s}
+.mat-srcf:hover{border-color:var(--orange);color:var(--orange)}
+.mat-srcf.active{background:var(--orange);border-color:var(--orange);color:#fff}
 .mat-tab{background:transparent;border:none;padding:10px 22px;border-radius:10px;font-weight:500;font-size:14px;color:var(--dim2);cursor:pointer;transition:.2s}
 .mat-tab.active{background:#fff;color:var(--navy);box-shadow:0 2px 8px rgba(0,0,0,.1)}
 .mat-tab:hover:not(.active){color:var(--navy)}
@@ -3640,7 +3753,211 @@ async function initToFixPage(){
 </div><!-- end page-odkryj -->
 
 <!-- ═══ DZISIEJSZA PORCJA ═══ -->
+<div id="page-daily" class="page" style="min-height:100vh;padding:0">
+<!-- Daily Sidebar Toggle -->
+<button id="daily-sidebar-toggle" onclick="toggleDailySidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
+<!-- Daily Sidebar -->
+<div id="daily-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49;padding:88px 0 64px 0">
+  <div style="padding:0 16px">
+    <div style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin:0 4px 12px">Porcja dnia</div>
+    <div id="daily-btn-daily" onclick="dailyShowTab('daily')" style="background:var(--white);border:.5px solid var(--orange);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)';this.style.transform='translateY(-1px)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)';this.style.transform='none'}">
+      <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Porcja dnia</div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:1px">Słówko · Quiz · Czytanka</div>
+    </div>
+    <div id="daily-btn-challenge" onclick="dailyShowTab('challenge')" style="background:var(--white);border:.5px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.2s" onmouseover="if(!this.dataset.active){this.style.borderColor='var(--orange)';this.style.transform='translateY(-1px)'}" onmouseout="if(!this.dataset.active){this.style.borderColor='var(--border)';this.style.transform='none'}">
+      <div style="font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)">Wyzwanie tygodnia</div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:1px">Ranking · Nagrody</div>
+    </div>
+  </div>
+</div>
+<!-- Daily Main Content -->
+<div id="daily-main" style="flex:1;min-width:0;min-height:100vh;padding:88px 40px 64px 40px;overflow-x:hidden">
+<div style="max-width:860px;margin:0">
 
+  
+
+  <!-- Panel: Porcja dnia -->
+  <div id="daily-panel-daily">
+  <div id="daily-loading-indicator" style="padding:40px;text-align:center;color:var(--dim2);font-size:14px">Ładowanie...</div>
+  <div class="page-head page-head-row">
+  <div>
+    <div class="ph-eyebrow">Codzienna praktyka</div>
+    <h3 class="ph-title">Porcja dnia</h3>
+    <p id="daily-date" class="ph-sub"></p>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <label style="font-size:12px;color:var(--dim2);font-weight:500">Język:</label>
+    <select id="daily-lang-select" onchange="reloadDailyContent()" style="padding:8px 14px;border-radius:10px;border:1.5px solid rgba(26,35,64,.3);font-size:13px;background:var(--white);color:var(--navy);font-weight:500;cursor:pointer">
+      <option value="en">🇬🇧 Angielski</option>
+      <option value="es">🇪🇸 Hiszpański</option>
+      <option value="nl">🇳🇱 Holenderski</option>
+      <option value="jp">🇯🇵 Japoński</option>
+    </select>
+  </div>
+  <!-- Level selector hidden - accessible via profile settings -->
+  <select id="daily-level-select" style="display:none" onchange="saveLangLevel()">
+    <option value="A1">A1</option><option value="A2">A2</option>
+    <option value="B1" selected>B1</option><option value="B2">B2</option>
+    <option value="C1">C1</option><option value="C2">C2</option>
+  </select>
+  <div style="background:var(--navy);color:#fff;border-radius:12px;padding:10px 20px;font-size:13px;font-weight:500" id="daily-countdown">Odnawia się o północy</div>
+</div>
+
+<!-- progress bar -->
+<div style="background:var(--paper2);border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:16px">
+  <div style="flex:1">
+    <div style="font-size:12px;color:var(--dim2);margin-bottom:6px" id="daily-progress-label">0 z 4 aktywności ukończone</div>
+    <div style="background:rgba(26,35,64,.1);border-radius:20px;height:8px;overflow:hidden">
+      <div id="daily-progress-bar" style="width:0%;height:100%;border-radius:20px;background:var(--orange);transition:width .5s ease"></div>
+    </div>
+  </div>
+  <div id="daily-xp" style="display:none;font-family:DM Sans,sans-serif;font-size:22px;font-weight:500;color:var(--orange)">0 XP</div>
+</div>
+
+<!-- cards grid — nowy layout: słówka + quiz obok siebie, czytanka poniżej -->
+<div id="daily-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+  <!-- Słowa dnia (2 słówka) -->
+  <div class="daily-card" id="dc-word" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <span style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Słówka dnia</span>
+      <span id="dc-word-done" style="display:none;font-size:11px;color:#16a34a;font-weight:500">✓ Ukończone</span>
+    </div>
+    <div id="dc-word-loading" style="color:var(--dim2);font-size:13px">Ładowanie...</div>
+    <div id="dc-word-content" style="display:none">
+      <div id="dc-word-1">
+        <div id="dc-word-text" style="font-size:26px;font-weight:500;color:var(--navy);margin-bottom:2px;font-family:DM Sans,sans-serif"></div>
+        <div id="dc-word-translation" style="font-size:14px;color:var(--orange);font-weight:500;margin-bottom:8px"></div>
+        <div id="dc-word-sentence" style="font-size:12px;color:var(--dim);line-height:1.6;border-left:3px solid var(--border2);padding-left:10px;font-style:italic"></div>
+      </div>
+      <button class="btn btn-orange" onclick="dailyWordDone()" id="dc-word-btn" style="font-size:13px;padding:9px 20px;margin-top:14px;width:100%">✓ Zapamiętałem!</button>
+    </div>
+  </div>
+
+  <!-- Quiz dnia — obok słówek -->
+  <div class="daily-card" id="dc-quiz-inline" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <span style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Quiz dnia</span>
+      <span id="dc-quiz-done2" style="display:none;font-size:11px;color:#16a34a;font-weight:500">✓ Ukończone</span>
+    </div>
+    <div id="dc-quiz-inline-body">
+      <div id="dc-quiz-q" style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:10px;line-height:1.4"></div>
+      <div id="dc-quiz-opts" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="grid-column:1/-1;color:var(--dim2);font-size:13px">Generuję quiz...</div>
+      </div>
+      <div id="dc-quiz-expl" style="display:none;margin-top:10px;padding:8px 12px;background:var(--paper);border-radius:8px;font-size:12px;color:var(--dim);line-height:1.5"></div>
+    </div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="daily-grid">
+
+  <!-- Mini czytanka -->
+  <div class="daily-card" id="dc-read" style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;grid-column:1/-1">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <span style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Mini czytanka</span>
+      <span style="font-size:11px;color:var(--dim2)" id="dc-read-time">3 min czytania</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <button id="dc-read-audio-btn" onclick="toggleArticleAudio()" style="display:none;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--paper);font-size:12px;cursor:pointer;color:var(--dim2)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg>Czytaj</button>
+        <span id="dc-read-done" style="display:none;font-size:11px;color:#16a34a;font-weight:500">✓ Ukończone</span>
+      </div>
+    </div>
+    <div id="dc-read-loading" style="color:var(--dim2);font-size:13px;padding:20px 0">Ładowanie...</div>
+    <div id="dc-read-content" style="display:none">
+      <!-- Panel boczny layout -->
+      <div id="dc-read-layout" style="display:grid;grid-template-columns:1fr 280px;gap:20px;align-items:start">
+        <!-- Tekst główny -->
+        <div>
+          <div id="dc-read-title" style="font-size:20px;font-weight:500;color:var(--navy);margin-bottom:14px;line-height:1.3"></div>
+          <div id="dc-read-body" style="font-size:15px;color:var(--dim);line-height:1.9;letter-spacing:.01em"></div>
+          <button class="btn btn-orange" onclick="dailyReadDone()" id="dc-read-btn" style="font-size:13px;padding:9px 20px;margin-top:20px">Przeczytałem ✓</button>
+          <button id="dc-read-toggle-tr" onclick="toggleCzytankaTranslation()" style="display:none;margin-top:8px;padding:7px 14px;border-radius:100px;border:1px solid var(--border2);background:transparent;font-size:12px;color:var(--dim2);cursor:pointer">Pokaż tłumaczenie</button>
+        </div>
+        <!-- Panel boczny: tłumaczenia -->
+        <div id="dc-read-side" style="position:sticky;top:100px">
+          <div style="background:var(--paper2);border-radius:12px;border:1px solid var(--border);overflow:hidden">
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em">Tłumaczenie</div>
+            <div id="dc-read-sidebar" style="padding:14px;min-height:80px">
+              <div style="font-size:13px;color:var(--dim2);line-height:1.7">
+                <strong style="color:var(--navy);font-weight:500">Kliknij słowo</strong> — tłumaczenie i wymowa.<br>
+                W okienku przełączysz na <strong style="color:var(--navy);font-weight:500">całe zdanie</strong>.
+              </div>
+            </div>
+          </div>
+          <!-- Panel dolny — aktywne słowo -->
+          <div id="dc-word-panel" style="display:none;margin-top:10px;background:#fff;border-radius:12px;border:1.5px solid var(--orange);padding:14px">
+            <div id="dc-word-panel-word" style="font-size:18px;font-weight:500;color:var(--navy);margin-bottom:3px"></div>
+            <div id="dc-word-panel-tr" style="font-size:14px;color:var(--orange);font-weight:500;margin-bottom:8px"></div>
+            <div id="dc-word-panel-ctx" style="font-size:12px;color:var(--dim2);line-height:1.5"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quiz dnia -->
+<!-- dc-quiz moved to inline panel next to words -->
+
+  <!-- Social proof -->
+  <div style="grid-column:1/-1;text-align:center;padding:8px 0;font-size:13px;color:var(--dim2)" id="daily-social"></div>
+
+</div>
+  </div><!-- end daily-panel-daily -->
+
+  <!-- Panel: Wyzwanie (embedded w Porcja dnia) -->
+  <div id="daily-panel-challenge" style="display:none">
+    <h3 style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:500;color:var(--navy);margin-bottom:6px">Wyzwanie tygodnia</h3>
+    <p style="color:var(--dim2);margin-bottom:28px">Kuratorowany zestaw na każdy tydzień — ucz się we własnym tempie.</p>
+
+  <!-- Banner aktualnego wyzwania -->
+  <div id="challenge-banner" style="background:var(--navy);border-radius:20px;padding:28px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden">
+    <div style="position:absolute;right:-30px;top:-30px;width:160px;height:160px;border-radius:50%;background:rgba(201,106,42,.12)"></div>
+    <div style="position:absolute;right:60px;bottom:-40px;width:100px;height:100px;border-radius:50%;background:rgba(245,200,66,.06)"></div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:11px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Aktywne wyzwanie</div>
+        <div id="ch-name" style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;margin-bottom:4px">Ładowanie...</div>
+        <div id="ch-desc" style="font-size:14px;color:rgba(255,255,255,.65)"></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:4px">Kończy się za</div>
+        <div id="ch-countdown" style="font-family:DM Sans,sans-serif;font-size:26px;font-weight:500;color:rgba(255,255,255,.92)">--</div>
+      </div>
+    </div>
+    <div style="margin-top:20px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:rgba(255,255,255,.55);margin-bottom:6px">
+        <span>Twój postęp</span>
+        <span id="ch-progress-text">0 / 0</span>
+      </div>
+      <div style="height:10px;background:rgba(255,255,255,.1);border-radius:20px;overflow:hidden">
+        <div id="ch-progress-bar" style="width:0%;height:100%;border-radius:20px;background:var(--orange);transition:width .6s ease"></div>
+      </div>
+    </div>
+    <div style="margin-top:12px;font-size:12px;color:rgba(255,255,255,.4)" id="ch-reward"></div>
+  </div>
+
+  <!-- Zestaw fiszek do wyzwania -->
+  <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;margin-bottom:20px" id="ch-set-section">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:15px;font-weight:500;color:var(--navy);margin-bottom:2px">Zestaw tygodnia</div>
+        <div style="font-size:13px;color:var(--dim2)" id="ch-set-desc">Ładowanie zestawu...</div>
+      </div>
+      <button id="ch-import-btn" class="btn btn-orange" onclick="importChallengeSet()" style="display:none;font-size:13px;padding:9px 20px">+ Importuj do Moich zestawów</button>
+    </div>
+    <div id="ch-set-preview" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+    <div id="ch-set-status" style="font-size:12px;color:var(--dim2)"></div>
+  </div>
+
+  <div style="background:#fff;border:.5px solid var(--border);border-radius:16px;padding:20px">
+    <div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:6px">Jak to działa</div>
+    <div style="font-size:13px;color:var(--dim2);line-height:1.6">Co tydzień przygotowujemy jeden kuratorowany zestaw na wybrany temat. Ucz się go we własnym tempie — bez rankingów, punktów i presji. Twój postęp powyżej dotyczy tylko Ciebie.</div>
+  </div>
+  </div><!-- end daily-panel-challenge -->
+
+</div><!-- end max-width daily -->
+</div><!-- /daily-main -->
+</div><!-- end page-daily -->
 
 <!-- ═══ AI NAUCZYCIEL (chat embedded) ═══ -->
 <div id="page-chat" class="page" style="display:none"><!-- stara strona ukryta, logika przeniesiona do teacher --></div>
@@ -3889,7 +4206,7 @@ async function initToFixPage(){
           <button onclick="lexAskOpen()" style="font-size:11px;padding:4px 12px;background:var(--orange);border:1px solid var(--orange);border-radius:100px;color:#fff;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Zadaj pytanie Lexowi — głosem lub tekstem"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 11a7 7 0 0 1-14 0M12 18v4"></path></svg>Zapytaj</button>
           <button onclick="lexBookOpen(9999)" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Twoje słowa z lekcji"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"></path><path d="M8 4v16M11 9h5M11 13h5"></path></svg>Zeszyt</button>
           <button onclick="lexToggleBoard()" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"></path><path d="M8 21h8M12 17v4"></path></svg>Tablica</button>
-          <button onclick="lexEndLesson()" style="font-size:11px;padding:5px 14px;background:var(--navy);border:1px solid var(--navy);border-radius:100px;color:#fff;cursor:pointer;font-family:DM Sans,sans-serif;font-weight:500">Zakończ</button>
+          <button onclick="lexEndLesson()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif">Zakończ</button>
         </div>
       </div>
 
@@ -4201,6 +4518,15 @@ function loadLangLevels(){
   } catch(e){}
 }
 
+function saveLangLevel(){
+  var lang = document.getElementById('daily-lang-select')?.value;
+  var level = document.getElementById('daily-level-select')?.value;
+  if(!lang || !level) return;
+  LANG_LEVELS[lang] = level;
+  try { if(uidNow()) localStorage.setItem(uk('eyelingo_lang_levels'), JSON.stringify(LANG_LEVELS)); } catch(e){}
+  // Save to Supabase profile if logged in
+  saveLangLevelsToProfile();
+}
 
 async function saveLangLevelsToProfile(){
   try {
@@ -4234,9 +4560,55 @@ function getCurrentLevel(){
   return LANG_LEVELS[lang] || 'B1';
 }
 
-
+// Update level selector when language changes - hook into existing reloadDailyContent
+document.addEventListener('DOMContentLoaded', function(){
+  var _origReloadDaily = window.reloadDailyContent;
+  if(typeof _origReloadDaily === 'function'){
+    window.reloadDailyContent = function(){
+      syncLevelSelector();
+      _origReloadDaily.apply(this, arguments);
+    };
+  }
+});
 
 // Level settings modal
+function openLevelSettings(){
+  var existing = document.getElementById('level-settings-modal');
+  if(existing){ existing.style.display='flex'; return; }
+  
+  var modal = document.createElement('div');
+  modal.id = 'level-settings-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.onclick = function(e){ if(e.target===modal) modal.style.display='none'; };
+  
+  var langs = [
+    {code:'en', flag:'🇬🇧', name:'Angielski'},
+    {code:'es', flag:'🇪🇸', name:'Hiszpański'},
+    {code:'nl', flag:'🇳🇱', name:'Holenderski'},
+    {code:'jp', flag:'🇯🇵', name:'Japoński'},
+  ];
+  var levels = ['A1','A2','B1','B2','C1','C2'];
+  
+  modal.innerHTML = '<div style="background:#fff;border-radius:20px;padding:32px;max-width:460px;width:100%;box-shadow:0 24px 80px rgba(26,35,64,.2)">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">'
+    + '<h3 style="font-family:DM Sans,sans-serif;font-size:22px;font-weight:500;color:var(--navy)">Twoje poziomy językowe</h3>'
+    + '<button onclick="document.getElementById(\"level-settings-modal\").style.display=\"none\"" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--dim2)">×</button>'
+    + '</div>'
+    + '<p style="font-size:14px;color:var(--dim2);margin-bottom:20px;line-height:1.5">Ustaw swój poziom dla każdego języka. Porcja dnia i quizy będą dopasowane do Twojego poziomu.</p>'
+    + langs.map(function(l){
+        var current = LANG_LEVELS[l.code] || 'B1';
+        return '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:12px 16px;background:var(--paper);border-radius:12px">'
+          + '<span style="font-size:22px">' + l.flag + '</span>'
+          + '<span style="font-size:15px;font-weight:500;color:var(--navy);flex:1">' + l.name + '</span>'
+          + '<select id="lvl-modal-'+l.code+'" style="padding:7px 12px;border-radius:10px;border:1.5px solid var(--border2);font-size:13px;background:#fff;color:var(--navy);font-weight:500">'
+          + levels.map(function(lv){ return '<option value="'+lv+'"'+(lv===current?' selected':'')+'>'+lv+'</option>'; }).join('')
+          + '</select></div>';
+      }).join('')
+    + '<button onclick="saveAllLevels()" style="width:100%;padding:14px;background:var(--navy);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;margin-top:8px">Zapisz ustawienia</button>'
+    + '</div>';
+  
+  document.body.appendChild(modal);
+}
 
 function saveAllLevels(){
   var langs = ['en','es','nl','jp'];
@@ -4263,9 +4635,918 @@ window.getCurrentLangLevel = getCurrentLevel;
 </script>
 
 <script>
+// ═══════════════════════════════════════
+// DZISIEJSZA PORCJA
+// ═══════════════════════════════════════
+var _dailyLoaded = false;
+var _dailyLoadedDate = '';
+var _dailyDone = window._dailyDone || {word:false, read:false, quiz:false};
+window._dailyDone = _dailyDone;
+var _dailyXP = window._dailyXP || 0;
+window._dailyXP = _dailyXP;
+var _quizAnswered = false;
+var _challengeTimer = null;
+
+function updateDailyProgress(){
+  try{
+    var dd = window._dailyDone || {word:false,read:false,quiz:false};
+    var done = (dd.word?1:0) + (dd.read?1:0) + (dd.quiz?1:0);
+    var total = 3;
+    var label = document.getElementById('daily-progress-label');
+    var bar = document.getElementById('daily-progress-bar');
+    var xpEl = document.getElementById('daily-xp');
+    if(label) label.textContent = done + ' z ' + total + ' aktywności ukończone';
+    if(bar) bar.style.width = Math.round((done/total)*100) + '%';
+    if(xpEl) xpEl.textContent = (window._dailyXP||0) + ' XP';
+    if(typeof window._dailySaveProgress==='function') window._dailySaveProgress();
+  }catch(e){}
+}
+
+function getQuizDoneToday(){
+  try{return localStorage.getItem(uk('quiz_done')+'_'+new Date().toISOString().slice(0,10))||'';}catch(e){return '';}
+}
+function setQuizDoneToday(lang){
+  try{localStorage.setItem(uk('quiz_done')+'_'+new Date().toISOString().slice(0,10),lang);}catch(e){}
+}
+
+function initDaily(){
+  loadLangLevels();
+  syncLevelSelector();
+  var d = new Date();
+  var today = d.toISOString().slice(0,10);
+  document.getElementById('daily-date').textContent = d.toLocaleDateString('pl-PL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  updateDailyCountdown();
+  setInterval(updateDailyCountdown, 60000);
+  // Przywróć wybrany język — wspólny dla sekcji (globalny)
+  try{var sel=document.getElementById('daily-lang-select');if(sel)sel.value=(window.EyelingoLang?EyelingoLang.get():(localStorage.getItem('daily_lang')||'en'));}catch(e){}
+  // Wczytaj postęp dnia dla wybranego języka
+  if(typeof window._dailyLoadProgress==='function'){ window._dailyLoadProgress(); _dailyDone=window._dailyDone; _dailyXP=window._dailyXP; }
+  // Ładuj content tylko raz dziennie (nie przy każdym wejściu na zakładkę)
+  if(!_dailyLoaded || _dailyLoadedDate !== today){
+    _dailyLoaded=true;
+    _dailyLoadedDate=today;
+    loadDailyContent();
+  }
+}
+
+// ── Globalny język sekcji (Porcja dnia, Odkryj, ...) ──
+// Jedno źródło prawdy: zmiana w jednej sekcji propaguje się na pozostałe.
+// Per-sekcja nadal można zmienić — ostatni wybór staje się globalny.
+window.EyelingoLang = (function(){
+  var KEY='eyelingo_global_lang';
+  function get(){
+    try{ return localStorage.getItem(KEY) || localStorage.getItem('daily_lang') || 'en'; }catch(e){ return 'en'; }
+  }
+  function set(lang, fromId){
+    if(!lang) return;
+    try{ localStorage.setItem(KEY, lang); localStorage.setItem('daily_lang', lang); }catch(e){}
+    var d=document.getElementById('daily-lang-select'); if(d && d.value!==lang) d.value=lang;
+    var o=document.getElementById('odkryj-lang'); if(o && o.value!==lang) o.value=lang;
+    // Odśwież Porcję dnia, jeśli jest już wczytana, a zmiana przyszła z innej sekcji
+    if(fromId!=='daily-lang-select' && window._dailyLoaded && typeof reloadDailyContent==='function'){
+      try{ reloadDailyContent(); }catch(e){}
+    }
+  }
+  function apply(id){ var el=document.getElementById(id); if(el) el.value=get(); }
+  return {get:get,set:set,apply:apply};
+})();
+
+function reloadDailyContent(){
+  // Clear all caches for new language
+  window._dailyWordsData = null;
+  window._dailyQuizExpl = null;
+  try{var sel=document.getElementById('daily-lang-select');if(sel){localStorage.setItem('daily_lang',sel.value); if(window.EyelingoLang) EyelingoLang.set(sel.value,'daily-lang-select');}}catch(e){}
+  _dailyLoaded=false;
+  _dailyLoadedDate='';
+  // Nie zeruj postępu dnia — odtwórz zapisany stan z localStorage (per-język)
+  if(typeof window._dailyLoadProgress==='function') window._dailyLoadProgress();
+  _dailyDone=window._dailyDone; _dailyXP=window._dailyXP;
+  var xpEl=document.getElementById('daily-xp');if(xpEl)xpEl.textContent=(_dailyXP||0)+' XP';
+  // Reset word section
+  var wLoad=document.getElementById('dc-word-loading');if(wLoad){wLoad.style.display='block';wLoad.textContent='Ładowanie...';}
+  var wCont=document.getElementById('dc-word-content');if(wCont)wCont.style.display='none';
+  var wDone=document.getElementById('dc-word-done');if(wDone)wDone.style.display='none';
+  // Reset read section
+  var rLoad=document.getElementById('dc-read-loading');if(rLoad){rLoad.style.display='block';rLoad.textContent='Ładowanie...';}
+  var rCont=document.getElementById('dc-read-content');if(rCont)rCont.style.display='none';
+  // Reset quiz section
+  var qBody=document.getElementById('dc-quiz-inline-body');
+  if(qBody){
+    var qQ=document.getElementById('dc-quiz-q');if(qQ)qQ.innerHTML='';
+    var qOpts=document.getElementById('dc-quiz-opts');
+    if(qOpts)qOpts.innerHTML='<div style="grid-column:1/-1;color:var(--dim2);font-size:13px">Generuję quiz...</div>';
+    var qExpl=document.getElementById('dc-quiz-expl');if(qExpl){qExpl.style.display='none';qExpl.textContent='';}
+  }
+  updateDailyProgress();
+  loadDailyContent();
+}
+
+function updateDailyCountdown(){
+  var now=new Date(), midnight=new Date(); midnight.setHours(24,0,0,0);
+  var diff=midnight-now, h=Math.floor(diff/3600000), m=Math.floor((diff%3600000)/60000);
+  document.getElementById('daily-countdown').textContent='Odnawia się za '+h+'h '+m+'min';
+}
+
+async function loadDailyContent(){
+  // Słowo dnia — bierz z fiszek usera lub generuj
+  loadDailyWord();
+  loadDailyRead();
+  loadDailyQuiz();
+  updateDailyProgress();
+  // Po odświeżeniu odtwórz stan ukończonych zadań (utrzymuje 3/3 między wejściami)
+  setTimeout(restoreDailyDoneState, 600);
+  setTimeout(restoreDailyDoneState, 1800);
+}
+
+function restoreDailyDoneState(){
+  try{
+    var d = window._dailyDone || {};
+    if(d.word){
+      var we=document.getElementById('dc-word-done'); if(we) we.style.display='inline-flex';
+      var wb=document.getElementById('dc-word-btn'); if(wb) wb.style.display='none';
+    }
+    if(d.read){
+      var re=document.getElementById('dc-read-done'); if(re) re.style.display='inline-flex';
+      var rb=document.getElementById('dc-read-btn'); if(rb) rb.style.display='none';
+    }
+    if(d.quiz){
+      var qe=document.getElementById('dc-quiz-done2'); if(qe) qe.style.display='inline-flex';
+    }
+    updateDailyProgress();
+  }catch(e){}
+}
+
+function showDailyWordFallback(){
+  var lang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+  var fallbacks={
+    en:[{w:'serendipity',t:'szczęśliwy traf',s:'It was pure **serendipity** that we met.'},{w:'endeavor',t:'dążenie, staranie',s:'His **endeavor** paid off in the end.'},{w:'eloquent',t:'elokwentny, wymowny',s:'She gave an **eloquent** speech.'},{w:'resilience',t:'odporność psychiczna',s:'Her **resilience** inspired everyone.'},{w:'meticulous',t:'skrupulatny',s:'He is **meticulous** about details.'},{w:'wanderlust',t:'żądza podróży',s:'Her **wanderlust** took her around the world.'},{w:'nuance',t:'niuans, subtelność',s:'Every word carries a **nuance**.'}],
+    es:[{w:'madrugada',t:'świt, wczesny ranek',s:'Llegué en la **madrugada**.'},{w:'añoranza',t:'tęsknota',s:'Siento **añoranza** por mi hogar.'},{w:'sobremesa',t:'rozmowa po posiłku',s:'La **sobremesa** duró horas.'},{w:'duende',t:'magia, czar',s:'El cante tiene **duende**.'},{w:'apapachar',t:'czule przytulać',s:'Quiero **apapachar** a mi perro.'},{w:'estrenar',t:'użyć po raz pierwszy',s:'Voy a **estrenar** mis zapatos.'},{w:'friolero',t:'wrażliwy na zimno',s:'Soy muy **friolero** en invierno.'}],
+    nl:[{w:'gezellig',t:'przytulny, miły',s:'Het is zo **gezellig** hier.'},{w:'uitwaaien',t:'wyjść na świeże powietrze',s:'Ik ga even **uitwaaien**.'},{w:'lekker',t:'smaczny, przyjemny',s:'Dat was een **lekker** etentje.'},{w:'borrel',t:'spotkanie przy drinku',s:'We hebben een **borrel** na het werk.'},{w:'voorpret',t:'radość z oczekiwania',s:'De **voorpret** is het beste deel.'},{w:'natafelen',t:'rozmowa po jedzeniu',s:'We bleven lang **natafelen**.'},{w:'knus',t:'przytulny',s:'Wat een **knus** huisje.'}],
+    jp:[{w:'木漏れ日',t:'światło przebijające przez liście',s:'**木漏れ日**が美しいですね。'},{w:'侘び寂び',t:'piękno niedoskonałości',s:'**侘び寂び**の美学が好きです。'},{w:'懐かしい',t:'nostalgiczny',s:'この歌は**懐かしい**です。'},{w:'森林浴',t:'kąpiel leśna',s:'週末に**森林浴**をします。'},{w:'積ん読',t:'kupowanie nieczytanych książek',s:'また**積ん読**が増えた。'},{w:'生きがい',t:'sens życia',s:'仕事が私の**生きがい**です。'},{w:'お疲れ様',t:'podziękowanie za pracę',s:'今日も**お疲れ様**でした。'}],
+    de:[{w:'Fernweh',t:'tęsknota za podróżami',s:'Ich habe starkes **Fernweh**.'},{w:'Weltschmerz',t:'ból egzystencjalny',s:'Er leidet an **Weltschmerz**.'},{w:'Geborgenheit',t:'poczucie bezpieczeństwa',s:'Zuhause fühle ich **Geborgenheit**.'},{w:'Vorfreude',t:'radość z oczekiwania',s:'Die **Vorfreude** ist die schönste Freude.'},{w:'Feierabend',t:'koniec dnia pracy',s:'Schönen **Feierabend**!'},{w:'Sehnsucht',t:'głęboka tęsknota',s:'Eine tiefe **Sehnsucht** erfüllte ihn.'},{w:'gemütlich',t:'przytulny, swojski',s:'Das Café ist sehr **gemütlich**.'}],
+    fr:[{w:'dépaysement',t:'uczucie bycia za granicą',s:"J'aime le **dépaysement** des voyages."},{w:'flâner',t:'beztrosko spacerować',s:"J'aime **flâner** dans les rues de Paris."},{w:'retrouvailles',t:'radość ze spotkania po rozłące',s:'Les **retrouvailles** étaient émouvantes.'},{w:'terroir',t:'charakter regionu',s:'Ce vin a un **terroir** unique.'},{w:'flâneur',t:'spacerowicz, obserwator',s:'Il est un vrai **flâneur**.'},{w:'douceur',t:'łagodność, słodycz',s:'La **douceur** du soir m\'apaise.'},{w:'épanouissement',t:'rozkwit, spełnienie',s:'Son **épanouissement** était visible.'}]
+  };
+  var words=fallbacks[lang]||fallbacks['en'];
+  // Rotacja po dniu — bez tego zawsze wyświetlałoby się słowo[0] (serendipity)
+  var dayNum=Math.floor(Date.now()/86400000);
+  var w=words[dayNum % words.length];
+  document.getElementById('dc-word-loading').style.display='none';
+  document.getElementById('dc-word-content').style.display='block';
+  document.getElementById('dc-word-text').textContent=w.w;
+  document.getElementById('dc-word-translation').textContent=w.t;
+  var s1=w.s.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+  document.getElementById('dc-word-sentence').innerHTML='"'+s1+'"';
+}
+
+async function loadDailyWord(){
+  var langSel = document.getElementById('daily-lang-select');
+  var lang = langSel ? langSel.value : 'en';
+  var langLabels = {en:'angielski',es:'hiszpański',nl:'niderlandzki',jp:'japoński'};
+  var langLabel = langLabels[lang] || lang;
+  var today = new Date().toISOString().slice(0,10);
+
+  // Show loading state
+  var wrap = document.getElementById('daily-words-wrap');
+  if(wrap) wrap.innerHTML = '<div style="text-align:center;padding:20px;color:var(--dim2);font-size:13px">Ładuję słówko dnia...</div>';
+
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    var tok = sess ? sess.access_token : '';
+
+    // 1. Check if today's words already exist in DB for this language.
+    //    W osobnym try — błąd cache (brak tabeli/RLS) NIE może blokować generacji AI.
+    var cached = null;
+    try{
+      var _c = await db
+        .from('daily_words')
+        .select('*')
+        .eq('date', today)
+        .eq('language', lang)
+        .maybeSingle();
+      cached = _c && _c.data;
+    }catch(_ce){ cached = null; }
+
+    if(cached && cached.words && cached.words.length && cached.date === today){
+      renderDailyWords(cached.words, lang);
+      return;
+    }
+    // No content for today (or empty cached row) — generate new
+
+    // 2. Generate new words via AI proxy
+    var level = (typeof getCurrentLangLevel === 'function') ? getCurrentLangLevel() : 'B1';
+    var prompt = 'Wygeneruj dokładnie 1 ciekawe słówko w języku ' + langLabel + ' na poziomie ' + level + '.'
+      + ' Wybierz słowa użyteczne, nieoczywiste, z ciekawym kontekstem kulturowym lub stylistycznym.'
+      + ' Odpowiedz TYLKO poprawnym JSON bez żadnego tekstu przed ani po, bez backticks:'
+      + ' [{"word":"słowo","translation":"polskie tłumaczenie","example":"przykładowe zdanie w ' + langLabel + '","example_pl":"tłumaczenie przykładu po polsku","tip":"krótka ciekawostka o tym słowie po polsku max 1 zdanie"}]';
+
+    var res = await fetch(AI_PROXY_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body: JSON.stringify({messages:[{role:'user',content:prompt}], max_tokens:600})
+    });
+    if(!res.ok) throw new Error('AI proxy error '+res.status);
+    var d = await res.json();
+    var raw = extractAIText(d) || '[]';
+    var cleaned = raw.replace(/```json|```/g,'').trim();
+    // Wyłuskaj tablicę JSON nawet jeśli model dodał tekst dookoła
+    if(!cleaned.startsWith('[')){ var _fa=cleaned.indexOf('['), _la=cleaned.lastIndexOf(']'); if(_fa>=0&&_la>_fa) cleaned=cleaned.slice(_fa,_la+1); }
+    var words = JSON.parse(cleaned);
+    if(!words || !words.length){ showDailyWordFallback(); return; }
+
+    // 3. Save to daily_words table
+    try{
+      await db.from('daily_words').upsert({
+        date: today,
+        language: lang,
+        level: level,
+        words: words,
+        created_at: new Date().toISOString()
+      }, {onConflict: 'date,language'});
+    }catch(e){}
+
+    renderDailyWords(words, lang);
+
+  }catch(e){
+    console.warn('[loadDailyWord] generacja nie powiodła się, pokazuję fallback:', e);
+    showDailyWordFallback();
+  }
+}
+
+function renderDailyWords(words, lang){
+  if(!words || !words.length){ if(typeof showDailyWordFallback==='function') showDailyWordFallback(); return; }
+  var w1 = words[0] || {};
+  var w2 = words[1] || {};
+
+  // Use existing HTML structure with its IDs
+  var loading = document.getElementById('dc-word-loading');
+  var contentEl = document.getElementById('dc-word-content');
+  if(loading) loading.style.display = 'none';
+  if(contentEl) contentEl.style.display = 'block';
+
+  // Word 1
+  var t1 = document.getElementById('dc-word-text');
+  var tr1 = document.getElementById('dc-word-translation');
+  var s1 = document.getElementById('dc-word-sentence');
+  if(t1) t1.textContent = w1.word || '';
+  if(tr1) tr1.textContent = w1.translation || '';
+  if(s1){
+    s1.innerHTML = (w1.example ? '<em>'+w1.example+'</em>' : '')
+      + (w1.example_pl ? '<br><span style="color:var(--dim2);font-style:normal">'+w1.example_pl+'</span>' : '')
+      + (w1.tip ? '<br><span style="color:var(--orange);font-size:11px">'+w1.tip+'</span>' : '');
+  }
+
+  // Word 2
+  var t2 = document.getElementById('dc-word-text2');
+  var tr2 = document.getElementById('dc-word-translation2');
+  var s2 = document.getElementById('dc-word-sentence2');
+  if(t2) t2.textContent = w2.word || '';
+  if(tr2) tr2.textContent = w2.translation || '';
+  if(s2){
+    s2.innerHTML = (w2.example ? '<em>'+w2.example+'</em>' : '')
+      + (w2.example_pl ? '<br><span style="color:var(--dim2);font-style:normal">'+w2.example_pl+'</span>' : '')
+      + (w2.tip ? '<br><span style="color:var(--orange);font-size:11px">💡 '+w2.tip+'</span>' : '');
+  }
+
+  // Store for flashcard adding
+  window._dailyWordsData = words;
+  window._dailyWordsLang = lang;
+
+  // Przywróć stan "Zapamiętałem" jeśli już zaliczone dziś
+  if(window._dailyDone && window._dailyDone.word){
+    var de=document.getElementById('dc-word-done'); if(de) de.style.display='inline-flex';
+    var bb=document.getElementById('dc-word-btn'); if(bb) bb.style.display='none';
+  }
+}
+
+function addWordToFlashcards(idx){
+  if(!window._dailyWordsData) return;
+  var w = window._dailyWordsData[idx];
+  if(!w) return;
+  if(typeof showToast === 'function') showToast('"'+w.word+'" dodano do fiszek!','success');
+  // TODO: integrate with actual flashcard save
+}
+async function loadDailyRead(){
+  var dLang=document.getElementById('daily-lang-select')?document.getElementById('daily-lang-select').value:'en';
+  var topics={
+    en:['interesting science fact','unusual animal behavior','fascinating history','space exploration','human psychology'],
+    es:['hecho cientifico curioso','historia fascinante','naturaleza increible'],
+    nl:['interessant wetenschappelijk feit','bijzondere geschiedenis'],
+    jp:['omoshiroi kagaku no jijitsu','fushigina dobutsu no kodo']
+  };
+  var topicArr=topics[dLang]||topics['en'];
+  var today=new Date().toISOString().slice(0,10);
+  // Use date hash for more variety (not just weekday)
+  var dateHash=today.split('-').reduce(function(a,b){return parseInt(a||0)+parseInt(b||0);},0);
+  var todayIdx=dateHash%topicArr.length;
+  var topic=topicArr[todayIdx];
+  var lsKey='daily_article_'+dLang+'_'+today;
+
+  function displayArticle(title, body){
+    document.getElementById('dc-read-loading').style.display='none';
+    var cont=document.getElementById('dc-read-content');
+    cont.style.display='flex';
+
+    var cleanBody = body||'';
+    // Aggressively strip JSON/markdown wrappers
+    var bt='`';
+    cleanBody = cleanBody.replace(new RegExp(bt+bt+bt+'json[\\s\\S]*?'+bt+bt+bt,'g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
+    // Try multiple levels of JSON unwrapping
+    for(var _ji=0; _ji<3; _ji++){
+      if(cleanBody.startsWith('{') || cleanBody.startsWith('"')){
+        try{
+          var _parsed=JSON.parse(cleanBody);
+          var _next = _parsed.content||_parsed.text||_parsed.body||_parsed.article||'';
+          if(_next){ cleanBody=_next; if(_parsed.title) title=_parsed.title; }
+          else { break; }
+        }catch(e){ break; }
+      } else { break; }
+    }
+    // Final cleanup: remove any remaining JSON-like prefix
+    if(cleanBody.startsWith('{')){
+      var _bodyMatch = cleanBody.match(/"(?:content|text|body|article)"\s*:\s*"([\s\S]+?)(?:",\s*"|"\s*})/);
+      if(_bodyMatch) cleanBody = _bodyMatch[1].replace(/\\n/g,'\n').replace(/\\"/g,'"');
+    }
+
+    document.getElementById('dc-read-title').textContent=title;
+    var wc=Math.ceil((cleanBody.split(' ').length||1)/200);
+    document.getElementById('dc-read-time').textContent=Math.max(1,wc)+' min';
+    window.tlPrepare(document.getElementById('dc-read-body'), cleanBody, dLang);
+    addArticleAudioBtn(cleanBody, dLang);
+  }
+
+  // 1. Sprawdź localStorage cache
+  // Clear all old caches from previous days (keep only today)
+  try{
+    for(var k in localStorage){
+      if(k.startsWith('daily_article_') && !k.endsWith(today)){
+        localStorage.removeItem(k);
+      }
+    }
+  }catch(e){}
+  try{
+    var lsCached=localStorage.getItem(lsKey);
+    if(lsCached){
+      var a=JSON.parse(lsCached);
+      var testBody = a.body||'';
+      // Clear if JSON or too short
+      if(testBody.trim().startsWith('{')||testBody.trim().startsWith('"')||testBody.length<100){
+        localStorage.removeItem(lsKey);
+      } else {
+        displayArticle(a.title,a.body);return;
+      }
+    }
+  }catch(e){}
+
+  // 2. Sprawdź Supabase cache (permanentny dla wszystkich)
+  try{
+    var{data:dbCached}=await db.from('daily_articles')
+      .select('title,content').eq('topic',topic).eq('language',dLang).eq('level','B1').limit(1);
+    var dc=Array.isArray(dbCached)?dbCached[0]:dbCached;
+    if(dc&&dc.title&&!(typeof _isBadArticle==='function'&&_isBadArticle(dc.title,dc.content))){
+      try{localStorage.setItem(lsKey,JSON.stringify({title:dc.title,body:dc.content}));}catch(e){}
+      displayArticle(dc.title,dc.content);
+      return;
+    }
+  }catch(e){}
+
+  // 3. Generuj nowy artykuł
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var res=await fetch(GENERATE_ARTICLE_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
+      body:JSON.stringify({topic:topic,lang:dLang,level:(typeof getCurrentLangLevel==='function'?getCurrentLangLevel():'B1')})
+    });
+    if(res.status===429)throw new Error('rate_limit');
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    var d=await res.json();
+    // Strip markdown code fences if AI returned raw JSON string
+    // Parse AI response — handle raw JSON, markdown fences, nested objects
+    var rawText = d.content||d.text||d.body||'';
+    if(typeof d === 'object' && !rawText && d.title) rawText = d.content||'';
+    var bt = '`';
+    rawText = rawText.replace(new RegExp(bt+bt+bt+'json','g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
+    if(rawText.startsWith('{')){
+      try{
+        var parsed2=JSON.parse(rawText);
+        rawText=parsed2.content||parsed2.text||parsed2.body||rawText;
+        if(!d.title&&parsed2.title) d.title=parsed2.title;
+      }catch(parseErr){ console.warn("[daily] JSON parse:", parseErr); }
+    }
+    var title=d.title||topic;
+    var body=rawText;
+    // generate-article może zwrócić 200 z błędem jako treść → wymuś fallback (AI proxy)
+    if(typeof _isBadArticle==='function' && _isBadArticle(title, body)) throw new Error('empty_or_error');
+    // Zapisz do Supabase permanentnie (tylko poprawną treść)
+    try{
+      if(!(typeof _isBadArticle==='function'&&_isBadArticle(title,body))){
+        await db.from('daily_articles').upsert(
+          {topic:topic,language:dLang,level:(typeof getCurrentLangLevel==='function'?getCurrentLangLevel():'B1'),title:title,content:body},
+          {onConflict:'topic,language,level'}
+        );
+      }
+    }catch(e){}
+    // Zapisz do localStorage
+    try{localStorage.setItem(lsKey,JSON.stringify({title:title,body:body}));}catch(e){}
+    displayArticle(title, body);
+  }catch(e){
+    // Fallback 1: spróbuj wygenerować przez AI proxy
+    try{
+      var sess2=(await db.auth.getSession()).data.session;
+      var tok2=sess2?sess2.access_token:'';
+      var lvl=(typeof getCurrentLangLevel==='function'?getCurrentLangLevel():'B1');
+      var lname=({en:'angielskim',es:'hiszpańskim',nl:'niderlandzkim',jp:'japońskim'}[dLang]||dLang);
+      var prompt='Napisz krótką, ciekawą czytankę w języku '+lname+' na poziomie '+lvl+' na temat: "'+topic
+        +'". 150-220 słów. Odpowiedz TYLKO JSON bez backticks: {"title":"tytuł","content":"treść"}';
+      var rp=await fetch(AI_PROXY_URL,{method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok2,'apikey':APIKEY_CONST},
+        body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:700})});
+      if(rp.ok){
+        var dp=await rp.json();
+        var rawp=(typeof extractAIText==='function'?extractAIText(dp):'')||'';
+        var cp=rawp.replace(/```json|```/g,'').trim();
+        var f=cp.indexOf('{'),l=cp.lastIndexOf('}');
+        var pt=topic, pb='';
+        if(f>=0&&l>f){ try{ var pj=JSON.parse(cp.slice(f,l+1)); pt=pj.title||topic; pb=pj.content||pj.text||''; }catch(e4){} }
+        if(!pb&&cp) pb=cp;
+        if(pb){
+          try{ await db.from('daily_articles').upsert({topic:topic,language:dLang,level:lvl,title:pt,content:pb},{onConflict:'topic,language,level'}); }catch(e5){}
+          try{ localStorage.setItem(lsKey,JSON.stringify({title:pt,body:pb})); }catch(e6){}
+          displayArticle(pt,pb);
+          return;
+        }
+      }
+    }catch(eAI){}
+    document.getElementById('dc-read-loading').style.display='none';
+    document.getElementById('dc-read-content').style.display='flex';
+    var isLimit=e.message==='rate_limit';
+    document.getElementById('dc-read-title').textContent=isLimit?'Spróbuj za chwilę':'Ciekawostka dnia';
+    var fallbacks={
+      en:'Cats purr not just when content. Scientists found that purring vibrations (25–150 Hz) promote healing in bones and tissues.',
+      es:'Los gatos ronronean no solo cuando están contentos. Los científicos descubrieron que las vibraciones del ronroneo promueven la curación.',
+      nl:'Katten spinnen niet alleen als ze tevreden zijn. De trillingen bevorderen genezing van botten en weefsels.',
+      jp:'猫が喉を鳴らすのは満足しているときだけではありません。その振動が治癒を促進することが発見されました。'
+    };
+    document.getElementById('dc-read-body').textContent=isLimit?'Generator chwilowo przeciążony. Wróć za kilka minut.':fallbacks[dLang]||fallbacks['en'];
+  }
+}
+
+// Buduje HTML artykułu z klikalnymi zdaniami i hoverowanymi słowami
+function buildArticleHTML(text, lang){
+  // Strip ```json if present
+  var bt='`';
+  text=(text||'').replace(new RegExp(bt+bt+bt+'json','g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
+  if(text.startsWith('{')){try{var _p=JSON.parse(text);text=_p.content||_p.text||text;}catch(e){}}
+  // Override hover to use sidebar instead of tooltip
+  window._articleLang = lang;
+  // Podziel na zdania
+  var sentences=text.match(/[^.!?]+[.!?]+/g)||[text];
+  return sentences.map(function(sent,idx){
+    var trimmed=sent.trim();
+    if(!trimmed)return'';
+    // Opakuj każde słowo w span z hover
+    var words=trimmed.split(/(\s+)/);
+    var wordsHtml=words.map(function(w){
+      if(/^\s+$/.test(w))return w;
+      var clean=w.replace(/[^a-zA-ZÀ-žа-яА-Яぁ-ん一-龯]/g,'');
+      if(clean.length<2)return w;
+      return'<span class="hover-word" data-word="'+clean+'" data-lang="'+lang+'">'+w+'</span>';
+    }).join('');
+    var safeS2=trimmed.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    return'<span class="sent" data-idx="'+idx+'" data-sentence="'+safeS2+'" onclick="analyzeSentence(this,this.dataset.sentence)" title="Kliknij aby przetłumaczyć zdanie">'+wordsHtml+'</span> ';
+  }).join('');
+}
+
+// Kliknięcie w zdanie → tłumaczenie po prawej w sidebarze
+var _sentCache={};
+async function analyzeSentence(el, sentence){
+  // Podświetl aktywne zdanie
+  document.querySelectorAll('.sent.active-sent').forEach(function(s){s.classList.remove('active-sent');});
+  el.classList.add('active-sent');
+
+  var lang=window._articleLang||'en';
+  var sb=document.getElementById('dc-read-sidebar');
+  if(!sb)return;
+
+  // Cache
+  var cKey='sent_'+lang+'_'+sentence.slice(0,30);
+  if(_sentCache[cKey]){
+    renderSentenceSidebar(sb, sentence, _sentCache[cKey], lang);
+    return;
+  }
+
+  sb.innerHTML='<div style="font-size:13px;color:var(--dim2);display:flex;align-items:center;gap:8px">'
+    +'<div style="width:14px;height:14px;border:2px solid var(--orange);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite"></div>'
+    +'Tłumaczę zdanie...</div>';
+
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var langName={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'}[lang]||'English';
+    var prompt='Translate this '+langName+' sentence to Polish. Return ONLY the Polish translation, nothing else.\nSentence: "'+sentence+'"';
+    var res=await fetch(AI_PROXY_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:150})
+    });
+    var d=await res.json();
+    var tr=(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim().replace(/^["']|["']$/g,'');
+    _sentCache[cKey]=tr;
+    renderSentenceSidebar(sb, sentence, tr, lang);
+  }catch(e){
+    sb.innerHTML='<div style="font-size:12px;color:#c33">Błąd tłumaczenia — spróbuj ponownie</div>';
+  }
+}
+
+function renderSentenceSidebar(sb, sentence, translation, lang){
+  sb.innerHTML='';
+  sb.dataset.lang=lang||'en';
+
+  var h1=document.createElement('div');
+  h1.style.cssText='font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:10px';
+  h1.textContent='📌 Wybrane zdanie';
+  sb.appendChild(h1);
+
+  var sq=document.createElement('div');
+  sq.style.cssText='font-size:14px;color:var(--navy);line-height:1.6;margin-bottom:10px;font-style:italic;border-left:3px solid var(--orange);padding-left:10px';
+  sq.textContent=sentence;
+  sb.appendChild(sq);
+
+  var audioBtn=document.createElement('button');
+  audioBtn.style.cssText='width:100%;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:12px;font-weight:500;color:var(--navy);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px;transition:.15s;font-family:DM Sans,sans-serif';
+  audioBtn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;height:13px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg><span style="margin-left:6px">Odtwórz zdanie</span>';
+  audioBtn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+  audioBtn.onmouseout=function(){this.style.borderColor='var(--border)';};
+  audioBtn.onclick=(function(s,l){return function(){ window.ttsPlayPause(audioBtn, s, window.ttsLangCode(l), 0.9, 'Odtwórz zdanie'); };})(sentence, lang);
+  sb.appendChild(audioBtn);
+
+  var h2=document.createElement('div');
+  h2.style.cssText='font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.8px;color:var(--dim2);margin-bottom:6px';
+  h2.textContent='🇵🇱 Tłumaczenie';
+  sb.appendChild(h2);
+
+  var trEl=document.createElement('div');
+  trEl.style.cssText='font-size:15px;color:var(--orange);font-weight:500;line-height:1.5';
+  trEl.textContent=translation;
+  sb.appendChild(trEl);
+}
+// Odtwórz audio tylko jednego zdania (zatrzymuje główne TTS)
+function playSentenceAudio(sentence, lang){
+  if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+
+  var btn=document.getElementById('sent-audio-btn');
+  var sb=document.getElementById('dc-read-sidebar');
+  if(!lang) lang=sb?sb.dataset.lang||'en':'en';
+  var langCodes={en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP',de:'de-DE',fr:'fr-FR'};
+  var langCode=langCodes[lang]||'en-GB';
+
+  if(btn) btn.innerHTML='⏹️ Zatrzymaj';
+  if(btn) btn.onclick=function(){speechSynthesis.cancel();if(btn){btn.innerHTML='🔊 Odtwórz zdanie';btn.onclick=function(){playSentenceAudio(sentence);};}};
+
+  var voices=speechSynthesis.getVoices();
+  var preferred=voices.find(function(v){return v.lang===langCode&&v.name.includes('Google');})
+    ||voices.find(function(v){return v.lang===langCode;})
+    ||voices.find(function(v){return v.lang.startsWith(lang);});
+
+  var utt=new SpeechSynthesisUtterance(sentence);
+  utt.lang=langCode;utt.rate=0.9;utt.pitch=1.0;
+  if(preferred)utt.voice=preferred;
+  utt.onend=function(){if(btn){btn.innerHTML='🔊 Odtwórz zdanie';btn.onclick=function(){playSentenceAudio(sentence);};} };
+  utt.onerror=function(){if(btn){btn.innerHTML='🔊 Odtwórz zdanie';btn.onclick=function(){playSentenceAudio(sentence);};}};
+  speechSynthesis.speak(utt);
+}
+
+// Tooltip hover na słowach
+document.addEventListener('mouseover',function(e){
+  var el=e.target;
+  if(!el.classList||!el.classList.contains('hover-word'))return;
+  var word=el.dataset.word;
+  var lang=el.dataset.lang;
+  if(!word||word.length<2)return;
+  showWordTooltip(el, word, lang);
+});
+document.addEventListener('mouseout',function(e){
+  if(e.target.classList&&e.target.classList.contains('hover-word')){
+    _ttHideTimer=setTimeout(function(){
+      var tt=document.getElementById('hover-tooltip');
+      if(tt)tt.style.display='none';
+    },400);
+  }
+});
+
+var _ttCache={};
+var _ttHideTimer=null;
+
+async function showWordTooltip(el, word, lang){
+  clearTimeout(_ttHideTimer);
+  var tt=document.getElementById('hover-tooltip');
+  if(!tt)return;
+  var rect=el.getBoundingClientRect();
+  tt.style.position='fixed';
+  tt.style.display='block';
+  // Position above the word, centered
+  tt.style.left=Math.max(8,Math.min(rect.left+rect.width/2-60,window.innerWidth-200))+'px';
+  tt.style.top=Math.max(8,rect.top-48)+'px';
+  tt.style.minWidth='120px';
+  tt.innerHTML='<span style="opacity:.5;font-size:11px">...</span>';
+
+  var sentence='';
+  try{var ps=el.closest('.sent');if(ps)sentence=ps.dataset.sentence||'';}catch(e){}
+  var cKey=lang+'_'+word.toLowerCase()+'_'+sentence.slice(0,20);
+  if(_ttCache[cKey]){tt.innerHTML=_ttCache[cKey];return;}
+
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var langName={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'}[lang]||'English';
+    var prompt='Translate the '+langName+' word "'+word+'" to Polish.'
+      +(sentence?' Context: "'+sentence.slice(0,80)+'". Give the translation that fits this context.':'')
+      +' Reply ONLY with the Polish translation, max 5 words, nothing else.';
+    var res=await fetch(AI_PROXY_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:20})
+    });
+    var d=await res.json();
+    var raw=d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'';
+    var tr=raw.trim().replace(/["""]/g,'');
+    if(tr&&tt.style.display==='block'){
+      var html='<strong style="font-size:13px">'+word+'</strong><br><span style="font-size:14px;color:#f5c842">'+tr+'</span>';
+      _ttCache[cKey]=html;
+      tt.innerHTML=html;
+      // sidebar reserved for sentence clicks only — no hover update
+    }
+  }catch(e){
+    tt.style.display='none';
+  }
+}
+
+// Audio TTS - czytanie artykułu
+// ── Uniwersalne sterowanie TTS z pauzą/wznowieniem ──
+// Odtwórz → Pauza → Wznów. Jeden aktywny przycisk na raz.
+window.ttsPlayPause = function(btn, text, langCode, rate, labelPlay){
+  if(typeof speechSynthesis==='undefined' || !btn) return;
+  labelPlay = labelPlay || 'Odtwórz';
+  rate = rate || 0.9;
+  langCode = langCode || 'en-GB';
+  var PLAY='<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;height:13px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>';
+  var PAUSE='<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;height:13px;flex-shrink:0"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+  function lbl(icon,txt){ btn.innerHTML=icon+'<span style="margin-left:6px">'+txt+'</span>'; }
+  var syn=window.speechSynthesis;
+  // Ten przycisk już steruje odtwarzaniem → pauza / wznowienie
+  if(btn._ttsActive){
+    if(!btn._ttsPaused){ try{syn.pause();}catch(e){} btn._ttsPaused=true; lbl(PLAY,'Wznów'); }
+    else { try{syn.resume();}catch(e){} btn._ttsPaused=false; lbl(PAUSE,'Pauza'); }
+    return;
+  }
+  // Start nowego odtwarzania — zresetuj poprzedni aktywny przycisk
+  if(window._ttsActiveBtn && window._ttsActiveBtn!==btn && window._ttsActiveBtn._ttsFinish){ window._ttsActiveBtn._ttsFinish(); }
+  try{syn.cancel();}catch(e){}
+  var clean=(text||'').replace(/<[^>]+>/g,' ').replace(/&[a-z]+;/g,' ').replace(/\s+/g,' ').trim();
+  if(!clean) return;
+  var chunks=clean.match(/[^.!?。！？]+[.!?。！？]+\s*/g)||[clean];
+  var voices=syn.getVoices();
+  var base=langCode.split('-')[0];
+  var voice=voices.find(function(v){return v.lang===langCode&&/Google/.test(v.name);})
+    ||voices.find(function(v){return v.lang===langCode;})
+    ||voices.find(function(v){return v.lang.indexOf(base)===0;});
+  var i=0;
+  btn._ttsActive=true; btn._ttsPaused=false; window._ttsActiveBtn=btn;
+  function finish(){ btn._ttsActive=false; btn._ttsPaused=false; if(window._ttsActiveBtn===btn) window._ttsActiveBtn=null; lbl(PLAY,labelPlay); }
+  btn._ttsFinish=finish;
+  function next(){
+    if(!btn._ttsActive) return;
+    if(i>=chunks.length){ finish(); return; }
+    var u=new SpeechSynthesisUtterance(chunks[i].trim());
+    u.lang=langCode; u.rate=rate; u.pitch=1.0; if(voice) u.voice=voice;
+    u.onend=function(){ i++; next(); };
+    u.onerror=function(){ i++; next(); };
+    syn.speak(u);
+  }
+  lbl(PAUSE,'Pauza');
+  next();
+};
+// Mapa kodów głosu TTS dla języków
+window.ttsLangCode = function(lang){
+  return {en:'en-GB',es:'es-ES',nl:'nl-NL',jp:'ja-JP',de:'de-DE',fr:'fr-FR',it:'it-IT',pt:'pt-PT'}[lang]||'en-GB';
+};
+
+function addArticleAudioBtn(text, lang){
+  var existing=document.getElementById('dc-read-audio-wrap');
+  if(existing)existing.remove();
+  var wrap=document.createElement('div');
+  wrap.id='dc-read-audio-wrap';
+  wrap.style.cssText='display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)';
+  var langCode=window.ttsLangCode(lang);
+  var btn=document.createElement('button');
+  btn.className='btn btn-navy';
+  btn.style.cssText='font-size:13px;padding:8px 16px;display:flex;align-items:center';
+  btn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" style="width:13px;height:13px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg><span style="margin-left:6px">Przeczytaj artykuł</span>';
+  btn.onclick=function(){ window.ttsPlayPause(btn, text, langCode, 0.88, 'Przeczytaj artykuł'); };
+  wrap.appendChild(btn);
+  var bodyEl=document.getElementById('dc-read-body');
+  if(bodyEl&&bodyEl.parentElement) bodyEl.parentElement.appendChild(wrap);
+}
+
+
+async function loadDailyQuiz(){
+  var langSel = document.getElementById('daily-lang-select');
+  var lang = langSel ? langSel.value : 'en';
+  var langLabels = {en:'angielskim',es:'hiszpańskim',nl:'niderlandzkim',jp:'japońskim'};
+  var langLabel = langLabels[lang] || lang;
+  var today = new Date().toISOString().slice(0,10);
+
+  var container = document.getElementById('dc-quiz-opts');
+  if(!container) return;
+  container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px';
+  container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--dim2);font-size:13px">⏳ Generuję quiz...</div>';
+
+  try{
+    var sess = (await db.auth.getSession()).data.session;
+    var tok = sess ? sess.access_token : '';
+
+    // Check cache
+    var {data: cached} = await db
+      .from('daily_quiz')
+      .select('*')
+      .eq('date', today)
+      .eq('language', lang)
+      .maybeSingle();
+
+    if(cached && cached.question && cached.date === today){
+      renderDailyQuiz(cached);
+      return;
+    }
+
+    // Generate
+    var level = (typeof getCurrentLangLevel === 'function') ? getCurrentLangLevel() : 'B1';
+    var prompt = 'Wygeneruj 1 pytanie quizowe o języku ' + langLabel + ' na poziomie ' + level + '.'
+      + ' Pytanie może dotyczyć: znaczenia słowa, użycia w zdaniu, gramatyki lub ciekawostki kulturowej.'
+      + ' Odpowiedz TYLKO poprawnym JSON bez żadnego tekstu przed ani po, bez backticks:'
+      + ' {"question":"pytanie po polsku","word":"słowo w ' + langLabel + ' którego dotyczy pytanie",'
+      + '"options":["opcja A","opcja B","opcja C","opcja D"],'
+      + '"correct":0,"explanation":"krótkie wyjaśnienie po polsku"}';
+
+    var res = await fetch(AI_PROXY_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body: JSON.stringify({messages:[{role:'user',content:prompt}], max_tokens:400})
+    });
+    var d = await res.json();
+    var raw = extractAIText(d) || '{}';
+    var cleaned = raw.replace(/```json|```/g,'').trim();
+    if(!cleaned.startsWith('{')){ var _fo=cleaned.indexOf('{'), _lo=cleaned.lastIndexOf('}'); if(_fo>=0&&_lo>_fo) cleaned=cleaned.slice(_fo,_lo+1); }
+    var quiz = JSON.parse(cleaned);
+
+    // Save to cache
+    try{
+      await db.from('daily_quiz').upsert({
+        date: today,
+        language: lang,
+        level: level,
+        question: quiz.question,
+        word: quiz.word,
+        options: quiz.options,
+        correct: quiz.correct,
+        explanation: quiz.explanation,
+        created_at: new Date().toISOString()
+      }, {onConflict: 'date,language'});
+    }catch(e){}
+
+    renderDailyQuiz(quiz);
+
+  }catch(e){
+    container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--dim2);font-size:12px">Nie udało się załadować quizu.</div>';
+  }
+}
+
+function renderDailyQuiz(quiz){
+  var container = document.getElementById('dc-quiz-opts');
+  if(!container) return;
+  var answered = false;
+
+  // Show question above options
+  var qEl = document.getElementById('dc-quiz-q');
+  if(qEl){
+    qEl.innerHTML = (quiz.word ? '<span style="font-size:12px;color:var(--orange);display:block;margin-bottom:4px">Słowo: <strong>'+quiz.word+'</strong></span>' : '')
+      + (quiz.question || '');
+  }
+
+  container.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px';
+  container.innerHTML = (quiz.options || []).map(function(opt, i){
+    var letters = ['A','B','C','D'];
+    return '<button onclick="checkDailyQuizOpt(this,'+i+','+quiz.correct+')" class="dq-tile" '
+      + 'style="display:flex;align-items:center;gap:10px;min-height:0;padding:10px 12px;background:var(--paper);border:1.5px solid var(--border2);border-radius:10px;cursor:pointer;font-size:13px;color:var(--navy);text-align:left;transition:.15s;font-family:DM Sans,sans-serif">'
+      + '<span style="width:22px;height:22px;border-radius:50%;background:#fff;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--orange);flex-shrink:0">'+letters[i]+'</span>'
+      + '<span style="line-height:1.3">'+opt+'</span>'
+      + '</button>';
+  }).join('');
+
+  // Store explanation for after answer
+  window._dailyQuizExpl = quiz.explanation || '';
+  window._dailyQuizCorrect = quiz.correct;
+
+  // Przywróć zapisaną odpowiedź (utrzymuje wybór do następnej porcji dnia)
+  try{
+    var lang=(document.getElementById('daily-lang-select')||{}).value||'en';
+    var today=new Date().toISOString().slice(0,10);
+    var saved=localStorage.getItem(uk('daily_quiz_ans')+'_'+today+'_'+lang);
+    if(saved!==null && saved!==''){
+      applyDailyQuizAnswer(parseInt(saved,10), quiz.correct);
+    }
+  }catch(e){}
+}
+
+function applyDailyQuizAnswer(idx, correct){
+  var container = document.getElementById('dc-quiz-opts');
+  if(!container) return;
+  var btns = container.querySelectorAll('button');
+  btns.forEach(function(b,i){
+    b.disabled = true; b.style.cursor = 'default';
+    if(i === correct){ b.style.background='#eaf3de'; b.style.borderColor='#639922'; b.style.color='#3b6d11'; }
+    else if(i === idx && i !== correct){ b.style.background='#fcebeb'; b.style.borderColor='#e24b4a'; b.style.color='#a32d2d'; }
+  });
+  var expl = document.getElementById('dc-quiz-expl');
+  if(expl && window._dailyQuizExpl){ expl.style.display='block'; expl.textContent=window._dailyQuizExpl; }
+  var qd=document.getElementById('dc-quiz-done2'); if(qd) qd.style.display='inline-flex';
+  if(window._dailyDone && !window._dailyDone.quiz){
+    window._dailyDone.quiz=true;
+    if(typeof updateDailyProgress==='function') updateDailyProgress();
+  }
+}
+
+function checkDailyQuizOpt(btn, idx, correct){
+  var container = document.getElementById('dc-quiz-opts');
+  if(!container || btn.disabled) return;
+  // Zapisz wybór (utrzymuje się do następnej porcji dnia)
+  try{
+    var lang=(document.getElementById('daily-lang-select')||{}).value||'en';
+    var today=new Date().toISOString().slice(0,10);
+    localStorage.setItem(uk('daily_quiz_ans')+'_'+today+'_'+lang, String(idx));
+  }catch(e){}
+  applyDailyQuizAnswer(idx, correct);
+  window._dailyXP = (window._dailyXP||0) + (idx===correct?25:10);
+  if(typeof updateDailyProgress==='function') updateDailyProgress();
+}
+async function initChallenge(){
+  clearInterval(_challengeTimer);
+  // Oblicz koniec tygodnia (niedziela 23:59)
+  var now=new Date(), day=now.getDay(), diff=(7-day)%7||7;
+  var end=new Date(now); end.setDate(now.getDate()+diff); end.setHours(23,59,59,999);
+
+  function tick(){
+    var rem=end-new Date(), d=Math.floor(rem/86400000), h=Math.floor((rem%86400000)/3600000), m=Math.floor((rem%3600000)/60000);
+    var el=document.getElementById('ch-countdown');
+    if(el) el.textContent=d+'d '+h+'h '+m+'min';
+  }
+  tick(); _challengeTimer=setInterval(tick,60000);
+
+  // Wyzwanie — dynamicznie
+  var challenges=[
+    {name:'Słownictwo podróżnicze',desc:'Naucz się 50 słów z kategorii Travel',goal:50,category:'Podróże',topic:'travel, tourism, airports, hotels, transportation, sightseeing, vacation',reward:'zestaw Podróże opanowany'},
+    {name:'Język biznesu',desc:'Opanuj 40 słów z języka biznesu',goal:40,category:'Business',topic:'business, finance, corporate, meetings, negotiations, management, marketing, economics',reward:'zestaw Biznes opanowany'},
+    {name:'Słownictwo naukowe',desc:'Przyswój 30 słów naukowych',goal:30,category:'Science',topic:'science, biology, chemistry, physics, research, laboratory, discoveries, technology',reward:'zestaw Nauka opanowany'},
+  ];
+  var week=Math.floor(Date.now()/604800000)%challenges.length;
+  var ch=challenges[week];
+  document.getElementById('ch-name').textContent=ch.name;
+  document.getElementById('ch-desc').textContent=ch.desc;
+  document.getElementById('ch-reward').textContent='Po ukończeniu: '+ch.reward;
+
+  // Pobierz postęp usera
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(sess){
+      var {data:stats}=await db.from('learning_stats').select('cards_seen').eq('user_id',sess.user.id).maybeSingle();
+      var myProgress=Math.min(ch.goal, Math.floor((stats?.cards_seen||0)%ch.goal));
+      document.getElementById('ch-progress-text').textContent=myProgress+' / '+ch.goal;
+      document.getElementById('ch-progress-bar').style.width=Math.round(myProgress/ch.goal*100)+'%';
+    }
+  }catch(e){}
+
+  loadChallengeSet(ch);
+}
+
+var _challengeSetCache=null;
+
 // ── Strefa Nauki sidebar logic ──
 var _strefaSidebarOpen = true;
+var _dailySidebarOpen = true;
 var _odkryjSidebarOpen = true;
+
+function toggleDailySidebar(){
+  _dailySidebarOpen = !_dailySidebarOpen;
+  var sb=document.getElementById('daily-sidebar');
+  var btn=document.getElementById('daily-sidebar-toggle');
+  if(_dailySidebarOpen){
+    sb.style.display='block';
+    if(btn){btn.textContent='‹';}
+  } else {
+    sb.style.display='none';
+    if(btn){btn.textContent='›';}
+  }
+}
 
 function toggleOdkryjSidebar(){
   _odkryjSidebarOpen = !_odkryjSidebarOpen;
@@ -4292,6 +5573,7 @@ function toggleStrefaSidebar(){
   }
 }
 
+// (Usunięto martwą, nadpisywaną definicję strefaSidebarMode — żywa wersja jest niżej.)
 
 async function updatePowtorkiTile(){
   var tile=document.getElementById('sb-powtorki-tile');
@@ -4482,7 +5764,11 @@ async function strefaShowCatalogSets(colIdx, colName, mode){
       wrap.insertBefore(backBtn, wrap.firstChild);
       var grid=document.createElement('div');
       grid.className='mat-grid';
-      grid.innerHTML=sets.map(function(s){ return strefaSetCardTryb(s); }).join('');
+      if(mode==='tryb'){
+        grid.innerHTML=sets.map(function(s){ return strefaSetCardTryb(s); }).join('');
+      } else {
+        grid.innerHTML=sets.map(function(s){ return strefaSetCardKontekstowa(s); }).join('');
+      }
       wrap.appendChild(grid);
     }
     center.innerHTML=''; center.appendChild(wrap);
@@ -4503,7 +5789,7 @@ function strefaSetCardLangBadge(s){
 function strefaSetCard(s, mode){
   var cnt=s.user_set_cards?s.user_set_cards.length:0;
   var enc=encodeURIComponent(s.name);
-  var learnFn='strefaSelectUserSet('+s.id+',&#39;'+enc+'&#39;)';
+  var learnFn=(mode==='tryb'?'strefaSelectUserSet(':'strefaStartKontekstowaFromSet(')+s.id+',&#39;'+enc+'&#39;)';
   var nmJS=(s.name||'').replace(/['"\\<>]/g,'');
   var lc=s.lang||'';
   var badge=strefaSetCardLangBadge(s);
@@ -4518,6 +5804,7 @@ function strefaSetCard(s, mode){
     +'</div></div>';
 }
 function strefaSetCardTryb(s){ return strefaSetCard(s,'tryb'); }
+function strefaSetCardKontekstowa(s){ return strefaSetCard(s,'kontekstowa'); }
 
 
 
@@ -4525,7 +5812,9 @@ function strefaSetCardTryb(s){ return strefaSetCard(s,'tryb'); }
 function sbSetTile(s,mode){
   var cnt=s.user_set_cards?s.user_set_cards.length:0;
   var enc=encodeURIComponent(s.name);
-  var fn='strefaSelectUserSet('+s.id+',"'+enc+'")';
+  var fn=mode==='tryb'
+    ?'strefaSelectUserSet('+s.id+',"'+enc+'")'
+    :'strefaStartKontekstowaFromSet('+s.id+',"'+enc+'")';
   var div=document.createElement('div');
   div.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s';
   div.innerHTML='<div style="font-size:13px;font-weight:500;color:var(--navy)">'+(window.esc?esc(stripEmoji(s.name)):stripEmoji(s.name))+'</div>'
@@ -4596,12 +5885,323 @@ function strefaSelectLang(code,label,flag,mode){
     div.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)';};
     div.onmouseout=function(){this.style.borderColor='var(--border)';this.style.transform='none';};
     div.onclick=(function(lc,ll,lf,lv,m){ return function(){
-      strefaShowEyelingoCategories(lc,ll,lf,lv);
+      if(m==='tryb') strefaShowEyelingoCategories(lc,ll,lf,lv);
+      else strefaKontekstowaCategories(lc,ll,lf,lv);
     }; })(code,label,flag,lvl,mode);
     grid.appendChild(div);
   });
   wrap.appendChild(grid);
   center.innerHTML=''; center.appendChild(wrap);
+}
+
+// ── Kontekstowa - Moje zestawy accordion ──
+var _sbMineKOpen=false;
+function strefaToggleMineKontekstowa(){
+  _sbMineKOpen=!_sbMineKOpen;
+  var list=document.getElementById('sb-mine-k-list');
+  var arrow=document.getElementById('sb-mine-k-arrow');
+  if(_sbMineKOpen){
+    list.style.display='block';
+    if(arrow) arrow.style.transform='rotate(180deg)';
+    strefaLoadMineList('kontekstowa');
+  } else {
+    list.style.display='none';
+    if(arrow) arrow.style.transform='rotate(0)';
+  }
+}
+
+function strefaLoadMineKontekstowaList(){ /* called on mode switch - loads lazily */ }
+
+async function strefaStartKontekstowaFromSet(setId, setNameEnc){
+  var setName=decodeURIComponent(setNameEnc);
+  var center=document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie...</div>';
+  try{
+    var {data:s}=await db.from('user_sets').select('id,name,user_set_cards(word,translation)').eq('id',setId).single();
+    var cards=(s&&s.user_set_cards)||[];
+    if(!cards.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak fiszek w zestawie</div>';return;}
+    window._strefaWords=cards; window._strefaIdx=0;
+    renderStrefaKontekstowaCard(cards[0],'en','B1',0,cards.length,setName,setName,'📂','B1','custom');
+  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
+// ── Eyelingo categories in center (Tryb Nauki) ──
+async function strefaShowEyelingoCategories(langCode,langLabel,flag,lvl){
+  var center=document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie kategorii...</div>';
+  setBreadcrumb(flag+' '+langLabel+' → '+lvl);
+  try{
+    var {data:langRow}=await db.from('languages').select('id').eq('code',langCode).single();
+    var {data:lvlRow}=await db.from('levels').select('id').eq('code',lvl).maybeSingle();
+    if(!langRow){if(center)center.innerHTML='<div style="padding:20px;color:#c33">Błąd języka</div>';return;}
+    var q=db.from('flashcards').select('category_id').eq('language_id',langRow.id);
+    if(lvlRow) q=q.eq('level_id',lvlRow.id);
+    var {data:rows}=await q.limit(500);
+    var ids=[...new Set((rows||[]).map(function(r){return r.category_id;}).filter(Boolean))];
+    var {data:cats}=await db.from('categories').select('id,code,label,icon').in('id',ids).order('label');
+    if(!cats||!cats.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak kategorii</div>';return;}
+    var wrap=document.createElement('div');
+    var back=document.createElement('button');
+    back.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+    back.textContent='← Poziomy';
+    back.onclick=(function(lc,ll,lf){ return function(){ strefaSelectLang(lc,ll,lf,'tryb'); }; })(langCode,langLabel,flag);
+    wrap.appendChild(back);
+    var title=document.createElement('div');
+    title.style.cssText='font-family:DM Sans,sans-serif;font-size:22px;font-weight:500;color:var(--navy);margin-bottom:16px';
+    title.textContent=flag+' '+langLabel+' '+lvl+' — wybierz kategorię';
+    wrap.appendChild(title);
+    var grid=document.createElement('div');
+    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px';
+    cats.forEach(function(cat){
+      var div=document.createElement('div');
+      div.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;transition:all .2s;text-align:center';
+      div.innerHTML='<div style="font-size:24px;margin-bottom:8px">'+(cat.icon||'📂')+'</div><div style="font-size:13px;font-weight:500;color:var(--navy)">'+(cat.label||cat.code)+'</div>';
+      div.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)';};
+      div.onmouseout=function(){this.style.borderColor='var(--border)';this.style.transform='none';};
+      div.onclick=(function(lc,ll,lf,lv,catRow){ return function(){
+        strefaLoadEyelingoSet(lc,ll,lf,lv,catRow.id,catRow.label||catRow.code);
+      }; })(langCode,langLabel,flag,lvl,cat);
+      grid.appendChild(div);
+    });
+    wrap.appendChild(grid);
+    if(center){center.innerHTML='';center.appendChild(wrap);}
+  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
+async function strefaLoadEyelingoSet(langCode,langLabel,flag,lvl,catId,catLabel){
+  var center=document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie fiszek...</div>';
+  try{
+    var {data:langRow}=await db.from('languages').select('id').eq('code',langCode).single();
+    var {data:lvlRow}=await db.from('levels').select('id').eq('code',lvl).maybeSingle();
+    var q=db.from('flashcards').select('id,word,translation').eq('language_id',langRow.id).eq('category_id',catId);
+    if(lvlRow) q=q.eq('level_id',lvlRow.id);
+    var {data:cards}=await q.limit(200);
+    if(!cards||!cards.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak fiszek</div>';return;}
+    // Zapisz świeże otwarcie kategorii (przeglądanie liczy się do rekomendacji w lekcji Lexa)
+    try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet('eyelingo', catId, catLabel, lvl, cards.length, langCode); }catch(_e){}
+    // Preview + start button
+    var wrap=document.createElement('div');
+    var back=document.createElement('button');
+    back.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+    back.textContent='← Kategorie';
+    back.onclick=(function(lc,ll,lf,lv){ return function(){ strefaShowEyelingoCategories(lc,ll,lf,lv); }; })(langCode,langLabel,flag,lvl);
+    wrap.appendChild(back);
+    var hdr=document.createElement('div');
+    hdr.style.cssText='margin-bottom:20px';
+    hdr.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:6px">'+flag+' '+(catLabel)+'</div>'
+      +'<div style="font-size:14px;color:var(--dim2)">'+lvl+' · '+cards.length+' fiszek</div>';
+    wrap.appendChild(hdr);
+    // Preview grid
+    var pg=document.createElement('div');
+    pg.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:20px';
+    cards.slice(0,8).forEach(function(c){
+      var d=document.createElement('div');
+      d.style.cssText='background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center';
+      d.innerHTML='<div style="font-size:14px;font-weight:500;color:var(--navy)">'+c.word+'</div>'
+        +'<div style="font-size:12px;color:var(--orange);margin-top:3px">'+c.translation+'</div>';
+      pg.appendChild(d);
+    });
+    wrap.appendChild(pg);
+    var btnRow=document.createElement('div');
+    btnRow.style.cssText='display:flex;gap:10px';
+    var startBtn=document.createElement('button');
+    startBtn.className='btn btn-orange btn-lg';
+    startBtn.textContent='▶ Zacznij naukę';
+    startBtn.onclick=(function(cc,sn){ return function(){
+      _trybExternalCards=cc.map(function(c){return {word:c.word||'',translation:c.translation||'',flashcard_id:c.id};});
+      _trybExternalName=sn;
+      window._trybStudyLang=langCode;
+      window._trybSource='strefa';
+      try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet('eyelingo', catId, catLabel, lvl, cc.length, langCode); }catch(_e){}
+      RewardSystem&&RewardSystem.load();
+      showPage('tryb');
+      setTimeout(function(){ startSession('set_external'); },300);
+    }; })(cards,flag+' '+catLabel+' '+lvl);
+    btnRow.appendChild(startBtn);
+    wrap.appendChild(btnRow);
+    if(center){center.innerHTML='';center.appendChild(wrap);}
+  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
+
+async function loadChallengeSet(ch){
+  var setDesc=document.getElementById('ch-set-desc');
+  var setPreview=document.getElementById('ch-set-preview');
+  var importBtn=document.getElementById('ch-import-btn');
+  var setStatus=document.getElementById('ch-set-status');
+  if(!setDesc)return;
+
+  // Check if set already exists in Supabase (public set for this challenge)
+  try{
+    var {data:existing}=await db.from('user_sets')
+      .select('id,name,user_set_cards(word,translation)')
+      .eq('name','🏆 '+ch.name)
+      .eq('is_public',true)
+      .limit(1);
+    var ex=existing&&existing[0];
+    if(ex&&ex.user_set_cards&&ex.user_set_cards.length>=10){
+      renderChallengeSet(ex, ch);
+      return;
+    }
+  }catch(e){}
+
+  // Check cache
+  if(_challengeSetCache&&_challengeSetCache.name===ch.name){
+    renderChallengeSet(_challengeSetCache, ch);
+    return;
+  }
+
+  // Generate set via AI
+  if(setDesc) setDesc.textContent='Generuję zestaw '+ch.goal+' słówek...';
+  if(setStatus) setStatus.textContent='Pierwsze wejście — AI generuje zestaw raz dla wszystkich użytkowników';
+
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var res=await fetch(AI_PROXY_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({
+        messages:[{role:'user',content:'Generate exactly '+ch.goal+' English vocabulary flashcards strictly about this topic: "'+ch.topic+'". All words must be ONLY from this topic domain. Return ONLY a JSON array with exactly '+ch.goal+' items, no other text: [{"word":"example","translation":"przykład"},...]'}],
+        max_tokens:3000
+      })
+    });
+    var data=await res.json();
+    var raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||'[]';
+    var _bt='`';var clean=raw.replace(new RegExp(_bt+_bt+_bt+'json|'+_bt+_bt+_bt,'g'),'').trim();
+    var cards=null;
+    try{cards=JSON.parse(clean);}catch(e){var m=clean.match(/\[[\s\S]+\]/);if(m)try{cards=JSON.parse(m[0]);}catch(e2){}}
+    if(!cards||!cards.length)throw new Error('Brak fiszek');
+
+    // Save as public set (shared for all)
+    if(sess){
+      var {data:newSet}=await db.from('user_sets').insert({
+        user_id:sess.user.id,name:'🏆 '+ch.name,is_public:true
+      }).select('id').single();
+      if(newSet){
+        var rows=cards.map(function(c,i){return{set_id:newSet.id,word:c.word||c.front,translation:c.translation||c.back,sort_order:i};});
+        await db.from('user_set_cards').insert(rows);
+        var setObj={id:newSet.id,name:'🏆 '+ch.name,user_set_cards:rows};
+        _challengeSetCache=setObj;
+        renderChallengeSet(setObj,ch);
+        return;
+      }
+    }
+    // No session - show preview only
+    var setObj={id:null,name:'🏆 '+ch.name,user_set_cards:cards.map(function(c){return{word:c.word,translation:c.translation};})};
+    _challengeSetCache=setObj;
+    renderChallengeSet(setObj,ch);
+  }catch(e){
+    if(setDesc) setDesc.textContent='Błąd ładowania zestawu: '+e.message;
+    if(setStatus) setStatus.textContent='Zaloguj się i odśwież aby wygenerować zestaw';
+  }
+}
+
+function renderChallengeSet(set, ch){
+  var setDesc=document.getElementById('ch-set-desc');
+  var setPreview=document.getElementById('ch-set-preview');
+  var importBtn=document.getElementById('ch-import-btn');
+  var setStatus=document.getElementById('ch-set-status');
+  var cards=set.user_set_cards||[];
+  if(setDesc) setDesc.textContent=cards.length+' słówek z tematu: '+ch.category;
+  if(setStatus) setStatus.textContent='Bezpłatny zestaw dla wszystkich · Tylko słownictwo tematyczne';
+  window._challengeSetToImport=set;
+
+  // Pokaż podgląd (wszystkie karty) zamiast od razu przycisku importu
+  if(setPreview){
+    var isExpanded=false;
+    var previewCount=8;
+    function renderPreviewCards(showAll){
+      var visible=showAll?cards:cards.slice(0,previewCount);
+      return visible.map(function(c){
+        return'<div style="padding:6px 14px;background:var(--paper2);border-radius:20px;border:1px solid var(--border);font-size:12px;color:var(--navy);display:inline-flex;align-items:center;gap:8px;margin:2px">'
+          +'<span style="font-weight:500">'+c.word+'</span>'
+          +'<span style="color:var(--dim2)">→</span>'
+          +'<span style="color:var(--orange)">'+c.translation+'</span>'
+          +'</div>';
+      }).join('');
+    }
+    var showMoreBtn=cards.length>previewCount
+      ?'<button id="ch-preview-toggle" onclick="(function(){'
+        +'var el=document.getElementById(\'ch-preview-cards\');'
+        +'var btn=document.getElementById(\'ch-preview-toggle\');'
+        +'var exp=el.dataset.expanded===\'1\';'
+        +'el.dataset.expanded=exp?\'0\':\'1\';'
+        +'el.innerHTML=window._challengeAllCards&&!exp?window._challengeAllCards:window._challengePreviewCards;'
+        +'btn.textContent=exp?\'▼ Pokaż wszystkie ('+cards.length+')\':\'▲ Zwiń\';'
+        +'})()" style="margin-top:6px;background:transparent;border:1px dashed var(--border2);border-radius:8px;padding:5px 14px;cursor:pointer;font-size:12px;color:var(--dim2)">▼ Pokaż wszystkie ('+cards.length+')</button>'
+      :'';
+    window._challengePreviewCards=renderPreviewCards(false);
+    window._challengeAllCards=renderPreviewCards(true);
+    setPreview.innerHTML='<div id="ch-preview-cards" data-expanded="0" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">'+window._challengePreviewCards+'</div>'+showMoreBtn;
+  }
+
+  // Przycisk importu pojawia się zawsze po podglądzie
+  if(importBtn) importBtn.style.display='flex';
+}
+
+function importChallengeSet(){
+  var set=window._challengeSetToImport;
+  if(!set||!set.user_set_cards||!set.user_set_cards.length){showToast('Brak zestawu do importu','error');return;}
+  // Show catalog selection modal
+  var modal=document.getElementById('mat-modal');
+  var title=document.getElementById('mat-modal-title');
+  var bodyEl=document.getElementById('mat-modal-body');
+  if(!modal){doImportChallenge(null);return;}
+  if(title) title.textContent='Importuj: '+set.name;
+  if(bodyEl){
+    var d=document.createElement('div');
+    d.innerHTML='<div style="font-size:14px;color:var(--dim2);margin-bottom:16px">Wybierz katalog lub importuj bez katalogu:</div>';
+    // "Bez katalogu" option
+    var noCatBtn=document.createElement('div');
+    noCatBtn.style.cssText='padding:10px 14px;border-radius:10px;background:#fff;border:1.5px solid var(--border);margin-bottom:6px;cursor:pointer;font-size:13px;font-weight:500;color:var(--navy);transition:all .2s';
+    noCatBtn.innerHTML='📂 Bez katalogu (Moje materiały)';
+    noCatBtn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+    noCatBtn.onmouseout=function(){this.style.borderColor='var(--border)';};
+    noCatBtn.onclick=function(){closeMatModal();doImportChallenge(null);};
+    d.appendChild(noCatBtn);
+    // Catalog options
+    (_collections||[]).forEach(function(col,ci){
+      var btn=document.createElement('div');
+      btn.style.cssText='padding:10px 14px;border-radius:10px;background:#fff;border:1.5px solid var(--border);margin-bottom:6px;cursor:pointer;font-size:13px;font-weight:500;color:var(--navy);transition:all .2s';
+      btn.innerHTML=(col.icon||'📁')+' '+col.name;
+      btn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+      btn.onmouseout=function(){this.style.borderColor='var(--border)';};
+      btn.onclick=(function(idx){return function(){closeMatModal();doImportChallenge(idx);};})(ci);
+      d.appendChild(btn);
+    });
+    bodyEl.innerHTML=''; bodyEl.appendChild(d);
+  }
+  modal.style.display='flex';
+}
+
+async function doImportChallenge(colIdx){
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess){showToast('Zaloguj się aby importować','error');return;}
+  var set=window._challengeSetToImport;
+  if(!set) return;
+  var btn=document.getElementById('ch-import-btn');
+  if(btn){btn.disabled=true;btn.textContent='Importuję...';}
+  try{
+    var {data:newSet}=await db.from('user_sets').insert({
+      user_id:sess.user.id,name:set.name,is_public:false
+    }).select('id').single();
+    var rows=(set.user_set_cards||[]).map(function(c,i){return{set_id:newSet.id,word:c.word,translation:c.translation,sort_order:i};});
+    if(rows.length) await db.from('user_set_cards').insert(rows);
+    // Assign to collection if chosen
+    if(colIdx!==null && _collections[colIdx]){
+      if(!_collections[colIdx].sets) _collections[colIdx].sets=[];
+      _collections[colIdx].sets.push({id:newSet.id,name:set.name});
+      saveCollections(sess.user.id);
+      loadCollections();
+    }
+    showToast('✅ Zestaw "'+set.name+'" zaimportowany!','success');
+    if(btn){btn.textContent='✓ Zaimportowano';btn.style.background='#639922';}
+  }catch(e){
+    showToast('Błąd importu: '+e.message,'error');
+    if(btn){btn.disabled=false;btn.textContent='+ Importuj do Moich zestawów';}
+  }
 }
 
 // ═══════════════════════════════════════
@@ -4769,6 +6369,17 @@ function renderWeakWords(words, lang){
 
 var _chatLevel='beginner';
 
+function setChatLevel(level, el){
+  _chatLevel=level;
+  ['beginner','intermediate','advanced'].forEach(function(l){
+    var btn=document.getElementById('lvl-'+l);
+    if(!btn)return;
+    if(l===level){ btn.style.borderColor='var(--orange)'; btn.style.background='#faeeda'; btn.style.color='var(--orange)'; }
+    else { btn.style.borderColor='var(--border-2,#ccc)'; btn.style.background='transparent'; btn.style.color='var(--dim2,#888)'; }
+  });
+  if(level==='advanced'){ var brave=document.querySelector('input[name="chat-mode"][value="brave"]'); if(brave) brave.checked=true; }
+  else if(level==='beginner'){ var hints=document.querySelector('input[name="chat-mode"][value="hints"]'); if(hints) hints.checked=true; }
+}
 
 function chatLevelChanged(){
   var lvl=((document.getElementById('chat-level')||{}).value)||'B1';
@@ -4807,6 +6418,10 @@ function chatRenderHistory(){
 // ── Renderowanie odpowiedzi AI z podświetleniem fiszek ──
 function _escFcRegex(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
 
+function _fcWordRegex(word){
+  try{ return new RegExp('(?<![\\p{L}\\p{N}_])('+_escFcRegex(word)+')(?![\\p{L}\\p{N}_])','giu'); }
+  catch(e){ return new RegExp('\\b('+_escFcRegex(word)+')\\b','gi'); } // fallback gdy brak lookbehind/\p
+}
 
 // Zwraca {html, used:[słowa fiszek użyte w odpowiedzi]}
 function renderAiHtml(text){
@@ -4872,6 +6487,30 @@ function parseKnownSentinel(reply){
 }
 
 // Boost SM-2 dla słów, które user zademonstrował poprawnie
+async function boostDemonstrated(demos){
+  if(!demos||!demos.length)return [];
+  var boostMap={high:{reps:2,ease:0.15},medium:{reps:1,ease:0.10},low:{reps:0,ease:0.05}};
+  var applied=[];
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess)return [];
+  for(var i=0;i<demos.length;i++){
+    var d=demos[i];
+    var fc=(_chatFlashcards||[]).find(function(f){return f.word&&f.word.toLowerCase()===d.word.toLowerCase();});
+    if(!fc||!fc.id) continue; // tylko realne fiszki word_progress
+    var b=boostMap[d.confidence]||boostMap.medium;
+    var newEase=Math.min(2.8,(fc.ease||2.5)+b.ease);
+    var newReps=(fc.reps||0)+b.reps;
+    try{
+      await db.from('word_progress')
+        .update({ease_factor:newEase, repetitions:newReps})
+        .eq('user_id',sess.user.id)
+        .eq('flashcard_id',fc.id);
+      fc.ease=newEase; fc.reps=newReps; // odśwież cache
+      applied.push(fc.word);
+    }catch(e){}
+  }
+  return applied;
+}
 
 function showChatHints(){
   var hintsWrap=document.getElementById('chat-hints-wrap');
@@ -5269,6 +6908,10 @@ function showLyricAnalysis(idx){
   sidebar.innerHTML=html;
 }
 
+function toggleLyric(i){
+  var el=document.getElementById('lyric-'+i);
+  if(el) el.classList.toggle('open');
+}
 
 function renderLyricsWords(){
   var panel=document.getElementById('lyrics-words-panel');
@@ -5534,6 +7177,46 @@ function showSrsDone(){
 // ═══════════════════════════════════════
 // GENERATOR FISZEK + WYZWANIE TYGODNIA
 // ═══════════════════════════════════════
+async function challengeOpenGenerator(){
+  var sess=(await db.auth.getSession()).data.session;
+  if(!sess){showToast('Zaloguj sie aby generowac fiszki','error');return;}
+  var challenges=[
+    {name:'Mistrz Podrozy',topic:'travel vocabulary',goal:50},
+    {name:'Biznes Pro',topic:'business English',goal:40},
+    {name:'Naukowy Umysl',topic:'science vocabulary',goal:30},
+  ];
+  var week=Math.floor(Date.now()/604800000)%challenges.length;
+  var ch=challenges[week];
+  var existing=document.getElementById('challenge-gen-modal');
+  if(existing)existing.remove();
+  var modal=document.createElement('div');
+  modal.id='challenge-gen-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  var inner=document.createElement('div');
+  inner.style.cssText='background:#fff;border-radius:20px;padding:32px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto';
+  inner.innerHTML=''
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'
+    +'<h3 style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy)">Generator fiszek</h3>'
+    +'<button id="gen-close-btn" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--dim2)">x</button>'
+    +'</div>'
+    +'<div style="padding:14px;background:#faeeda;border-radius:10px;margin-bottom:16px">'
+    +'<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:4px">'+ch.name+'</div>'
+    +'<div style="font-size:13px;color:var(--dim)">AI wygeneruje <strong style="color:var(--orange)">'+ch.goal+' slowek</strong> z tematu <em>'+ch.topic+'</em> — dokladnie tyle ile wymaga wyzwanie.</div>'
+    +'</div>'
+    +'<div style="margin-bottom:20px">'
+    +'<label style="font-size:12px;font-weight:500;color:var(--dim2);display:block;margin-bottom:6px">Poziom</label>'
+    +'<select id="gen-level" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--border2);font-size:13px">'
+    +'<option value="A2">A2 — Podstawowy</option>'
+    +'<option value="B1" selected>B1 — Sredniozaawansowany</option>'
+    +'<option value="B2">B2 — Wyzszy sredni</option>'
+    +'</select></div>'
+    +'<div id="gen-status" style="font-size:13px;color:var(--dim2);text-align:center;margin-bottom:12px;min-height:20px"></div>'
+    +'<button id="gen-submit-btn" class="btn btn-orange" style="width:100%;justify-content:center;padding:14px">🤖 Generuj '+ch.goal+' fiszek</button>';
+  modal.appendChild(inner);
+  document.body.appendChild(modal);
+  document.getElementById('gen-close-btn').onclick=function(){modal.remove();};
+  document.getElementById('gen-submit-btn').onclick=function(){runChallengeGenerator(ch.topic,ch.name,ch.goal);};
+}
 
 
 // ═══════════════════════════════════════
@@ -6400,9 +8083,87 @@ window.postLogin=function(){if(_origPostLogin2)_origPostLogin2();setTimeout(upda
 // ═══════════════════════════════════════════════════════
 // ── helper: dostępność — kompaktowe pilulki dni ──
 // Psychologia: chunking — grupujemy info w łatwe do skanowania jednostki
+function buildAvailBars(avail){
+  var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
+  var activeDays=[];
+  DAYS_EN.forEach(function(d,i){
+    var day=(avail||{})[d];
+    if(day&&day.active) activeDays.push({label:DAYS_PL[i].slice(0,2),from:day.from,to:day.to});
+  });
+  if(!activeDays.length) return '<div style="font-size:11px;color:var(--dim2)">Brak podanej dostępności</div>';
+
+  // Wypisz tylko aktywne dni jako kompaktowe pilulki
+  // Jeśli godziny są te same dla kilku dni — grupuj
+  var groups={};
+  DAYS_EN.forEach(function(d,i){
+    var day=(avail||{})[d];
+    if(!day||!day.active)return;
+    var key=(day.from||'')+'–'+(day.to||'');
+    if(!groups[key])groups[key]=[];
+    groups[key].push(DAYS_PL[i].slice(0,2));
+  });
+
+  var html='<div style="display:flex;flex-direction:column;gap:5px">';
+  Object.keys(groups).forEach(function(hours){
+    var days=groups[hours];
+    html+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
+    html+='<div style="display:flex;gap:3px">';
+    days.forEach(function(d){
+      html+='<span style="font-size:10px;font-weight:500;background:rgba(22,163,74,.12);color:#15803d;padding:2px 6px;border-radius:5px;border:1px solid rgba(22,163,74,.25)">'+d+'</span>';
+    });
+    html+='</div>';
+    html+='<span style="font-size:10px;color:var(--dim2);font-weight:500">⏰ '+hours+'</span>';
+    html+='</div>';
+  });
+  html+='</div>';
+  return html;
+}
 
 // ── helper: tygodniowa siatka dostępności (modal) ──
 // Psychologia: spatial memory — 7 kolumn = 7 dni, natychmiastowy pattern recognition
+function buildFullAvailCalendar(avail){
+  var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+  var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
+
+  // Tygodniowa siatka — 7 kafelków
+  var html='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">';
+  DAYS_EN.forEach(function(d,i){
+    var day=avail[d];
+    var active=day&&day.active;
+    var isWeekend=i>=5;
+
+    html+='<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 6px;border-radius:12px;'
+      +(active
+        ?'background:rgba(22,163,74,.1);border:1.5px solid rgba(22,163,74,.3)'
+        :'background:var(--paper2);border:1.5px solid var(--border)')
+      +'">';
+
+    // Nazwa dnia
+    html+='<span style="font-size:11px;font-weight:500;color:'+(active?'#15803d':'var(--dim2)')+'">'+DAYS_PL[i]+'</span>';
+
+    // Ikona
+    html+='<span style="font-size:16px">'+(active?'✅':'—')+'</span>';
+
+    // Godziny
+    if(active&&day.from&&day.to){
+      html+='<span style="font-size:9px;font-weight:500;color:#15803d;text-align:center;line-height:1.4">'+day.from+'<br>'+day.to+'</span>';
+    } else {
+      html+='<span style="font-size:9px;color:var(--dim2)">—</span>';
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+
+  // Podsumowanie tekstowe pod siatką
+  var activeDays=DAYS_EN.filter(function(d){return avail[d]&&avail[d].active;});
+  if(activeDays.length){
+    html+='<div style="margin-top:10px;font-size:11px;color:var(--dim2);text-align:center">';
+    html+='Dostępny <strong style="color:var(--navy)">'+activeDays.length+' dni</strong> w tygodniu';
+    html+='</div>';
+  }
+  return html;
+}
 
 // ═══════════════════════════════════════════════════════
 // renderTutors — redesign v3.0
@@ -7220,6 +8981,15 @@ function trybFlipReveal(backText){
 }
 
 
+function trybFlipNext(known){
+  _trybIdx++;
+  if(_trybIdx >= _trybCards.length){ showTrybSessionSummary(); return; }
+  loadTrybFlipCard();
+}
+function trybFlipPrev(){
+  _trybIdx = Math.max(0, _trybIdx-1);
+  loadTrybFlipCard();
+}
 
 // ── TRYB: MULTIWYBÓR ─────────────────────────────────
 function loadTrybMCCard(){
@@ -7611,6 +9381,11 @@ function showTrybHint(){
   document.querySelectorAll('.tryb-rate-btn').forEach(function(b){var max=Math.max(1,4-_trybHintPenalty);b.style.opacity=parseInt(b.dataset.q)>max?'0.45':'1';});
 }
 
+function saveTrybMnemonic(){
+  var card=_trybCards[_trybIdx];if(!card)return;
+  var val=(document.getElementById('tryb-mnemonic-input')||{}).value||'';
+  localStorage.setItem('mnem_'+encodeURIComponent(card.word||''),val);
+}
 
 async function showTrybMiniStory(){
   var box=document.getElementById('tryb-story-box');if(!box)return;
@@ -7917,7 +9692,67 @@ function openCollectionView(colIdx){
 }
 
 
+function buildMatCard(s, inCollection, colIdx){
+  var card = document.createElement('div');
+  card.className = 'mat-card';
+  card.innerHTML = '<div class="mat-card-name">' + (window.escH ? escH(s.name) : s.name) + '</div>'
+    + '<div class="mat-card-count">' + (s.user_set_cards ? s.user_set_cards.length : '?') + ' fiszek</div>';
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:6px;margin-top:10px;flex-wrap:wrap';
 
+  var studyBtn = document.createElement('button');
+  studyBtn.className = 'btn btn-orange'; studyBtn.style.cssText = 'font-size:12px;padding:6px 12px';
+  studyBtn.textContent = '▶ Ucz się';
+  studyBtn.onclick = async function(){
+    // Load cards and start flip mode directly
+    var {data:cards} = await db.from('user_set_cards').select('word,translation').eq('set_id',s.id);
+    if(!cards||!cards.length){ if(typeof showToast==='function') showToast('Zestaw jest pusty',''); return; }
+    _trybExternalCards = cards;
+    _trybExternalName = s.name;
+    RewardSystem.load();
+    showPage('tryb');
+    setTimeout(function(){
+      startSession('set_external');
+      // After cards loaded, auto-select flip mode
+      setTimeout(function(){ startTrybMode('flip'); }, 300);
+    }, 150);
+  };
+  btnRow.appendChild(studyBtn);
+
+  if(inCollection){
+    var removeBtn = document.createElement('button');
+    removeBtn.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
+    removeBtn.textContent = '× Usuń z katalogu';
+    removeBtn.onclick = async function(){
+      var sess=(await db.auth.getSession()).data.session; if(!sess) return;
+      _collections[colIdx].sets = _collections[colIdx].sets.filter(function(x){ return x.id !== s.id; });
+      saveCollections(sess.user.id);
+      openCollectionView(colIdx);
+      loadCollections();
+    };
+    btnRow.appendChild(removeBtn);
+  } else {
+    var moveBtn = document.createElement('button');
+    moveBtn.style.cssText = 'font-size:12px;padding:6px 10px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
+    moveBtn.textContent = '📁 Przenieś';
+    moveBtn.onclick = async function(){ await moveSetToCollection(s.id, s.name); };
+    btnRow.appendChild(moveBtn);
+  }
+
+  card.appendChild(btnRow);
+  return card;
+}
+
+function promptMoveSet(setId){
+  // Get set name from DOM
+  var cards = document.querySelectorAll('.mat-card');
+  var setName = 'Zestaw';
+  cards.forEach(function(c){
+    var btn = c.querySelector('[data-sid="'+setId+'"]');
+    if(btn){ var nameEl = c.querySelector('.mat-card-name'); if(nameEl) setName = nameEl.textContent; }
+  });
+  moveSetToCollection(setId, setName);
+}
 
 async function moveSetToCollection(setId, setName){
   if(!_collections.length){ alert('Najpierw stwórz katalog.'); return; }
@@ -8090,7 +9925,300 @@ function openCreateSetInCollection(){
   }
 }
 
+function filterCollectionSets(query){
+  var cards = document.querySelectorAll('#mat-collection-sets .mat-card');
+  cards.forEach(function(card){
+    var name = card.querySelector('.mat-card-name');
+    if(!name){ card.style.display=''; return; }
+    var match = !query || name.textContent.toLowerCase().includes(query.toLowerCase());
+    card.style.display = match ? '' : 'none';
+  });
+}
 
+async function strefaKontekstowaShowMySets(){
+  setBreadcrumb('Kontekstowa → Moje zestawy');
+  var center=document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie...</div>';
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){if(center)center.innerHTML='<div style="padding:20px">Zaloguj się</div>';return;}
+    var {data:sets}=await db.from('user_sets').select('id,name,user_set_cards(word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false});
+    if(!sets||!sets.length){if(center)center.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:48px;margin-bottom:12px">📂</div><div style="font-size:16px;font-weight:500;color:var(--navy)">Brak zestawów</div></div>';return;}
+    var wrap=document.createElement('div');
+    var grid=document.createElement('div');
+    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px';
+    sets.forEach(function(s){
+      var div=document.createElement('div');
+      div.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;transition:all .2s';
+      div.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy);margin-bottom:4px">'+s.name+'</div>'
+        +'<div style="font-size:12px;color:var(--dim2)">'+(s.user_set_cards?s.user_set_cards.length:0)+' fiszek</div>';
+      div.onmouseover=function(){this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)';};
+      div.onmouseout=function(){this.style.borderColor='var(--border)';this.style.transform='none';};
+      div.onclick=(function(setId,setName,cards){return function(){
+        if(!cards||!cards.length){strefaShowCenter('<div style="padding:20px;color:var(--dim2)">Brak fiszek</div>');return;}
+        setBreadcrumb('Kontekstowa → '+setName);
+        window._strefaWords=cards;window._strefaIdx=0;
+        renderStrefaKontekstowaCard(cards[0],'en','B1',0,cards.length,setName,setName,'📂','B1','custom');
+      };})(s.id,s.name,s.user_set_cards||[]);
+      grid.appendChild(div);
+    });
+    wrap.appendChild(grid);
+    if(center){center.innerHTML='';center.appendChild(wrap);}
+  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
+function strefaKontekstowaLevels(langCode, langLabel, flag){
+  var center = document.getElementById('strefa-center-content');
+  if(!center) return;
+  var wrap = document.createElement('div');
+  var backBtn = document.createElement('button');
+  backBtn.style.cssText = 'background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+  backBtn.textContent = '← Języki';
+  backBtn.onclick = function(){ strefaLoadSidebarLangs(); setBreadcrumb('Kontekstowa Nauka'); };
+  wrap.appendChild(backBtn);
+  var title = document.createElement('div');
+  title.style.cssText = 'font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:16px';
+  title.textContent = flag + ' ' + langLabel + ' — wybierz poziom';
+  wrap.appendChild(title);
+  var grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px';
+  ['A1','A2','B1','B2','C1','C2'].forEach(function(lvl){
+    var div = document.createElement('div');
+    div.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;text-align:center;transition:all .2s';
+    div.innerHTML = '<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy)">'+lvl+'</div>';
+    div.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+    div.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+    div.onclick = (function(lc,ll,lf,lv){ return function(){ strefaKontekstowaCategories(lc,ll,lf,lv); }; })(langCode,langLabel,flag,lvl);
+    grid.appendChild(div);
+  });
+  wrap.appendChild(grid);
+  center.innerHTML = ''; center.appendChild(wrap);
+  setBreadcrumb('Kontekstowa → '+flag+' '+langLabel);
+}
+
+async function strefaKontekstowaCategories(langCode, langLabel, flag, lvl){
+  var center = document.getElementById('strefa-center-content');
+  if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie kategorii...</div>';
+  setBreadcrumb(flag+' '+langLabel+' → '+lvl);
+  try{
+    // Get lang and level IDs
+    var {data:langRow} = await db.from('languages').select('id').eq('code',langCode).single();
+    var {data:lvlRow} = await db.from('levels').select('id').eq('code',lvl).maybeSingle();
+    if(!langRow){ if(center) center.innerHTML='<div style="padding:20px;color:#c33">Nie znaleziono języka</div>'; return; }
+    var q = db.from('flashcards').select('category_id').eq('language_id',langRow.id);
+    if(lvlRow) q = q.eq('level_id',lvlRow.id);
+    var {data:rows} = await q.limit(500);
+    if(!rows||!rows.length){ if(center) center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak kategorii</div>'; return; }
+    var ids = [...new Set(rows.map(function(r){return r.category_id;}).filter(Boolean))];
+    var {data:cats} = await db.from('categories').select('id,code,label,icon').in('id',ids).order('label');
+    if(!cats||!cats.length){ if(center) center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak kategorii</div>'; return; }
+    var wrap = document.createElement('div');
+    var backBtn = document.createElement('button');
+    backBtn.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
+    backBtn.textContent='← Poziomy';
+    backBtn.onclick=(function(lc,ll,lf){return function(){strefaKontekstowaLevels(lc,ll,lf);};})(langCode,langLabel,flag);
+    wrap.appendChild(backBtn);
+    var grid = document.createElement('div');
+    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px';
+    cats.forEach(function(cat){
+      var div=document.createElement('div');
+      div.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:all .2s';
+      div.innerHTML='<div style="font-size:18px;margin-bottom:6px">'+(cat.icon||'📂')+'</div><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">'+(cat.label||cat.code)+'</div>';
+      div.onmouseover=function(){this.style.borderColor='var(--orange)';};
+      div.onmouseout=function(){this.style.borderColor='var(--border)';};
+      div.onclick=(function(lc,ll,lf,lv,catCode,catLabel){return function(){
+        startStrefaKontekstowaCards(lc,ll,lf,lv,catCode,catLabel);
+      };})(langCode,langLabel,flag,lvl,cat.code,cat.label||cat.code);
+      grid.appendChild(div);
+    });
+    wrap.appendChild(grid);
+    if(center){center.innerHTML='';center.appendChild(wrap);}
+  }catch(e){ if(center) center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>'; }
+}
+
+async function startStrefaKontekstowaCards(langCode, langLabel, flag, lvl, catCode, catLabel){
+  var center = document.getElementById('strefa-center-content');
+  if(center) center.innerHTML='<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie słów...</div>';
+  setBreadcrumb(flag+' '+langLabel+' '+lvl+' → '+catLabel);
+  // Set global strefa state for loadStrefaCard compatibility
+  window._strefaLang = langCode;
+  window._strefaLevel = lvl;
+  window._strefaCat = catCode;
+  window._strefaIdx = 0;
+  try{
+    var {data:langRow}=await db.from('languages').select('id').eq('code',langCode).single();
+    var {data:lvlRow}=await db.from('levels').select('id').eq('code',lvl).maybeSingle();
+    var {data:catArr}=await db.from('categories').select('id').eq('code',catCode).limit(1);
+    if(!langRow||!catArr||!catArr[0]){if(center)center.innerHTML='<div style="padding:20px;color:#c33">Błąd danych</div>';return;}
+    var q2=db.from('flashcards').select('word,translation').eq('language_id',langRow.id).eq('category_id',catArr[0].id);
+    if(lvlRow) q2=q2.eq('level_id',lvlRow.id);
+    var {data:words}=await q2.limit(30);
+    if(!words||!words.length){if(center)center.innerHTML='<div style="padding:20px;color:var(--dim2)">Brak słów</div>';return;}
+    window._strefaWords=words;
+    window._strefaIdx=0;
+    // Render kontekstowa card view inside strefa-center-content
+    renderStrefaKontekstowaCard(words[0], langCode, lvl, 0, words.length, catLabel, langLabel, flag, lvl, catCode);
+  }catch(e){if(center)center.innerHTML='<div style="color:#c33;padding:20px">Błąd: '+e.message+'</div>';}
+}
+
+function renderStrefaKontekstowaCard(word, langCode, lvl, idx, total, catLabel, langLabel, flag, level, catCode){
+  var center=document.getElementById('strefa-center-content');
+  if(!center) return;
+  var langYG={en:'english',es:'spanish',nl:'dutch',jp:'japanese'}[langCode]||'english';
+
+  var wrap=document.createElement('div');
+  wrap.style.cssText='width:100%;max-width:860px;margin:0 auto';
+
+  // Progress header
+  var hdr=document.createElement('div');
+  hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:20px';
+  var dots=document.createElement('div');
+  dots.style.cssText='display:flex;gap:5px;align-items:center';
+  for(var d=0;d<Math.min(total,12);d++){
+    var dot=document.createElement('div');
+    dot.style.cssText='width:'+(d===idx?'20':'7')+'px;height:7px;border-radius:100px;background:'+(d===idx?'var(--navy)':'var(--border)');
+    dots.appendChild(dot);
+  }
+  hdr.appendChild(dots);
+  hdr.innerHTML+='<div style="font-size:13px;color:var(--dim2);background:var(--paper);border-radius:100px;padding:4px 14px">'+(idx+1)+' / '+total+'</div>';
+  wrap.appendChild(hdr);
+
+  // 2-column layout
+  var cols=document.createElement('div');
+  cols.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px';
+  if(window.innerWidth<768) cols.style.gridTemplateColumns='1fr';
+
+  // LEFT: Eyelingo-style flashcard + sentence
+  var left=document.createElement('div');
+  left.style.cssText='display:flex;flex-direction:column;gap:12px';
+
+  // Eyelingo dark flashcard
+  var card=document.createElement('div');
+  card.style.cssText='background:var(--navy);border-radius:20px;padding:32px 28px;text-align:center;box-shadow:0 16px 48px rgba(26,35,64,.25)';
+  card.innerHTML=
+    '<div style="font-size:11px;font-weight:500;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px">'+flag+' '+catLabel+'</div>'
+    +'<div style="font-family:DM Sans,sans-serif;font-size:44px;font-weight:500;color:#fff;line-height:1.15;margin-bottom:10px">'+word.word+'</div>'
+    +'<div style="font-size:18px;color:var(--orange);font-weight:500">'+word.translation+'</div>';
+  left.appendChild(card);
+
+  // Sentence box
+  var sentBox=document.createElement('div');
+  sentBox.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:20px;flex:1';
+  sentBox.innerHTML=
+    '<div style="font-size:10px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">📖 Zdanie kontekstowe</div>'
+    +'<div id="kontekstowa-sent-text" style="font-size:16px;color:var(--navy);line-height:1.75">⏳ Generuję zdanie...</div>'
+    +'<div id="kontekstowa-sent-tr" style="font-size:13px;color:var(--dim2);margin-top:8px;font-style:italic"></div>'
+    +'<button onclick="playSentenceAudio()" style="margin-top:14px;background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:6px 16px;font-size:12px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px">🔊 Wymowa</button>';
+  left.appendChild(sentBox);
+  cols.appendChild(left);
+
+  // RIGHT: YouGlish
+  var right=document.createElement('div');
+  right.style.cssText='background:#fff;border:1.5px solid var(--border);border-radius:16px;overflow:hidden';
+  right.innerHTML=
+    '<div style="font-size:10px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.07em;padding:14px 18px 10px">🎬 Użycie w filmach · Playphrase</div>'
+    +'<div id="kontekstowa-yg-widget" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px"></div>';
+  cols.appendChild(right);
+  wrap.appendChild(cols);
+
+  // Nav
+  var navRow=document.createElement('div');
+  navRow.style.cssText='display:flex;gap:10px;align-items:center;justify-content:space-between';
+  if(idx>0){
+    var prevBtn=document.createElement('button');
+    prevBtn.style.cssText='padding:10px 20px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;font-size:13px;cursor:pointer;color:var(--dim);font-family:DM Sans,sans-serif';
+    prevBtn.textContent='← Poprzednie';
+    prevBtn.onclick=function(){ window._strefaIdx--; renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode); };
+    navRow.appendChild(prevBtn);
+  } else { navRow.appendChild(document.createElement('div')); }
+  var nextBtn=document.createElement('button');
+  nextBtn.style.cssText='padding:10px 28px;border-radius:100px;background:var(--navy);color:#fff;border:none;font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif';
+  nextBtn.textContent=idx>=total-1?'Zakończ ✓':'Następne →';
+  nextBtn.onclick=function(){
+    if(idx>=total-1){ strefaKontekstowaCategories(langCode,langLabel,flag,level); }
+    else { window._strefaIdx++; renderStrefaKontekstowaCard(window._strefaWords[window._strefaIdx],langCode,lvl,window._strefaIdx,total,catLabel,langLabel,flag,level,catCode); }
+  };
+  navRow.appendChild(nextBtn);
+  wrap.appendChild(navRow);
+
+  center.innerHTML=''; center.appendChild(wrap);
+
+  // Load AI sentence
+  loadKontekstowaSentence(word.word, word.translation, langCode, lvl);
+
+  // YouGlish public iframe (no API key needed)
+  (function(w,ly){
+    setTimeout(function(){
+      var c=document.getElementById('kontekstowa-yg-widget');
+      if(!c) return;
+      // Use YouGlish public search page embedded
+      var ygUrl='https://youglish.com/pronounce/'+encodeURIComponent(w)+'/'+ly;
+      c.innerHTML=
+        '<div style="width:100%;text-align:center;padding:10px 0">'+
+        '<a href="'+ygUrl+'" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:var(--navy);color:#fff;border-radius:100px;text-decoration:none;font-family:DM Sans,sans-serif;font-size:13px;font-weight:500">🎬 Zobacz "'+w+'" w filmach</a></div>'+
+        '<div style="font-size:11px;color:var(--dim2);text-align:center;margin-top:6px">Otwiera YouGlish w nowej karcie</div>'+
+        '<div style="margin-top:14px;padding:0 4px">'+
+        '<iframe src="https://youglish.com/api/loader?version=1" style="display:none"></iframe>'+
+        '<div style="background:var(--paper);border-radius:12px;padding:16px;text-align:center">'+
+        '<div style="font-size:32px;margin-bottom:8px">🎬</div>'+
+        '<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:4px">'+w+'</div>'+
+        '<div style="font-size:12px;color:var(--dim2)">Kliknij powyżej aby zobaczyć w prawdziwych filmach</div>'+
+        '</div></div>';
+    },200);
+  })(word.word, langYG);
+}
+
+
+async function loadKontekstowaSentence(word, translation, lang, level){
+  var textEl=document.getElementById('kontekstowa-sent-text');
+  var trEl=document.getElementById('kontekstowa-sent-tr');
+  try{
+    // Check cache
+    var {data:cached}=await db.from('context_sentences').select('sentence,translation').eq('word',word).eq('language',lang).eq('level',level).limit(1);
+    var c=Array.isArray(cached)?cached[0]:cached;
+    if(c&&c.sentence){
+      if(textEl) textEl.innerHTML=c.sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+      if(trEl) trEl.textContent=c.translation;
+      window._currentSentence=c.sentence.replace(/\*\*/g,'');
+      window._currentLang={en:'en-US',es:'es-ES',jp:'ja-JP',nl:'nl-NL'}[lang]||'en-US';
+      return;
+    }
+    // Generate via AI proxy
+    var sess=(await db.auth.getSession()).data.session;
+    var tok=sess?sess.access_token:'';
+    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
+    var res=await fetch(AI_PROXY_URL,{method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:[{role:'user',content:'Write ONE simple '+langNames[lang]+' sentence (level '+level+') using the word "'+word+'" (meaning: '+translation+'). Bold the target word with **word**. Then on a new line write: PL: [Polish translation of the sentence]. Keep it short.'}],max_tokens:100})
+    });
+    var d=await res.json();
+    var raw=(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]?d.candidates[0].content.parts[0].text:'').trim();
+    var plMatch=raw.match(/PL:\s*(.+)/); 
+    var sentence=raw.replace(/PL:.*/,'').trim();
+    var plTr=plMatch?plMatch[1].trim():'';
+    if(textEl) textEl.innerHTML=sentence.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+    if(trEl) trEl.textContent=plTr;
+    window._currentSentence=sentence.replace(/\*\*/g,'');
+    window._currentLang={en:'en-US',es:'es-ES',jp:'ja-JP',nl:'nl-NL'}[lang]||'en-US';
+    // Cache
+    try{await db.from('context_sentences').upsert({word,language:lang,level,sentence,translation:plTr},{onConflict:'word,language,level'});}catch(e){}
+  }catch(e){
+    if(textEl) textEl.textContent='Nie udało się wygenerować zdania.';
+  }
+}
+
+function playSentenceAudio(){
+  if(!window._currentSentence||!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  var u=new SpeechSynthesisUtterance(window._currentSentence);
+  u.lang=window._currentLang||'en-US'; u.rate=0.85;
+  var voices=speechSynthesis.getVoices();
+  var pref=voices.find(function(v){return v.lang===u.lang&&v.name.includes('Google');})||voices.find(function(v){return v.lang.startsWith(u.lang.split('-')[0]);});
+  if(pref) u.voice=pref;
+  speechSynthesis.speak(u);
+}
+
+function updateChallengeMode(on){var sl=document.getElementById('tryb-toggle-slider');var kn=document.getElementById('tryb-toggle-knob');if(sl)sl.style.background=on?'var(--orange)':'rgba(255,255,255,.2)';if(kn)kn.style.left=on?'25px':'3px';}
 
 function renderTrybBadges(){
   RewardSystem.load();var defs=RewardSystem.getBadgeDefs();var s=RewardSystem._state;
@@ -8365,7 +10493,20 @@ async function showTrybSetPicker(){
   }catch(e){if(list)list.innerHTML='<div style="color:#c33;font-size:13px">Błąd: '+e.message+'</div>';}
 }
 
+function fireConfetti(){ return; /* gaming off */
+  var canvas=document.getElementById('tryb-confetti');if(!canvas)return;
+  canvas.style.display='block';canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+  var ctx=canvas.getContext('2d');var pieces=[];
+  for(var i=0;i<120;i++)pieces.push({x:Math.random()*canvas.width,y:-20,w:Math.random()*8+4,h:Math.random()*12+6,color:['#c96a2a','#f5c842','#1a2340','#fff','#e07830'][Math.floor(Math.random()*5)],vx:(Math.random()-.5)*4,vy:Math.random()*4+2,rot:Math.random()*360,rotV:(Math.random()-.5)*8});
+  var frames=0;
+  function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);pieces.forEach(function(p){ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot*Math.PI/180);ctx.fillStyle=p.color;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();p.x+=p.vx;p.y+=p.vy;p.rot+=p.rotV;p.vy+=.05;});frames++;if(frames<120)requestAnimationFrame(draw);else{canvas.style.display='none';}}
+  draw();
+}
 
+async function awardGoldBonus(amount){
+  try{var sess=(await db.auth.getSession()).data.session;if(!sess)return;await db.rpc('increment_gold',{p_user_id:sess.user.id,p_amount:amount});}
+  catch(e){try{var sess2=(await db.auth.getSession()).data.session;if(!sess2)return;var {data:ls}=await db.from('learning_stats').select('gold').eq('user_id',sess2.user.id).maybeSingle();var ng=((ls&&ls.gold)||0)+amount;await db.from('learning_stats').update({gold:ng}).eq('user_id',sess2.user.id);}catch(e2){}}
+}
 
 // Tryb Nauki page HTML injection
 function injectTrybPage(){
@@ -8857,10 +10998,133 @@ async function uploadTutorPhoto(file){
 // ═══════════════════════════════════════════════════════
 
 // ── Inline quiz dnia (obok słówek) ──
+var _inlineQuizState = {step:0, done:false, words:[]};
 
+async function loadInlineQuiz(){
+  var box = document.getElementById('dc-quiz-inline-body');
+  if(!box) return;
 
+  box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">⏳ Ładuję quiz z Twoich materiałów...</div>';
 
+  // Pobierz słówka z materiałów użytkownika (user_set_cards)
+  var quizWords = [];
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(sess){
+      var lang = (document.getElementById('daily-lang-select')||{}).value||'en';
+      var {data:cards} = await db.from('user_set_cards')
+        .select('word,translation,user_sets(user_id)')
+        .limit(40);
+      // Filtruj: słowa w wybranym języku (zakładamy angielskie słowa dla EN itp.)
+      if(cards && cards.length >= 4){
+        // Losuj 4 słówka
+        var shuffled = cards.sort(function(){return Math.random()-.5;}).slice(0,4);
+        quizWords = shuffled.map(function(c){return{w:c.word||'',t:c.translation||''};});
+      }
+    }
+  }catch(e){}
 
+  // Fallback: słówka dnia
+  if(quizWords.length < 2){
+    var w1El = document.getElementById('dc-word-text');
+    var t1El = document.getElementById('dc-word-translation');
+    var w2El = document.getElementById('dc-word-text2');
+    var t2El = document.getElementById('dc-word-translation2');
+    var w1 = w1El && w1El.textContent;
+    var t1 = t1El && t1El.textContent;
+    var w2 = w2El && w2El.textContent;
+    var t2 = t2El && t2El.textContent;
+    if(w1&&t1) quizWords.push({w:w1,t:t1});
+    if(w2&&t2) quizWords.push({w:w2,t:t2});
+  }
+
+  if(quizWords.length < 2){
+    box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Dodaj słówka do materiałów, aby quiz działał!</div>';
+    return;
+  }
+
+  _inlineQuizState = {step:0, done:false, words:quizWords};
+  renderInlineQuizStep(0);
+}
+
+function renderInlineQuizStep(step){
+  var box = document.getElementById('dc-quiz-inline-body');
+  if(!box || _inlineQuizState.done) return;
+
+  var words = _inlineQuizState.words.filter(function(x){return x.w&&x.t;});
+  if(!words.length) return;
+
+  if(step === 0){
+    // Krok 1: wielokrotny wybór — podaj tłumaczenie słowa (opcje po polsku z innych słówek)
+    var target = words[0];
+    // Fałszywe odpowiedzi z tłumaczeń innych słówek (po polsku!)
+    var otherTranslations = words.slice(1).map(function(x){return x.t;})
+      .concat(['dom','czas','dobry','praca','życie','dzień','droga','człowiek','pomoc','wiedzieć'])
+      .filter(function(x){return x && x.toLowerCase()!==target.t.toLowerCase();});
+    var fakes = otherTranslations.slice(0,3);
+    var opts = [target.t].concat(fakes).sort(function(){return Math.random()-.5;});
+    var html = '<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:500">Pytanie 1/2 — Wybierz tłumaczenie:</div>'
+      +'<div style="font-size:20px;font-weight:500;color:var(--navy);font-family:DM Sans,sans-serif;margin-bottom:14px">'+target.w+'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:6px" id="iq-opts">';
+    opts.forEach(function(o,i){
+      html+='<button onclick="checkInlineOpt(\''+o.replace(/'/g,"\\'")+'\',\''+target.t.replace(/'/g,"\\'")+'\','+step+')" '
+        +'style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--paper2);font-size:13px;cursor:pointer;text-align:left;transition:.15s;font-family:\'DM Sans\',sans-serif" '
+        +'onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'+o+'</button>';
+    });
+    html+='</div>';
+    box.innerHTML=html;
+
+  } else if(step === 1 && words.length >= 2){
+    // Krok 2: uzupełnij lukę
+    var target2 = words[1];
+    var hint = target2.w[0].toUpperCase()+'_'.repeat(Math.max(1,target2.w.length-1));
+    var html2 = '<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;font-weight:500">Pytanie 2/2 — Wpisz słowo po angielsku:</div>'
+      +'<div style="font-size:14px;color:var(--dim);margin-bottom:10px;font-style:italic">"'+target2.t+'"</div>'
+      +'<div style="font-size:12px;color:var(--dim2);margin-bottom:8px">Podpowiedź: '+hint+'</div>'
+      +'<div style="display:flex;gap:6px">'
+      +'<input id="iq-fill" type="text" placeholder="Wpisz odpowiedź..." style="flex:1;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;font-family:\'DM Sans\',sans-serif" onkeydown="if(event.key===\'Enter\')checkInlineFill(\''+target2.w.replace(/'/g,"\\'")+'\','+step+')">'
+      +'<button onclick="checkInlineFill(\''+target2.w.replace(/'/g,"\\'")+'\','+step+')" class="btn btn-orange" style="padding:8px 14px;font-size:13px">✓</button>'
+      +'</div>';
+    box.innerHTML=html2;
+    setTimeout(function(){var i=document.getElementById('iq-fill');if(i)i.focus();},100);
+
+  } else {
+    // Ukończono
+    _inlineQuizState.done=true;
+    var doneEl=document.getElementById('dc-quiz-done2');
+    if(doneEl)doneEl.style.display='inline';
+    box.innerHTML='<div style="text-align:center;padding:16px">'
+      +'<div style="font-size:36px;margin-bottom:8px">🎉</div>'
+      +'<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:4px">Quiz ukończony!</div>'
+      +'<div style="font-size:12px;color:var(--dim2)">+10 XP za dziś</div>'
+      +'</div>';
+    if(typeof addDailyXP==='function') addDailyXP(10);
+    if(typeof updateDailyProgress==='function') updateDailyProgress();
+  }
+}
+
+function checkInlineOpt(chosen, correct, step){
+  var isOk = chosen.trim().toLowerCase() === correct.trim().toLowerCase();
+  var opts = document.querySelectorAll('#iq-opts button');
+  opts.forEach(function(b){
+    b.disabled=true;
+    if(b.textContent.trim().toLowerCase()===correct.trim().toLowerCase())
+      b.style.cssText=b.style.cssText+'background:#dcfce7;border-color:#86efac;color:#166534;font-weight:500';
+    else if(b.textContent.trim()===chosen&&!isOk)
+      b.style.cssText=b.style.cssText+'background:#fee2e2;border-color:#fca5a5;color:#991b1b';
+  });
+  setTimeout(function(){renderInlineQuizStep(step+1);}, 800);
+}
+
+function checkInlineFill(correct, step){
+  var inp = document.getElementById('iq-fill');
+  if(!inp) return;
+  var val = inp.value.trim().toLowerCase();
+  var ok = val === correct.trim().toLowerCase() || (val.length>2 && correct.toLowerCase().includes(val));
+  inp.style.borderColor = ok ? '#86efac' : '#fca5a5';
+  inp.style.background = ok ? '#dcfce7' : '#fee2e2';
+  setTimeout(function(){renderInlineQuizStep(step+1);}, 700);
+}
 
 // ═══════════════════════════════════════════════════════
 // GŁOSÓWKI — z filtrami języka, avatarami, pseudonimami
@@ -9006,6 +11270,30 @@ window.loadVoiceRecordings = async function loadVoiceRecordings(){
 // PROFIL UŻYTKOWNIKA — upload zdjęcia profilowego
 // ═══════════════════════════════════════════════════════
 
+async function uploadUserAvatar(file){
+  if(!file) return;
+  if(file.size>2*1024*1024){if(typeof showToast==='function')showToast('Plik za duży — max 2MB','error');return;}
+  var label=document.getElementById('user-avatar-label');
+  var preview=document.getElementById('user-avatar-preview');
+  if(label)label.textContent='⏳ Przesyłanie...';
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){showToast&&showToast('Zaloguj się','error');return;}
+    var ext=file.name.split('.').pop()||'jpg';
+    var path='avatars/'+sess.user.id+'_'+Date.now()+'.'+ext;
+    var {error}=await db.storage.from('recordings').upload(path,file,{contentType:file.type,upsert:true});
+    if(error)throw error;
+    var {data:urlData}=db.storage.from('recordings').getPublicUrl(path);
+    var url=urlData.publicUrl;
+    // Zapisz do profiles
+    await db.from('profiles').upsert({user_id:sess.user.id,avatar_url:url},{onConflict:'user_id'});
+    if(preview){preview.src=url;preview.style.display='block';}
+    if(label)label.textContent='✅ Zdjęcie zapisane!';
+    showToast&&showToast('Zdjęcie profilowe zaktualizowane!','success');
+  }catch(e){
+    if(label)label.textContent='Błąd: '+e.message;
+  }
+}
 
 // ── SQL hint: dodaj kolumnę avatar_url do profiles ──
 // ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url text;
@@ -9338,6 +11626,22 @@ function kkRenderFull(wrap, d, color){
   kkLoadArchiveOdkryj(d.date);
 }
 
+function kkUpdateStreakOdkryj(todayDate){
+  try{
+    var last=localStorage.getItem(uk('kk_last_read'));
+    var count=parseInt(localStorage.getItem(uk('kk_streak'))||'0',10);
+    var yesterday=new Date(Date.now()-86400000).toISOString().split('T')[0];
+    if(last===todayDate){}
+    else if(last===yesterday){count+=1;}
+    else{count=1;}
+    localStorage.setItem(uk('kk_last_read'),todayDate);
+    localStorage.setItem(uk('kk_streak'),String(count));
+    var sn=document.getElementById('kk-streak-num-odkryj');
+    var ss=document.getElementById('kk-streak-sub-odkryj');
+    if(sn)sn.textContent=count+(count===1?' dzień':' dni');
+    if(ss)ss.textContent=count>=7?'🏆 Odznaka "Kulturoznawca tygodnia" odblokowana!':'Jeszcze '+(7-count)+' '+(7-count===1?'dzień':'dni')+' do odznaki tygodnia';
+  }catch(e){}
+}
 
 async function kkLoadArchiveOdkryj(todayDate){
   try{
@@ -9531,6 +11835,85 @@ function odkryjLoadLyrics(){
 }
 
 // ── STREFA NAUKI ──
+// ─── STREFA NAUKI SIDEBAR ────────────────────────────
+var _strefaSidebarMode = 'tryb';
+
+async function strefaLoadSidebarLangs(){
+  var container = document.getElementById('sb-strefa-langs');
+  if(!container) return;
+  container.innerHTML = '';
+  
+  // Add "Moje zestawy" tile
+  var mineBtn = document.createElement('button');
+  mineBtn.style.cssText='width:100%;text-align:left;padding:12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px;margin-bottom:6px';
+  mineBtn.innerHTML='<span style="font-size:16px">📂</span><div><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">Moje zestawy</div><div style="font-size:11px;color:var(--dim2)">Kontekstowo</div></div>';
+  mineBtn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+  mineBtn.onmouseout=function(){this.style.borderColor='var(--border)';};
+  mineBtn.onclick=function(){ strefaKontekstowaShowMySets(); };
+  container.appendChild(mineBtn);
+  
+  // Add "Zestawy Eyelingo" tile
+  var eyeBtn = document.createElement('button');
+  eyeBtn.style.cssText='width:100%;text-align:left;padding:12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px;margin-bottom:12px';
+  eyeBtn.innerHTML='<span style="font-size:16px">🌍</span><div><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">Zestawy Eyelingo</div><div style="font-size:11px;color:var(--dim2)">Program językowy</div></div>';
+  eyeBtn.onmouseover=function(){this.style.borderColor='var(--orange)';};
+  eyeBtn.onmouseout=function(){this.style.borderColor='var(--border)';};
+  eyeBtn.onclick=function(){ strefaShowEyelingoLangs(); setBreadcrumb('Kontekstowa → Zestawy Eyelingo'); };
+  container.appendChild(eyeBtn);
+
+  // Separator
+  var sep=document.createElement('div');
+  sep.style.cssText='font-size:10px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-left:4px';
+  sep.textContent='🌐 Języki';
+  container.appendChild(sep);
+
+  var LANGS = [{code:'en',label:'Angielski',flag:'🇬🇧'},{code:'es',label:'Hiszpański',flag:'🇪🇸'},{code:'jp',label:'Japoński',flag:'🇯🇵'},{code:'nl',label:'Niderlandzki',flag:'🇳🇱'}];
+  LANGS.forEach(function(l){
+    var btn = document.createElement('button');
+    btn.style.cssText = 'width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif;transition:all .2s;display:flex;align-items:center;gap:8px;margin-bottom:6px';
+    btn.innerHTML = '<span style="font-size:18px">'+l.flag+'</span><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy)">'+l.label+'</div>';
+    btn.onmouseover = function(){ this.style.borderColor='var(--orange)'; };
+    btn.onmouseout = function(){ this.style.borderColor='var(--border)'; };
+    btn.onclick = (function(lc,ll,lf){ return function(){
+      setBreadcrumb('Kontekstowa Nauka → '+lf+' '+ll);
+      // Kontekstowa uses old strefa system (AI sentences + playphrase)
+      window._strefaLang = lc;
+      var center = document.getElementById('strefa-center-content');
+      if(center) center.innerHTML = '<div style="text-align:center;padding:30px;color:var(--dim2)">⏳ Ładowanie poziomów...</div>';
+      // Show levels for kontekstowa
+      strefaKontekstowaLevels(lc, ll, lf);
+    }; })(l.code,l.label,l.flag);
+    container.appendChild(btn);
+  });
+  strefaShowCenter('<div style="text-align:center;padding:60px 20px;color:var(--dim2)"><div style="font-size:48px;margin-bottom:12px">🧠</div><div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:8px">Kontekstowa Nauka</div><div style="font-size:14px">Wybierz język po lewej</div></div>');
+}
+
+function strefaSidebarMode(mode){
+  _strefaSidebarMode = mode;
+  // Toggle header buttons
+  var btnTryb = document.getElementById('sb-btn-tryb');
+  var btnStrefa = document.getElementById('sb-btn-strefa');
+  var sbTryb = document.getElementById('sb-tryb-content');
+  var sbStrefa = document.getElementById('sb-strefa-content');
+  if(btnTryb && btnStrefa){
+    if(mode === 'tryb'){
+      btnTryb.style.borderBottomColor='var(--navy)'; btnTryb.style.color='var(--navy)'; btnTryb.style.fontWeight='500';
+      btnStrefa.style.borderBottomColor='transparent'; btnStrefa.style.color='var(--dim2)'; btnStrefa.style.fontWeight='500';
+    } else {
+      btnStrefa.style.borderBottomColor='var(--navy)'; btnStrefa.style.color='var(--navy)'; btnStrefa.style.fontWeight='500';
+      btnTryb.style.borderBottomColor='transparent'; btnTryb.style.color='var(--dim2)'; btnTryb.style.fontWeight='500';
+    }
+  }
+  if(sbTryb) sbTryb.style.display = mode==='tryb' ? 'flex' : 'none';
+  if(sbStrefa) sbStrefa.style.display = mode==='strefa' ? 'flex' : 'none';
+  // Show content
+  if(mode === 'strefa'){
+    strefaLoadSidebarLangs();
+  } else {
+    strefaShowCenter(strefaEmpty('Wybierz zestaw'));
+  }
+}
+
 function strefaEmpty(title){
   return '<div style="text-align:center;padding:64px 24px;color:var(--dim2)">'
     +'<div style="width:48px;height:48px;border-radius:12px;background:rgba(26,35,64,.06);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'
@@ -9861,6 +12244,16 @@ function strefaLoadTryb(){
   }, 100);
 }
 
+// ── PORCJA DNIA ──
+function dailyShowTab(tab){
+  var panelD=document.getElementById('daily-panel-daily');
+  var panelC=document.getElementById('daily-panel-challenge');
+  if(panelD) panelD.style.display = tab==='daily'     ? '' : 'none';
+  if(panelC) panelC.style.display = tab==='challenge' ? '' : 'none';
+  ['daily','challenge'].forEach(function(k){var b=document.getElementById('daily-btn-'+k);if(!b)return;if(k===tab){b.dataset.active='1';b.style.borderColor='var(--orange)';b.style.background='rgba(229,106,28,.08)';}else{delete b.dataset.active;b.style.borderColor='var(--border)';b.style.background='var(--white)';b.style.transform='none';}});
+  if(tab==='challenge'&&typeof initChallenge==='function') initChallenge();
+}
+
 // ── NAUCZYCIEL AI ──
 function teacherShowTab(tab){
   if(typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
@@ -9882,7 +12275,7 @@ function teacherShowTab(tab){
   var sub=document.getElementById('teacher-main-sub');
   var pro='<span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span>';
   if(tab==='chat'){ if(title)title.innerHTML='AI Partner'; if(sub)sub.textContent='Swobodna rozmowa z AI dopasowana do Twojego poziomu'; }
-  else { if(title)title.innerHTML='Nauczyciel AI '+pro; if(sub)sub.textContent='Lex utrwala słowa, które przerabiasz na stronie i na desktopie — wydobywasz je z pamięci, nie tylko oglądasz.'; }
+  else { if(title)title.innerHTML='Nauczyciel AI '+pro; if(sub)sub.textContent='Lex prowadzi Cię przez retrieval — wydobywasz, nie oglądasz'; }
   if(tab==='chat' && typeof initChat==='function') initChat();
   if(tab==='teacher') lexInit();
   // Sekcje sidebara
@@ -10077,6 +12470,14 @@ async function loadContextSentence(word, translation, lang, level){
   }
 }
 
+async function loadYouTubeVideo(word,lang){
+  try{
+    const{data:cached}=await db.from('youtube_cache')
+      .select('video_id,video_title').eq('word',word).eq('language',lang).limit(1);
+    var cv=Array.isArray(cached)?cached[0]:cached; if(cv?.video_id){renderVideo(cv.video_id,cv.video_title);return;}
+  }catch(e){}
+  // Video zostanie załadowane po renderSentence z oczyszczonym słowem
+}
 
 
 function renderSentence(word, sentence, translation, searchWord){
@@ -10114,6 +12515,20 @@ async function reportTranslation(word, sentence, translation){
   }catch(e){showToast('Błąd: '+e.message,'error');}
 }
 
+function playAudio(){
+  if(!window._currentSentence) return;
+  speechSynthesis.cancel();
+  var utt = new SpeechSynthesisUtterance(window._currentSentence);
+  utt.lang = window._currentLang || 'en-US';
+  utt.rate = 0.82;
+  utt.pitch = 1.0;
+  var voices = speechSynthesis.getVoices();
+  var langCode = (window._currentLang || 'en').split('-')[0];
+  var google = voices.find(function(v){return v.lang.startsWith(langCode) && v.name.includes('Google');});
+  var any = voices.find(function(v){return v.lang.startsWith(langCode);});
+  utt.voice = google || any || null;
+  speechSynthesis.speak(utt);
+}
 
 function renderVideo(videoId, title){
   // Używamy Youglish - pokazuje to słowo w kontekście w filmach
@@ -10603,6 +13018,26 @@ function openOdkryjArticle(art){
   addOdkryjAudioBtn(art.content, _odkryjLang);
 }
 
+function buildOdkryjArticleHTML(text, lang){
+  // Strip ```json wrapping
+  var bt='`';
+  text=(text||'').replace(new RegExp(bt+bt+bt+'json','g'),'').replace(new RegExp(bt+bt+bt,'g'),'').trim();
+  if(text.startsWith('{')){try{var p=JSON.parse(text);text=p.content||p.text||text;}catch(e){}}
+  var sentences=text.match(/[^.!?]+[.!?]+/g)||[text];
+  return sentences.map(function(sent,idx){
+    var trimmed=sent.trim();
+    if(!trimmed)return'';
+    var words=trimmed.split(/(\s+)/);
+    var wordsHtml=words.map(function(w){
+      if(/^\s+$/.test(w))return w;
+      var clean=w.replace(/[^a-zA-ZÀ-žа-яА-Я]/g,'');
+      if(clean.length<2)return w;
+      return'<span class="hover-word" data-word="'+clean+'" data-lang="'+lang+'">'+w+'</span>';
+    }).join('');
+    var safeS=trimmed.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    return'<span class="sent" data-sentence="'+safeS+'" onclick="analyzeOdkryjSentence(this,this.dataset.sentence)" title="Kliknij aby przeanalizować">'+wordsHtml+'</span> ';
+  }).join('');
+}
 
 async function analyzeOdkryjSentence(el, sentence){
   var panel=document.getElementById('odkryj-sent-analysis');
@@ -10659,7 +13094,45 @@ async function addVocabToFlashcards(words, topic, lang){
 
 })();
 </script>
+<script>
+// Mobile czytanka toggle
+function toggleCzytankaTranslation(){
+  var side = document.getElementById('dc-read-side');
+  var btn = document.getElementById('dc-read-toggle-tr');
+  if(!side) return;
+  var hidden = side.style.display === 'none';
+  side.style.display = hidden ? 'block' : 'none';
+  if(btn) btn.textContent = hidden ? '🔤 Ukryj tłumaczenie' : '🔤 Pokaż tłumaczenie';
+}
 
+function initCzytankaMobile(){
+  var btn = document.getElementById('dc-read-toggle-tr');
+  var side = document.getElementById('dc-read-side');
+  if(!btn || !side) return;
+  if(window.innerWidth <= 600){
+    btn.style.display = 'inline-flex';
+    side.style.display = 'none'; // hidden by default on mobile
+  } else {
+    btn.style.display = 'none';
+    side.style.display = '';
+  }
+}
+
+// Call on resize and when article loads
+window.addEventListener('resize', initCzytankaMobile);
+document.addEventListener('DOMContentLoaded', initCzytankaMobile);
+
+// Hook into article load
+var _origDailyReadDone = window.dailyReadDone;
+var _origLoadDailyRead = window.loadDailyRead;
+if(typeof loadDailyRead === 'function'){
+  var _origLDR = loadDailyRead;
+  window.loadDailyRead = function(){
+    _origLDR.apply(this, arguments);
+    setTimeout(initCzytankaMobile, 500);
+  };
+}
+</script>
 <script>
 // ═══════════════════════════════════════════════════════════
 // LEX AI TEACHER — silnik karta-po-karcie v2
@@ -10777,20 +13250,23 @@ function lexQuickStart(){
   try{ var _engQ=document.getElementById('lex-card-engine'); if(window._lexLessonRunning && _engQ && _engQ.style.display!=='none') return; }catch(e){} // lekcja w toku
   var info = (typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[_lexLang]) || {flag:'🌐', name:_lexLangName||'język'};
   var lvl = lexCurrentLevel();
-  var topic = window._lexNextTopic ? ('<div style="font-size:13px;color:var(--dim);margin:0 0 16px;text-align:center">Temat: <b style="color:var(--navy)">'+lexEsc(window._lexNextTopic)+'</b></div>') : '';
+  var topic = window._lexNextTopic ? ('<div style="font-size:13px;color:var(--dim);margin-top:8px">Temat: <b style="color:var(--navy)">'+lexEsc(window._lexNextTopic)+'</b></div>') : '';
   var host = document.getElementById('lex-onboarding');
   if(!host) return;
   host.innerHTML =
-    '<div style="max-width:540px;margin:0 auto;padding:28px 0 48px">'
+    '<div style="max-width:520px;margin:0 auto;padding:48px 0;text-align:center">'
+    + '<div style="width:64px;height:64px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.7 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>'
+    + '<h3 style="font-family:DM Sans,sans-serif;font-size:24px;font-weight:500;color:var(--navy);margin-bottom:4px">Co dziś utrwalamy?</h3>'
+    + '<div style="font-size:13px;color:var(--dim);max-width:380px;margin:6px auto 0;line-height:1.5">Wybierz zestaw lub kategorię — język rozpozna się z materiału, a Lex przerobi go z Tobą słowo po słowie.</div>'
+    + topic
     + (function(){ try{ var st=(typeof lexxHasResume==='function')?lexxHasResume():null; if(!st) return '';
         var nm=(st.sources&&st.sources.length? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'lekcja'));
-        return '<div onclick="lexxResume()" style="margin:0 0 22px;cursor:pointer;background:var(--paper2);border:1.5px solid var(--orange);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left">'
+        return '<div onclick="lexxResume()" style="margin:28px 0 4px;cursor:pointer;background:var(--paper2);border:1.5px solid var(--orange);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left">'
           +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>'
           +'<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--navy)">Kontynuuj przerwaną lekcję</div>'
           +'<div style="font-size:11.5px;color:var(--dim2)">'+lexEsc(nm)+' · porcja '+st.portionNum+' z '+st.portionTarget+'</div></div>'
           +'<span style="font-size:18px;color:var(--orange)">→</span></div>'; }catch(e){ return ''; } })()
-    + topic
-    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 12px">Wybierz zestaw lub kategorię</div>'
+    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:34px 0 12px">Ostatnio przerabiane</div>'
     + '<div id="lex-source-picker"></div>'
     + '<div style="margin:24px 0 8px;text-align:left;padding:16px 18px;background:var(--paper2);border-radius:14px;border:1px solid var(--border)">'
     + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Poziom języka w przykładach Lexa</div>'
@@ -10801,15 +13277,16 @@ function lexQuickStart(){
     + '<button onclick="lexSetTeacherLevel(\'advanced\',this)" class="lex-tl-btn" style="padding:10px 6px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--navy);transition:.15s;text-align:center"><span style="display:block;font-weight:600;font-size:13px;margin-bottom:2px">Zaawansowany</span><span style="font-size:10.5px;color:var(--dim2)">C1–C2, złożone</span></button>'
     + '</div>'
     + '</div>'
-    + '<div style="margin:18px 0 8px;text-align:left">'
-    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Język prowadzenia lekcji</div>'
-    + '<div id="lex-lessonlang-row" style="display:flex;gap:10px"></div>'
+    + '<button onclick="lexQuickGo()" style="width:100%;margin-top:18px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
+    + '<div style="margin-top:18px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap">'
+    + '<span style="font-size:11.5px;color:var(--dim2)">Język prowadzenia lekcji:</span>'
+    + '<button onclick="lexObSelectLessonLang(\'pl\')" id="lex-ob-langpl" style="font-size:12px;padding:5px 12px;border-radius:100px;border:2px solid var(--orange);background:#fff;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Polski</button>'
+    + '<button onclick="lexObSelectLessonLang(\'target\')" id="lex-ob-langtgt" style="font-size:12px;padding:5px 12px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">'+lexEsc(info.name||_lexLangName)+'</button>'
     + '</div>'
-    + '<button onclick="lexQuickGo()" style="width:100%;margin-top:20px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
     + '</div>';
   lexShowScreen('lex-onboarding');
   window._lexSources=[]; // reset wyboru na każdym wejściu
-  if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
+  if(typeof lexSyncLessonLangBtns==='function') lexSyncLessonLangBtns();
   if(typeof lexRenderSourcePicker==='function') lexRenderSourcePicker();
 }
 function lexQuickDur(d){
@@ -10869,7 +13346,7 @@ function lexPrefillSetup(){
   lexSyncLessonLangBtns();
 }
 
-// Język prowadzenia lekcji na ekranie startu (PL ↔ język uczony) — stary markup (lexFullSetup)
+// Język prowadzenia lekcji na ekranie startu (PL ↔ język uczony)
 function lexSyncLessonLangBtns(){
   var info = (typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[_lexLang]) || null;
   var tgtBtn = document.getElementById('lex-ob-langtgt');
@@ -10880,42 +13357,10 @@ function lexSyncLessonLangBtns(){
   if(tgtBtn) tgtBtn.style.border = targetActive ? '2px solid var(--orange)' : '1.5px solid var(--border2)';
 }
 
-// Nowy wiersz języka prowadzenia — zależny od wybranego zestawu.
-// Brak zestawu → drugi język = „Język obcy" (nieaktywny, prowadzenie wymuszone na PL).
-// Po wyborze zestawu system zna język docelowy → przycisk pokazuje jego nazwę i daje się włączyć.
-window.lexRenderLessonLangButtons=function(){
-  var row=document.getElementById('lex-lessonlang-row'); if(!row) return;
-  var esc=(typeof lexEsc==='function')?lexEsc:function(x){return String(x==null?'':x);};
-  var hasSource=!!(window._lexSources && window._lexSources.length>0);
-  var info=(typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[window._lexLang]) || null;
-  var tgtName = (hasSource && info && info.name) ? (info.name.charAt(0).toUpperCase()+info.name.slice(1)) : 'Język obcy';
-  if(!hasSource && typeof _lexAudioLang!=='undefined' && _lexAudioLang!=='pl') _lexAudioLang='pl'; // bez zestawu prowadzimy po PL
-  var tgtActive = hasSource && (typeof _lexAudioLang!=='undefined' && _lexAudioLang===window._lexLang);
-  var plActive = !tgtActive;
-  function btn(label, caption, active, onclick, disabled){
-    var bd = active ? '2px solid var(--orange)' : '1.5px solid var(--border2)';
-    var bg = active ? '#fff8f3' : '#fff';
-    var op = disabled ? '.5' : '1';
-    var cur = disabled ? 'default' : 'pointer';
-    var capColor = active ? 'var(--navy)' : 'var(--dim2)';
-    return '<button '+(disabled?'':'onclick="'+onclick+'"')+' style="flex:1;min-width:0;padding:10px 12px;border-radius:12px;border:'+bd+';background:'+bg+';cursor:'+cur+';opacity:'+op+';font-family:DM Sans,sans-serif;text-align:left;transition:.15s">'
-      +'<span style="display:block;font-size:13.5px;font-weight:600;color:var(--navy);margin-bottom:2px">'+esc(label)+'</span>'
-      +'<span style="display:block;font-size:10.5px;color:'+capColor+';line-height:1.3">'+esc(caption)+'</span></button>';
-  }
-  var tgtCaption = hasSource ? ('Lex prowadzi po: '+tgtName.toLowerCase()) : 'Najpierw wybierz zestaw';
-  row.innerHTML = btn('Polski', 'Lex tłumaczy po polsku', plActive, "lexObSelectLessonLang('pl')", false)
-                + btn(tgtName, tgtCaption, tgtActive, "lexObSelectLessonLang('target')", !hasSource);
-};
-
 function lexObSelectLessonLang(which){
-  if(which==='target' && !(window._lexSources && window._lexSources.length>0)){
-    if(typeof showToast==='function') showToast('Najpierw wybierz zestaw — wtedy Lex pozna język','info');
-    return; // bez zestawu nie znamy języka docelowego
-  }
   _lexAudioLang = (which==='target') ? (_lexLang||'en') : 'pl';
   try{ if(typeof uk==='function') localStorage.setItem(uk('lex_audio_lang'), _lexAudioLang); }catch(e){}
   lexSyncLessonLangBtns();
-  if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
   if(typeof lexUpdateAudioLangBtn==='function') lexUpdateAudioLangBtn();
 }
 
@@ -11954,13 +14399,6 @@ async function lexStartLesson(){
   // Ewaluacja poziomu usunięta — lekcja startuje od razu.
   window._lexDirectStart = false;     // start przejety przez lekcje
   window._lexLessonRunning = true;    // chron lekcje przed nadpisaniem ekranem wyboru
-  // ── AI Teacher Engine v3 — routing przez kill-switch (activation_config.engine_v3) ──
-  // Gdy włączony, lekcję prowadzą Edge Functions (word_knowledge). Gdy wyłączony — silnik klasyczny niżej.
-  try{
-    if(typeof lexv3Enabled==='function' && await lexv3Enabled()){
-      if(typeof lexv3Start==='function'){ return lexv3Start(); }
-    }
-  }catch(e){ console.warn('[lexv3] routing pominięty:', e); }
   _lexLessonFocus = window._lexNextTopic || null; window._lexNextTopic = null;
   window._lexPortionFocuses = [];
   try{ if(window._lexLang) localStorage.setItem(uk('lex_last_lang'), window._lexLang); }catch(e){}
@@ -12640,9 +15078,27 @@ function lexAfterTyping(){
   }
 }
 
+function lexAddTranslateCardBtn(){
+  // Add "Translate this card" button below card text
+  var existing = document.getElementById('lex-translate-card-btn');
+  if(existing) existing.remove();
+
+  var cardEl = document.getElementById('lex-card-lex');
+  if(!cardEl) return;
+
+  var btn = document.createElement('button');
+  btn.id = 'lex-translate-card-btn';
+  btn.style.cssText = 'display:inline-flex;align-items:center;gap:5px;margin-top:10px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s';
+  btn.innerHTML = '🌐 Przetłumacz całą kartę';
+  btn.onclick = lexTranslateWholeCard;
+  cardEl.appendChild(btn);
+}
 
 var _lexCardTranslation = null;
 
+function lexAddTranslateCardBtn(){
+  // Automatyczne tłumaczenie — bez przycisku (uruchamiane w lexAfterTyping)
+}
 
 function lexRenderFeedbackBlock(card){
   var old = document.getElementById('lex-feedback-block');
@@ -13553,7 +16009,6 @@ function lexHideHistory(){
 
 // ── End lesson ────────────────────────────────────────────
 async function lexEndLesson(){
-  if(window._v3 && window._v3.active && typeof lexv3Complete==='function'){ return lexv3Complete(); }
   window._lexLessonRunning = false;
   lexShowScreen('lex-summary');
   var scoreEl = document.getElementById('lex-summary-score');
@@ -13930,7 +16385,7 @@ async function lexInit(){
         if(typeof loadDashboard==='function'){
           loadDashboard().then(function(){
             var hash=window.location.hash.replace('#','');
-            var valid=['dash','community','strefa','odkryj','teacher','ranking'];
+            var valid=['dash','community','strefa','daily','odkryj','teacher','ranking'];
             showPage(valid.indexOf(hash)>=0?hash:'dash');
           });
         }
@@ -15196,7 +17651,7 @@ async function lexInit(){
     return '<button class="lexcat-tile'+(isSel('eyelingo',c.id)?' sel':'')+'" data-pick="'+tok+'">'
       +'<span class="lexcat-ic">'+ICO_FOLDER+'</span>'
       +'<span class="nm">'+esc(c.label)+'</span>'
-      +'<span class="mt">'+(c.level?esc(c.level)+' · ':'')+c.count+' słów · wybierz →</span></button>';
+      +'<span class="mt">'+(c.level?esc(c.level)+' · ':'')+c.count+' słów · ucz się →</span></button>';
   }
   function tileUserSet(st){
     var tok='u'+st.id;
@@ -15206,7 +17661,7 @@ async function lexInit(){
       +'<span class="lexcat-ic">'+ICO_BOOK+'</span>'
       +'<span class="nm">'+esc(st.label)+'</span>'
       +'<span class="mt">'+badge+(badge?' · ':'')+st.count+' słów</span>'
-      +'<button class="lexcat-learn" data-learn="'+tok+'">Wybierz →</button></div>';
+      +'<button class="lexcat-learn" data-learn="'+tok+'">Ucz się →</button></div>';
   }
 
   window.lexCatalogOpen=function(){
@@ -15304,24 +17759,23 @@ async function lexInit(){
     body.innerHTML=html;
   };
 
-  // Wybór z katalogu: zaznacz materiał, zamknij okno i wróć do ekranu ustawień (bez auto-startu lekcji).
+  // Wybór: toggle do źródeł; learnNow=true → od razu zacznij lekcję z tym jednym materiałem
   function doPick(p, el, learnNow){
     if(!p) return;
     var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
-    function select(langCode){
+    function go(langCode){
       window._lexLang=langCode||p.lang||window._lexLang||'en';
       window._lexSources=[{kind:p.kind,id:p.id,label:p.label,level:p.level||lvlUser,lang:window._lexLang}];
       try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet(p.kind,p.id,p.label,p.level||null,0,window._lexLang); }catch(e){}
       var m=document.getElementById('lexcat-modal'); if(m) m.remove();
-      // Wróć do ekranu startu z zaznaczonym materiałem; user dokończy poziom/język i kliknie „Zaczynamy".
-      if(typeof lexRefreshPickerSelection==='function') lexRefreshPickerSelection();
-      if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
+      if(typeof lexStartLesson==='function') lexStartLesson();
     }
+    // Zawsze startujemy lekcję z jednego materiału (kafelek = start)
     if(p.kind==='user' && !p.lang){
-      if(typeof lexAskSetLang==='function') lexAskSetLang(p.id, p.label, function(code){ p.lang=code; select(code); });
-      else select('en');
+      if(typeof lexAskSetLang==='function') lexAskSetLang(p.id, p.label, function(code){ p.lang=code; go(code); });
+      else go('en');
     } else {
-      select(p.lang);
+      go(p.lang);
     }
   }
   // ekspozycja dla ewentualnych wywołań zewnętrznych
@@ -15462,13 +17916,11 @@ async function lexInit(){
     function badgeOf(code){ return code?('<span class="lexcat-langbadge" style="margin-right:6px">'+esc(String(code).toUpperCase())+'</span>'):''; }
     var chips=[];
     src.eyelingo.forEach(function(c){
-      chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, recent:(c.recent||''), sub:(c.level?c.level+' · ':'')+c.count+' słów'});
+      chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, sub:(c.level?c.level+' · ':'')+c.count+' słów'});
     });
     src.user.forEach(function(u){
-      chips.push({kind:'user', id:u.id, label:u.label, level:lvlUser, count:u.count, lang:u.lang||null, recent:(u.recent||''), sub:(u.count+' słów')});
+      chips.push({kind:'user', id:u.id, label:u.label, level:lvlUser, count:u.count, lang:u.lang||null, sub:(u.count+' słów')});
     });
-    // Jednolita kolejność wg świeżości — ostatnio oglądany pierwszy, niezależnie czy zestaw, czy kategoria Eyelingo.
-    chips.sort(function(a,b){ return String(b.recent||'').localeCompare(String(a.recent||'')); });
     chips=chips.slice(0,6); // tylko kilka najświeższych — resztę przez katalog
     window._lexSourcesAvail=chips;
     var browseBtn='<button type="button" onclick="lexCatalogOpen()" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:1.5px dashed var(--border2);background:var(--paper2);border-radius:14px;padding:10px 14px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;min-width:130px;text-align:left" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'
@@ -15497,7 +17949,6 @@ async function lexInit(){
   // Odśwież zaznaczenie kafelków pickera po wyborze z katalogu (i pokaż wybrane spoza listy)
   window.lexRefreshPickerSelection=function(){
     if(typeof lexRenderSourcePicker==='function') lexRenderSourcePicker();
-    if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons(); // ZAWSZE — przed ewentualnymi wczesnymi return niżej
     // dołóż wybrane z katalogu, których nie ma wśród świeżych — jako oznaczone kafelki
     try{
       var host=document.getElementById('lex-source-picker'); if(!host) return;
@@ -15592,240 +18043,6 @@ async function lexInit(){
     // 3. Brak słów — modal
     window.lexAskSetLangModal(setId, label, cb);
   };
-})();
-</script>
-
-<!-- ═══ EYELINGO — AI TEACHER ENGINE v3 (frontend runner, kill-switch: activation_config.engine_v3) ═══ -->
-<script>
-(function(){
-  if(window.lexv3Start) return;
-  var V3='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/';
-  var KEY=(typeof SUPABASE_KEY!=='undefined'?SUPABASE_KEY:'');
-  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-  function rich(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');}
-  function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
-  function langWord(){try{var m=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[window._v3.lang]);return (m&&m.name)||(window._lexLangName||'język');}catch(e){return 'język';}}
-
-  // Kill-switch: engine_v3=true w activation_config (lub localStorage lex_force_v3='1' do testów)
-  window.lexv3Enabled=async function(){
-    try{ if(localStorage.getItem('lex_force_v3')==='1') return true; }catch(e){}
-    try{
-      var r=await db.from('activation_config').select('*').eq('context_bucket','global').maybeSingle();
-      return !!(r&&r.data&&r.data.engine_v3===true);
-    }catch(e){ return false; }
-  };
-
-  function mount(){
-    if(typeof lexShowScreen==='function') lexShowScreen('lex-card-engine');
-    var main=document.getElementById('lex-card-main'); if(!main) return null;
-    var w=document.getElementById('lexv3-wrap');
-    if(!w){ w=document.createElement('div'); w.id='lexv3-wrap'; w.style.cssText='flex:1;min-width:0'; main.appendChild(w); }
-    Array.prototype.forEach.call(main.children,function(c){ if(c.id!=='lexv3-wrap') c.style.display='none'; });
-    var lw=document.getElementById('lexx-wrap'); if(lw) lw.style.display='none';
-    w.style.display='block';
-    return w;
-  }
-  function wrap(){ return document.getElementById('lexv3-wrap'); }
-  function loading(msg){ var w=wrap(); if(w) w.innerHTML='<div style="text-align:center;padding:64px 20px;color:var(--dim2);font-size:13px">'+esc(msg||'Chwila…')+'</div>'; }
-
-  async function call(fn,body){
-    try{
-      var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
-      var res=await fetch(V3+fn,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':KEY},body:JSON.stringify(body||{})});
-      if(res.status===204) return {ok:true,status:204,data:null};
-      var txt=await res.text(); var data=null; try{ data=txt?JSON.parse(txt):null; }catch(e){}
-      return {ok:res.ok,status:res.status,data:data,raw:txt};
-    }catch(e){ return {ok:false,status:0,error:String((e&&e.message)||e)}; }
-  }
-
-  function header(p){
-    var c=p.content||{};
-    return '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:18px">'
-      +'<div style="width:34px;height:34px;border-radius:50%;background:var(--navy);flex-shrink:0;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>'
-      +'<div style="flex:1;min-width:0;font-size:15px;line-height:1.7;color:var(--navy)">'+rich(c.prompt_pl||'')+'</div></div>';
-  }
-  function btnGo(label){ return '<button id="lexv3-go" class="lexx-check">'+esc(label||'Dalej →')+'</button>'; }
-
-  window.lexv3Start=async function(){
-    var lang=(window._lexLang||'en');
-    var fmt=((_lexProfile&&_lexProfile.lesson_duration)===10)?10:25;
-    var topic=window._lexNextTopic||null; window._lexNextTopic=null;
-    mount(); loading('Przygotowuję lekcję…');
-    window._lexLessonRunning=true;
-    // słowa z wybranego zestawu → materiał lekcji (engine utrwala TWÓJ materiał)
-    var seed=[];
-    try{
-      if(window._lexSources && window._lexSources.length && typeof lexFetchSourceWords==='function'){
-        var sw=await lexFetchSourceWords();
-        seed=(sw||[]).map(function(x){ return {word:String(x.word||'').trim(), gloss:(x.translation||'')}; }).filter(function(x){return x.word;}).slice(0,80);
-      }
-    }catch(e){ console.warn('[lexv3] seed words',e); }
-    var res=await call('lesson-start',{format_min:fmt,target_lang:lang,topic_override:topic,seed_words:seed});
-    if(!res.ok||!res.data||!res.data.lesson_id){ return fatal('lesson-start',res); }
-    var d=res.data;
-    window._v3={active:true,lessonId:d.lesson_id,plan:d.plan||[],idx:d.screen_index||0,rolling:d.rolling_accuracy,fmt:d.format_min||fmt,lang:lang,topic:d.topic_container};
-    try{ if(typeof lexBoardFabShow==='function') lexBoardFabShow(false); }catch(e){}
-    await renderCurrent();
-  };
-
-  async function ensureContent(idx){
-    var v=window._v3; var p=v&&v.plan[idx]; if(!p||p.content) return;
-    var body={lesson_id:v.lessonId};
-    if(p.portion!=null) body.portion=p.portion; else body.phase=p.phase;
-    var res=await call('portion-content',body);
-    if(res.ok&&res.data&&res.data.items){
-      res.data.items.forEach(function(it){ var pi=v.plan.filter(function(x){return x.idx===it.idx;})[0]; if(pi) pi.content=it.content; });
-    }
-  }
-  function prefetch(){
-    var v=window._v3; if(!v) return;
-    for(var i=v.idx+1;i<v.plan.length&&i<=v.idx+4;i++){ var p=v.plan[i]; if(p&&!p.content&&(p.portion!=null||p.phase)){ ensureContent(i); break; } }
-  }
-
-  async function renderCurrent(){
-    var v=window._v3; if(!v||!v.active) return;
-    if(v.idx>=v.plan.length) return complete();
-    loading('Lex przygotowuje…');
-    await ensureContent(v.idx);
-    var p=v.plan[v.idx]; if(!p) return complete();
-    prefetch();
-    var pb=document.getElementById('lex-progress-bar'); if(pb) pb.style.width=Math.round(100*v.idx/Math.max(1,v.plan.length))+'%';
-    renderBeat(p);
-  }
-
-  function renderBeat(p){
-    var v=window._v3; var w=wrap(); if(!w) return;
-    var t=String(p.type||''); var c=p.content||{};
-    v.shownAt=Date.now();
-
-    if(t==='PRIME'||t==='CHECKPOINT'||t==='CLOSE'){
-      w.innerHTML='<div class="lexx-ex">'+header(p)+btnGo(t==='CLOSE'?'Zakończ lekcję →':'Zaczynamy →')+'</div>';
-      w.querySelector('#lexv3-go').addEventListener('click',advance); return;
-    }
-    if(t==='E1'){
-      var b='<div class="lexx-ex">'+header(p);
-      if(c.sentence_target) b+='<div style="font-size:17px;line-height:1.7;color:var(--navy);background:var(--paper2);border-radius:12px;padding:14px 16px;margin-bottom:10px">'+rich(c.sentence_target)+'</div>';
-      if(c.gloss_pl) b+='<div style="font-size:13px;color:var(--dim)">'+esc(c.gloss_pl)+'</div>';
-      b+=btnGo('Rozumiem →')+'</div>'; w.innerHTML=b;
-      w.querySelector('#lexv3-go').addEventListener('click',advance); return;
-    }
-    if(t==='E2'){
-      var mc=(c.mc_items||[])[0]; if(!mc) return advance();
-      var opts=shuffle([mc.correct].concat(mc.distractors||[]));
-      var b='<div class="lexx-ex">'+header(p)+'<div style="font-size:16px;font-weight:600;color:var(--navy);margin-bottom:12px">'+esc(mc.word)+'</div>';
-      opts.forEach(function(o){ b+='<button class="lexx-opt" data-val="'+esc(o)+'">'+esc(o)+'</button>'; });
-      b+='</div>'; w.innerHTML=b;
-      w.querySelectorAll('.lexx-opt').forEach(function(btn){ btn.addEventListener('click',function(){ submit(btn.getAttribute('data-val'),mc.word,'E2','tap'); }); }); return;
-    }
-    if(t==='ODDECH'){
-      var b='<div class="lexx-ex">'+header(p);
-      if(c.listen_text) b+='<div style="font-size:15px;line-height:1.7;color:var(--navy);background:var(--paper2);border-radius:12px;padding:14px 16px;margin-bottom:10px">'+rich(c.listen_text)+'</div>';
-      if(c.question_pl) b+='<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:12px">'+esc(c.question_pl)+'</div>';
-      (c.options||[]).forEach(function(o){ b+='<button class="lexx-opt" data-val="'+esc(o)+'">'+esc(o)+'</button>'; });
-      b+='</div>'; w.innerHTML=b;
-      w.querySelectorAll('.lexx-opt').forEach(function(btn){ btn.addEventListener('click',function(){ submit(btn.getAttribute('data-val'),p.word||'','ODDECH','tap'); }); }); return;
-    }
-    if(t==='E8'){
-      var it=(c.items||[])[0]; var wkey=(it&&it.answer_key&&it.answer_key[0])||p.word||'';
-      var b='<div class="lexx-ex">'+header(p);
-      if(it&&it.prompt_pl) b+='<div style="font-size:15px;color:var(--navy);margin-bottom:10px">'+esc(it.prompt_pl)+'</div>';
-      b+='<input id="lexv3-in" type="text" autocomplete="off" style="width:100%;padding:13px 15px;border:2px solid var(--border2);border-radius:14px;font-size:15px;font-family:DM Sans,sans-serif;outline:none" placeholder="Wpisz słowo…">'+btnGo('Sprawdź →')+'</div>';
-      w.innerHTML=b; var inp=w.querySelector('#lexv3-in'); if(inp) inp.focus();
-      var go=function(){ submit(inp.value,wkey,'E8','typed'); };
-      w.querySelector('#lexv3-go').addEventListener('click',go);
-      if(inp) inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); go(); } }); return;
-    }
-    // E3 / E5 / STRETCH_E5 / inne — wpis tekstowy (backend ocenia)
-    var ml=(t==='STRETCH_E5'||t==='E5');
-    var b='<div class="lexx-ex">'+header(p);
-    if(c.sentence_target) b+='<div style="font-size:16px;line-height:1.8;color:var(--navy);background:var(--paper2);border-radius:12px;padding:14px 16px;margin-bottom:12px">'+rich(String(c.sentence_target).replace(/_+/g,'<span style="color:var(--orange);font-weight:700">_____</span>'))+'</div>';
-    b+= ml
-      ? '<textarea id="lexv3-in" rows="2" style="width:100%;padding:13px 15px;border:2px solid var(--border2);border-radius:14px;font-size:15px;font-family:DM Sans,sans-serif;line-height:1.5;outline:none;resize:none" placeholder="Napisz po '+esc(langWord())+'…"></textarea>'
-      : '<input id="lexv3-in" type="text" autocomplete="off" style="width:100%;padding:13px 15px;border:2px solid var(--border2);border-radius:14px;font-size:15px;font-family:DM Sans,sans-serif;outline:none" placeholder="Wpisz odpowiedź…">';
-    if(c.tiles&&c.tiles.length) b+='<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:10px">'+c.tiles.map(function(tl){ return '<button class="lexv3-tile" data-t="'+esc(tl)+'" style="padding:8px 12px;border:1.5px solid var(--border2);border-radius:10px;background:#fff;font-size:14px;cursor:pointer;font-family:DM Sans,sans-serif;color:var(--navy)">'+esc(tl)+'</button>'; }).join('')+'</div>';
-    b+=btnGo('Sprawdź →')+'</div>'; w.innerHTML=b;
-    var inp=w.querySelector('#lexv3-in'); if(inp) inp.focus();
-    w.querySelectorAll('.lexv3-tile').forEach(function(btn){ btn.addEventListener('click',function(){ var cur=(inp.value||'').trim(); inp.value=(cur?cur+' ':'')+btn.getAttribute('data-t'); inp.focus(); }); });
-    var go=function(){ submit(inp.value,p.word||'',t||'E3','typed'); };
-    w.querySelector('#lexv3-go').addEventListener('click',go);
-    if(inp&&inp.tagName==='INPUT') inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); go(); } });
-  }
-
-  async function submit(answer,word,type,modality){
-    var v=window._v3; if(!v||!v.active) return;
-    var lat=v.shownAt?Math.max(0,Date.now()-v.shownAt):null;
-    loading('Sprawdzam…');
-    var res=await call('beat-submit',{lesson_id:v.lessonId,screen_index:v.idx,word:word||'',target_lang:v.lang,exercise_type:type,modality:modality||'typed',answer:String(answer==null?'':answer),latency_ms:lat,hint_used:false});
-    if(!res.ok){
-      if(res.status===409&&res.data&&res.data.next_screen_index!=null){ v.idx=res.data.next_screen_index; return renderCurrent(); }
-      return fatal('beat-submit',res);
-    }
-    var d=res.data||{};
-    if(d.rolling_accuracy!=null) v.rolling=d.rolling_accuracy;
-    if(d.adaptation==='FALLBACK'||d.adaptation==='HOLD_NEW'){ v.plan.forEach(function(x){ if(x.idx>v.idx) x.content=null; }); }
-    feedback(d,function(){ v.idx=(d.next_screen_index!=null?d.next_screen_index:v.idx+1); renderCurrent(); });
-  }
-
-  async function advance(){
-    var v=window._v3; if(!v||!v.active) return;
-    loading('Chwila…');
-    var res=await call('beat-submit',{lesson_id:v.lessonId,screen_index:v.idx,exercise_type:'ADVANCE',target_lang:v.lang});
-    if(!res.ok){ if(res.status===409&&res.data&&res.data.next_screen_index!=null){ v.idx=res.data.next_screen_index; return renderCurrent(); } return fatal('beat-submit',res); }
-    var d=res.data||{}; v.idx=(d.next_screen_index!=null?d.next_screen_index:v.idx+1); renderCurrent();
-  }
-
-  function feedback(d,next){
-    var w=wrap(); if(!w) return next();
-    var ok=d.correct===true, neutral=d.correct==null;
-    var color=neutral?'var(--navy)':(ok?'var(--success,#2e7d52)':'var(--orange)');
-    var label=neutral?'✓':(ok?'Dobrze!':'Prawie');
-    var akd=(!ok&&!neutral&&d.answer_key_display)?('<div style="font-size:13px;color:var(--dim);margin-top:6px">Poprawnie: <b style="color:var(--navy)">'+esc(d.answer_key_display)+'</b></div>'):'';
-    w.innerHTML='<div class="lexx-ex"><div style="font-size:15px;font-weight:600;color:'+color+';margin-bottom:6px">'+esc(label)+'</div><div style="font-size:14px;color:var(--navy);line-height:1.6">'+rich(d.feedback||'')+'</div>'+akd+'<button id="lexv3-next" class="lexx-next">Dalej →</button></div>';
-    w.querySelector('#lexv3-next').addEventListener('click',next);
-  }
-
-  async function complete(){
-    var v=window._v3; if(!v) return;
-    loading('Podsumowuję lekcję…');
-    var res=await call('lesson-complete',{lesson_id:v.lessonId});
-    v.active=false; window._lexLessonRunning=false;
-    summary((res.ok&&res.data&&res.data.summary)||{});
-  }
-
-  function summary(s){
-    var w=wrap(); if(!w) return;
-    var adv=s.words_advanced||[];
-    var rows=adv.length? adv.map(function(a){ return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)"><b style="color:var(--navy);min-width:120px">'+esc(a.word)+'</b><span style="font-size:12px;color:var(--dim2)">'+esc(a.from)+'</span><span style="color:var(--orange)">→</span><span style="font-size:12px;color:var(--success,#2e7d52);font-weight:600">'+esc(a.to)+'</span></div>'; }).join('')
-      : '<div style="font-size:13px;color:var(--dim2)">Ślad został założony — te słowa wrócą w powtórkach.</div>';
-    var mir=s.mirror?'<div style="margin-top:14px;font-size:14px;color:var(--navy);font-style:italic">„'+esc(s.mirror)+'"</div>':'';
-    var stat=(s.beats_total!=null)?'<div style="font-size:12px;color:var(--dim2);margin-top:10px">Ćwiczeń: '+s.beats_total+(s.correct_share!=null?(' · trafność '+Math.round(s.correct_share*100)+'%'):'')+'</div>':'';
-    w.innerHTML='<div class="lexx-ex" style="text-align:left"><div style="font-family:DM Sans,sans-serif;font-size:22px;font-weight:500;color:var(--navy);margin-bottom:14px">To zmieniło się w tej sesji</div>'+rows+mir+stat+'<button id="lexv3-new" class="lexx-next">Nowa lekcja</button></div>';
-    w.querySelector('#lexv3-new').addEventListener('click',function(){ window._v3=null; if(typeof lexInit==='function') lexInit(); });
-  }
-
-  function fatal(where,res){
-    var v=window._v3; if(v) v.active=false; window._lexLessonRunning=false;
-    var w=wrap()||mount(); if(!w) return;
-    var msg=(res&&res.data&&(res.data.error||res.raw))||(res&&res.error)||('HTTP '+(res&&res.status));
-    w.innerHTML='<div class="lexx-ex"><div style="font-size:15px;font-weight:600;color:var(--orange);margin-bottom:8px">Engine v3 nie odpowiedział</div>'
-      +'<div style="font-size:13px;color:var(--dim);line-height:1.6">Krok: <b>'+esc(where)+'</b> · status '+esc(String(res&&res.status))+'<br>'+esc(String(msg)).slice(0,300)+'</div>'
-      +'<button id="lexv3-legacy" class="lexx-check">Ucz się klasycznie →</button>'
-      +'<button id="lexv3-back" class="lexx-next" style="background:transparent;color:var(--dim2);border:1.5px solid var(--border2)">Wróć do wyboru</button></div>';
-    w.querySelector('#lexv3-legacy').addEventListener('click',function(){ window._v3=null; lexv3FallbackLegacy(); });
-    w.querySelector('#lexv3-back').addEventListener('click',function(){ window._v3=null; window._lexLessonRunning=false; if(typeof lexInit==='function') lexInit(); });
-  }
-
-  window.lexv3FallbackLegacy=async function(){
-    try{
-      var w=document.getElementById('lexv3-wrap'); if(w) w.style.display='none';
-      var main=document.getElementById('lex-card-main'); if(main) Array.prototype.forEach.call(main.children,function(c){ if(c.id!=='lexv3-wrap') c.style.display=''; });
-      window._lexLessonRunning=true;
-      var sets=(typeof lexLoadFlashcardSets==='function')?await lexLoadFlashcardSets():[];
-      if(typeof lexxStartPortions==='function') await lexxStartPortions(sets);
-    }catch(e){ console.warn('[lexv3] fallback',e); }
-  };
-
-  window.lexv3Complete=complete; // używane przez przycisk „Zakończ" gdy lekcja v3 jest aktywna
 })();
 </script>
 
@@ -16087,6 +18304,7 @@ async function lexInit(){
       return d;
     }catch(e){ return null; }
   }
+  window.trybGetSnapshot=function(){ return getSnap(); };
   window.trybResumeSession=function(){
     var d=getSnap(); if(!d) return;
     window._trybExternalCards=d.remaining;
@@ -16462,6 +18680,12 @@ async function lexInit(){
   };
 
   // Przygotuj kontener (klasa + język + treść)
+  window.tlPrepare = function(el, text, lang){
+    if(!el) return;
+    el.classList.add('tl');
+    el.dataset.tlLang=lang||'en';
+    el.innerHTML=window.tlBuildHTML(text, lang||'en');
+  };
 
   function langOf(node){
     var c=node.closest && node.closest('[data-tl-lang]');
@@ -16634,7 +18858,7 @@ async function lexInit(){
 
   function matEnterLearn(){
     matMountLearnSurface();
-    ['mat-grid','mat-collection-view','mat-voices','mat-continue-wrap','mat-count','mat-drag-hint'].forEach(function(id){
+    ['mat-grid','mat-collection-view','mat-voices','mat-source-filter','mat-continue-wrap','mat-count','mat-drag-hint'].forEach(function(id){
       var e=document.getElementById(id); if(e) e.style.display='none';
     });
     var tabs=document.querySelector('#page-community .mat-tabs'); if(tabs) tabs.style.display='none';
