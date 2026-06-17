@@ -12458,6 +12458,62 @@ var _lexLastSpokenText = '';
 var _lexAudioLang = 'pl'; // 'pl' = lekcja prowadzona po polsku (słowa obce w jęz. uczonym) | kod jęz. uczonego = całość w jęz. uczonym
 // (wartość per-user wczytywana w lexInit z klucza namespace'owanego user.id)
 
+// ── ElevenLabs (cloud TTS) dla czytnika lekcji — z fallbackiem na Web Speech ──
+// Włączone; japoński zawsze przez Web Speech (głos nie ma dubbingu JP);
+// brak kredytów (plan free → 401/429) przełącza na bazowe TTS do końca sesji.
+window.LEX_TTS_CLOUD = true;
+var LEX_TTS_ENDPOINT = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/tts';
+window._lexTtsCache = window._lexTtsCache || {};
+window._lexTtsDown = window._lexTtsDown || false;
+
+async function lexFetchCloudAudio(text, langCode){
+  var ck = (langCode||'') + '|' + text;
+  if(window._lexTtsCache[ck]) return window._lexTtsCache[ck];
+  var sess=(await db.auth.getSession()).data.session;
+  var r=await fetch(LEX_TTS_ENDPOINT,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},
+    body:JSON.stringify({text:text, language_code:langCode})
+  });
+  if(!r.ok){ var e=new Error('tts '+r.status); e.status=r.status; throw e; }
+  var blob=await r.blob();
+  var url=URL.createObjectURL(blob);
+  window._lexTtsCache[ck]=url;
+  return url;
+}
+function lexPlayUrl(url, token){
+  return new Promise(function(res){
+    try{
+      if(window._lexCurAudio){ try{window._lexCurAudio.pause();}catch(e){} }
+      var a=new Audio(url); window._lexCurAudio=a;
+      var done=function(){ if(window._lexCurAudio===a) window._lexCurAudio=null; res(); };
+      a.onended=done; a.onerror=done;
+      a.play().catch(function(){ done(); });
+    }catch(e){ res(); }
+  });
+}
+function lexSpeakSegAsync(txt, langCode, token){
+  return new Promise(function(res){
+    try{
+      var syn=window.speechSynthesis; if(!syn){ res(); return; }
+      var t=(txt||'').replace(/\*\*/g,'').replace(/\s+/g,' ').trim(); if(!t){ res(); return; }
+      var u=new SpeechSynthesisUtterance(t.slice(0,300));
+      u.lang=langCode; u.rate=0.9; u.pitch=1.0;
+      var base=String(langCode).split('-')[0];
+      var voices=syn.getVoices();
+      var v=voices.find(function(x){return x.lang===langCode&&/Google/.test(x.name);})||voices.find(function(x){return x.lang===langCode;})||voices.find(function(x){return x.lang.indexOf(base)===0;});
+      if(v) u.voice=v;
+      u.onend=function(){ res(); }; u.onerror=function(){ res(); };
+      syn.speak(u);
+    }catch(e){ res(); }
+  });
+}
+window.lexStopSpeak=function(){
+  window._lexPlayToken=(window._lexPlayToken||0)+1;
+  if(window._lexCurAudio){ try{window._lexCurAudio.pause();}catch(e){} window._lexCurAudio=null; }
+  if(window.speechSynthesis){ try{window.speechSynthesis.cancel();}catch(e){} }
+};
+
 function _lexSpeakSeg(syn, txt, langCode){
   var t=(txt||'').replace(/\*\*/g,'').replace(/\s+/g,' ').trim();
   if(!t) return;
@@ -12474,6 +12530,7 @@ function lexSpeak(text){
   if(!_lexSpeechEnabled || !window.speechSynthesis || !text) return;
   var syn=window.speechSynthesis;
   syn.cancel();
+  if(window._lexCurAudio){ try{window._lexCurAudio.pause();}catch(e){} window._lexCurAudio=null; }
   _lexLastSpokenText = text;
   var FS='\u0001'; // sentinel oddzielający fragmenty obcojęzyczne
 
@@ -12540,9 +12597,43 @@ function lexSpeak(text){
     return fin;
   }
 
+  // Płaska lista segmentów (po cięciu na kawałki), każdy ze swoim językiem
+  var segs=[];
   merged.forEach(function(q){
-    chunkText(q.t).forEach(function(c){ _lexSpeakSeg(syn, c, q.lang); });
+    chunkText(q.t).forEach(function(c){ segs.push({ t:c, lang:q.lang }); });
   });
+  if(!segs.length) return;
+
+  // Sekwencyjny odtwarzacz: chmura (ElevenLabs) per segment → fallback Web Speech.
+  // Japoński zawsze przez Web Speech. Brak kredytów (429/401) → fallback do końca sesji.
+  var myToken = (window._lexPlayToken = (window._lexPlayToken||0) + 1);
+  var cloudOn = (typeof window.LEX_TTS_CLOUD!=='undefined' && window.LEX_TTS_CLOUD) && !window._lexTtsDown;
+
+  (async function(){
+    for(var i=0;i<segs.length;i++){
+      if(myToken!==window._lexPlayToken) return;          // przerwane nową wypowiedzią
+      var seg=segs[i];
+      var base=String(seg.lang||'').split('-')[0].toLowerCase();
+      var useCloud = cloudOn && !window._lexTtsDown && base!=='ja' && base!=='jp';
+      if(useCloud){
+        try{
+          var clean=String(seg.t).replace(/\*\*/g,'').replace(/\s+/g,' ').trim();
+          if(clean){
+            var url=await lexFetchCloudAudio(clean, base);
+            if(myToken!==window._lexPlayToken) return;
+            await lexPlayUrl(url, myToken);
+            continue;
+          }
+        }catch(e){
+          // 401/429 = limit planu free → przełącz na bazowe TTS do końca sesji
+          if(e && (e.status===401 || e.status===429)){ window._lexTtsDown=true; cloudOn=false; }
+          // ten segment dograj przeglądarką (poniżej)
+        }
+      }
+      if(myToken!==window._lexPlayToken) return;
+      await lexSpeakSegAsync(seg.t, seg.lang, myToken);    // Web Speech (tu trafia też japoński)
+    }
+  })();
 }
 
 function lexUpdateAudioLangBtn(){
@@ -12573,7 +12664,7 @@ function lexToggleSpeech(){
   _lexSpeechEnabled = !_lexSpeechEnabled;
   var btn = document.getElementById('lex-speech-toggle');
   if(btn) btn.innerHTML = _lexSpeechEnabled ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="m23 9-6 6"></path><path d="m17 9 6 6"></path></svg>';
-  if(!_lexSpeechEnabled){ if(window.speechSynthesis) window.speechSynthesis.cancel(); if(typeof lexVoiceStop==='function') lexVoiceStop(); }
+  if(!_lexSpeechEnabled){ if(window.speechSynthesis) window.speechSynthesis.cancel(); if(window._lexCurAudio){ try{window._lexCurAudio.pause();}catch(e){} window._lexCurAudio=null; } window._lexPlayToken=(window._lexPlayToken||0)+1; if(typeof lexVoiceStop==='function') lexVoiceStop(); }
   try{ localStorage.setItem(uk('lex_speech'), _lexSpeechEnabled ? '1' : '0'); }catch(e){}
 }
 
@@ -13605,6 +13696,7 @@ async function lexRenderKnowChart(){
 
 async function lexEndLesson(){
   window._lexLessonRunning = false;
+  if(typeof lexStopSpeak==='function') lexStopSpeak();
   lexShowScreen('lex-summary');
   try{ lexRenderKnowChart(); }catch(e){ console.warn('[Lex] wykres:', e); }
 
