@@ -10704,6 +10704,14 @@ var LEX_LANG_MAP = {
   jp: {name:'japoński', native:'日本語', flag:'🇯🇵'}
 };
 
+// Mapa kodu języka apki → BCP47 (Web Speech) / baza dla ElevenLabs (po split '-').
+// jp → ja-JP (japoński zawsze przez Web Speech — głos ElevenLabs nie ma dubbingu JP).
+window.ttsLangCode = function(lang){
+  var L = String(lang||'').toLowerCase().split('-')[0];
+  var m = { en:'en-US', es:'es-ES', nl:'nl-NL', jp:'ja-JP', ja:'ja-JP', pl:'pl-PL' };
+  return m[L] || (L ? (L + '-' + L.toUpperCase()) : 'en-US');
+};
+
 // ── Init ──────────────────────────────────────────────────
 async function lexInit(){
   await lexLoadKey();
