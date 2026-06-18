@@ -2336,6 +2336,7 @@ window.startStudyFromModal = function startStudyFromModal(id){
   if(!s) return;
   var cards=(s.user_set_cards||[]).map(function(c){return{word:c.word||'',translation:c.translation||''};});
   if(!cards.length){typeof showToast!=='undefined'&&showToast('Brak fiszek','');return;}
+  window._trybStudyLang=s.lang||''; if(s.lang) cards.forEach(function(_c){ _c.lang=s.lang; });
   _trybExternalCards=cards; _trybExternalName=s.name;
   window._trybSource='community';
   try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet('user', s.id, s.name, null, cards.length, (window._lexLang||'en')); }catch(_e){}
@@ -2899,7 +2900,9 @@ window.matCardStartSRS=async function(setId, setName){
   try{
     var {data:cards} = await db.from('user_set_cards').select('word,translation').eq('set_id', setId);
     if(!cards||!cards.length){ if(typeof showToast==='function') showToast('Brak fiszek w tym zestawie',''); return; }
-    _trybExternalCards = cards.map(function(c){ return {word:c.word||'', translation:c.translation||''}; });
+    var _ms=(typeof _matSets!=='undefined'&&_matSets)?_matSets.find(function(x){return x.id===setId;}):null;
+    window._trybStudyLang=(_ms&&_ms.lang)||'';
+    _trybExternalCards = cards.map(function(c){ return {word:c.word||'', translation:c.translation||'', lang:(_ms&&_ms.lang)||undefined}; });
     _trybExternalName = setName||'';
     window._trybSource='strefa';
     if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
@@ -4346,7 +4349,7 @@ async function strefaStartPowtorki(){
   }
   // Sa slowa do powtorki → ekran wyboru trybu nauki z DOKLADNIE tymi slowami.
   _trybExternalCards=due.map(function(c){ return {word:c.word||'', translation:c.translation||'', flashcard_id:(c.id!=null?c.id:null)}; });
-  _trybExternalName='Powtórki na dziś';
+  window._trybStudyLang=''; _trybExternalName='Powtórki na dziś';
   window._trybSource='strefa';
   if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
   showPage('tryb');
@@ -7670,7 +7673,7 @@ async function showTrybMiniStory(){
   }
 
   try{
-    var lang=window._trybStudyLang||window._trybLang||'en';
+    var lang=(card&&card.lang)||window._trybStudyLang||window._trybLang||'en';
     var langName=({en:'angielskim',es:'hiszpańskim',nl:'niderlandzkim',jp:'japońskim'}[lang]||'angielskim');
     var prompt='Ułóż jedno naturalne, krótkie zdanie w języku '+langName+' używające słowa "'+word+'" (znaczenie po polsku: '+translation+').'
       +' Zdanie ma być przydatne do nauki, na poziomie średnim. Odpowiedz TYLKO JSON bez backticks: {"sentence":"zdanie w '+langName+'","translation_pl":"polskie tłumaczenie zdania"}';
@@ -15841,10 +15844,6 @@ async function lexInit(){
   var TTS_URL='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/tts';
   // Chmurowe TTS wyłączone, dopóki edge function nie jest wdrożona (inaczej błędy CORS w konsoli).
   // Po wdrożeniu ustaw: window.LEX_TTS_CLOUD = true;
-  // ElevenLabs (plan darmowy) wyczerpany — cloud TTS zwraca 429 na KAŻDE żądanie.
-  // Wyłączone, by nie bić w martwy endpoint: zero nieudanych fetchy i zero warningów.
-  // Po wykupieniu planu / podmianie ELEVENLABS_API_KEY USUŃ poniższą linię, by wrócić do chmury.
-  window.LEX_TTS_CLOUD = false;
   var LEX_TTS_CLOUD = (typeof window.LEX_TTS_CLOUD!=='undefined') ? window.LEX_TTS_CLOUD : false;
   var esc=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
 
@@ -15858,7 +15857,11 @@ async function lexInit(){
     if(_cache[key]) return _cache[key];
     var sess=(await db.auth.getSession()).data.session;
     var r=await fetch(TTS_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},body:JSON.stringify({text:text})});
-    if(!r.ok) throw new Error('tts '+r.status);
+    if(!r.ok){
+      var _info=''; try{ var _j=await r.json(); _info=' upstream='+(_j.upstream||'?')+' '+String(_j.detail||_j.error||''); }catch(_e){}
+      try{ window._ttsLastError={ httpStatus:r.status, info:_info.trim() }; }catch(_e2){}
+      throw new Error('tts '+r.status+_info);
+    }
     var blob=await r.blob();
     var url=URL.createObjectURL(blob);
     _cache[key]=url; return url;
