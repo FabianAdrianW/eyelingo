@@ -15845,6 +15845,14 @@ async function lexInit(){
   // Chmurowe TTS wyłączone, dopóki edge function nie jest wdrożona (inaczej błędy CORS w konsoli).
   // Po wdrożeniu ustaw: window.LEX_TTS_CLOUD = true;
   var LEX_TTS_CLOUD = (typeof window.LEX_TTS_CLOUD!=='undefined') ? window.LEX_TTS_CLOUD : false;
+  // GŁOS: głos z Voice Library (G17...) jest na DARMOWYM planie niedostępny przez API (402).
+  // Używamy wbudowanego głosu „Default" ElevenLabs (działa na free przez API do 31.12.2026).
+  // Domyślnie: George — męski, ciepły, spokojny, dojrzały (dobry do prowadzenia lekcji).
+  // Alternatywy (podmień ID poniżej lub ustaw window.LEX_TTS_VOICE):
+  //   Daniel  onwK4e9ZLuTAKqWW03F9  — głębszy, profesjonalny „lektor/prezenter"
+  //   Antoni  ErXwobaYiN019PkySvjV  — neutralny, wyważony
+  // Po wykupieniu planu wróć do głosu z biblioteki: window.LEX_TTS_VOICE='G17SuINrv2H9FC6nvetn'.
+  var LEX_TTS_VOICE = (typeof window.LEX_TTS_VOICE!=='undefined' && window.LEX_TTS_VOICE) ? window.LEX_TTS_VOICE : 'JBFqnCBsd6RMkjVDRZzb';
   var esc=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
 
   // Rdzeń metodyczny — wiedza nauczyciela (kompresja Pedagogy/Lesson Bible)
@@ -15856,7 +15864,7 @@ async function lexInit(){
     var key=text.slice(0,400);
     if(_cache[key]) return _cache[key];
     var sess=(await db.auth.getSession()).data.session;
-    var r=await fetch(TTS_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},body:JSON.stringify({text:text})});
+    var r=await fetch(TTS_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},body:JSON.stringify({text:text, voice_id:LEX_TTS_VOICE})});
     if(!r.ok){
       var _info=''; try{ var _j=await r.json(); _info=' upstream='+(_j.upstream||'?')+' '+String(_j.detail||_j.error||''); }catch(_e){}
       try{ window._ttsLastError={ httpStatus:r.status, info:_info.trim() }; }catch(_e2){}
