@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Eyelingo – See The Progress</title>
 <link rel="icon" type="image/x-icon" href="favicon.ico">
-<link rel="apple-touch-icon" href="apple-touch-icon-180.png">
+<link rel="apple-touch-icon" href="appletouchicon180.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1a2340">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2348,11 +2348,12 @@ window.closeMatModal = function closeMatModal(){
   var m=document.getElementById('mat-modal'); if(m) m.style.display='none';
 };
 
-window.startStudyFromModal = function startStudyFromModal(id){
+window.startStudyFromModal = async function startStudyFromModal(id){
   closeMatModal();
   var s=_matSets.find(function(x){return x.id===id;});
   if(!s) return;
   var cards=(s.user_set_cards||[]).map(function(c){return{word:c.word||'',translation:c.translation||''};});
+  try{ var _ir=await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id',id); if(_ir&&_ir.data&&_ir.data.length) cards=_ir.data.map(function(c){return{word:c.word||'',translation:c.translation||'',image_url:c.image_url||'',image_attr:c.image_attr||''};}); }catch(e){}
   if(!cards.length){typeof showToast!=='undefined'&&showToast('Brak fiszek','');return;}
   window._trybStudyLang=s.lang||''; if(s.lang) cards.forEach(function(_c){ _c.lang=s.lang; });
   _trybExternalCards=cards; _trybExternalName=s.name;
@@ -9710,10 +9711,10 @@ async function strefaSelectUserSet(setId, setNameEnc){
   var setName = decodeURIComponent(setNameEnc);
   setBreadcrumb('Moje zestawy → ' + setName);
   try{
-    var {data:cards} = await db.from('user_set_cards').select('word,translation').eq('set_id', setId);
+    var {data:cards} = await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id', setId);
     if(!cards||!cards.length){ strefaShowCenter('<div style="padding:20px;color:var(--dim2)">Brak fiszek w tym zestawie</div>'); return; }
     strefaShowWordPreview(cards, setName, function(){
-      _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||''}; });
+      _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',image_url:c.image_url||'',image_attr:c.image_attr||''}; });
       _trybExternalName = setName;
       window._trybSource='strefa';
       RewardSystem.load();
