@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a2340">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Eyelingo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#1a2340; --navy2:#0f1729; --orange:#c96a2a; --orange2:#e07830;
+    --paper:#f8f7f4; --paper2:#f0eee9; --white:#fff;
+    --ink:#1a2340; --dim:#5b6478; --dim2:#8b93a6; --line:#e7e3da; --line2:#d9d4c8;
+    --success:#0F6E56; --success-bg:#E1F5EE;
+    --r:14px; --r-sm:10px;
+    --safe-top:env(safe-area-inset-top,0px);
+    --safe-bot:env(safe-area-inset-bottom,0px);
+    font-family:'Inter',-apple-system,system-ui,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:#2a2e3a;overflow:hidden;font-family:'Inter',sans-serif}
+  body{display:flex;align-items:center;justify-content:center}
+
+  /* --- Ramka telefonu na desktopie; pełny ekran na telefonie --- */
+  .phone{
+    position:relative;width:100%;max-width:402px;height:100%;max-height:874px;
+    background:var(--paper);overflow:hidden;display:flex;flex-direction:column;
+    border-radius:0;box-shadow:0 30px 80px rgba(0,0,0,.45);
+  }
+  @media(min-width:440px){ .phone{border-radius:46px;border:11px solid #0a0c12;height:874px} }
+  @media(max-width:439px){ body{background:var(--paper)} .phone{box-shadow:none} }
+
+  .app{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
+
+  /* --- Top bar --- */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:calc(var(--safe-top) + 14px) 20px 12px;flex-shrink:0;
+  }
+  .brand{display:flex;align-items:center;gap:9px}
+  .brand .mark{width:30px;height:30px;flex-shrink:0}
+  .brand .wm{font-family:'DM Sans';font-weight:600;font-size:18px;letter-spacing:.5px;color:var(--navy)}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--navy);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+
+  /* --- Strefa ekranów --- */
+  .screens{flex:1;min-height:0;position:relative}
+  .screen{position:absolute;inset:0;display:none;flex-direction:column;min-height:0;
+    animation:fade .22s ease}
+  .screen.active{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 20px 16px}
+  .scroll::-webkit-scrollbar{display:none}
+
+  .eyebrow{font-size:10.5px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2)}
+  .h1{font-size:26px;font-weight:600;color:var(--navy);letter-spacing:-.3px;line-height:1.15}
+  .h2{font-size:17px;font-weight:600;color:var(--navy)}
+  .sub{font-size:14px;color:var(--dim);line-height:1.5}
+
+  /* --- Karty --- */
+  .card{background:var(--white);border:.5px solid var(--line);border-radius:var(--r);padding:18px}
+  .card-hero{background:var(--navy);color:#fff;border:none}
+  .card+.card{margin-top:12px}
+
+  /* PULL card */
+  .pull{display:flex;align-items:center;gap:16px;cursor:pointer;transition:.15s}
+  .pull:active{transform:scale(.985)}
+  .pull .num{font-size:34px;font-weight:600;line-height:1;color:#fff}
+  .pull .ring{width:54px;height:54px;border-radius:50%;border:2px solid var(--orange);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .pull .txt{flex:1}
+  .pull .chev{color:rgba(255,255,255,.5)}
+
+  /* listy zestawów */
+  .set{display:flex;flex-direction:column;gap:11px;cursor:pointer;transition:.15s}
+  .set:active{transform:scale(.99)}
+  .set-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .set-name{font-size:15.5px;font-weight:600;color:var(--navy)}
+  .set-meta{font-size:12px;color:var(--dim2)}
+  .set-due{font-size:11.5px;font-weight:600;color:var(--orange);white-space:nowrap}
+  .segs{display:flex;gap:3px}
+  .seg{height:5px;flex:1;border-radius:3px;background:var(--line2)}
+  .seg.on{background:var(--navy)}
+  .seg.mat{background:var(--orange)}
+
+  /* --- Sesja SRS (immersive) --- */
+  .immersive{position:absolute;inset:0;background:var(--paper);display:none;flex-direction:column;z-index:30}
+  .immersive.active{display:flex;animation:fade .22s ease}
+  .imm-bar{display:flex;align-items:center;gap:12px;padding:calc(var(--safe-top) + 14px) 18px 8px;flex-shrink:0}
+  .icon-btn{width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--dim);
+    display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .icon-btn:active{background:var(--paper2)}
+  .progress-segs{flex:1;display:flex;gap:4px}
+  .progress-segs .s{height:4px;flex:1;border-radius:2px;background:var(--line2);transition:.3s}
+  .progress-segs .s.done{background:var(--orange)}
+  .progress-segs .s.cur{background:var(--navy)}
+
+  .srs-body{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;
+    padding:8px 26px;text-align:center;min-height:0}
+  .srs-label{font-size:10.5px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2);margin-bottom:22px}
+  .srs-word{font-size:34px;font-weight:600;color:var(--navy);letter-spacing:-.5px;margin-bottom:6px;
+    display:flex;align-items:center;gap:12px}
+  .srs-pos{font-size:13px;color:var(--dim2);font-style:italic;margin-bottom:24px}
+  .srs-sent{font-size:16.5px;line-height:1.6;color:var(--dim);max-width:300px}
+  .srs-sent .gap{color:var(--navy);border-bottom:2px solid var(--orange);padding:0 22px}
+  .srs-answer{display:none}
+  .srs-answer.show{display:block;animation:fade .25s ease}
+  .speak{width:30px;height:30px;border-radius:50%;border:1px solid var(--line2);background:#fff;
+    display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--navy);vertical-align:middle}
+  .speak:active{background:var(--paper2)}
+
+  .srs-hint{font-size:12.5px;color:var(--dim2);margin-top:20px}
+
+  /* dolna strefa akcji (kciuk) */
+  .thumb{flex-shrink:0;padding:14px 18px calc(var(--safe-bot) + 16px)}
+  .btn{width:100%;border:none;border-radius:var(--r-sm);font-family:inherit;font-size:15.5px;
+    font-weight:600;padding:16px;cursor:pointer;transition:.15s}
+  .btn:active{transform:scale(.98)}
+  .btn-orange{background:var(--orange);color:#fff}
+  .btn-orange:active{background:var(--orange2)}
+  .btn-navy{background:var(--navy);color:#fff}
+  .btn-ghost{background:transparent;border:.5px solid var(--line2);color:var(--dim)}
+
+  .rate{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .rate button{border:none;border-radius:var(--r-sm);padding:15px 8px;cursor:pointer;font-family:inherit;
+    font-size:14px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;transition:.15s}
+  .rate button:active{transform:scale(.96)}
+  .rate .lab{font-size:14px}
+  .rate .when{font-size:10.5px;font-weight:500;opacity:.7}
+  .r-no{background:var(--paper2);color:var(--navy)}
+  .r-hard{background:#fbeee2;color:#9a4d18}
+  .r-good{background:#e8efe9;color:var(--success)}
+  .r-easy{background:var(--navy);color:#fff}
+
+  /* --- Lex start --- */
+  .goal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  .goal{border:.5px solid var(--line);background:#fff;border-radius:var(--r-sm);padding:16px 14px;cursor:pointer;transition:.15s}
+  .goal:active{transform:scale(.98)}
+  .goal.sel{border:2px solid var(--orange);background:#fff}
+  .goal .gt{font-size:14.5px;font-weight:600;color:var(--navy)}
+  .goal .gd{font-size:11.5px;color:var(--dim2);margin-top:2px}
+  .pills{display:flex;gap:8px;margin-top:12px}
+  .pill{flex:1;border:.5px solid var(--line2);background:#fff;border-radius:100px;padding:11px;text-align:center;
+    font-size:13.5px;font-weight:600;color:var(--dim);cursor:pointer;transition:.15s}
+  .pill.sel{background:var(--navy);color:#fff;border-color:var(--navy)}
+
+  /* --- Lex run --- */
+  .lex-card{background:var(--navy);color:#fff;border-radius:var(--r);padding:16px 18px;margin:0 0 16px}
+  .lex-who{font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:7px}
+  .lex-say{font-size:15px;line-height:1.55}
+  .lex-say .key{color:var(--orange2);font-weight:600}
+  .lex-ex{flex:1;display:flex;flex-direction:column;justify-content:center;padding:4px 20px;min-height:0}
+  .lex-q{font-size:18px;line-height:1.6;color:var(--navy);text-align:center;margin-bottom:20px}
+  .lex-q .blank{display:inline-block;min-width:90px;border-bottom:2px solid var(--orange);margin:0 4px}
+  .lex-input{width:100%;border:.5px solid var(--line2);border-radius:var(--r-sm);padding:15px;
+    font-family:inherit;font-size:16px;color:var(--navy);text-align:center;outline:none}
+  .lex-input:focus{border-color:var(--orange)}
+  .tiles{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .tile{border:.5px solid var(--line2);background:#fff;border-radius:8px;padding:10px 14px;font-size:14.5px;
+    font-weight:500;color:var(--navy);cursor:pointer;transition:.15s}
+  .tile:active{transform:scale(.95)}
+  .tile.used{opacity:.35;pointer-events:none}
+  .build{min-height:48px;border-bottom:2px solid var(--line2);margin-bottom:18px;padding:8px 4px;
+    display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center}
+  .build .bt{background:var(--paper2);border-radius:7px;padding:7px 11px;font-size:14.5px;color:var(--navy)}
+  .feedback{font-size:14px;line-height:1.5;padding:13px 15px;border-radius:var(--r-sm);margin-top:14px;display:none}
+  .feedback.ok{display:block;background:var(--success-bg);color:var(--success)}
+
+  /* tab bar */
+  .tabbar{display:flex;flex-shrink:0;border-top:.5px solid var(--line);background:rgba(248,247,244,.92);
+    backdrop-filter:blur(12px);padding:8px 12px calc(var(--safe-bot) + 8px)}
+  .tab{flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;
+    gap:4px;padding:6px 0;color:var(--dim2);font-family:inherit;font-size:11px;font-weight:500;transition:.15s}
+  .tab.active{color:var(--navy)}
+  .tab.active .ti{color:var(--orange)}
+  .tab .dot{width:5px;height:5px;border-radius:50%;background:var(--orange);position:absolute;margin:-2px 0 0 13px}
+
+  .hide{display:none!important}
+  .row-between{display:flex;align-items:center;justify-content:space-between}
+  .mb4{margin-bottom:4px}.mb8{margin-bottom:8px}.mb16{margin-bottom:16px}.mb24{margin-bottom:24px}
+  .center{text-align:center}
+  .note{font-size:11.5px;color:var(--dim2);text-align:center;padding:10px 24px}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="app">
+
+    <!-- TOP BAR -->
+    <div class="topbar" id="topbar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 40 40" fill="none">
+          <circle cx="20" cy="20" r="17" stroke="#c96a2a" stroke-width="2.4" stroke-dasharray="78 22" stroke-linecap="round" transform="rotate(120 20 20)"/>
+          <path d="M20 9c-2 0-3 1.4-3 3 0 1.3.8 2.2 1.6 2.8C16 16 14.5 18 14.5 21v.5h11V21c0-3-1.5-5-4.1-6.2.8-.6 1.6-1.5 1.6-2.8 0-1.6-1-3-3-3z" stroke="#1a2340" stroke-width="1.7" stroke-linejoin="round"/>
+          <rect x="16" y="18.5" width="8" height="5" rx="1" stroke="#c96a2a" stroke-width="1.5"/>
+          <path d="M13 28c0-2.5 3-4 7-4s7 1.5 7 4" stroke="#1a2340" stroke-width="1.7" stroke-linecap="round"/>
+          <line x1="12" y1="28.5" x2="28" y2="28.5" stroke="#1a2340" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+        <span class="wm">Eyelingo</span>
+      </div>
+      <div class="avatar">FA</div>
+    </div>
+
+    <!-- SCREENS -->
+    <div class="screens">
+
+      <!-- ====== DZIŚ ====== -->
+      <section class="screen active" id="s-dzis">
+        <div class="scroll">
+          <div class="mb24" style="padding-top:6px">
+            <div class="eyebrow mb8">Środa, 19 czerwca</div>
+            <div class="h1">Dzień dobry, Fabian.</div>
+          </div>
+
+          <div class="card card-hero pull mb16" onclick="openSRS('Business English — Core')">
+            <div class="ring"><div class="num">12</div></div>
+            <div class="txt">
+              <div style="font-size:15px;font-weight:600;margin-bottom:2px">Słowa dojrzały do powtórki</div>
+              <div style="font-size:12.5px;color:rgba(255,255,255,.6)">Krótka sesja, ok. 4 minuty</div>
+            </div>
+            <svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+
+          <div class="card" onclick="go('lex');" style="cursor:pointer">
+            <div class="row-between mb8">
+              <div class="eyebrow">Ostatnia lekcja</div>
+              <span class="set-due">Wznów</span>
+            </div>
+            <div class="h2 mb4">Negocjacje — krok 3 z 5</div>
+            <div class="sub">Przerwałeś w fazie ćwiczeń. Możesz dokończyć tutaj albo na komputerze.</div>
+          </div>
+
+          <div class="card">
+            <div class="eyebrow mb8">Mapa językowa</div>
+            <div class="row-between">
+              <div><div class="h2">B2 · angielski</div><div class="sub">214 słów w obiegu, 38 dojrzałych</div></div>
+            </div>
+          </div>
+
+          <div class="note">Bez serii, bez punktów. Wracasz, kiedy masz chwilę.</div>
+        </div>
+      </section>
+
+      <!-- ====== FISZKI ====== -->
+      <section class="screen" id="s-fiszki">
+        <div class="scroll">
+          <div class="mb16" style="padding-top:6px"><div class="h1">Fiszki</div></div>
+
+          <div class="card set mb16" onclick="openSRS('Business English — Core')">
+            <div class="set-top"><span class="set-name">Business English — Core</span><span class="set-due">12 do powtórki</span></div>
+            <div class="segs"><i class="seg mat"></i><i class="seg mat"></i><i class="seg on"></i><i class="seg on"></i><i class="seg on"></i><i class="seg"></i><i class="seg"></i><i class="seg"></i></div>
+            <div class="set-meta">angielski · 142 słowa</div>
+          </div>
+
+          <div class="card set mb16" onclick="openSRS('Negocjacje i spotkania')">
+            <div class="set-top"><span class="set-name">Negocjacje i spotkania</span><span class="set-due">5 do powtórki</span></div>
+            <div class="segs"><i class="seg mat"></i><i class="seg on"></i><i class="seg on"></i><i class="seg"></i><i class="seg"></i><i class="seg"></i><i class="seg"></i><i class="seg"></i></div>
+            <div class="set-meta">angielski · 88 słów</div>
+          </div>
+
+          <div class="card set mb16" onclick="openSRS('Medical English')">
+            <div class="set-top"><span class="set-name">Medical English</span><span class="set-meta">na bieżąco</span></div>
+            <div class="segs"><i class="seg mat"></i><i class="seg mat"></i><i class="seg mat"></i><i class="seg on"></i><i class="seg on"></i><i class="seg on"></i><i class="seg on"></i><i class="seg"></i></div>
+            <div class="set-meta">angielski · 210 słów</div>
+          </div>
+
+          <div class="card set" style="border-style:dashed;border-color:var(--line2)" onclick="alert('Tworzenie zestawu — do podpięcia')">
+            <div class="set-top"><span class="set-name" style="color:var(--dim)">+ Nowy zestaw</span></div>
+            <div class="set-meta">Dodaj własne słowa lub zaimportuj</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====== LEX (start) ====== -->
+      <section class="screen" id="s-lex">
+        <div class="scroll">
+          <div class="mb8" style="padding-top:6px"><div class="h1">Lekcja z Lexem</div></div>
+          <div class="sub mb24">Lex ułoży lekcję na słowach z Twojego zestawu. Wybierz, na czym się skupić.</div>
+
+          <div class="eyebrow">Cel</div>
+          <div class="goal-grid mb24">
+            <div class="goal sel" onclick="selGoal(this)"><div class="gt">Ogólny</div><div class="gd">Codzienny angielski</div></div>
+            <div class="goal" onclick="selGoal(this)"><div class="gt">Biznes</div><div class="gd">Spotkania, maile</div></div>
+            <div class="goal" onclick="selGoal(this)"><div class="gt">Podróże</div><div class="gd">W terenie</div></div>
+            <div class="goal" onclick="selGoal(this)"><div class="gt">Egzamin</div><div class="gd">Pod cel formalny</div></div>
+          </div>
+
+          <div class="eyebrow">Długość</div>
+          <div class="pills mb24">
+            <div class="pill sel" onclick="selPill(this)">10 min</div>
+            <div class="pill" onclick="selPill(this)">25 min</div>
+          </div>
+        </div>
+        <div class="thumb">
+          <button class="btn btn-orange" onclick="openLex()">Rozpocznij lekcję</button>
+        </div>
+      </section>
+
+      <!-- ====== PROFIL (placeholder) ====== -->
+      <section class="screen" id="s-profil">
+        <div class="scroll"><div class="h1 mb16" style="padding-top:6px">Profil</div>
+          <div class="card mb16"><div class="h2 mb4">Fabian Adrian</div><div class="sub">Zsynchronizowano z komputerem przed chwilą</div></div>
+          <div class="card"><div class="eyebrow mb8">Widget i powiadomienia</div><div class="sub">Ekran blokady, ciche przypomnienia w oknie aktywacji.</div></div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- TAB BAR -->
+    <nav class="tabbar" id="tabbar">
+      <button class="tab active" id="t-dzis" onclick="go('dzis')">
+        <svg class="ti" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l9-9 9 9"/><path d="M5 10v10h14V10"/></svg>Dziś</button>
+      <button class="tab" id="t-fiszki" onclick="go('fiszki')">
+        <span class="dot"></span>
+        <svg class="ti" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>Fiszki</button>
+      <button class="tab" id="t-lex" onclick="go('lex')">
+        <svg class="ti" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18"/><path d="M5 7c2.5-1.5 5-1.5 7 0 2-1.5 4.5-1.5 7 0v11c-2.5-1.5-5-1.5-7 0-2-1.5-4.5-1.5-7 0z"/></svg>Lex</button>
+    </nav>
+
+    <!-- ====== SESJA SRS (immersive) ====== -->
+    <div class="immersive" id="imm-srs">
+      <div class="imm-bar">
+        <button class="icon-btn" onclick="closeImm('imm-srs')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        <div class="progress-segs" id="srs-prog"></div>
+      </div>
+      <div class="srs-body">
+        <div class="srs-label" id="srs-set">Business English</div>
+        <div class="srs-sent" id="srs-front"></div>
+        <div class="srs-answer" id="srs-back">
+          <div class="srs-word"><span id="srs-word"></span>
+            <button class="speak" onclick="event.stopPropagation()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button>
+          </div>
+          <div class="srs-pos" id="srs-pos"></div>
+          <div class="srs-full sub" id="srs-full"></div>
+        </div>
+        <div class="srs-hint" id="srs-hint">Spróbuj przypomnieć sobie słowo</div>
+      </div>
+      <div class="thumb" id="srs-thumb">
+        <button class="btn btn-navy" id="srs-reveal" onclick="reveal()">Pokaż odpowiedź</button>
+        <div class="rate hide" id="srs-rate">
+          <button class="r-no" onclick="rate()"><span class="lab">Nie wiem</span><span class="when">znów dziś</span></button>
+          <button class="r-hard" onclick="rate()"><span class="lab">Trudne</span><span class="when">za 2 dni</span></button>
+          <button class="r-good" onclick="rate()"><span class="lab">Dobrze</span><span class="when">za 6 dni</span></button>
+          <button class="r-easy" onclick="rate()"><span class="lab">Łatwe</span><span class="when">za 14 dni</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== LEKCJA LEX (immersive) ====== -->
+    <div class="immersive" id="imm-lex">
+      <div class="imm-bar">
+        <button class="icon-btn" onclick="closeImm('imm-lex')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        <div class="progress-segs" id="lex-prog"></div>
+      </div>
+      <div class="lex-ex" id="lex-stage"></div>
+      <div class="thumb" id="lex-thumb"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ---------- Nawigacja zakładek ---------- */
+function go(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('s-'+name).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  var t=document.getElementById('t-'+name); if(t) t.classList.add('active');
+}
+function closeImm(id){ document.getElementById(id).classList.remove('active'); }
+
+/* ---------- Dane przykładowe (potem z Supabase) ---------- */
+const DECK = [
+  {front:'The team relies on his <span class="gap"></span> to close deals.', pl:'wpływ / pozycja', word:'leverage', pos:'rzeczownik', full:'The team relies on his leverage to close deals.'},
+  {front:'We need to <span class="gap"></span> the new policy by Friday.', pl:'wdrożyć', word:'implement', pos:'czasownik', full:'We need to implement the new policy by Friday.'},
+  {front:'Every <span class="gap"></span> was informed before the launch.', pl:'interesariusz', word:'stakeholder', pos:'rzeczownik', full:'Every stakeholder was informed before the launch.'},
+  {front:'Her feedback was <span class="gap"></span> and easy to act on.', pl:'konkretny', word:'actionable', pos:'przymiotnik', full:'Her feedback was actionable and easy to act on.'},
+  {front:'Let\'s <span class="gap"></span> the scope before we commit.', pl:'doprecyzować', word:'clarify', pos:'czasownik', full:'Let\'s clarify the scope before we commit.'},
+];
+let di=0;
+
+function openSRS(setName){
+  di=0; document.getElementById('srs-set').textContent=setName;
+  buildProg('srs-prog', DECK.length);
+  renderCard();
+  document.getElementById('imm-srs').classList.add('active');
+}
+function buildProg(id,n){
+  var p=document.getElementById(id); p.innerHTML='';
+  for(let i=0;i<n;i++){var s=document.createElement('i');s.className='s';p.appendChild(s);}
+}
+function setProg(id,cur){
+  document.querySelectorAll('#'+id+' .s').forEach((s,i)=>{
+    s.classList.remove('done','cur');
+    if(i<cur)s.classList.add('done'); else if(i===cur)s.classList.add('cur');
+  });
+}
+function renderCard(){
+  var c=DECK[di];
+  document.getElementById('srs-front').innerHTML=c.front;
+  document.getElementById('srs-word').textContent=c.word;
+  document.getElementById('srs-pos').textContent=c.pos+' · '+c.pl;
+  document.getElementById('srs-full').textContent=c.full;
+  document.getElementById('srs-back').classList.remove('show');
+  document.getElementById('srs-hint').style.visibility='visible';
+  document.getElementById('srs-reveal').classList.remove('hide');
+  document.getElementById('srs-rate').classList.add('hide');
+  setProg('srs-prog',di);
+}
+function reveal(){
+  document.getElementById('srs-back').classList.add('show');
+  document.getElementById('srs-hint').style.visibility='hidden';
+  document.getElementById('srs-reveal').classList.add('hide');
+  document.getElementById('srs-rate').classList.remove('hide');
+  if(navigator.vibrate)navigator.vibrate(8);
+}
+function rate(){
+  if(navigator.vibrate)navigator.vibrate(6);
+  di++;
+  if(di>=DECK.length){ srsDone(); return; }
+  renderCard();
+}
+function srsDone(){
+  setProg('srs-prog',DECK.length);
+  document.querySelector('#imm-srs .srs-body').innerHTML=
+    '<div class="srs-label">Sesja zakończona</div>'+
+    '<div class="h1 mb8" style="max-width:280px">5 słów powtórzonych.</div>'+
+    '<div class="sub" style="max-width:280px">Trzy z nich przeszły dalej w obiegu. Wrócą, kiedy będzie trzeba.</div>';
+  document.getElementById('srs-thumb').innerHTML=
+    '<button class="btn btn-navy" onclick="closeImm(\'imm-srs\');location.reload()">Gotowe</button>';
+}
+
+/* ---------- Lex start ---------- */
+function selGoal(el){document.querySelectorAll('.goal').forEach(g=>g.classList.remove('sel'));el.classList.add('sel');}
+function selPill(el){document.querySelectorAll('.pill').forEach(p=>p.classList.remove('sel'));el.classList.add('sel');}
+
+/* ---------- Lekcja Lex (krok po kroku) ---------- */
+const LEX=[
+  {type:'cue', who:'Lex', say:'Zaczniemy od słowa, które masz w zestawie biznesowym. Spójrz na zdanie i zgadnij znaczenie z kontekstu.',
+   q:'The project\'s main <span class="key">stakeholder</span> approved the budget today.',
+   reveal:'„stakeholder" = interesariusz — osoba lub strona z interesem w projekcie.', btn:'Rozumiem'},
+  {type:'gap', who:'Lex', say:'Teraz Ty. Wstaw właściwe słowo — bez podpowiedzi, z pamięci.',
+   q:'Every <span class="blank"></span> was informed before the launch.', answer:'stakeholder', btn:'Sprawdź'},
+  {type:'sculpt', who:'Lex', say:'Złóż zdanie z kafelków tak, by miało sens.',
+   tiles:['We','need','to','clarify','the','scope'], target:'We need to clarify the scope', btn:'Sprawdź'},
+  {type:'close', who:'Lex', say:'Cały tydzień mijałeś „stakeholder" w mailach. Przed chwilą użyłeś go bez wahania. To jest ten postęp.', btn:'Zakończ lekcję'}
+];
+let li=0;
+function openLex(){ li=0; buildProg('lex-prog',LEX.length); renderLex(); document.getElementById('imm-lex').classList.add('active'); }
+function renderLex(){
+  setProg('lex-prog',li);
+  var step=LEX[li], st=document.getElementById('lex-stage'), tb=document.getElementById('lex-thumb');
+  var head='<div class="lex-card"><div class="lex-who">'+step.who+'</div><div class="lex-say">'+step.say+'</div></div>';
+
+  if(step.type==='cue'){
+    st.innerHTML=head+'<div class="lex-q">'+step.q+'</div><div class="feedback" id="fb"></div>';
+    tb.innerHTML='<button class="btn btn-navy" onclick="lexCue()">Pokaż znaczenie</button>';
+  }
+  else if(step.type==='gap'){
+    st.innerHTML=head+'<div class="lex-q">'+step.q+'</div><input class="lex-input" id="lexin" placeholder="wpisz słowo" autocomplete="off"><div class="feedback" id="fb"></div>';
+    tb.innerHTML='<button class="btn btn-orange" onclick="lexCheck()">'+step.btn+'</button>';
+  }
+  else if(step.type==='sculpt'){
+    var t=step.tiles.map((w,i)=>'<button class="tile" data-i="'+i+'" onclick="pick(this)">'+w+'</button>').join('');
+    st.innerHTML=head+'<div class="build" id="build"></div><div class="tiles">'+t+'</div><div class="feedback" id="fb"></div>';
+    tb.innerHTML='<button class="btn btn-orange" onclick="lexSculpt()">'+step.btn+'</button>';
+  }
+  else if(step.type==='close'){
+    st.innerHTML='<div class="srs-body" style="padding:8px 26px"><div class="srs-label">Domknięcie</div>'+
+      '<div class="lex-card" style="margin-bottom:0"><div class="lex-who">Lex</div><div class="lex-say">'+step.say+'</div></div></div>';
+    tb.innerHTML='<button class="btn btn-navy" onclick="closeImm(\'imm-lex\');go(\'dzis\')">'+step.btn+'</button>';
+  }
+}
+function lexCue(){ var c=LEX[li]; var fb=document.getElementById('fb'); fb.textContent=c.reveal; fb.className='feedback ok';
+  document.getElementById('lex-thumb').innerHTML='<button class="btn btn-orange" onclick="lexNext()">'+c.btn+'</button>'; }
+function lexCheck(){ var v=(document.getElementById('lexin').value||'').trim().toLowerCase(); var fb=document.getElementById('fb');
+  if(v===LEX[li].answer){ fb.textContent='Dokładnie. „'+LEX[li].answer+'" pasuje tu idealnie.'; fb.className='feedback ok'; if(navigator.vibrate)navigator.vibrate(8);
+    document.getElementById('lex-thumb').innerHTML='<button class="btn btn-orange" onclick="lexNext()">Dalej</button>'; }
+  else { fb.textContent='Blisko. Pomyśl o osobie z interesem w projekcie — zaczyna się na „s".'; fb.className='feedback ok'; fb.style.background='#fbeee2'; fb.style.color='#9a4d18'; }
+}
+let built=[];
+function pick(el){ built.push({w:el.textContent,el:el}); el.classList.add('used');
+  document.getElementById('build').innerHTML=built.map(b=>'<span class="bt">'+b.w+'</span>').join(''); }
+function lexSculpt(){ var fb=document.getElementById('fb'); var s=built.map(b=>b.w).join(' ');
+  if(s===LEX[li].target){ fb.textContent='Brzmi naturalnie. Tak powiedziałby native.'; fb.className='feedback ok'; if(navigator.vibrate)navigator.vibrate(8);
+    document.getElementById('lex-thumb').innerHTML='<button class="btn btn-orange" onclick="lexNext()">Dalej</button>'; }
+  else { fb.textContent='Prawie. Kolejność trochę inna — spróbuj od „We".'; fb.className='feedback ok'; fb.style.background='#fbeee2'; fb.style.color='#9a4d18'; } }
+function lexNext(){ built=[]; li++; if(li>=LEX.length){li=LEX.length-1;} renderLex(); }
+</script>
+</body>
+</html>
