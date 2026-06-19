@@ -1177,8 +1177,8 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 
 /* ═══ FISZKA 3D FLIP ═══ */
 .tryb-card-scene{width:100%;cursor:pointer}
-.tryb-card-flipper{position:relative;width:100%;min-height:300px}
-.tryb-card-front,.tryb-card-back{position:absolute;inset:0;width:100%;min-height:300px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;box-sizing:border-box;text-align:center;transition:opacity .28s ease,transform .28s ease;will-change:opacity,transform}
+.tryb-card-flipper{position:relative;display:grid;width:100%;min-height:300px}
+.tryb-card-front,.tryb-card-back{grid-area:1/1;width:100%;min-height:300px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 26px;box-sizing:border-box;text-align:center;transition:opacity .28s ease,transform .28s ease;will-change:opacity,transform}
 .tryb-card-front{background:#fff;color:var(--navy);cursor:pointer;border:1.5px solid var(--border);box-shadow:0 10px 32px rgba(26,35,64,.08);opacity:1;transform:none;z-index:2}
 .tryb-card-back{background:#fff;color:var(--navy);border:1.5px solid var(--border);border-top:3px solid var(--orange);box-shadow:0 10px 32px rgba(26,35,64,.08);opacity:0;transform:translateY(8px);pointer-events:none;z-index:1}
 .tryb-card-flipper.flipped .tryb-card-front{opacity:0;transform:translateY(-8px);pointer-events:none}
@@ -2320,11 +2320,28 @@ window.showSetModal = function showSetModal(s, editMode){
   } else {
     html+='<div style="margin-bottom:14px"><button onclick="addSetToMine('+s.id+')" class="btn btn-orange" style="font-size:12px;padding:7px 16px">+ Dodaj do moich</button></div>';
   }
-  html+='<div class="mat-modal-cards">'+cards.slice(0,50).map(function(c){
+  html+='<div class="mat-modal-cards" id="mat-modal-cards">'+cards.slice(0,50).map(function(c){
     return '<div class="mat-modal-row"><span>'+esc(c.word||'')+'</span><span class="mat-modal-tr">'+esc(c.translation||'')+'</span></div>';
   }).join('')+'</div>';
   if(body) body.innerHTML=html;
   modal.style.display='flex';
+  try{ window.matFillSetPreviewImages(s.id); }catch(e){}
+};
+
+window.matFillSetPreviewImages = async function(setId){
+  try{
+    var r=await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id',setId).limit(50);
+    var cards=(r&&r.data)||[]; if(!cards.length) return;
+    if(!cards.some(function(c){return c.image_url;})) return;
+    if(!(_matModal && _matModal.id===setId)) return;
+    var box=document.getElementById('mat-modal-cards'); if(!box) return;
+    box.innerHTML=cards.map(function(c){
+      var thumb=c.image_url
+        ? '<img src="'+esc(c.image_url)+'" alt="" loading="lazy" style="width:34px;height:34px;border-radius:7px;object-fit:cover;border:.5px solid var(--border);flex-shrink:0">'
+        : '<span style="width:34px;height:34px;border-radius:7px;background:var(--paper);border:.5px solid var(--border);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--border2)" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span>';
+      return '<div class="mat-modal-row" style="display:flex;align-items:center;gap:10px">'+thumb+'<span style="flex:1">'+esc(c.word||'')+'</span><span class="mat-modal-tr" style="text-align:right">'+esc(c.translation||'')+'</span></div>';
+    }).join('');
+  }catch(e){}
 };
 
 window.closeMatModal = function closeMatModal(){
@@ -8491,9 +8508,9 @@ function injectTrybPage(){
     +'<div class="tryb-card-back" id="tryb-a-side">'
     +'<div id="tryb-card-word-ans" style="font-family:DM Sans,sans-serif;font-size:28px;font-weight:500;color:var(--navy);margin-bottom:6px"></div>'
     +'<div id="tryb-card-answer" style="font-size:20px;color:var(--orange);font-weight:500;margin-bottom:10px"></div>'
-    +'<div id="tryb-card-image-wrap" style="display:none;width:100%;max-width:230px;margin:0 auto 12px">'
-    +'<img id="tryb-card-image" alt="" style="width:100%;max-height:118px;object-fit:cover;border-radius:12px;border:.5px solid var(--border);display:block">'
-    +'<div id="tryb-card-image-attr" style="font-size:10px;color:var(--dim2);margin-top:5px;text-align:center;line-height:1.35"></div>'
+    +'<div id="tryb-card-image-wrap" style="display:none;width:100%;max-width:188px;margin:2px auto 10px">'
+    +'<img id="tryb-card-image" alt="" style="width:100%;max-height:88px;object-fit:cover;border-radius:11px;border:.5px solid var(--border);display:block">'
+    +'<div id="tryb-card-image-attr" style="font-size:9.5px;color:var(--dim2);margin-top:4px;text-align:center;line-height:1.3"></div>'
     +'</div>'
     +'<div id="tryb-result-icon" style="font-size:20px;margin-bottom:4px"></div>'
     +'<div id="tryb-user-wrote" style="font-size:12px;color:var(--dim2);margin-bottom:12px"></div>'
@@ -16398,7 +16415,8 @@ async function lexInit(){
     var qs='q='+encodeURIComponent(query)+'&page_size=9&mature=false';
     try{
       var res=await fetch('https://api.openverse.org/v1/images/?'+qs, {headers:{'Accept':'application/json'}});
-      if(res.ok){ return mapResults(await res.json()); }
+      if(res.status===429){ window._elImgRateLimited=true; }
+      if(res.ok){ window._elImgRateLimited=false; return mapResults(await res.json()); }
     }catch(e){}
     if(window.EL_IMG_PROXY_URL){
       try{
@@ -16441,7 +16459,7 @@ async function lexInit(){
       var q=qEl.value.trim(); if(!q){ status.textContent='Wpisz, czego szuka\u0107.'; return; }
       status.textContent='Szukam\u2026'; grid.innerHTML='';
       window.elImgSearch(q).then(function(items){
-        if(!items.length){ status.textContent='Brak wynik\u00f3w. Spr\u00f3buj prostszego/angielskiego s\u0142owa.'; return; }
+        if(!items.length){ status.textContent=(window._elImgRateLimited?'Za dużo zapytań do Openverse — spróbuj za chwilę.':'Brak wyników. Spróbuj prostszego/angielskiego słowa.'); return; }
         status.textContent=items.length+' wynik\u00f3w \u2014 kliknij, aby wybra\u0107.';
         items.forEach(function(it){
           var c=document.createElement('div'); c.className='elimg-cell';
@@ -16458,15 +16476,19 @@ async function lexInit(){
     if(seedWord) run();
   };
   window.elImgAutoAttach = async function(cards, onProgress){
-    var targets=cards.filter(function(c){ return c.concrete && c.image_query && !(c.image_url); }).slice(0,24);
-    var done=0, i=0, CONC=3;
+    var targets=cards.filter(function(c){ return c.concrete && c.image_query && !(c.image_url); }).slice(0,20);
+    var done=0, i=0, CONC=2;
+    function _sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
     async function worker(){
       while(i<targets.length){
+        if(window._elImgRateLimited) break;
         var c=targets[i++];
         try{ var items=await window.elImgSearch(c.image_query); if(items&&items[0]){ c.image_url=items[0].url; c.image_attr=items[0].attr; } }catch(e){}
         done++; if(onProgress) onProgress(done, targets.length);
+        await _sleep(150);
       }
     }
+    window._elImgRateLimited=false;
     var ws=[]; for(var k=0;k<CONC;k++) ws.push(worker());
     await Promise.all(ws);
     return cards;
