@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a2340">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Eyelingo</title>
+<link rel="apple-touch-icon" href="apple-touch-icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{--navy:#1a2340;--navy2:#0f1729;--orange:#c96a2a;--orange2:#e07830;--paper:#f8f7f4;--paper2:#f0eee9;--white:#fff;
+    --dim:#5b6478;--dim2:#8b93a6;--line:#e7e3da;--line2:#d9d4c8;--success:#0F6E56;--error:#A32D2D;--r:14px;--r-sm:10px;
+    --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);font-family:'Inter',sans-serif;}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:#2a2e3a;overflow:hidden;font-family:'Inter',sans-serif}
+  body{display:flex;align-items:center;justify-content:center}
+  input{font-size:16px;font-family:inherit}
+  .phone{position:relative;width:100%;max-width:402px;height:100%;max-height:874px;background:var(--paper);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+  @media(min-width:440px){.phone{border-radius:46px;border:11px solid #0a0c12;height:874px}}
+  @media(max-width:439px){body{background:var(--paper)}.phone{box-shadow:none}}
+  .app{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:calc(var(--safe-top) + 14px) 20px 12px;flex-shrink:0}
+  .brand{display:flex;align-items:center;gap:9px}.brand .mark{width:30px;height:30px}
+  .brand .wm{font-family:'DM Sans';font-weight:600;font-size:18px;letter-spacing:.5px;color:var(--navy)}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;cursor:pointer}
+  .screens{flex:1;min-height:0;position:relative}
+  .screen{position:absolute;inset:0;display:none;flex-direction:column;min-height:0;animation:fade .22s ease}
+  .screen.active{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 20px 18px}
+  .scroll::-webkit-scrollbar{display:none}
+  .eyebrow{font-size:10.5px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2)}
+  .h1{font-size:26px;font-weight:600;color:var(--navy);letter-spacing:-.3px;line-height:1.15}
+  .h2{font-size:17px;font-weight:600;color:var(--navy)}
+  .sub{font-size:14px;color:var(--dim);line-height:1.5}
+  .card{background:var(--white);border:.5px solid var(--line);border-radius:var(--r);padding:18px}
+
+  .big{display:flex;align-items:center;gap:16px;background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:20px 18px;cursor:pointer;transition:.15s;margin-bottom:12px}
+  .big:active{transform:scale(.99)}
+  .big .ic{width:48px;height:48px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .big .ic.navy{background:rgba(26,35,64,.08);color:var(--navy)}.big .ic.orange{background:rgba(201,106,42,.10);color:var(--orange)}
+  .big .body{flex:1}.big .t{font-size:16px;font-weight:600;color:var(--navy)}.big .d{font-size:12.5px;color:var(--dim2);margin-top:3px}
+  .big .chev{color:var(--line2)}
+  .soon-badge{font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--orange);background:#fff3e9;padding:3px 7px;border-radius:6px;margin-left:8px;vertical-align:middle}
+
+  .resume{display:flex;align-items:center;gap:13px;background:#fffaf6;border:1.5px solid var(--orange);border-radius:var(--r);padding:14px 16px;cursor:pointer;margin-bottom:20px;transition:.15s}
+  .resume:active{transform:scale(.99)}.resume .body{flex:1;min-width:0}.resume .t{font-size:13.5px;font-weight:600;color:var(--navy)}.resume .d{font-size:11.5px;color:var(--dim2);margin-top:1px}
+
+  .row{display:flex;align-items:center;gap:14px;background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:15px 16px;cursor:pointer;transition:.15s;margin-bottom:11px}
+  .row:active{transform:scale(.99)}
+  .row .ic{width:40px;height:40px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--paper2);color:var(--navy)}
+  .row .body{flex:1;min-width:0}.row .t{font-size:15px;font-weight:600;color:var(--navy)}.row .m{font-size:12px;color:var(--dim2);margin-top:1px}
+  .row .chev{color:var(--line2)}
+
+  .set-head{text-align:center;padding:18px 8px 6px}
+  .set-head .name{font-family:'DM Sans';font-size:23px;font-weight:600;color:var(--navy);margin-bottom:5px}
+  .set-head .meta{font-size:13px;color:var(--dim2)}
+  .action{display:flex;align-items:center;gap:14px;background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:17px 16px;cursor:pointer;transition:.15s;margin-bottom:12px}
+  .action:active{transform:scale(.99)}.action.primary{border:1.5px solid var(--orange);background:#fffaf6}
+  .action .ic{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .action .ic.navy{background:rgba(26,35,64,.08);color:var(--navy)}.action .ic.orange{background:rgba(201,106,42,.10);color:var(--orange)}
+  .action .body{flex:1}.action .t{font-size:15.5px;font-weight:600;color:var(--navy)}.action .d{font-size:12px;color:var(--dim2);margin-top:2px}
+  .dir-row{display:flex;align-items:center;justify-content:space-between;background:var(--paper2);border-radius:12px;padding:12px 14px;margin-top:6px}
+  .dir-row .lbl{font-size:12.5px;color:var(--dim)}
+  .dir-btn{padding:7px 13px;border-radius:100px;border:1.5px solid var(--line2);background:#fff;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+
+  .backbar{display:flex;align-items:center;gap:6px;padding:calc(var(--safe-top) + 12px) 14px 6px}
+  .back{display:inline-flex;align-items:center;gap:5px;background:none;border:none;color:var(--dim);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;padding:6px 8px;border-radius:8px}
+  .back:active{background:var(--paper2)}
+
+  .immersive{position:absolute;inset:0;background:var(--paper);display:none;flex-direction:column;z-index:30}
+  .immersive.active{display:flex;animation:fade .22s ease}
+  .imm-bar{display:flex;align-items:center;gap:12px;padding:calc(var(--safe-top) + 14px) 18px 8px;flex-shrink:0}
+  .icon-btn{width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--dim);display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .icon-btn:active{background:var(--paper2)}
+  .imm-title{flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .flip-stage{flex:1;display:flex;flex-direction:column;justify-content:center;padding:10px 22px;min-height:0}
+  .flip{position:relative;width:100%;min-height:340px;cursor:pointer}
+  .face{position:absolute;inset:0;min-height:340px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 28px;text-align:center;transition:opacity .28s,transform .28s;background:#fff;border:1.5px solid var(--line);box-shadow:0 12px 36px rgba(26,35,64,.09)}
+  .face.front{opacity:1;transform:none;z-index:2}
+  .face.back{opacity:0;transform:translateY(8px);pointer-events:none;border-top:3px solid var(--orange);z-index:1}
+  .flip.flipped .front{opacity:0;transform:translateY(-8px);pointer-events:none}
+  .flip.flipped .back{opacity:1;transform:none;pointer-events:auto;z-index:3}
+  .face .kic{font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2);margin-bottom:18px}
+  .face .word{font-size:32px;font-weight:600;color:var(--navy);letter-spacing:-.4px;line-height:1.15;word-break:break-word}
+  .face .tap{font-size:12px;color:var(--dim2);margin-top:22px}
+  .speak{width:38px;height:38px;border-radius:50%;border:1px solid var(--line2);background:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--navy);margin-top:20px}
+  .flip-nav{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 22px calc(var(--safe-bot) + 16px);flex-shrink:0}
+  .nav-arrow{width:52px;height:52px;border-radius:50%;border:.5px solid var(--line2);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--navy)}
+  .nav-arrow:active{background:var(--paper2)}.nav-arrow:disabled{opacity:.35}
+  .flip-count{font-size:13px;color:var(--dim2);font-weight:500}
+
+  .thumb{flex-shrink:0;padding:14px 18px calc(var(--safe-bot) + 16px)}
+  .btn{width:100%;border:none;border-radius:var(--r-sm);font-family:inherit;font-size:15.5px;font-weight:600;padding:16px;cursor:pointer;transition:.15s}
+  .btn:active{transform:scale(.98)}.btn:disabled{opacity:.55}
+  .btn-orange{background:var(--orange);color:#fff}.btn-orange:active{background:var(--orange2)}
+  .btn-navy{background:var(--navy);color:#fff}
+  .btn-ghost{background:transparent;border:.5px solid var(--line2);color:var(--dim)}
+
+  .tabbar{display:flex;flex-shrink:0;border-top:.5px solid var(--line);background:rgba(248,247,244,.92);backdrop-filter:blur(12px);padding:8px 30px calc(var(--safe-bot) + 8px)}
+  .tab{flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0;color:var(--dim2);font-family:inherit;font-size:11px;font-weight:500;transition:.15s}
+  .tab.active{color:var(--navy)}.tab.active .ti{color:var(--orange)}
+  .hide{display:none!important}
+  .mb4{margin-bottom:4px}.mb8{margin-bottom:8px}.mb16{margin-bottom:16px}.mb24{margin-bottom:24px}
+  .note{font-size:11.5px;color:var(--dim2);text-align:center;padding:12px 24px}
+  .empty{text-align:center;padding:50px 26px;color:var(--dim2)}
+  .empty .h2{margin-bottom:8px}
+  .spin{width:26px;height:26px;border:3px solid var(--line2);border-top-color:var(--orange);border-radius:50%;animation:rot .8s linear infinite;margin:40px auto}
+  @keyframes rot{to{transform:rotate(360deg)}}
+
+  /* login */
+  .login{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 30px calc(var(--safe-bot) + 20px)}
+  .login .mk{width:64px;height:64px;margin:0 auto 18px}
+  .login h1{font-family:'DM Sans';font-size:26px;font-weight:600;color:var(--navy);text-align:center;margin-bottom:6px}
+  .login p{font-size:13.5px;color:var(--dim2);text-align:center;margin-bottom:28px;line-height:1.5}
+  .inp{width:100%;border:.5px solid var(--line2);border-radius:var(--r-sm);padding:15px;color:var(--navy);outline:none;background:#fff;margin-bottom:12px}
+  .inp:focus{border-color:var(--orange)}
+  .login .err{font-size:13px;color:var(--error);text-align:center;min-height:20px;margin-bottom:6px}
+  .login .alt{text-align:center;margin-top:18px;font-size:13px;color:var(--dim)}
+  .login .alt a{color:var(--orange);font-weight:600;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="phone"><div class="app" id="app-root">
+
+  <!-- ===== LOGOWANIE ===== -->
+  <div class="login" id="s-login">
+    <svg class="mk" viewBox="0 0 40 40" fill="none">
+      <circle cx="20" cy="20" r="17" stroke="#c96a2a" stroke-width="2.4" stroke-dasharray="78 22" stroke-linecap="round" transform="rotate(120 20 20)"/>
+      <path d="M20 9c-2 0-3 1.4-3 3 0 1.3.8 2.2 1.6 2.8C16 16 14.5 18 14.5 21v.5h11V21c0-3-1.5-5-4.1-6.2.8-.6 1.6-1.5 1.6-2.8 0-1.6-1-3-3-3z" stroke="#1a2340" stroke-width="1.7" stroke-linejoin="round"/>
+      <rect x="16" y="18.5" width="8" height="5" rx="1" stroke="#c96a2a" stroke-width="1.5"/>
+      <path d="M13 28c0-2.5 3-4 7-4s7 1.5 7 4" stroke="#1a2340" stroke-width="1.7" stroke-linecap="round"/>
+      <line x1="12" y1="28.5" x2="28" y2="28.5" stroke="#1a2340" stroke-width="1.7" stroke-linecap="round"/>
+    </svg>
+    <h1 id="login-title">Zaloguj się</h1>
+    <p id="login-sub">Tym samym kontem co na stronie — Twoje fiszki są już tutaj.</p>
+    <input class="inp" id="li-email" type="email" inputmode="email" autocapitalize="off" autocomplete="email" placeholder="E-mail">
+    <input class="inp" id="li-pass" type="password" autocomplete="current-password" placeholder="Hasło">
+    <input class="inp hide" id="li-name" type="text" placeholder="Nazwa użytkownika">
+    <div class="err" id="li-err"></div>
+    <button class="btn btn-orange" id="li-btn" onclick="doAuth()">Zaloguj się</button>
+    <div class="alt" id="li-alt">Nie masz konta? <a onclick="toggleAuthMode()">Załóż konto</a></div>
+  </div>
+
+  <!-- ===== APLIKACJA (po zalogowaniu) ===== -->
+  <div class="screens hide" id="app-main">
+    <div class="topbar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 40 40" fill="none" style="width:30px;height:30px">
+          <circle cx="20" cy="20" r="17" stroke="#c96a2a" stroke-width="2.4" stroke-dasharray="78 22" stroke-linecap="round" transform="rotate(120 20 20)"/>
+          <path d="M20 9c-2 0-3 1.4-3 3 0 1.3.8 2.2 1.6 2.8C16 16 14.5 18 14.5 21v.5h11V21c0-3-1.5-5-4.1-6.2.8-.6 1.6-1.5 1.6-2.8 0-1.6-1-3-3-3z" stroke="#1a2340" stroke-width="1.7" stroke-linejoin="round"/>
+          <rect x="16" y="18.5" width="8" height="5" rx="1" stroke="#c96a2a" stroke-width="1.5"/>
+          <path d="M13 28c0-2.5 3-4 7-4s7 1.5 7 4" stroke="#1a2340" stroke-width="1.7" stroke-linecap="round"/>
+          <line x1="12" y1="28.5" x2="28" y2="28.5" stroke="#1a2340" stroke-width="1.7" stroke-linecap="round"/>
+        </svg><span class="wm">Eyelingo</span>
+      </div>
+      <div class="avatar" id="avatar" onclick="askLogout()">FA</div>
+    </div>
+
+    <div style="flex:1;min-height:0;position:relative">
+
+      <!-- UCZ SIĘ -->
+      <section class="screen active" id="s-ucz">
+        <div class="scroll">
+          <div class="mb16" style="padding-top:6px"><div class="h1">Ucz się</div>
+            <div class="sub" style="margin-top:4px">Wybierz zestaw — przejdź do przeglądania fiszek albo lekcji z Lexem.</div></div>
+          <div class="resume" onclick="soon('Lekcja z Lexem','Krok 4 — wznawianie i nowe lekcje Lexa podłączymy wkrótce.')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" style="flex-shrink:0"><polygon points="6 4 20 12 6 20"/></svg>
+            <div class="body"><div class="t">Kontynuuj lekcję z Lexem <span class="soon-badge">wkrótce</span></div><div class="d">Sync ze stroną — krok 4</div></div>
+          </div>
+          <div class="big" onclick="go('mine')">
+            <div class="ic navy"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></div>
+            <div class="body"><div class="t">Moje zestawy</div><div class="d">Wszystkie zestawy z Twojego konta</div></div>
+            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+          <div class="big" onclick="soon('Zestawy Eyelingo','Krok 3 — gotowe zestawy (język → poziom → kategoria) podłączymy wkrótce.')">
+            <div class="ic orange"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div>
+            <div class="body"><div class="t">Zestawy Eyelingo <span class="soon-badge">wkrótce</span></div><div class="d">Język → poziom → kategoria</div></div>
+            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+          <div class="big" onclick="soon('Powtórki SM-2','Krok 2 — kolejka powtórek z zapisem SM-2 podłączymy wkrótce.')">
+            <div class="ic navy"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></div>
+            <div class="body"><div class="t">Powtórki SM-2 <span class="soon-badge">wkrótce</span></div><div class="d">Słowa, które dziś dojrzały</div></div>
+            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+          <div class="note">Krok 1 działa na żywych danych: logowanie, Twoje zestawy i przeglądanie. Reszta dochodzi krok po kroku.</div>
+        </div>
+      </section>
+
+      <!-- MOJE ZESTAWY (real) -->
+      <section class="screen" id="s-mine">
+        <div class="backbar"><button class="back" onclick="go('ucz')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Ucz się</button></div>
+        <div class="scroll"><div class="h1 mb16">Moje zestawy</div><div id="mine-list"><div class="spin"></div></div></div>
+      </section>
+
+      <!-- ZESTAW (real) -->
+      <section class="screen" id="s-set">
+        <div class="backbar"><button class="back" onclick="go('mine')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Moje zestawy</button></div>
+        <div class="scroll">
+          <div class="set-head"><div class="name" id="set-name"></div><div class="meta" id="set-meta"></div></div>
+          <div style="height:18px"></div>
+          <div class="action primary" onclick="soon('Lekcja z Lexem','Krok 4 — Lex utrwalający ten zestaw podłączymy wkrótce.')">
+            <div class="ic orange"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"/></svg></div>
+            <div class="body"><div class="t">Ucz się z Lexem <span class="soon-badge">wkrótce</span></div><div class="d">Lex utrwala te słowa</div></div></div>
+          <div class="action" onclick="openBrowse()">
+            <div class="ic navy"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></div>
+            <div class="body"><div class="t">Przeglądaj fiszki</div><div class="d">Obracaj karty — słowo i tłumaczenie</div></div></div>
+          <div class="dir-row"><span class="lbl">Kierunek kart</span>
+            <button class="dir-btn" id="dirbtn" onclick="toggleDir()">Obcy <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Polski</button></div>
+        </div>
+      </section>
+
+      <!-- W PRZYGOTOWANIU -->
+      <section class="screen" id="s-soon">
+        <div class="backbar"><button class="back" onclick="go('ucz')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Ucz się</button></div>
+        <div class="empty" style="margin:auto 0">
+          <div style="width:56px;height:56px;border-radius:16px;background:#fff3e9;display:flex;align-items:center;justify-content:center;margin:0 auto 16px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.7"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg></div>
+          <div class="h2" id="soon-title">W przygotowaniu</div>
+          <div class="sub" id="soon-desc" style="max-width:280px;margin:0 auto"></div>
+        </div>
+      </section>
+
+    </div>
+
+    <nav class="tabbar">
+      <button class="tab active" id="t-ucz" onclick="go('ucz')">
+        <svg class="ti" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2"/><path d="M19 17H6"/></svg>Ucz się</button>
+      <button class="tab" id="t-powtorki" onclick="soon('Powtórki SM-2','Krok 2 — kolejka powtórek z zapisem SM-2 podłączymy wkrótce.')">
+        <svg class="ti" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Powtórki</button>
+    </nav>
+  </div>
+
+  <!-- IMMERSIVE: PRZEGLĄDANIE (real) -->
+  <div class="immersive" id="imm-browse">
+    <div class="imm-bar">
+      <button class="icon-btn" onclick="closeImm('imm-browse')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <div class="imm-title" id="br-title">Przeglądanie</div>
+      <button class="dir-btn" id="br-dir" onclick="toggleDir(true)" style="font-size:11px">Obcy → PL</button>
+    </div>
+    <div class="flip-stage" id="br-stage">
+      <div class="flip" id="flip" onclick="doFlip()">
+        <div class="face front"><div class="kic" id="br-kic">Słowo</div><div class="word" id="br-front"></div><div class="tap">Dotknij, aby obrócić</div></div>
+        <div class="face back"><div class="kic">Tłumaczenie</div><div class="word" id="br-back"></div>
+          <button class="speak" id="br-speak" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div>
+      </div>
+    </div>
+    <div class="flip-nav">
+      <button class="nav-arrow" id="br-prev" onclick="brNav(-1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="flip-count" id="br-count">—</div>
+      <button class="nav-arrow" id="br-next" onclick="brNav(1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+    </div>
+  </div>
+
+</div></div>
+
+<script>
+/* ===== Supabase (klucze publiczne, te same co index.html) ===== */
+const SUPABASE_URL='https://sntlgkhktscezxpxrchl.supabase.co';
+const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
+let db=null;
+try{ var _c=(window.supabase&&(supabase.createClient||(supabase.default&&supabase.default.createClient))); if(_c) db=_c(SUPABASE_URL,SUPABASE_KEY); }catch(e){}
+
+let UID=null, USER_EMAIL='';
+let authMode='login'; // login | signup
+
+/* ===== Boot ===== */
+window.addEventListener('load', async function(){
+  if(!db){ showLoginErr('Brak połączenia z bazą. Sprawdź internet i odśwież.'); return; }
+  try{
+    const {data}=await db.auth.getSession();
+    if(data && data.session){ onAuthed(data.session); }
+    else { showLogin(); }
+  }catch(e){ showLogin(); }
+});
+
+function showLogin(){ document.getElementById('s-login').style.display='flex'; document.getElementById('app-main').classList.add('hide'); }
+function onAuthed(session){
+  UID=session.user.id; USER_EMAIL=session.user.email||'';
+  document.getElementById('s-login').style.display='none';
+  document.getElementById('app-main').classList.remove('hide');
+  var ini=(USER_EMAIL||'U').slice(0,2).toUpperCase();
+  document.getElementById('avatar').textContent=ini;
+  go('ucz'); loadMine();
+}
+
+/* ===== Auth ===== */
+function toggleAuthMode(){
+  authMode = authMode==='login' ? 'signup' : 'login';
+  var isSignup=authMode==='signup';
+  document.getElementById('login-title').textContent=isSignup?'Załóż konto':'Zaloguj się';
+  document.getElementById('login-sub').textContent=isSignup?'Konto będzie wspólne ze stroną Eyelingo.':'Tym samym kontem co na stronie — Twoje fiszki są już tutaj.';
+  document.getElementById('li-name').classList.toggle('hide',!isSignup);
+  document.getElementById('li-btn').textContent=isSignup?'Załóż konto':'Zaloguj się';
+  document.getElementById('li-alt').innerHTML=isSignup?'Masz już konto? <a onclick="toggleAuthMode()">Zaloguj się</a>':'Nie masz konta? <a onclick="toggleAuthMode()">Załóż konto</a>';
+  showLoginErr('');
+}
+function showLoginErr(m){ document.getElementById('li-err').textContent=m||''; }
+async function doAuth(){
+  var email=(document.getElementById('li-email').value||'').trim();
+  var pass=document.getElementById('li-pass').value||'';
+  var name=(document.getElementById('li-name').value||'').trim();
+  if(!email||!pass){ showLoginErr('Podaj e-mail i hasło.'); return; }
+  var btn=document.getElementById('li-btn'); btn.disabled=true; btn.textContent='Chwila…';
+  try{
+    var res = authMode==='login'
+      ? await db.auth.signInWithPassword({email,password:pass})
+      : await db.auth.signUp({email,password:pass,options:{data:{username:name||email.split('@')[0]}}});
+    if(res.error){ showLoginErr(translateAuthErr(res.error.message)); btn.disabled=false; btn.textContent=authMode==='login'?'Zaloguj się':'Załóż konto'; return; }
+    var session=res.data && res.data.session;
+    if(!session){ showLoginErr('Sprawdź skrzynkę — potwierdź e-mail, potem zaloguj się.'); btn.disabled=false; btn.textContent='Zaloguj się'; return; }
+    onAuthed(session);
+  }catch(e){ showLoginErr('Coś poszło nie tak. Spróbuj ponownie.'); btn.disabled=false; btn.textContent='Zaloguj się'; }
+}
+function translateAuthErr(m){
+  m=(m||'').toLowerCase();
+  if(m.indexOf('invalid login')>=0) return 'Błędny e-mail lub hasło.';
+  if(m.indexOf('already registered')>=0) return 'To konto już istnieje — zaloguj się.';
+  if(m.indexOf('password')>=0) return 'Hasło musi mieć min. 6 znaków.';
+  return 'Nie udało się: '+m;
+}
+async function askLogout(){ if(confirm('Wylogować się?')){ try{ await db.auth.signOut(); }catch(e){} location.reload(); } }
+
+/* ===== Nawigacja ===== */
+const TABS=['ucz'];
+function go(name){
+  document.querySelectorAll('#app-main .screen').forEach(s=>s.classList.remove('active'));
+  var el=document.getElementById('s-'+name); if(el) el.classList.add('active');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  var t=document.getElementById('t-'+name); if(t) t.classList.add('active');
+  else if(name==='mine'||name==='set'){ document.getElementById('t-ucz').classList.add('active'); }
+}
+function closeImm(id){ document.getElementById(id).classList.remove('active'); }
+function soon(title,desc){ document.getElementById('soon-title').textContent=title; document.getElementById('soon-desc').textContent=desc; go('soon'); }
+
+/* ===== Moje zestawy (REAL) ===== */
+async function loadMine(){
+  var box=document.getElementById('mine-list');
+  box.innerHTML='<div class="spin"></div>';
+  try{
+    var {data,error}=await db.from('user_sets').select('id,name,user_set_cards(count)').eq('user_id',UID).order('name',{ascending:true});
+    if(error) throw error;
+    if(!data||!data.length){ box.innerHTML='<div class="empty"><div class="h2">Brak zestawów</div><div class="sub">Nie masz jeszcze własnych zestawów. Utwórz je na stronie Eyelingo — pojawią się tutaj automatycznie.</div></div>'; return; }
+    box.innerHTML=data.map(function(s){
+      var cnt=(s.user_set_cards&&s.user_set_cards[0]&&s.user_set_cards[0].count)||0;
+      var nm=escapeHtml(s.name||'Bez nazwy');
+      return '<div class="row" onclick="openSet(\''+s.id+'\',\''+nm.replace(/'/g,"\\'")+'\','+cnt+')">'
+        +'<div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg></div>'
+        +'<div class="body"><div class="t">'+nm+'</div><div class="m">'+cnt+' '+plural(cnt,'fiszka','fiszki','fiszek')+'</div></div>'
+        +'<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>';
+    }).join('');
+  }catch(e){ box.innerHTML='<div class="empty"><div class="h2">Nie udało się wczytać</div><div class="sub">Sprawdź połączenie i spróbuj ponownie.</div><button class="btn btn-ghost" style="margin-top:16px;width:auto;padding:12px 20px" onclick="loadMine()">Spróbuj ponownie</button></div>'; }
+}
+function plural(n,a,b,c){ n=Math.abs(n); if(n===1)return a; var t=n%10,h=n%100; if(t>=2&&t<=4&&(h<10||h>=20))return b; return c; }
+function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ===== Zestaw ===== */
+let curSetId=null, curSetName='', curSetCount=0;
+function openSet(id,name,count){
+  curSetId=id; curSetName=name; curSetCount=count;
+  document.getElementById('set-name').textContent=name;
+  document.getElementById('set-meta').textContent=count+' '+plural(count,'fiszka','fiszki','fiszek');
+  go('set');
+}
+
+/* ===== kierunek ===== */
+let dir='foreign';
+function toggleDir(inBrowse){
+  dir=dir==='foreign'?'pl':'foreign';
+  var b=document.getElementById('dirbtn');
+  if(b) b.innerHTML=(dir==='foreign'?'Obcy':'Polski')+' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> '+(dir==='foreign'?'Polski':'Obcy');
+  var br=document.getElementById('br-dir'); if(br) br.textContent=dir==='foreign'?'Obcy → PL':'PL → Obcy';
+  if(inBrowse) renderCard();
+}
+
+/* ===== Przeglądanie / flip (REAL) ===== */
+let CARDS=[], bi=0, flipped=false;
+async function openBrowse(){
+  document.getElementById('br-title').textContent=curSetName;
+  document.getElementById('imm-browse').classList.add('active');
+  var stage=document.getElementById('br-stage');
+  stage.innerHTML='<div class="spin"></div>';
+  try{
+    var {data,error}=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',curSetId).order('sort_order',{ascending:true});
+    if(error) throw error;
+    CARDS=(data||[]).filter(function(c){return c.word||c.translation;});
+    if(!CARDS.length){ stage.innerHTML='<div class="empty" style="margin:auto"><div class="h2">Pusty zestaw</div><div class="sub">Ten zestaw nie ma jeszcze fiszek.</div></div>'; document.getElementById('br-count').textContent=''; return; }
+    bi=0; restoreFlipMarkup(); renderCard();
+  }catch(e){ stage.innerHTML='<div class="empty" style="margin:auto"><div class="h2">Nie udało się wczytać</div><div class="sub">Spróbuj ponownie za chwilę.</div></div>'; }
+}
+function restoreFlipMarkup(){
+  document.getElementById('br-stage').innerHTML=
+    '<div class="flip" id="flip" onclick="doFlip()">'
+    +'<div class="face front"><div class="kic" id="br-kic">Słowo</div><div class="word" id="br-front"></div><div class="tap">Dotknij, aby obrócić</div></div>'
+    +'<div class="face back"><div class="kic">Tłumaczenie</div><div class="word" id="br-back"></div>'
+    +'<button class="speak" id="br-speak" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div></div>';
+}
+function renderCard(){
+  var c=CARDS[bi]; if(!c) return;
+  flipped=false; var fl=document.getElementById('flip'); if(fl) fl.classList.remove('flipped');
+  var ff=dir==='foreign';
+  document.getElementById('br-kic').textContent=ff?'Słowo':'Tłumaczenie';
+  document.getElementById('br-front').textContent=ff?(c.word||'—'):(c.translation||'—');
+  document.getElementById('br-back').textContent=ff?(c.translation||'—'):(c.word||'—');
+  document.getElementById('br-count').textContent=(bi+1)+' / '+CARDS.length;
+  document.getElementById('br-prev').disabled=bi===0;
+  document.getElementById('br-next').disabled=bi===CARDS.length-1;
+}
+function doFlip(){ flipped=!flipped; document.getElementById('flip').classList.toggle('flipped',flipped); if(navigator.vibrate)navigator.vibrate(6); }
+function brNav(d){ var n=bi+d; if(n<0||n>=CARDS.length)return; bi=n; renderCard(); }
+function speakCard(){
+  try{
+    var c=CARDS[bi]; if(!c||!c.word) return;
+    if(window.speechSynthesis){ window.speechSynthesis.cancel();
+      var u=new SpeechSynthesisUtterance(c.word); u.lang='en-US'; u.rate=.95; window.speechSynthesis.speak(u); }
+  }catch(e){}
+}
+</script>
+</body>
+</html>
