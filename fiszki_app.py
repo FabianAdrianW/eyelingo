@@ -5,6 +5,7 @@ Wymagania: pip install PyQt6 supabase python-dotenv
 
 import sys
 import json
+import ctypes
 import webbrowser
 import urllib.request
 import urllib.parse
@@ -239,70 +240,14 @@ def try_restore_session() -> bool:
     if not saved:
         return False
     try:
-        # 1) Ustaw zapisaną sesję w kliencie
-        supabase.auth.set_session(saved["access_token"], saved["refresh_token"])
-        # 2) Wymuś odświeżenie — zapisany access_token mógł wygasnąć.
-        #    Bez tego get_user() w wątkach roboczych zwraca None
-        #    ('NoneType' object has no attribute 'user') do czasu re-logowania.
-        sess = None
-        try:
-            resp = supabase.auth.refresh_session(saved["refresh_token"])
-            sess = getattr(resp, "session", None)
-        except Exception:
-            sess = None
-        # 3) Fallback — pobierz bieżącą sesję, jeśli refresh nic nie zwrócił
-        if sess is None:
-            try:
-                cur = supabase.auth.get_session()
-                sess = getattr(cur, "session", cur)
-            except Exception:
-                sess = None
-        if sess and getattr(sess, "access_token", None):
-            save_session(sess)
-            # 4) Weryfikacja: użytkownik musi być realnie dostępny
-            if current_user() is not None:
-                return True
+        resp = supabase.auth.set_session(saved["access_token"], saved["refresh_token"])
+        if resp.session:
+            save_session(resp.session)
+            return True
     except Exception:
         pass
     clear_session()
     return False
-
-
-def current_user():
-    """Zwraca obiekt użytkownika lub None.
-
-    Odporne na wygasły access_token: przy braku użytkownika
-    próbuje raz odświeżyć sesję i ponawia. Dzięki temu wątki robocze
-    nie wywracają się na 'NoneType' object has no attribute 'user'.
-    """
-    try:
-        resp = supabase.auth.get_user()
-        if resp and getattr(resp, "user", None):
-            return resp.user
-    except Exception:
-        pass
-    try:
-        supabase.auth.refresh_session()
-        resp = supabase.auth.get_user()
-        if resp and getattr(resp, "user", None):
-            return resp.user
-    except Exception:
-        pass
-    return None
-
-
-def current_uid():
-    u = current_user()
-    if u is None:
-        raise RuntimeError("Sesja wygasła — zaloguj się ponownie.")
-    return u.id
-
-
-def current_email():
-    u = current_user()
-    if u is None:
-        raise RuntimeError("Sesja wygasła — zaloguj się ponownie.")
-    return u.email
 
 
 # ──────────────────────────────────────────────────────
@@ -534,17 +479,12 @@ def _styled_window(w):
     )
     w.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     try:
-        import platform
-        if platform.system() == "Windows":
-            import ctypes
-            hwnd = int(w.winId())
-            HWND_TOPMOST = -1
-            SWP_NOMOVE = 0x0002
-            SWP_NOSIZE = 0x0001
-            ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
-        else:
-            # Mac / Linux — używamy flag Qt
-            w.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        hwnd = int(w.winId())
+        import ctypes
+        HWND_TOPMOST = -1
+        SWP_NOMOVE   = 0x0002
+        SWP_NOSIZE   = 0x0001
+        ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
     except Exception:
         pass
 
@@ -841,7 +781,7 @@ class MarkAllKnownWorker(QThread):
                 "p_lang": self.lang, "p_level": self.level, "p_cat": self.cat
             }).execute()
             cards = resp.data or []
-            user_id = current_uid()
+            user_id = supabase.auth.get_user().user.id
             from datetime import date, timedelta
             next_review = (date.today() + timedelta(days=90)).isoformat()
             for c in cards:
@@ -885,7 +825,7 @@ class TestCardsWorker(QThread):
             except Exception:
                 due_cards = []
             try:
-                prog_resp = supabase.table("word_progress")                    .select("flashcard_id,repetitions,ease_factor")                    .eq("user_id", current_uid()).execute()
+                prog_resp = supabase.table("word_progress")                    .select("flashcard_id,repetitions,ease_factor")                    .eq("user_id", supabase.auth.get_user().user.id).execute()
                 prog = {r["flashcard_id"]: r for r in (prog_resp.data or [])}
             except Exception:
                 prog = {}
@@ -941,159 +881,6 @@ BTN_PRIMARY = """
     QPushButton:pressed { background: rgba(40,70,160,255); }
     QPushButton:disabled{ background: rgba(60,60,100,120); color: rgba(255,255,255,80); }
 """
-
-ONBOARDING_KEY = "onboarding_done_v1"
-
-class OnboardingWindow(_DraggableWindow):
-    """Okno onboardingu — pokazuje się przy pierwszym uruchomieniu."""
-    finished = pyqtSignal()
-
-    SLIDES = [
-        {
-            "icon": "👁️",
-            "title": "Witaj w Eyelingo!",
-            "body": "Uczysz się języków bez odrywania się od tego co robisz. Fiszki pojawiają się w tle ekranu — podczas pracy, gry, przeglądania.",
-        },
-        {
-            "icon": "🌍",
-            "title": "Wybierz język",
-            "body": "Angielski, Hiszpański, Japoński, Niderlandzki — każdy z 6 poziomami od A1 do C2. Więcej języków już wkrótce.",
-        },
-        {
-            "icon": "✏️",
-            "title": "Własne zestawy",
-            "body": "Stwórz własne fiszki z dowolnego materiału — Eyelingo pokaże je w tle podczas pracy, dokładnie wtedy, gdy mózg najlepiej je przyswaja.",
-        },
-        {
-            "icon": "🚀",
-            "title": "Zaczynajmy!",
-            "body": "Kliknij ikonę Eyelingo w zasobniku systemowym aby zarządzać fiszkami. Miłej nauki!",
-        },
-    ]
-
-    def __init__(self):
-        super().__init__()
-        _styled_window(self)
-        self.setFixedSize(360, 420)
-        self._slide = 0
-        self._build()
-        sc = QApplication.primaryScreen().availableGeometry()
-        self.move(sc.center().x() - 180, sc.center().y() - 210)
-
-    def _build(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-
-        # Pasek drag
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("✨  Eyelingo")
-        t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        t.setStyleSheet("color:white;background:transparent;")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl.addWidget(t)
-        lay.addWidget(hdr)
-
-        inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        il = QVBoxLayout(inner); il.setContentsMargins(28, 20, 28, 24); il.setSpacing(16)
-        lay.addWidget(inner, 1)
-
-        # Ikona
-        self.lbl_icon = QLabel()
-        self.lbl_icon.setFont(QFont("Segoe UI Emoji", 48))
-        self.lbl_icon.setStyleSheet("background:transparent;")
-        self.lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        il.addWidget(self.lbl_icon)
-
-        # Tytuł
-        self.lbl_title = QLabel()
-        self.lbl_title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
-        self.lbl_title.setStyleSheet("color:white;background:transparent;")
-        self.lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_title.setWordWrap(True)
-        il.addWidget(self.lbl_title)
-
-        # Opis
-        self.lbl_body = QLabel()
-        self.lbl_body.setFont(QFont("Segoe UI", 11))
-        self.lbl_body.setStyleSheet("color:rgba(200,215,255,200);background:transparent;")
-        self.lbl_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_body.setWordWrap(True)
-        il.addWidget(self.lbl_body)
-
-        il.addStretch()
-
-        # Dots
-        dots_w = QWidget(); dots_w.setStyleSheet("background:transparent;")
-        dots_l = QHBoxLayout(dots_w); dots_l.setContentsMargins(0,0,0,0); dots_l.setSpacing(8)
-        dots_l.addStretch()
-        self._dots = []
-        for i in range(len(self.SLIDES)):
-            d = QLabel("●")
-            d.setFont(QFont("Segoe UI", 8))
-            d.setStyleSheet("background:transparent;")
-            dots_l.addWidget(d)
-            self._dots.append(d)
-        dots_l.addStretch()
-        il.addWidget(dots_w)
-
-        # Przycisk
-        self.btn_next = QPushButton("Dalej →")
-        self.btn_next.setStyleSheet(BTN_PRIMARY)
-        self.btn_next.setMinimumHeight(40)
-        self.btn_next.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_next.clicked.connect(self._next)
-        il.addWidget(self.btn_next)
-
-        self._update_slide()
-
-    def _update_slide(self):
-        s = self.SLIDES[self._slide]
-        self.lbl_icon.setText(s["icon"])
-        self.lbl_title.setText(s["title"])
-        self.lbl_body.setText(s["body"])
-        is_last = self._slide == len(self.SLIDES) - 1
-        self.btn_next.setText("Zaczynajmy! 🚀" if is_last else "Dalej →")
-        for i, d in enumerate(self._dots):
-            d.setStyleSheet(f"color:{'rgba(255,255,255,220)' if i==self._slide else 'rgba(255,255,255,60)'};background:transparent;")
-
-    def _next(self):
-        if self._slide < len(self.SLIDES) - 1:
-            self._slide += 1
-            self._update_slide()
-        else:
-            self._mark_done()
-            self.hide()
-            self.finished.emit()
-
-    def _mark_done(self):
-        try:
-            import json as _j
-            path = Path.home() / ".eyelingo_prefs.json"
-            prefs = {}
-            if path.exists():
-                prefs = _j.loads(path.read_text())
-            prefs[ONBOARDING_KEY] = True
-            path.write_text(_j.dumps(prefs))
-        except Exception:
-            pass
-
-    @staticmethod
-    def should_show():
-        try:
-            import json as _j
-            path = Path.home() / ".eyelingo_prefs.json"
-            if not path.exists():
-                return True
-            prefs = _j.loads(path.read_text())
-            return not prefs.get(ONBOARDING_KEY, False)
-        except Exception:
-            return True
-
-    def paintEvent(self, e):
-        _paint_bg(self, e)
-
 
 class LoginWindow(_DraggableWindow):
     logged_in = pyqtSignal(object)
@@ -1272,15 +1059,14 @@ class LoginWindow(_DraggableWindow):
         save_session(session)
         self.hide()
         try:
-            user = current_user()
-            if user:
-                ph_identify(user.id, user.email)
-                ph_capture("user_logged_in")
-                # Zapisz pseudonim przy rejestracji
-                if self._mode == "register" and hasattr(self, '_username') and self._username:
-                    supabase.from_("profiles").update({
-                        "username": self._username
-                    }).eq("user_id", user.id).execute()
+            user = supabase.auth.get_user()
+            ph_identify(user.user.id, user.user.email)
+            ph_capture("user_logged_in")
+            # Zapisz pseudonim przy rejestracji
+            if self._mode == "register" and hasattr(self, '_username') and self._username:
+                supabase.from_("profiles").update({
+                    "username": self._username
+                }).eq("user_id", user.user.id).execute()
         except Exception:
             pass
         self.logged_in.emit(session)
@@ -1318,10 +1104,13 @@ class FlashcardOverlay(QWidget):
         self.lang  = "en"
         self.level = "A1"
         self.cat   = ""
+        self._gold        = 0
         self._cards_shown = 0
+        self._minutes_active = 0
         self._init_window()
         self._init_ui()
         self._init_timer()
+        self._init_gold_timer()
         self._apply_click_through()
 
     def _init_window(self):
@@ -1342,7 +1131,7 @@ class FlashcardOverlay(QWidget):
         lay.setContentsMargins(14, 8, 14, 8)
         lay.setSpacing(3)
 
-        # górny pasek: info + postęp
+        # górny pasek: info + złoto
         top = QWidget()
         top.setStyleSheet("background:transparent;")
         top_lay = QHBoxLayout(top)
@@ -1353,13 +1142,32 @@ class FlashcardOverlay(QWidget):
         self.lbl_info.setFont(QFont("Segoe UI", 8))
         self.lbl_info.setStyleSheet("color:rgba(255,255,255,160); background:transparent;")
 
+        self.lbl_gold = QLabel("🏺 0")
+        self.lbl_gold.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self.lbl_gold.setStyleSheet("color:rgba(255,215,0,220); background:transparent;")
+        self.lbl_gold.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.lbl_streak = QLabel("")
+        self.lbl_streak.setFont(QFont("Segoe UI", 8))
+        self.lbl_streak.setStyleSheet("color:rgba(255,160,50,220); background:transparent;")
+        self.lbl_streak.setAlignment(Qt.AlignmentFlag.AlignRight)
+
         self.lbl_known = QLabel("")
         self.lbl_known.setFont(QFont("Segoe UI", 8))
         self.lbl_known.setStyleSheet("color:rgba(100,220,150,220); background:transparent;")
         self.lbl_known.setAlignment(Qt.AlignmentFlag.AlignRight)
 
+        streak_gold = QWidget()
+        streak_gold.setStyleSheet("background:transparent;")
+        sg_lay = QVBoxLayout(streak_gold)
+        sg_lay.setContentsMargins(0,0,0,0)
+        sg_lay.setSpacing(0)
+        sg_lay.addWidget(self.lbl_gold)
+        sg_lay.addWidget(self.lbl_streak)
+        sg_lay.addWidget(self.lbl_known)
+
         top_lay.addWidget(self.lbl_info)
-        top_lay.addWidget(self.lbl_known)
+        top_lay.addWidget(streak_gold)
 
         self.lbl_word = QLabel("")
         self.lbl_word.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
@@ -1438,6 +1246,37 @@ class FlashcardOverlay(QWidget):
         ms = int(APP_SETTINGS.get("display_time", 8) * 1000)
         self.timer.start(ms)
 
+    def _init_gold_timer(self):
+        # co minutę +1 złoto za czas
+        self.gold_timer = QTimer(self)
+        self.gold_timer.timeout.connect(self._on_minute)
+        self.gold_timer.start(60000)
+
+    def _on_minute(self):
+        self._minutes_active += 1
+        self._add_gold(gold_cards=0, gold_minutes=1)
+
+    def _add_gold(self, gold_cards=0, gold_minutes=0):
+        total = gold_cards + gold_minutes
+        if total <= 0:
+            return
+        self._gold += total
+        self.lbl_gold.setText(f"🏺 {self._gold}")
+        # zapisz do Supabase
+        self._gold_worker = AddGoldWorker(gold_cards, gold_minutes)
+        self._gold_worker.done.connect(lambda g: self.lbl_gold.setText(f"🏺 {g}"))
+        self._gold_worker.start()
+
+    def set_gold(self, gold):
+        self._gold = gold
+        self.lbl_gold.setText(f"🏺 {gold}")
+
+    def set_streak(self, days):
+        if days > 1:
+            self.lbl_streak.setText(f"🔥 {days} dni")
+        else:
+            self.lbl_streak.setText("")
+
     def set_known_words(self, count):
         if count > 0:
             self.lbl_known.setText(f"✓ {count} słów")
@@ -1448,6 +1287,9 @@ class FlashcardOverlay(QWidget):
         if self.cards:
             self.index = (self.index + 1) % len(self.cards)
             self._cards_shown += 1
+            # co 5 fiszek +1 złoto
+            if self._cards_shown % 5 == 0:
+                self._add_gold(gold_cards=1, gold_minutes=0)
             self._update()
 
     def _get_word_font_size(self, word: str) -> int:
@@ -1596,25 +1438,9 @@ class FlashcardOverlay(QWidget):
 
     def _apply_click_through(self):
         try:
-            import platform
-            if platform.system() == "Windows":
-                import ctypes
-                hwnd = int(self.winId())
-                style = ctypes.windll.user32.GetWindowLongW(hwnd, -20)
-                ctypes.windll.user32.SetWindowLongW(hwnd, -20, style | 0x00080000 | 0x00000020)
-            elif platform.system() == "Darwin":
-                try:
-                    from AppKit import NSApp, NSWindow
-                    from Foundation import NSObject
-                    import objc
-                    ns_view = objc.objc_object(c_void_p=self.winId().__int__())
-                    ns_window = ns_view.window()
-                    if ns_window:
-                        # NSWindowStyleMaskNonactivatingPanel = 1 << 7
-                        ns_window.setIgnoresMouseEvents_(True)
-                except ImportError:
-                    # pyobjc nie jest zainstalowane — fallback
-                    self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            hwnd = int(self.winId())
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, -20)
+            ctypes.windll.user32.SetWindowLongW(hwnd, -20, style | 0x00080000 | 0x00000020)
         except Exception as e:
             print(f"[click-through] {e}")
 
@@ -2047,6 +1873,13 @@ class LanguageWindow(_DraggableWindow):
         btn_settings.clicked.connect(lambda: self.on_selected("settings"))
         inner_l.addWidget(btn_settings)
 
+        btn_shop = QPushButton("🏺  Sklep złota")
+        btn_shop.setStyleSheet(STY_GOLD)
+        btn_shop.setFont(QFont("Segoe UI", 12))
+        btn_shop.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_shop.clicked.connect(lambda: self.on_selected("shop"))
+        inner_l.addWidget(btn_shop)
+
         btn_test = QPushButton("📝  Zrób test")
         btn_test.setStyleSheet(STY_GREEN)
         btn_test.setFont(QFont("Segoe UI", 12))
@@ -2078,7 +1911,8 @@ class SaveSetWorker(QThread):
 
     def run(self):
         try:
-            user_id = current_uid()
+            user = supabase.auth.get_user()
+            user_id = user.user.id
 
             # zapisz zestaw
             resp = supabase.table("user_sets").insert({
@@ -2110,7 +1944,8 @@ class LoadSetsWorker(QThread):
 
     def run(self):
         try:
-            user_id = current_uid()
+            user = supabase.auth.get_user()
+            user_id = user.user.id
             resp = supabase.table("user_sets").select("id,name,is_public,likes_count").eq("user_id", user_id).execute()
             self.done.emit(resp.data or [])
         except Exception as e:
@@ -2175,7 +2010,7 @@ class ImportSetWorker(QThread):
 
     def run(self):
         try:
-            uid = current_uid()
+            uid = supabase.auth.get_user().user.id
             # Sprawdź czy już zaimportowany
             existing = supabase.table("user_sets").select("id").eq("user_id", uid).eq("name", self.set_name).execute()
             if existing.data:
@@ -2257,17 +2092,7 @@ class PublicSetsWindow(_DraggableWindow):
         self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         il.addWidget(self.lbl_status)
 
-        il.addWidget(_back_btn("← Wróć do moich zestawów", self._go_back_to_my_sets))
         il.addWidget(_close_btn(self))
-
-    def _go_back_to_my_sets(self):
-        self.hide()
-        # Sygnał do TrayApp żeby pokazać MySetsPicker
-        if hasattr(self, '_on_back_callback') and self._on_back_callback:
-            self._on_back_callback()
-
-    def set_back_callback(self, cb):
-        self._on_back_callback = cb
 
     def show_and_load(self):
         self.show(); self.raise_(); self.activateWindow()
@@ -2690,32 +2515,18 @@ class MySetsPicker(_DraggableWindow):
         self.lbl_premium.hide()
         self.lay.addWidget(self.lbl_premium)
 
-        # Przycisk lokalnego przeglądania zestawów w programie
-        btn_browse_local = QPushButton("🔍  Przeglądaj zestawy w programie")
-        btn_browse_local.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(80,140,230,220);
-                border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-        """)
-        btn_browse_local.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_browse_local.clicked.connect(self._on_browse_community)
-        self.lay.addWidget(btn_browse_local)
-
-        # Przycisk przeglądania na stronie www
-        btn_browse_www = QPushButton("🌐  Materiały na stronie eyelingo")
-        btn_browse_www.setStyleSheet("""
+        # Przycisk przeglądania publicznych zestawów — zawsze widoczny
+        btn_browse = QPushButton("🌐  Przeglądaj zestawy społeczności")
+        btn_browse.setStyleSheet("""
             QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
                 border:1px solid rgba(80,85,120,80);
                 border-left:3px solid rgba(210,175,0,220);
                 border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
             QPushButton:hover { background:rgba(50,42,20,180); color:white; }
         """)
-        btn_browse_www.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_browse_www.clicked.connect(lambda: webbrowser.open("https://fabianadrianw.github.io/eyelingo/?page=community"))
-        self.lay.addWidget(btn_browse_www)
-
+        btn_browse.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_browse.clicked.connect(self._on_browse_community)
+        self.lay.addWidget(btn_browse)
         self.lay.addWidget(_back_btn("← Wróć do języków", self._go_back))
         self.lay.addWidget(_close_btn(self))
 
@@ -2810,13 +2621,6 @@ class MySetsPicker(_DraggableWindow):
     def _on_browse_community(self):
         if self.on_browse_community:
             self.on_browse_community()
-
-    def _on_create_clicked(self):
-        count = len(self.sets)
-        if not self._is_premium and count >= self.FREE_SET_LIMIT:
-            self.lbl_premium.show()
-            return
-        self.on_create()
         count = len(self.sets)
         if not self._is_premium and count >= self.FREE_SET_LIMIT:
             self.lbl_premium.show()
@@ -2889,7 +2693,7 @@ class BuyLevelWorker(QThread):
 
     def run(self):
         try:
-            uid = current_uid()
+            uid = supabase.auth.get_user().user.id
             key = f"{self.lang_code}_{self.level_code}"
             # Pobierz złoto z learning_stats
             stats = supabase.from_("learning_stats").select("gold").eq("user_id", uid).single().execute()
@@ -2958,157 +2762,6 @@ class ProfileWorker(QThread):
 # WORKER – pobieranie złota i statusu premium
 # ──────────────────────────────────────────────────────
 class StatsWorker(QThread):
-    done = pyqtSignal(dict)
-
-    def run(self):
-        try:
-            uid = current_uid()
-            stats = supabase.from_("learning_stats").select(
-                "gold,cards_seen,minutes_active,streak_days,last_active"
-            ).eq("user_id", uid).single().execute()
-            profile = supabase.from_("profiles").select(
-                "is_premium,premium_until,levels_bought,username"
-            ).eq("user_id", uid).single().execute()
-            sets = supabase.from_("user_sets").select(
-                "id,name,likes_count", count="exact"
-            ).eq("user_id", uid).execute()
-            total_likes = sum(s.get("likes_count", 0) for s in (sets.data or []))
-            self.done.emit({
-                **(stats.data or {}),
-                **(profile.data or {}),
-                "sets_count": sets.count or 0,
-                "total_likes": total_likes,
-            })
-        except Exception as e:
-            print(f"[StatsWorker] {e}")
-            self.done.emit({})
-
-
-class StatsWindow(_DraggableWindow):
-    def __init__(self):
-        super().__init__()
-        _styled_window(self)
-        self.setFixedSize(380, 520)
-        self._build()
-        _right_third_pos(self)
-
-    def _build(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-
-        # Pasek
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("📊  Twoje statystyki")
-        t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        t.setStyleSheet("color:white;background:transparent;")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl.addWidget(t)
-        lay.addWidget(hdr)
-
-        inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        il = QVBoxLayout(inner); il.setContentsMargins(20, 12, 20, 16); il.setSpacing(10)
-        lay.addWidget(inner, 1)
-
-        self.lbl_loading = QLabel("Ładowanie...")
-        self.lbl_loading.setFont(QFont("Segoe UI", 10))
-        self.lbl_loading.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
-        self.lbl_loading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        il.addWidget(self.lbl_loading)
-
-        self.stats_widget = QWidget(); self.stats_widget.setStyleSheet("background:transparent;")
-        self.stats_widget.hide()
-        self.stats_lay = QVBoxLayout(self.stats_widget); self.stats_lay.setSpacing(8); self.stats_lay.setContentsMargins(0,0,0,0)
-        il.addWidget(self.stats_widget, 1)
-
-        il.addWidget(_close_btn(self))
-
-    def _stat_row(self, icon, label, value, color="rgba(220,235,255,220)"):
-        row = QWidget(); row.setStyleSheet("""
-            QWidget { background:rgba(30,32,60,140); border:1px solid rgba(80,85,120,80);
-                border-radius:10px; }
-        """)
-        rl = QHBoxLayout(row); rl.setContentsMargins(14, 10, 14, 10); rl.setSpacing(10)
-        li = QLabel(icon); li.setFont(QFont("Segoe UI Emoji", 18))
-        li.setStyleSheet("background:transparent;"); li.setFixedWidth(28)
-        li.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        txt = QVBoxLayout(); txt.setSpacing(1)
-        ll = QLabel(label); ll.setFont(QFont("Segoe UI", 9))
-        ll.setStyleSheet("color:rgba(160,175,210,180);background:transparent;")
-        lv = QLabel(str(value)); lv.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-        lv.setStyleSheet(f"color:{color};background:transparent;")
-        txt.addWidget(ll); txt.addWidget(lv)
-        rl.addWidget(li); rl.addLayout(txt, 1)
-        return row
-
-    def load(self):
-        self.lbl_loading.show()
-        self.stats_widget.hide()
-        self._w = StatsWorker()
-        self._w.done.connect(self._on_loaded)
-        self._w.start()
-
-    def _on_loaded(self, data):
-        self.lbl_loading.hide()
-        # Wyczyść poprzednie
-        while self.stats_lay.count():
-            item = self.stats_lay.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-
-        gold = data.get("gold", 0)
-        cards = data.get("cards_seen", 0)
-        minutes = data.get("minutes_active", 0)
-        streak = data.get("streak_days", 0)
-        sets_count = data.get("sets_count", 0)
-        total_likes = data.get("total_likes", 0)
-        is_premium = data.get("is_premium", False)
-        premium_until = data.get("premium_until")
-        username = data.get("username", "—")
-
-        # Username
-        un_row = QWidget(); un_row.setStyleSheet("background:rgba(201,106,42,30);border:1px solid rgba(201,106,42,100);border-radius:10px;")
-        unl = QHBoxLayout(un_row); unl.setContentsMargins(14,10,14,10)
-        unl_lbl = QLabel(f"👤  {username}")
-        unl_lbl.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-        unl_lbl.setStyleSheet("color:rgba(220,180,100,220);background:transparent;")
-        unl.addWidget(unl_lbl)
-        self.stats_lay.addWidget(un_row)
-
-        # Premium status
-        if is_premium and premium_until:
-            from datetime import datetime
-            try:
-                until = datetime.fromisoformat(premium_until.replace("Z", "+00:00"))
-                days_left = (until - datetime.now(until.tzinfo)).days
-                prem_text = f"⭐ Premium · {days_left} dni"
-                prem_color = "rgba(100,220,150,220)"
-            except Exception:
-                prem_text = "⭐ Premium"
-                prem_color = "rgba(100,220,150,220)"
-        else:
-            prem_text = "🔒 Plan darmowy"
-            prem_color = "rgba(160,175,210,180)"
-        self.stats_lay.addWidget(self._stat_row("🏆", "Status konta", prem_text, prem_color))
-
-        # Statystyki
-        self.stats_lay.addWidget(self._stat_row("📚", "Poznane słowa", f"{cards:,}".replace(",", " ")))
-
-        hours = minutes // 60
-        mins = minutes % 60
-        time_str = f"{hours}h {mins}min" if hours else f"{mins} min"
-        self.stats_lay.addWidget(self._stat_row("⏱️", "Czas nauki", time_str))
-        self.stats_lay.addWidget(self._stat_row("📂", "Twoje zestawy", f"{sets_count}"))
-        self.stats_lay.addWidget(self._stat_row("❤️", "Łączne lajki", f"{total_likes}", "rgba(255,100,120,220)"))
-
-        self.stats_lay.addStretch()
-        self.stats_widget.show()
-
-    def paintEvent(self, e):
-        _paint_bg(self, e)
-
-
-class SettingsWindow(_DraggableWindow):
     done  = pyqtSignal(int, bool)  # gold, is_premium
     error = pyqtSignal(str)
 
@@ -3118,7 +2771,8 @@ class SettingsWindow(_DraggableWindow):
 
     def run(self):
         try:
-            uid  = current_uid()
+            user = supabase.auth.get_user()
+            uid  = user.user.id
             resp = supabase.table("learning_stats").select("gold").eq("user_id", uid).execute()
             gold = resp.data[0]["gold"] if resp.data else 0
             resp2 = supabase.table("profiles").select("is_premium").eq("user_id", uid).execute()
@@ -3338,6 +2992,13 @@ class PurchaseWindow(_DraggableWindow):
                 }}
             """
 
+        self.btn_gold = QPushButton("🏺  Zapłać złotem  ·  7 500 złota")
+        self.btn_gold.setStyleSheet(_sty("rgba(210,175,0,220)", "rgba(50,42,20,180)"))
+        self.btn_gold.setFont(QFont("Segoe UI", 12))
+        self.btn_gold.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_gold.clicked.connect(self._pay_gold)
+        il.addWidget(self.btn_gold)
+
         self.btn_once = QPushButton("💳  Kup jednorazowo  ·  19,99 zł")
         self.btn_once.setStyleSheet(_sty("rgba(80,140,230,220)", "rgba(30,50,90,180)"))
         self.btn_once.setFont(QFont("Segoe UI", 12))
@@ -3370,7 +3031,9 @@ class PurchaseWindow(_DraggableWindow):
         parts = price_key.split("_")
         self._lang_code  = parts[0] if len(parts) >= 2 else ""
         self._lvl_code   = parts[1] if len(parts) >= 2 else ""
-        self.lbl_info.setText(f"{lang_label}  ·  Poziom {level_label}")
+        self.lbl_info.setText(f"{lang_label}  ·  Poziom {level_label}  ·  masz {gold:,} złota".replace(",", " "))
+        can_gold = gold >= 7500
+        self.btn_gold.setEnabled(can_gold)
         self.lbl_msg.setText("")
         self.lbl_msg.setStyleSheet("color:rgba(255,100,100,220);background:transparent;")
         self.show(); self.raise_(); self.activateWindow()
@@ -3380,7 +3043,7 @@ class PurchaseWindow(_DraggableWindow):
             self.lbl_msg.setText("Niewystarczająca ilość złota.")
             return
         try:
-            uid = current_uid()
+            uid = supabase.auth.get_user().user.id
             # Pobierz levels_bought z profiles
             profile = supabase.from_("profiles").select("levels_bought").eq("user_id", uid).single().execute()
             current = profile.data.get("levels_bought") or []
@@ -4493,7 +4156,6 @@ class TrayApp:
         self.win_settings = SettingsWindow()
         self.win_settings.settings_changed.connect(self._on_settings_changed)
         self.win_settings.go_back.connect(self._show_lang)
-        self.win_stats = StatsWindow()
         self.win_test    = TestWindow()
         self.win_test.test_done.connect(self._on_test_done)
         self._test_progress   = {}
@@ -4524,7 +4186,6 @@ class TrayApp:
         self.win_custom  = CustomSetWindow(self._show_my_sets)
         self.win_public_sets = PublicSetsWindow()
         self.win_public_sets.set_imported.connect(self._show_my_sets)
-        self.win_public_sets.set_back_callback(self._show_my_sets)
         self.win_custom.set_created.connect(self._on_custom_set_created)
         self.win_my_sets.set_picked.connect(self._on_custom_set_picked)
 
@@ -4534,7 +4195,7 @@ class TrayApp:
         menu = QMenu()
         menu.addAction("🌍  Zmień język / poziom / kategorię").triggered.connect(self._show_lang)
         menu.addAction("🏆  Aktywuj Premium").triggered.connect(self._show_premium)
-        menu.addAction("📊  Statystyki").triggered.connect(self._show_stats)
+        menu.addAction("🏪  Sklep złota").triggered.connect(self._show_shop)
         menu.addAction("📝  Zrób test").triggered.connect(self._start_test)
         menu.addAction("⚙️  Ustawienia").triggered.connect(lambda: (self.win_settings.show(), self.win_settings.raise_()))
         menu.addSeparator()
@@ -4569,7 +4230,7 @@ class TrayApp:
     def _show_purchase_subscription(self):
         """Otwórz okno zakupu subskrypcji."""
         try:
-            user_email = current_email()
+            user_email = supabase.auth.get_user().user.email
         except Exception:
             user_email = ""
         gold = getattr(self, '_gold', 0)
@@ -4722,13 +4383,11 @@ class TrayApp:
         self.win_shop.raise_()
         self.win_shop.activateWindow()
 
-    def _show_stats(self):
-        self.win_stats.load()
-        self.win_stats.show()
-        self.win_stats.raise_()
-        self.win_stats.activateWindow()
-
     def _on_level_bought(self, level_code, gold_left):
+        # Daj 1500 złota za zakup poziomu
+        self._add_gold_worker = AddGoldWorker(1500, 0)
+        self._add_gold_worker.done.connect(lambda g: self.overlay.set_gold(g))
+        self._add_gold_worker.start()
         # Odśwież profil po chwili
         QTimer.singleShot(1500, self.load_user_stats)
 
@@ -4742,6 +4401,9 @@ class TrayApp:
         self._profile_worker = ProfileWorker()
         self._profile_worker.done.connect(self._on_profile_loaded)
         self._profile_worker.start()
+        self._streak_worker = StreakWorker()
+        self._streak_worker.done.connect(self.overlay.set_streak)
+        self._streak_worker.start()
 
     def _on_profile_loaded(self, profile):
         gold          = profile.get("gold", 0)
@@ -4759,6 +4421,8 @@ class TrayApp:
         self._gold          = gold
         self._is_premium    = is_premium
         self._levels_bought = levels_bought
+        self.overlay.set_gold(gold)
+        self.overlay.set_streak(streak)
         lang  = self.overlay.lang or "en"
         level = self.overlay.level or "A1"
         cat   = self.overlay.cat or None
@@ -4791,7 +4455,7 @@ class TrayApp:
         lang_label_str = next((l["label"] for l in LANGUAGES if l["code"] == lang_code), lang_code)
         gold = self._gold if hasattr(self, "_gold") else 0
         try:
-            user_email = current_email()
+            user_email = supabase.auth.get_user().user.email
         except Exception:
             user_email = ""
         self.win_purchase.show_for(price_key, lvl_code, lang_label_str, gold, user_email)
@@ -4805,6 +4469,7 @@ class TrayApp:
             self._gold          = gold
             self._is_premium    = is_premium
             self._levels_bought = levels_bought
+            self.overlay.set_gold(gold)
             self.win_lvl.set_premium(is_premium)
             self.win_lvl.set_bought_levels(levels_bought)
             self.win_shop.update_profile(gold, is_premium, levels_bought)
@@ -4872,7 +4537,7 @@ class TrayApp:
         is_premium = getattr(self, '_is_premium', False)
         # Sprawdź ile zestawów ma użytkownik
         try:
-            uid = current_uid()
+            uid = supabase.auth.get_user().user.id
             resp = supabase.from_("user_sets").select("id").eq("user_id", uid).execute()
             count = len(resp.data) if resp.data else 0
         except Exception:
@@ -5205,11 +4870,12 @@ def main():
     app.setQuitOnLastWindowClosed(False)
 
     overlay      = FlashcardOverlay()
-    overlay.hide()
+    overlay.hide()  # ukryj do czasu wyboru kategorii
     login_window = LoginWindow()
 
     def on_logged_in(_session):
         tray.load_user_stats()
+        # Wznów ostatnią fiszkę jeśli plik istnieje
         try:
             import json, pathlib
             _last = pathlib.Path.home() / ".eyelingo_last.json"
@@ -5225,32 +4891,26 @@ def main():
                     ))
         except Exception:
             pass
+        # overlay pozostaje ukryty - pojawi sie po wyborze kategorii
+
 
     login_window.logged_in.connect(on_logged_in)
+
     tray = TrayApp(app, overlay, login_window)
     setup_hotkeys(overlay, tray)
 
-    def show_login():
-        if OnboardingWindow.should_show():
-            onboarding = OnboardingWindow()
-            onboarding.finished.connect(lambda: (login_window.show(), login_window.raise_()))
-            onboarding.show()
-        else:
-            login_window.show()
-
     if try_restore_session():
         try:
-            user = current_user()
-            if user:
-                ph_identify(user.id, user.email)
-                ph_capture("app_opened", {"session": "restored"})
+            user = supabase.auth.get_user()
+            ph_identify(user.user.id, user.user.email)
+            ph_capture("app_opened", {"session": "restored"})
         except Exception:
             pass
         on_logged_in(None)
     else:
         ph_capture("app_opened", {"session": "new"})
-        show_login()
-        overlay.hide()
+        login_window.show()
+        overlay.hide()  # nie pokazuj fiszki przed wyborem kategorii
 
     sys.exit(app.exec())
 
@@ -5258,4 +4918,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-    
