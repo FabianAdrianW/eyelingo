@@ -124,6 +124,37 @@
   .login .err{font-size:13px;color:var(--error);text-align:center;min-height:20px;margin-bottom:6px}
   .login .alt{text-align:center;margin-top:18px;font-size:13px;color:var(--dim)}
   .login .alt a{color:var(--orange);font-weight:600;cursor:pointer}
+  /* Lex */
+  .lex-ex{flex:1;display:flex;flex-direction:column;padding:8px 20px;min-height:0;overflow-y:auto}
+  .lex-card{background:var(--navy);color:#fff;border-radius:var(--r);padding:16px 18px;margin-bottom:16px}
+  .lex-who{font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:7px}
+  .lex-say{font-size:15px;line-height:1.6}.lex-say b{color:var(--orange2);font-weight:600}
+  .lex-key{display:inline-block;background:rgba(201,106,42,.20);color:#ffd9bd;border-radius:6px;padding:1px 7px;font-weight:600}
+  .lex-q{font-size:18px;line-height:1.55;color:var(--navy);text-align:center;margin:6px 0 18px}
+  .lex-q b{color:var(--orange);font-weight:600}
+  .lex-task-num{text-align:center;font-size:11px;color:var(--dim2);margin-bottom:14px;letter-spacing:.5px}
+  .lex-opt{display:block;width:100%;text-align:left;border:1px solid var(--line2);background:#fff;border-radius:10px;padding:14px 16px;margin-bottom:10px;font-family:inherit;font-size:15px;color:var(--navy);cursor:pointer;transition:.15s}
+  .lex-opt:active{transform:scale(.99)}
+  .lex-opt.correct{border-color:var(--success);background:var(--success-bg);color:var(--success);font-weight:600}
+  .lex-opt.wrong{border-color:var(--error);background:#f7e7e3;color:var(--error)}
+  .lex-opt.dim{opacity:.45}
+  .lex-input{width:100%;border:.5px solid var(--line2);border-radius:var(--r-sm);padding:15px;font-family:inherit;font-size:16px;color:var(--navy);text-align:center;outline:none}
+  .lex-input:focus{border-color:var(--orange)}.lex-input:disabled{background:var(--paper2)}
+  .lex-fb{font-size:14px;line-height:1.5;padding:13px 15px;border-radius:var(--r-sm);margin-top:14px;display:none}
+  .lex-fb.show{display:block;animation:fade .2s ease}.lex-fb.ok{background:var(--success-bg);color:var(--success)}.lex-fb.no{background:#f7e7e3;color:var(--error)}
+  .lex-fb b{font-weight:600}
+  .lex-prog{flex:1;display:flex;gap:4px}
+  .lex-prog .s{height:4px;flex:1;border-radius:2px;background:var(--line2);transition:.3s}
+  .lex-prog .s.done{background:var(--orange)}.lex-prog .s.cur{background:var(--navy)}
+  .lex-loading{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--dim2);gap:14px;text-align:center;padding:0 30px}
+  .field{margin-top:22px}.field .lab{font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px}
+  .opt3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .opt{border:1.5px solid var(--line2);background:#fff;border-radius:10px;padding:11px 6px;cursor:pointer;text-align:center;transition:.15s}
+  .opt.sel{border:2px solid var(--orange);background:#fffaf6}.opt .ot{font-size:12.5px;font-weight:600;color:var(--navy)}.opt .od{font-size:10px;color:var(--dim2);margin-top:2px;line-height:1.3}
+  .opt2{display:flex;gap:10px}.opt2 .opt{flex:1;text-align:left;padding:12px 14px}
+  .src-chip{display:flex;align-items:center;gap:10px;background:var(--paper2);border-radius:12px;padding:13px 15px;margin-bottom:6px}
+  .src-chip .nm{font-size:14.5px;font-weight:600;color:var(--navy)}.src-chip .ch{font-size:11px;color:var(--dim2)}
+  .sub{font-size:14px;color:var(--dim);line-height:1.5}
 </style>
 </head>
 <body>
@@ -193,9 +224,9 @@
         <div class="scroll">
           <div class="set-head"><div class="name" id="set-name"></div><div class="meta" id="set-meta"></div></div>
           <div style="height:18px"></div>
-          <div class="action primary" onclick="soon('Lekcja z Lexem','Krok 4 — Lex utrwalający ten zestaw podłączymy wkrótce.')">
+          <div class="action primary" onclick="openLexSetup()">
             <div class="ic orange"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"/></svg></div>
-            <div class="body"><div class="t">Ucz się z Lexem <span class="soon-badge">wkrótce</span></div><div class="d">Lex utrwala te słowa</div></div></div>
+            <div class="body"><div class="t">Ucz się z Lexem</div><div class="d">Lex utrwala te słowa — wydobywasz je z pamięci</div></div></div>
           <div class="action" onclick="openBrowse()">
             <div class="ic navy"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></div>
             <div class="body"><div class="t">Przeglądaj fiszki</div><div class="d">Obracaj karty — słowo i tłumaczenie</div></div></div>
@@ -222,6 +253,35 @@
       <button class="tab" id="t-powtorki" onclick="soon('Powtórki SM-2','Krok 2 — kolejka powtórek z zapisem SM-2 podłączymy wkrótce.')">
         <svg class="ti" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Powtórki</button>
     </nav>
+  </div>
+
+  <!-- IMMERSIVE: LEX SETUP -->
+  <div class="immersive" id="imm-lexsetup">
+    <div class="imm-bar"><button class="icon-btn" onclick="closeImm('imm-lexsetup')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="imm-title">Lekcja z Lexem</div><div style="width:36px"></div></div>
+    <div class="scroll" style="padding-top:8px">
+      <div class="src-chip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"/></svg>
+        <div><div class="nm" id="lex-src">Zestaw</div><div class="ch">Lex utrwali słowa z tego zestawu</div></div></div>
+      <div class="field"><div class="lab">Poziom języka w przykładach Lexa</div>
+        <div class="sub" style="font-size:12px;margin-bottom:10px">Jak trudne mają być zdania Lexa. Nie dotyczy słów z zestawu — te zostają.</div>
+        <div class="opt3" id="lex-exlvl">
+          <div class="opt" data-v="basic" onclick="lexSel(this,'#lex-exlvl .opt')"><div class="ot">Podstawowy</div><div class="od">Proste zdania</div></div>
+          <div class="opt sel" data-v="intermediate" onclick="lexSel(this,'#lex-exlvl .opt')"><div class="ot">Średniozaaw.</div><div class="od">B1–B2</div></div>
+          <div class="opt" data-v="advanced" onclick="lexSel(this,'#lex-exlvl .opt')"><div class="ot">Zaawansowany</div><div class="od">C1–C2</div></div>
+        </div></div>
+      <div class="field"><div class="lab">Język prowadzenia lekcji</div>
+        <div class="opt2" id="lex-conduct">
+          <div class="opt sel" data-v="pl" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot">Polski</div><div class="od">Lex tłumaczy po polsku</div></div>
+          <div class="opt" data-v="target" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot">Angielski</div><div class="od">Lex prowadzi po angielsku</div></div>
+        </div></div>
+    </div>
+    <div class="thumb"><button class="btn btn-orange" onclick="lexStart()">Zaczynamy →</button></div>
+  </div>
+
+  <!-- IMMERSIVE: LEX RUN -->
+  <div class="immersive" id="imm-lex">
+    <div class="imm-bar"><button class="icon-btn" onclick="lexQuit()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="lex-prog" id="lex-prog"></div></div>
+    <div class="lex-ex" id="lex-stage"></div>
+    <div class="thumb" id="lex-thumb"></div>
   </div>
 
   <!-- IMMERSIVE: PRZEGLĄDANIE (real) -->
@@ -407,6 +467,196 @@ function speakCard(){
     if(window.speechSynthesis){ window.speechSynthesis.cancel();
       var u=new SpeechSynthesisUtterance(c.word); u.lang='en-US'; u.rate=.95; window.speechSynthesis.speak(u); }
   }catch(e){}
+}
+
+/* ===================== LEX (AI nauczyciel) ===================== */
+const LEX_PROXY='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/super-endpoint';
+let lexWords=[], lexMsgs=[], lexExLevel='intermediate', lexConductLang='pl';
+let lexTasks=[], lexTaskI=0, lexBlockScore=0, lexPendingEnd=false;
+
+function lexSel(el,grp){ document.querySelectorAll(grp).forEach(o=>o.classList.remove('sel')); el.classList.add('sel'); }
+function openLexSetup(){ document.getElementById('lex-src').textContent=curSetName||'Zestaw'; document.getElementById('imm-lexsetup').classList.add('active'); }
+function lexQuit(){ if(confirm('Zakończyć lekcję z Lexem?')) closeImm('imm-lex'); }
+
+function extractAI(d){ try{
+  if(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]) return d.candidates[0].content.parts[0].text||'';
+  if(Array.isArray(d.content)&&d.content[0]) return d.content[0].text||'';
+  if(typeof d.content==='string') return d.content;
+  if(d.choices&&d.choices[0]) return (d.choices[0].message&&d.choices[0].message.content)||d.choices[0].text||'';
+  if(typeof d.text==='string') return d.text;
+}catch(e){} return ''; }
+
+function lexSystemPrompt(){
+  var conduct = lexConductLang==='target';
+  var exGuide = lexExLevel==='basic'?'prostego, codziennego słownictwa i krótkich konstrukcji (A1–A2)':lexExLevel==='advanced'?'bogatego, naturalnego słownictwa, idiomów i złożonych struktur (C1–C2)':'naturalnego słownictwa średniego poziomu (B1–B2)';
+  var wl = lexWords.slice(0,40).map(function(w){return w.word+(w.translation?(' = '+w.translation):'');}).join('; ');
+  var nBlocks = lexWords.length<=8?2:lexWords.length<=18?3:4;
+  var rule1 = conduct
+    ? 'Prowadź i wyjaśniaj CAŁĄ lekcję po angielsku. Polskiego użyj tylko do jednowyrazowego glosa w nawiasie.'
+    : 'Prowadź i WYJAŚNIAJ całą lekcję po polsku (uczeń czyta po polsku). Każde angielskie słowo, zwrot lub przykładowe zdanie owijaj w **podwójne gwiazdki**.';
+  return 'Jesteś Lex, ekspert-nauczyciel języka angielskiego. '+rule1+' '
+    +'NIGDY nie używaj emoji, emotikonów ani markdown nagłówków (#). Zachowaj spokojny, profesjonalny, pedagogiczny ton.\n'
+    +'MATERIAŁ LEKCJI — utrwalasz DOKŁADNIE te słowa z zestawu ucznia i budujesz zadania WOKÓŁ nich (uczeń ma je wydobyć z pamięci, nie tylko zobaczyć): '+wl+'.\n'
+    +'POZIOM PRZYKŁADÓW (nie dotyczy słów z zestawu): buduj zdania-przykłady z '+exGuide+'.\n'
+    +'STRUKTURA: KAŻDA Twoja odpowiedź = JEDEN blok lekcji: (a) 2–3 zdania wprowadzenia po '+(conduct?'angielsku':'polsku')+', potem (b) DOKŁADNIE 4 zadania, każde w osobnym znaczniku [TASK]...[/TASK]. Typy MIESZAJ: mc, fig, trans. Każde zadanie MUSI mieć ANS i WHY (jedno zdanie po polsku — co zapamiętać).\n'
+    +'FORMATY ZADAŃ:\n'
+    +'[TASK]\nTYPE: mc\nQ: pytanie po angielsku\nA: opcja\nB: opcja\nC: opcja\nD: opcja\nANS: A\nWHY: po polsku\n[/TASK]\n'
+    +'[TASK]\nTYPE: fig\nQ: zdanie po angielsku z luką ___\nANS: brakujące słowo\nHINT: krótka podpowiedź po polsku\nWHY: po polsku\n[/TASK]\n'
+    +'[TASK]\nTYPE: trans\nQ: krótkie zdanie PO POLSKU do przetłumaczenia\nANS: wzorcowe tłumaczenie po angielsku\nWHY: po polsku\n[/TASK]\n'
+    +'Najważniejszą rzecz do zapamiętania w bloku owiń w [KEY]...[/KEY] (maksymalnie jeden na blok, często zero).\n'
+    +'Gdy uczeń przyśle wiadomość [BLOCK_DONE] z wynikiem: pochwal jednym zdaniem, dostosuj kolejny blok (były błędy → ten temat ponownie, inaczej; 4/4 → podnieś trudność lub nowy aspekt) i podaj następny blok 4 zadań.\n'
+    +'LESSON FLOW: krótkie powitanie po '+(conduct?'angielsku':'polsku')+', potem '+nBlocks+' bloki po 4 zadania. Po ostatnim bloku zakończ krótkim, budującym podsumowaniem i znacznikiem [END].';
+}
+
+async function lexCallAI(){
+  var tok=''; try{ tok=(await db.auth.getSession()).data.session.access_token||''; }catch(e){}
+  var res=await fetch(LEX_PROXY,{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},
+    body:JSON.stringify({systemPrompt:lexSystemPrompt(),messages:lexMsgs.slice(-12),max_tokens:1200})});
+  var data=await res.json();
+  return extractAI(data);
+}
+
+async function lexStart(){
+  var elx=document.querySelector('#lex-exlvl .opt.sel'); lexExLevel=(elx&&elx.dataset.v)||'intermediate';
+  var ecd=document.querySelector('#lex-conduct .opt.sel'); lexConductLang=(ecd&&ecd.dataset.v)||'pl';
+  closeImm('imm-lexsetup');
+  document.getElementById('imm-lex').classList.add('active');
+  lexLoading('Lex przygotowuje lekcję z Twojego zestawu…');
+  try{
+    var {data,error}=await db.from('user_set_cards').select('word,translation').eq('set_id',curSetId);
+    if(error) throw error;
+    lexWords=(data||[]).filter(function(c){return c.word;});
+  }catch(e){ lexWords=[]; }
+  if(!lexWords.length){ lexError('Ten zestaw nie ma jeszcze słów do utrwalania.'); return; }
+  lexMsgs=[{role:'user',content:'Zaczynamy lekcję.'}]; lexPendingEnd=false;
+  await lexTurn();
+}
+
+async function lexTurn(){
+  lexLoading('Lex układa zadania…');
+  try{
+    var txt=await lexCallAI();
+    if(!txt){ lexError('Lex nie odpowiedział. Spróbuj ponownie.'); return; }
+    lexMsgs.push({role:'assistant',content:txt});
+    lexHandle(txt);
+  }catch(e){ lexError('Błąd połączenia z Lexem. Sprawdź internet i spróbuj ponownie.'); }
+}
+
+function lexParseTasks(txt){
+  var out=[], re=/\[TASK\]([\s\S]*?)\[\/TASK\]/g, m;
+  while((m=re.exec(txt))){
+    var t={opts:{}};
+    m[1].split('\n').forEach(function(line){
+      var mm=line.match(/^\s*([A-Za-z]+)\s*:\s*(.*)$/); if(!mm) return;
+      var k=mm[1].toUpperCase(), v=mm[2].trim();
+      if(k==='TYPE') t.type=v.toLowerCase();
+      else if(k==='Q') t.q=v;
+      else if(k==='A'||k==='B'||k==='C'||k==='D') t.opts[k]=v;
+      else if(k==='ANS') t.ans=v;
+      else if(k==='WHY') t.why=v;
+      else if(k==='HINT') t.hint=v;
+    });
+    if(t.type&&t.q&&t.ans!=null) out.push(t);
+  }
+  return out;
+}
+function lexClean(s){
+  s=escapeHtml(s||'');
+  s=s.replace(/\[WORD\][\s\S]*?\[\/WORD\]/gi,'').replace(/\[CORE\][\s\S]*?\[\/CORE\]/gi,'').replace(/\[CARD\][\s\S]*?\[\/CARD\]/gi,'');
+  s=s.replace(/\[KEY\]([\s\S]*?)\[\/KEY\]/gi,'<span class="lex-key">$1</span>');
+  s=s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  s=s.replace(/\[\/?[A-Z_]+\]/g,'');
+  return s.trim().replace(/\n{3,}/g,'\n\n').replace(/\n/g,'<br>');
+}
+function lexHandle(txt){
+  var ended=/\[END\]/i.test(txt);
+  var tasks=lexParseTasks(txt);
+  var intro=lexClean(txt.replace(/\[TASK\][\s\S]*?\[\/TASK\]/g,'').replace(/\[END\]/ig,''));
+  lexTasks=tasks; lexTaskI=0; lexBlockScore=0; lexPendingEnd=ended;
+  if(!tasks.length){
+    if(ended){ lexRenderEnd(intro); }
+    else {
+      document.getElementById('lex-prog').innerHTML='';
+      document.getElementById('lex-stage').innerHTML='<div class="lex-card" style="margin-top:8px"><div class="lex-who">Lex</div><div class="lex-say">'+(intro||'Zaczynamy.')+'</div></div>';
+      document.getElementById('lex-thumb').innerHTML='<button class="btn btn-orange" onclick="lexContinue()">Pierwsze zadania →</button>';
+    }
+    return;
+  }
+  lexRenderIntro(intro);
+}
+async function lexContinue(){ lexMsgs.push({role:'user',content:'Podaj pierwszy blok: 4 zadania.'}); await lexTurn(); }
+
+function lexProg(done){
+  var p=document.getElementById('lex-prog'); var n=Math.max(lexTasks.length,1), html='';
+  for(var i=0;i<n;i++){ var cls=done||i<lexTaskI?'done':(i===lexTaskI?'cur':''); html+='<i class="s '+cls+'"></i>'; }
+  p.innerHTML=html;
+}
+function lexRenderIntro(intro){
+  lexProg();
+  document.getElementById('lex-stage').innerHTML='<div class="lex-card" style="margin-top:8px"><div class="lex-who">Lex</div><div class="lex-say">'+(intro||'Zaczynamy.')+'</div></div>';
+  document.getElementById('lex-thumb').innerHTML='<button class="btn btn-orange" onclick="lexShowTask(0)">Pierwsze zadanie →</button>';
+}
+function lexShowTask(i){
+  lexTaskI=i; var t=lexTasks[i]; if(!t){ lexAfterBlock(); return; }
+  lexProg();
+  var stage=document.getElementById('lex-stage'), thumb=document.getElementById('lex-thumb');
+  var head='<div class="lex-task-num">Zadanie '+(i+1)+' z '+lexTasks.length+'</div>';
+  if(t.type==='mc'){
+    var opts=['A','B','C','D'].filter(function(k){return t.opts[k];}).map(function(k){return '<button class="lex-opt" data-k="'+k+'" onclick="lexAnsMC(this,\''+k+'\')">'+escapeHtml(t.opts[k])+'</button>';}).join('');
+    stage.innerHTML=head+'<div class="lex-q">'+lexClean(t.q)+'</div>'+opts+'<div class="lex-fb" id="lexfb"></div>';
+    thumb.innerHTML='';
+  } else {
+    var ph=t.type==='trans'?'przetłumacz na angielski…':'wpisz brakujące słowo…';
+    stage.innerHTML=head+'<div class="lex-q">'+lexClean(t.q)+'</div>'
+      +(t.hint?'<div style="text-align:center;font-size:12px;color:var(--dim2);margin:-8px 0 14px">Podpowiedź: '+escapeHtml(t.hint)+'</div>':'')
+      +'<input class="lex-input" id="lexin" placeholder="'+ph+'" autocomplete="off" autocapitalize="off"><div class="lex-fb" id="lexfb"></div>';
+    thumb.innerHTML='<button class="btn btn-orange" onclick="lexAnsText()">Sprawdź</button>';
+  }
+}
+function lexNorm(s){ return String(s||'').toLowerCase().replace(/[.,!?;:"'’]/g,'').replace(/\s+/g,' ').trim(); }
+function lexMatch(a,b){ var na=lexNorm(a), nb=lexNorm(b); return na===nb || (nb.length>3 && na.indexOf(nb)>=0); }
+function lexAnsMC(el,k){
+  var t=lexTasks[lexTaskI]; var ansK=String(t.ans||'').trim().toUpperCase().charAt(0);
+  var correct=(k.toUpperCase()===ansK);
+  document.querySelectorAll('.lex-opt').forEach(function(b){ b.onclick=null;
+    var bk=b.getAttribute('data-k');
+    if(bk===ansK) b.classList.add('correct'); else if(b===el) b.classList.add('wrong'); else b.classList.add('dim'); });
+  lexFeedback(correct,t.why,null);
+}
+function lexAnsText(){
+  var t=lexTasks[lexTaskI]; var inp=document.getElementById('lexin'); var v=(inp.value||'').trim(); if(!v) return;
+  var correct=lexMatch(v,t.ans); inp.disabled=true;
+  lexFeedback(correct,t.why,correct?null:t.ans);
+}
+function lexFeedback(correct,why,showAns){
+  if(correct) lexBlockScore++;
+  if(navigator.vibrate) navigator.vibrate(correct?8:4);
+  var fb=document.getElementById('lexfb'); fb.className='lex-fb show '+(correct?'ok':'no');
+  fb.innerHTML=(correct?'Dobrze. ':'Niezupełnie'+(showAns?' — poprawnie: <b>'+escapeHtml(showAns)+'</b>. ':'. '))+(why?escapeHtml(why):'');
+  var last=lexTaskI>=lexTasks.length-1;
+  document.getElementById('lex-thumb').innerHTML='<button class="btn btn-'+(last?'navy':'orange')+'" onclick="lexNextTask()">'+(last?'Dalej →':'Następne →')+'</button>';
+}
+function lexNextTask(){ if(lexTaskI>=lexTasks.length-1) lexAfterBlock(); else lexShowTask(lexTaskI+1); }
+async function lexAfterBlock(){
+  if(lexPendingEnd){ lexRenderEnd(''); return; }
+  lexMsgs.push({role:'user',content:'[BLOCK_DONE] '+lexBlockScore+'/'+lexTasks.length});
+  await lexTurn();
+}
+function lexRenderEnd(intro){
+  lexProg(true);
+  document.getElementById('lex-stage').innerHTML='<div class="lex-loading" style="justify-content:center"><div style="width:100%"><div style="font-size:10.5px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2);margin-bottom:14px;text-align:center">Lekcja zakończona</div><div class="lex-card" style="text-align:left"><div class="lex-who">Lex</div><div class="lex-say">'+(intro||'Dobra robota. Te słowa wróciły do Ciebie z pamięci — i o to chodziło.')+'</div></div></div></div>';
+  document.getElementById('lex-thumb').innerHTML='<button class="btn btn-navy" onclick="closeImm(\'imm-lex\');go(\'ucz\')">Gotowe</button>';
+}
+function lexLoading(msg){
+  document.getElementById('lex-prog').innerHTML='';
+  document.getElementById('lex-stage').innerHTML='<div class="lex-loading"><div class="spin"></div><div>'+msg+'</div></div>';
+  document.getElementById('lex-thumb').innerHTML='';
+}
+function lexError(msg){
+  document.getElementById('lex-prog').innerHTML='';
+  document.getElementById('lex-stage').innerHTML='<div class="lex-loading"><div class="h2" style="color:var(--navy)">Coś poszło nie tak</div><div class="sub">'+msg+'</div></div>';
+  document.getElementById('lex-thumb').innerHTML='<button class="btn btn-navy" onclick="closeImm(\'imm-lex\')">Zamknij</button>';
 }
 </script>
 </body>
