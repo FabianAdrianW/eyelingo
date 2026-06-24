@@ -10922,7 +10922,7 @@ function lexQuickStart(){
           +'<div style="font-size:11.5px;color:var(--dim2)">'+lexEsc(nm)+' · porcja '+st.portionNum+' z '+st.portionTarget+'</div></div>'
           +'<span style="font-size:18px;color:var(--orange)">→</span></div>'; }catch(e){ return ''; } })()
     + topic
-    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 12px">Wybierz zestaw lub kategorię</div>'
+    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 12px">Ostatnio przerabiane</div>'
     + '<div id="lex-source-picker"></div>'
     + '<div style="margin:24px 0 8px;text-align:left;padding:16px 18px;background:var(--paper2);border-radius:14px;border:1px solid var(--border)">'
     + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Poziom języka w przykładach Lexa</div>'
@@ -12753,7 +12753,7 @@ function lexSpeak(text){
       if(myToken!==window._lexPlayToken) return;          // przerwane nową wypowiedzią
       var seg=segs[i];
       var base=String(seg.lang||'').split('-')[0].toLowerCase();
-      var useCloud = cloudOn && !window._lexTtsDown && base!=='ja' && base!=='jp';
+      var useCloud = cloudOn && !window._lexTtsDown && (typeof ttsEngineFor!=='function' || ttsEngineFor(base)!=='web'); // ar/zh/ko/jp -> Web Speech (lepsza wymowa) wg LEX_LANG_MAP.tts
       if(useCloud){
         try{
           var clean=String(seg.t).replace(/\*\*/g,'').replace(/\s+/g,' ').trim();
@@ -15396,7 +15396,12 @@ async function lexInit(){
     try{
       var lr=await db.from('languages').select('id').eq('code',langCode).single();
       if(!lr.data){ _catCache[langCode]=out; return out; }
-      var rows=await db.from('flashcards').select('category_id,levels(code)').eq('language_id',lr.data.id).limit(8000);
+      var rows={data:[]}; var _pg=1000, _from=0;
+      while(true){
+        var _r=await db.from('flashcards').select('category_id,levels(code)').eq('language_id',lr.data.id).range(_from,_from+_pg-1);
+        var _d=(_r&&_r.data)||[]; rows.data=rows.data.concat(_d);
+        if(_d.length<_pg) break; _from+=_pg; if(_from>40000) break;
+      }
       var byCat={};
       (rows.data||[]).forEach(function(r){ if(r.category_id==null) return;
         var lv=(r.levels&&r.levels.code)||null;
@@ -15700,7 +15705,7 @@ async function lexInit(){
     function badgeOf(code){ return code?('<span class="lexcat-langbadge" style="margin-right:6px">'+esc(String(code).toUpperCase())+'</span>'):''; }
     var chips=[];
     src.eyelingo.forEach(function(c){
-      chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, recent:(c.recent||''), sub:(c.level?c.level+' · ':'')+c.count+' słów'});
+      chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, recent:(c.recent||''), sub:((c.lang&&typeof getLangName==='function')?getLangName(c.lang)+' · ':'')+(c.level?c.level+' · ':'')+c.count+' słów'});
     });
     src.user.forEach(function(u){
       chips.push({kind:'user', id:u.id, label:u.label, level:lvlUser, count:u.count, lang:u.lang||null, recent:(u.recent||''), sub:(u.count+' słów')});
@@ -15709,9 +15714,7 @@ async function lexInit(){
     chips.sort(function(a,b){ return String(b.recent||'').localeCompare(String(a.recent||'')); });
     chips=chips.slice(0,6); // tylko kilka najświeższych — resztę przez katalog
     window._lexSourcesAvail=chips;
-    var browseBtn='<button type="button" onclick="lexCatalogOpen()" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:1.5px dashed var(--border2);background:var(--paper2);border-radius:14px;padding:10px 14px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;min-width:130px;text-align:left" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'
-      +'<span style="font-size:13.5px;font-weight:500;color:var(--navy);display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Przeglądaj wszystkie</span>'
-      +'<span style="font-size:10.5px;color:var(--dim2)">Języki, poziomy, Twoje zestawy</span></button>';
+    var browseBtn='<button type="button" onclick="lexCatalogOpen()" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:none;background:var(--orange);border-radius:14px;padding:11px 16px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;min-width:150px;text-align:left;box-shadow:0 4px 14px rgba(201,106,42,.18)">'+'<span style="font-size:13.5px;font-weight:600;color:#fff;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"></path></svg>Zestawy Eyelingo</span>'+'<span style="font-size:10.5px;color:rgba(255,255,255,.85)">Nasze flagowe zestawy — wszystkie języki</span></button>'+'<button type="button" onclick="lexCatalogOpen()" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:1.5px solid var(--border2);background:#fff;border-radius:14px;padding:11px 16px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;min-width:150px;text-align:left" onmouseover="this.style.borderColor=\'var(--navy)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'+'<span style="font-size:13.5px;font-weight:500;color:var(--navy)">Moje zestawy</span>'+'<span style="font-size:10.5px;color:var(--dim2)">Twoje własne zestawy</span></button>';
     if(!chips.length){
       host.innerHTML='<div style="text-align:center;padding:20px 0 10px">'
         +'<div style="width:52px;height:52px;border-radius:14px;background:rgba(26,35,64,.06);display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M12 12v4m0-4V8"></path></svg></div>'
