@@ -365,7 +365,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       <div class="field"><div class="lab">Język prowadzenia lekcji</div>
         <div class="opt2" id="lex-conduct">
           <div class="opt sel" data-v="pl" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot">Polski</div><div class="od">Lex tłumaczy po polsku</div></div>
-          <div class="opt" data-v="target" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot" id="lex-conduct-ot">Angielski</div><div class="od" id="lex-conduct-od">Lex prowadzi po angielsku</div></div>
+          <div class="opt" data-v="target" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot">Angielski</div><div class="od">Lex prowadzi po angielsku</div></div>
         </div></div>
     </div>
     <div class="thumb"><button class="btn btn-orange" onclick="lexStart()">Zaczynamy →</button></div>
@@ -515,9 +515,10 @@ function plural(n,a,b,c){ n=Math.abs(n); if(n===1)return a; var t=n%10,h=n%100; 
 function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 /* ===== Zestaw ===== */
-let curSetId=null, curSetName='', curSetCount=0, curSetLang='en';
-function openSet(id,name,count,lng){
-  curSetId=id; curSetName=name; curSetCount=count; curSetLang=(lng||'en'); _lexLang=curSetLang;
+let curSetId=null, curSetName='', curSetCount=0, curSetLang='';
+function openSet(id,name,count,lang){
+  curSetId=id; curSetName=name; curSetCount=count;
+  curSetLang=lang||''; if(curSetLang){ _lexLang=String(curSetLang).toLowerCase().split('-')[0]; }
   document.getElementById('set-name').textContent=name;
   document.getElementById('set-meta').textContent=count+' '+plural(count,'fiszka','fiszki','fiszek');
   go('set');
@@ -572,7 +573,7 @@ function speakCard(){
   try{
     var c=CARDS[bi]; if(!c||!c.word) return;
     if(window.speechSynthesis){ window.speechSynthesis.cancel();
-      var u=new SpeechSynthesisUtterance(c.word); u.lang=ttsLangCode(); u.rate=.95; window.speechSynthesis.speak(u); }
+      var u=new SpeechSynthesisUtterance(c.word); u.lang=ttsLangCode(curSetLang||_lexLang); u.rate=.95; window.speechSynthesis.speak(u); }
   }catch(e){}
 }
 
@@ -624,35 +625,32 @@ const esc=escapeHtml;
 let lexConductLang='pl', lexExLevel='intermediate', lexLevel='B1';
 let lexSourceWords=[];
 let _lexLang='en';
-// ── Rejestr języków (14) — jedno źródło prawdy dla mobile ──
-const MLANG = {
-  en:{name:'angielski',   gen:'angielskiego',   loc:'angielskim',   adv:'angielsku',   native:'English',    flag:'🇬🇧', bcp47:'en-US', tts:'cloud'},
-  es:{name:'hiszpański',  gen:'hiszpańskiego',  loc:'hiszpańskim',  adv:'hiszpańsku',  native:'Español',    flag:'🇪🇸', bcp47:'es-ES', tts:'cloud'},
-  de:{name:'niemiecki',   gen:'niemieckiego',   loc:'niemieckim',   adv:'niemiecku',   native:'Deutsch',    flag:'🇩🇪', bcp47:'de-DE', tts:'cloud'},
-  fr:{name:'francuski',   gen:'francuskiego',   loc:'francuskim',   adv:'francusku',   native:'Français',   flag:'🇫🇷', bcp47:'fr-FR', tts:'cloud'},
-  it:{name:'włoski',      gen:'włoskiego',      loc:'włoskim',      adv:'włosku',      native:'Italiano',   flag:'🇮🇹', bcp47:'it-IT', tts:'cloud'},
-  nl:{name:'niderlandzki',gen:'niderlandzkiego',loc:'niderlandzkim',adv:'niderlandzku',native:'Nederlands', flag:'🇳🇱', bcp47:'nl-NL', tts:'cloud'},
-  pt:{name:'portugalski', gen:'portugalskiego', loc:'portugalskim', adv:'portugalsku', native:'Português',  flag:'🇵🇹', bcp47:'pt-PT', tts:'cloud'},
-  no:{name:'norweski',    gen:'norweskiego',    loc:'norweskim',    adv:'norwesku',    native:'Norsk',      flag:'🇳🇴', bcp47:'nb-NO', tts:'cloud'},
-  ru:{name:'rosyjski',    gen:'rosyjskiego',    loc:'rosyjskim',    adv:'rosyjsku',    native:'Русский',    flag:'🇷🇺', bcp47:'ru-RU', tts:'cloud'},
-  uk:{name:'ukraiński',   gen:'ukraińskiego',   loc:'ukraińskim',   adv:'ukraińsku',   native:'Українська', flag:'🇺🇦', bcp47:'uk-UA', tts:'cloud'},
-  ar:{name:'arabski',     gen:'arabskiego',     loc:'arabskim',     adv:'arabsku',     native:'العربية',    flag:'🇸🇦', bcp47:'ar-SA', tts:'web'},
-  jp:{name:'japoński',    gen:'japońskiego',    loc:'japońskim',    adv:'japońsku',    native:'日本語',      flag:'🇯🇵', bcp47:'ja-JP', tts:'web'},
-  zh:{name:'chiński',     gen:'chińskiego',     loc:'chińskim',     adv:'chińsku',     native:'中文',        flag:'🇨🇳', bcp47:'zh-CN', tts:'web'},
-  ko:{name:'koreański',   gen:'koreańskiego',   loc:'koreańskim',   adv:'koreańsku',   native:'한국어',      flag:'🇰🇷', bcp47:'ko-KR', tts:'web'}
+// Deklinacja polskiej nazwy języka docelowego (mianownik / dopełniacz / miejscownik / przysłówek po-...)
+const LEX_LANG_DECL={
+  en:{nom:'angielski', gen:'angielskiego', loc:'angielskim', adv:'angielsku'},
+  es:{nom:'hiszpański', gen:'hiszpańskiego', loc:'hiszpańskim', adv:'hiszpańsku'},
+  nl:{nom:'niderlandzki', gen:'niderlandzkiego', loc:'niderlandzkim', adv:'niderlandzku'},
+  de:{nom:'niemiecki', gen:'niemieckiego', loc:'niemieckim', adv:'niemiecku'},
+  fr:{nom:'francuski', gen:'francuskiego', loc:'francuskim', adv:'francusku'},
+  it:{nom:'włoski', gen:'włoskiego', loc:'włoskim', adv:'włosku'},
+  jp:{nom:'japoński', gen:'japońskiego', loc:'japońskim', adv:'japońsku'}
 };
-function _ml(){ return MLANG[String(_lexLang||'en').toLowerCase().split('-')[0]] || MLANG.en; }
-function ttsLangCode(l){ var i=MLANG[String(l||_lexLang||'en').toLowerCase().split('-')[0]]; return (i&&i.bcp47)||'en-US'; }
-function langFlag(l){ var i=MLANG[String(l||_lexLang||'en').toLowerCase().split('-')[0]]; return (i&&i.flag)||'🌐'; }
-function langName(){ return _ml().name; }            // mianownik
-function langGen(){ return _ml().gen; }          // dopełniacz: języka ~
-function langLoc(){ return _ml().loc; }            // miejscownik: w ~
-function langAdv(){ return _ml().adv; }             // po ~
+function _lexDecl(){ return LEX_LANG_DECL[String(_lexLang||'en').toLowerCase().split('-')[0]]||LEX_LANG_DECL.en; }
+// Kod języka apki → BCP47 (Web Speech). jp → ja-JP.
+function ttsLangCode(code){
+  var L=String(code||'').toLowerCase().split('-')[0];
+  var m={en:'en-US',es:'es-ES',nl:'nl-NL',de:'de-DE',fr:'fr-FR',it:'it-IT',jp:'ja-JP',ja:'ja-JP',pl:'pl-PL'};
+  return m[L] || (L ? (L+'-'+L.toUpperCase()) : 'en-US');
+}
+function langName(){ return _lexDecl().nom; }         // mianownik
+function langGen(){ return _lexDecl().gen; }          // dopełniacz: języka ~
+function langLoc(){ return _lexDecl().loc; }          // miejscownik: w ~
+function langAdv(){ return _lexDecl().adv; }          // po ~
 function lang(){ return _lexLang; }
 
 function lexSel(el,grp){ document.querySelectorAll(grp).forEach(o=>o.classList.remove('sel')); el.classList.add('sel'); }
-function openLexSetup(){ document.getElementById('lex-src').textContent=curSetName||'Zestaw'; try{ var _ot=document.getElementById('lex-conduct-ot'), _od=document.getElementById('lex-conduct-od'); var _nm=langName(); _nm=_nm.charAt(0).toUpperCase()+_nm.slice(1); if(_ot)_ot.textContent=_nm; if(_od)_od.textContent='Lex prowadzi po '+langAdv(); }catch(e){} document.getElementById('imm-lexsetup').classList.add('active'); }
-function lexQuit(){ if(confirm('Zakończyć lekcję z Lexem?')){ try{speechSynthesis.cancel();}catch(e){} try{lexBoardFabShow(false);}catch(e){} closeImm('imm-lex'); } }
+function openLexSetup(){ document.getElementById('lex-src').textContent=curSetName||'Zestaw'; document.getElementById('imm-lexsetup').classList.add('active'); }
+function lexQuit(){ if(confirm('Zakończyć lekcję z Lexem?')){ try{lexStopSpeak();}catch(e){} try{lexBoardFabShow(false);}catch(e){} closeImm('imm-lex'); } }
 
 function extractAI(d){ try{
   if(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]) return d.candidates[0].content.parts[0].text||'';
@@ -800,12 +798,13 @@ async function lexGeneratePortion(){
 
 /* ── start (port lexxStartPortions) ── */
 async function lexStart(){
-  _lexLang=curSetLang||_lexLang||'en';
   var elx=document.querySelector('#lex-exlvl .opt.sel'); lexExLevel=(elx&&elx.dataset.v)||'intermediate';
   var ecd=document.querySelector('#lex-conduct .opt.sel'); lexConductLang=(ecd&&ecd.dataset.v)||'pl';
   closeImm('imm-lexsetup'); document.getElementById('imm-lex').classList.add('active');
   lexLoading('Lex przygotowuje lekcję z Twojego zestawu…');
   try{
+    if(!curSetLang){ try{ var sl=await db.from('user_sets').select('lang').eq('id',curSetId).maybeSingle(); if(sl&&sl.data&&sl.data.lang){ curSetLang=sl.data.lang; } }catch(e){} }
+    if(curSetLang){ _lexLang=String(curSetLang).toLowerCase().split('-')[0]; }
     var {data,error}=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',curSetId).order('sort_order',{ascending:true});
     if(error) throw error;
     lexSourceWords=(data||[]).filter(function(c){return c.word;}).map(function(c){return {word:c.word,translation:c.translation||''};});
@@ -838,7 +837,48 @@ function exScene(src,txt,withAudio){
   var audio=withAudio?'<button type="button" class="lexx-sceneaudio" onclick="lexSceneSpeak(this.getAttribute(\'data-say\'))" data-say="'+esc(String(txt||''))+'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>':'';
   return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><div class="lexx-scene-line"><p class="lexx-scene-txt">'+esc(txt)+'</p>'+audio+'</div></div>';
 }
-window.lexSceneSpeak=function(text){ if(!text)return; try{speechSynthesis.cancel();}catch(e){} try{ var u=new SpeechSynthesisUtterance(String(text)); u.lang=ttsLangCode(); u.rate=.92; speechSynthesis.speak(u);}catch(e){} };
+// Sekwencyjny odtwarzacz segmentów {t,lang} — każdy fragment we własnym języku.
+var _lexSpeakTok=0;
+function lexStopSpeak(){ _lexSpeakTok++; try{speechSynthesis.cancel();}catch(e){} }
+function lexSpeakSegs(segs){
+  if(!window.speechSynthesis) return;
+  var tok=(++_lexSpeakTok);
+  try{speechSynthesis.cancel();}catch(e){}
+  segs=(segs||[]).filter(function(s){return s&&s.t;});
+  if(!segs.length) return;
+  var i=0;
+  function pickVoice(code){ try{ var vs=speechSynthesis.getVoices()||[]; var base=String(code).split('-')[0];
+    return vs.find(function(x){return x.lang===code&&/Google/.test(x.name);})||vs.find(function(x){return x.lang===code;})||vs.find(function(x){return x.lang.indexOf(base)===0;})||null; }catch(e){ return null; } }
+  function next(){
+    if(tok!==_lexSpeakTok) return;
+    if(i>=segs.length) return;
+    var seg=segs[i++];
+    try{
+      var u=new SpeechSynthesisUtterance(String(seg.t).slice(0,300));
+      u.lang=seg.lang; u.rate=.92; u.pitch=1.0;
+      var v=pickVoice(seg.lang); if(v) u.voice=v;
+      u.onend=next; u.onerror=next;
+      speechSynthesis.speak(u);
+    }catch(e){ next(); }
+  }
+  next();
+}
+// Dzieli tekst: fragmenty w **gwiazdkach** = język docelowy; reszta = język prowadzenia (PL lub docelowy).
+function lexSplitMixed(text){
+  var tgt=ttsLangCode(_lexLang);
+  var base=(typeof lexConductLang!=='undefined' && lexConductLang==='target') ? tgt : 'pl-PL';
+  var FS='\u0001';
+  var s=String(text||'').replace(/\*\*([^*]+)\*\*/g, function(m,x){ return FS+x.trim()+FS; }).replace(/\*/g,'');
+  var parts=s.split(FS), out=[];
+  parts.forEach(function(seg,idx){ var t=(seg||'').replace(/\s+/g,' ').trim(); if(!t) return; out.push({t:t, lang:(idx%2===1)?tgt:base}); });
+  var merged=[];
+  out.forEach(function(q){ var last=merged[merged.length-1]; if(last&&last.lang===q.lang){ last.t+=' '+q.t; } else merged.push({t:q.t,lang:q.lang}); });
+  return merged;
+}
+// Słowo/scena w języku docelowym (chipy słów, scenki cue).
+window.lexSceneSpeak=function(text){ if(!text)return; lexSpeakSegs([{t:String(text).replace(/\*\*/g,'').replace(/\s+/g,' ').trim(), lang:ttsLangCode(_lexLang)}]); };
+// Narracja mieszana PL + słowa docelowe (intro porcji, klucze).
+window.lexSpeakMixed=function(text){ if(!text)return; lexSpeakSegs(lexSplitMixed(text)); };
 
 function lexSegHtml(){ var total=((_lexData&&_lexData.exercises)||[]).length, out=''; for(var k=0;k<total;k++){ var cls=_lexDone[k]?'done':(k===_lexStep?'cur':''); out+='<span class="'+cls+'"></span>'; } return '<div class="lexx-seg" id="lexx-seg">'+out+'</div>'; }
 function lexStageHtml(html){ var s=document.getElementById('lex-stage'); if(s) s.innerHTML='<div class="lexx-stage">'+html+'</div>'; }
@@ -855,7 +895,7 @@ function lexShowStep(s){
     stage.appendChild(box);
     var st=document.createElement('button'); st.className='lexx-next'; st.textContent='Zaczynamy →'; st.onclick=function(){ lexShowStep(0); };
     stage.appendChild(st); w.appendChild(stage);
-    try{ if(data.intro && (typeof _lexSpeechOn==='undefined'||_lexSpeechOn)){ var spoken=String(data.intro).replace(/\*\*/g,''); setTimeout(function(){ lexSceneSpeak(spoken); },300); } }catch(e){}
+    try{ if(data.intro && (typeof _lexSpeechOn==='undefined'||_lexSpeechOn)){ var spoken=String(data.intro); setTimeout(function(){ lexSpeakMixed(spoken); },300); } }catch(e){}
     return;
   }
   var ex=(data.exercises||[])[s]; if(!ex) return;
