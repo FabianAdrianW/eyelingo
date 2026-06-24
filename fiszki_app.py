@@ -314,14 +314,15 @@ LANGUAGES = [
     {"code": "jp", "label": "Japoński",     "flag": "🇯🇵", "available": True},
     {"code": "nl", "label": "Niderlandzki", "flag": "🇳🇱", "available": True},
     {"code": "de", "label": "Niemiecki",    "flag": "🇩🇪", "available": True},
-    {"code": "fr", "label": "Francuski",    "flag": "🇫🇷", "available": False},
-    {"code": "it", "label": "Włoski",       "flag": "🇮🇹", "available": False},
-    {"code": "pt", "label": "Portugalski",  "flag": "🇵🇹", "available": False},
-    {"code": "ru", "label": "Rosyjski",     "flag": "🇷🇺", "available": False},
-    {"code": "uk", "label": "Ukraiński",    "flag": "🇺🇦", "available": False},
-    {"code": "zh", "label": "Chiński",      "flag": "🇨🇳", "available": False},
-    {"code": "ko", "label": "Koreański",    "flag": "🇰🇷", "available": False},
-    {"code": "ar", "label": "Arabski",      "flag": "🇸🇦", "available": False},
+    {"code": "fr", "label": "Francuski",    "flag": "🇫🇷", "available": True},
+    {"code": "it", "label": "Włoski",       "flag": "🇮🇹", "available": True},
+    {"code": "pt", "label": "Portugalski",  "flag": "🇵🇹", "available": True},
+    {"code": "ru", "label": "Rosyjski",     "flag": "🇷🇺", "available": True},
+    {"code": "uk", "label": "Ukraiński",    "flag": "🇺🇦", "available": True},
+    {"code": "zh", "label": "Chiński",      "flag": "🇨🇳", "available": True},
+    {"code": "ko", "label": "Koreański",    "flag": "🇰🇷", "available": True},
+    {"code": "ar", "label": "Arabski",      "flag": "🇸🇦", "available": True},
+    {"code": "no", "label": "Norweski",     "flag": "🇳🇴", "available": True},
 ]
 LEVELS = [
     {"code": "A1", "label": "A1", "desc": "Początkujący",        "free": False},
@@ -331,263 +332,6 @@ LEVELS = [
     {"code": "C1", "label": "C1", "desc": "Zaawansowany",        "free": False},
     {"code": "C2", "label": "C2", "desc": "Biegły",              "free": False},
 ]
-# Języki z pismem nielatynskim, dla których pokazujemy transliterację jako
-# podpowiedź wymowy (słowo natywne = headword, transliteracja = mniejsza linia pod spodem).
-# Japoński ('jp') ma własny, odrębny układ (kanji małe + romaji duże) i NIE jest tu ujęty.
-TRANSLIT_HINT_LANGS = {"zh", "ko", "ru", "uk", "ar"}
-
-# Maksymalna długość headworda renderowalnego na ambientowej karcie (~200px).
-# Headwordy-zdania (przysłowia, aforyzmy) przekraczające limit są pomijane na desktopie —
-# pozostają w bazie dla web SRS, gdzie jest na nie miejsce.
-DESKTOP_MAX_HEADWORD = 40
-
-# Slug kategorii -> polska nazwa wyświetlana (desktop + strona). Wspólne dla wszystkich języków;
-# kategorie specyficzne kolejnych języków (jp keigo, zh chengyu...) dopisuj tutaj.
-CAT_LABELS = {
-    "aforyzmy": "Aforyzmy",
-    "aluzje_kulturowe": "Aluzje kulturowe",
-    "anglicyzmy_i_zapozyczenia": "Anglicyzmy i zapożyczenia",
-    "apteka": "Apteka",
-    "archaic_de": "Archaizmy",
-    "archaizmy_stylistyczne": "Archaizmy stylistyczne",
-    "argumentacja": "Argumentacja",
-    "biznes": "Biznes",
-    "biznes_c1": "Biznes",
-    "cechy_charakteru": "Cechy charakteru",
-    "cechy_charakteru_szczegoly": "Cechy charakteru (szczegóły)",
-    "czasowniki_czynnosci": "Czasowniki czynności",
-    "czasowniki_frazowe": "Czasowniki frazowe",
-    "czasowniki_frazowe_b2": "Czasowniki frazowe",
-    "czasowniki_modalne_de": "Czasowniki modalne",
-    "czasowniki_rozdzielnie_zlozne": "Czasowniki rozdzielnie złożone",
-    "czasowniki_ruchu": "Czasowniki ruchu",
-    "czasowniki_zmyslow": "Czasowniki zmysłów",
-    "czesci_ciala": "Części ciała",
-    "czynnosci_poranne": "Czynności poranne",
-    "czynnosci_w_pracy": "Czynności w pracy",
-    "czynnosci_wieczorne": "Czynności wieczorne",
-    "dieta_i_zywienie": "Dieta i żywienie",
-    "dni_tygodnia": "Dni tygodnia",
-    "dom_i_mieszkanie": "Dom i mieszkanie",
-    "edukacja": "Edukacja",
-    "ekologia": "Ekologia",
-    "ekologia_c1": "Ekologia",
-    "ekologia_zaawansowana": "Ekologia zaawansowana",
-    "ekonomia": "Ekonomia",
-    "ekonomia_c1": "Ekonomia",
-    "emocje": "Emocje",
-    "emocje_b1": "Emocje",
-    "emocje_b2": "Emocje",
-    "energia": "Energia",
-    "film": "Film",
-    "film_c1": "Film",
-    "filozofia": "Filozofia",
-    "finanse_bankowosc": "Finanse i bankowość",
-    "finanse_osobiste": "Finanse osobiste",
-    "frazeologizmy": "Frazeologizmy",
-    "gehobene_sprache": "Język wyszukany",
-    "geografia": "Geografia",
-    "gospodarka_podstawy": "Gospodarka — podstawy",
-    "gotowanie_podstawy": "Gotowanie — podstawy",
-    "gry": "Gry",
-    "gry_c1": "Gry",
-    "gry_wideo": "Gry wideo",
-    "hobby": "Hobby",
-    "idiomatic_de": "Wyrażenia idiomatyczne",
-    "idiomy": "Idiomy",
-    "idiomy_b2": "Idiomy",
-    "idiomy_c1": "Idiomy",
-    "idiomy_c2": "Idiomy",
-    "innowacje": "Innowacje",
-    "internet_podstawy": "Internet — podstawy",
-    "inzynieria": "Inżynieria",
-    "ironia_i_sarkazm": "Ironia i sarkazm",
-    "jedzenie_b2": "Jedzenie",
-    "jedzenie_podstawowe": "Jedzenie — podstawy",
-    "jezyk_akademicki": "Język akademicki",
-    "jezyk_biznesowy": "Język biznesowy",
-    "jezyk_dyplomatyczny": "Język dyplomatyczny",
-    "jezyk_finansowy": "Język finansowy",
-    "jezyk_medyczny": "Język medyczny",
-    "jezyk_prawniczy": "Język prawniczy",
-    "jezyk_techniczny": "Język techniczny",
-    "kariera": "Kariera",
-    "kierunki": "Kierunki",
-    "kino": "Kino",
-    "kino_i_filmy": "Kino i filmy",
-    "kolokacje": "Kolokacje",
-    "kolokacje_b2": "Kolokacje",
-    "kolokacje_c1": "Kolokacje",
-    "kolokacje_c2": "Kolokacje",
-    "kolory": "Kolory",
-    "komunikacja_b2": "Komunikacja",
-    "komunikacja_c1": "Komunikacja",
-    "komunikacja_zawodowa": "Komunikacja zawodowa",
-    "konjunktiv_ii": "Konjunktiv II (tryb przypuszczający)",
-    "krajobraz": "Krajobraz",
-    "ksiazki": "Książki",
-    "ksiazki_literatura": "Książki i literatura",
-    "kuchnie_swiata": "Kuchnie świata",
-    "liczby_1_20": "Liczby 1–20",
-    "liczby_21_1000": "Liczby 21–1000",
-    "lingwistyka": "Lingwistyka",
-    "literatur_de_wyrazenia": "Wyrażenia literackie",
-    "literatura": "Literatura",
-    "literatura_c1": "Literatura",
-    "logistyka": "Logistyka",
-    "marketing_sprzedaz": "Marketing i sprzedaż",
-    "meble": "Meble",
-    "media": "Media",
-    "media_i_prasa": "Media i prasa",
-    "medycyna": "Medycyna",
-    "medycyna_c1": "Medycyna",
-    "medycyna_zaawansowana": "Medycyna zaawansowana",
-    "miejsca_w_miescie": "Miejsca w mieście",
-    "miejsce_pracy": "Miejsce pracy",
-    "miesiace": "Miesiące",
-    "mieszkanie": "Mieszkanie",
-    "moda": "Moda",
-    "muzyka": "Muzyka",
-    "muzyka_b1": "Muzyka",
-    "muzyka_b2": "Muzyka",
-    "muzyka_c1": "Muzyka",
-    "napoje": "Napoje",
-    "nauka": "Nauka",
-    "nauka_b2": "Nauka",
-    "nauka_c1": "Nauka",
-    "negocjacje": "Negocjacje",
-    "neologizmy": "Neologizmy",
-    "neurologia": "Neurologia",
-    "nominalizacja_de": "Nominalizacja",
-    "owoce_i_warzywa": "Owoce i warzywa",
-    "pieniadze": "Pieniądze",
-    "podroze": "Podróże",
-    "podroze_b2": "Podróże",
-    "podziekowania": "Podziękowania",
-    "poetic_de_forms": "Formy poetyckie",
-    "pogoda": "Pogoda",
-    "pogoda_podstawowa": "Pogoda — podstawy",
-    "polityka": "Polityka",
-    "polityka_c1": "Polityka",
-    "polityka_podstawy": "Polityka — podstawy",
-    "pomieszczenia": "Pomieszczenia",
-    "pory_dnia": "Pory dnia",
-    "pory_roku": "Pory roku",
-    "powitania": "Powitania",
-    "pozegnania": "Pożegnania",
-    "praca_podstawy": "Praca — podstawy",
-    "prawo": "Prawo",
-    "programowanie_it": "Programowanie / IT",
-    "prosby_podstawowe": "Prośby — podstawy",
-    "przedmioty_codzienne": "Przedmioty codzienne",
-    "przedstawianie_sie": "Przedstawianie się",
-    "przeprosiny": "Przeprosiny",
-    "przyimki_z_przypadkami": "Przyimki z przypadkami",
-    "przyjaciele_i_znajomi": "Przyjaciele i znajomi",
-    "przymiotniki_emocji": "Przymiotniki emocji",
-    "przymiotniki_jakosci": "Przymiotniki jakości",
-    "przymiotniki_rozmiaru": "Przymiotniki rozmiaru",
-    "przypadki_podstawy_de": "Przypadki — podstawy",
-    "przysłowia_de": "Przysłowia",
-    "reakcje_i_wykrzykniki": "Reakcje i wykrzykniki",
-    "rejestr_formalny": "Rejestr formalny",
-    "rejestr_literacki": "Rejestr literacki",
-    "rejestr_nieformalny": "Rejestr nieformalny",
-    "rejestr_potoczny": "Rejestr potoczny",
-    "relacje": "Relacje",
-    "relacje_b2": "Relacje",
-    "restauracja": "Restauracja",
-    "retoryka": "Retoryka",
-    "rodzajniki_de": "Rodzajniki (der/die/das)",
-    "rodzina_podstawowa": "Rodzina — podstawy",
-    "rodzina_rozszerzona": "Rodzina — dalsza",
-    "rynek_pracy": "Rynek pracy",
-    "rzeczowniki_abstrakcyjne": "Rzeczowniki abstrakcyjne",
-    "samochod": "Samochód",
-    "samopoczucie": "Samopoczucie",
-    "samopoczucie_i_stres": "Samopoczucie i stres",
-    "skladniki_i_przyprawy": "Składniki i przyprawy",
-    "sklepy_i_uslugi": "Sklepy i usługi",
-    "slang_wspolczesny": "Slang współczesny",
-    "slowa_oceniajace": "Słowa oceniające",
-    "slowa_rzadkie_precyzyjne": "Słowa rzadkie i precyzyjne",
-    "smaki_i_oceny_jedzenia": "Smaki i oceny jedzenia",
-    "smartfon": "Smartfon",
-    "social_media": "Social media",
-    "social_media_b1": "Social media",
-    "socjologia": "Socjologia",
-    "spoleczenstwo": "Społeczeństwo",
-    "spoleczenstwo_b2": "Społeczeństwo",
-    "spolecznosc": "Społeczność",
-    "sport": "Sport",
-    "sport_b2": "Sport",
-    "sport_i_aktywnosc": "Sport i aktywność",
-    "sport_kultura": "Sport i kultura",
-    "sport_nazwy": "Sport — nazwy dyscyplin",
-    "sprzety_domowe": "Sprzęty domowe",
-    "srodki_transportu": "Środki transportu",
-    "streaming": "Streaming",
-    "streaming_b1": "Streaming",
-    "styl_eseistyczny": "Styl eseistyczny",
-    "styl_oratorski": "Styl oratorski",
-    "styl_publicystyczny": "Styl publicystyczny",
-    "styl_urzedowy_de": "Styl urzędowy",
-    "szkola": "Szkoła",
-    "szkola_podstawowa": "Szkoła — podstawy",
-    "sztuka": "Sztuka",
-    "sztuka_b2": "Sztuka",
-    "sztuka_c1": "Sztuka",
-    "szukanie_pracy": "Szukanie pracy",
-    "technologia": "Technologia",
-    "technologia_b2": "Technologia",
-    "technologia_c1": "Technologia",
-    "transport_publiczny": "Transport publiczny",
-    "tryb_rozkazujacy_de": "Tryb rozkazujący",
-    "turystyka": "Turystyka",
-    "u_lekarza": "U lekarza",
-    "ubrania_podstawowe": "Ubrania — podstawy",
-    "ubrania_szczegoly": "Ubrania (szczegóły)",
-    "uczucia_w_relacjach": "Uczucia w relacjach",
-    "urzadzenia_elektroniczne": "Urządzenia elektroniczne",
-    "wellbeing": "Wellbeing",
-    "wyglad_zewnetrzny": "Wygląd zewnętrzny",
-    "wyrazanie_opinii": "Wyrażanie opinii",
-    "wyrazenia_czasu": "Wyrażenia czasu",
-    "wyrazenia_ksiazkowe": "Wyrażenia książkowe",
-    "wyrazenia_niemiecko_specyficzne": "Wyrażenia specyficzne dla niemieckiego",
-    "zakupy": "Zakupy",
-    "zakupy_online": "Zakupy online",
-    "zakupy_podstawowe": "Zakupy — podstawy",
-    "zarzadzanie": "Zarządzanie",
-    "zarzadzanie_c1": "Zarządzanie",
-    "zasoby_ludzkie": "Zasoby ludzkie (HR)",
-    "zawody_podstawowe": "Zawody — podstawy",
-    "zdrowie": "Zdrowie",
-    "zdrowie_b2": "Zdrowie",
-    "zdrowie_psychiczne": "Zdrowie psychiczne",
-    "zdrowie_psychiczne_b2": "Zdrowie psychiczne",
-    "zdrowie_psychiczne_c1": "Zdrowie psychiczne",
-    "zwiazki": "Związki",
-    "zwierzeta": "Zwierzęta",
-    "zwierzeta_podstawowe": "Zwierzęta — podstawy",
-}
-
-def cat_display(slug):
-    """Slug kategorii -> czytelna polska nazwa.
-    Priorytet: etykieta z bazy (CATEGORIES) -> wbudowane mapowanie -> upiększony slug."""
-    if not slug:
-        return slug
-    try:
-        for c in CATEGORIES:
-            if c.get("code") == slug:
-                lab = c.get("label")
-                if lab and lab != slug:
-                    return lab
-                break
-    except Exception:
-        pass
-    return CAT_LABELS.get(slug, slug.replace("_", " ").capitalize())
-
 CATEGORIES = []  # ładowane z bazy po wyborze języka/poziomu
 
 def _jwt_refresh_sync():
@@ -1657,7 +1401,7 @@ class FlashcardOverlay(QWidget):
         except Exception:
             pass
         icon = next((c["icon"] for c in CATEGORIES if c["code"] == cat), "📚")
-        self.lbl_info.setText(f"{icon} {cat_display(cat)}  ·  {level}  ·  {lang_label(lang)}")
+        self.lbl_info.setText(f"{icon} {cat}  ·  {level}  ·  {lang_label(lang)}")
         self.lbl_word.setText("Ładowanie...")
         self.lbl_tr.setText("")
         self._worker = FetchWorker(lang, level, cat)
@@ -1666,15 +1410,6 @@ class FlashcardOverlay(QWidget):
         self._worker.start()
 
     def _on_loaded(self, cards):
-        # Pomijaj na ambientowej karcie headwordy-zdania (przysłowia, aforyzmy) —
-        # na ~200px są nieczytelne. Zostają w bazie dla web SRS.
-        cards = [c for c in cards if len(c.get("word", "")) <= DESKTOP_MAX_HEADWORD]
-        if not cards:
-            self.lbl_word.setText("—")
-            self.lbl_tr.setText("Brak fiszek dla trybu ambientowego")
-            self.lbl_romaji.hide()
-            self.show()
-            return
         self.cards = cards
         self.index = 0
         self._is_custom = False
@@ -1743,17 +1478,6 @@ class FlashcardOverlay(QWidget):
             self.lbl_romaji.setFont(QFont("Segoe UI", min(font_size, 13), QFont.Weight.Bold))
             self.lbl_romaji.setText(romaji)
             self.lbl_romaji.show()
-        elif romaji and self.lang in TRANSLIT_HINT_LANGS:
-            # Pisma nielatynskie (zh/ko/ru/uk/ar): słowo natywne = headword (duże, białe),
-            # transliteracja = mniejsza podpowiedź wymowy pod spodem. Bez niej początkujący
-            # nie odczyta słowa.
-            self.lbl_word.setFont(QFont("Segoe UI", self._get_word_font_size(word), QFont.Weight.Bold))
-            self.lbl_word.setStyleSheet("color:rgba(255,255,255,240);")
-            self.lbl_word.setText(word)
-            self.lbl_romaji.setFont(QFont("Segoe UI", 12))
-            self.lbl_romaji.setStyleSheet("color:rgba(200,220,255,210);")
-            self.lbl_romaji.setText(romaji)
-            self.lbl_romaji.show()
         else:
             font_size = self._get_word_font_size(word)
             self.lbl_word.setFont(QFont("Segoe UI", font_size, QFont.Weight.Bold))
@@ -1772,12 +1496,12 @@ class FlashcardOverlay(QWidget):
         if c.get("srs"):
             cat_label = c.get("category", "poprzednia kategoria")
             icon_srs = next((x["icon"] for x in CATEGORIES if x["code"] == cat_label), "🔁")
-            self.lbl_info.setText(f"🔁  Powtórka · {icon_srs} {cat_display(cat_label)}")
+            self.lbl_info.setText(f"🔁  Powtórka · {icon_srs} {cat_label}")
         elif getattr(self, "_is_custom", False):
             self.lbl_info.setText(f"✏️  {self.cat}")
         else:
             icon = next((x["icon"] for x in CATEGORIES if x["code"] == self.cat), "📚")
-            self.lbl_info.setText(f"{icon}  {cat_display(self.cat)}  ·  {self.level}  ·  {lang_label(self.lang)}")
+            self.lbl_info.setText(f"{icon}  {self.cat}  ·  {self.level}  ·  {lang_label(self.lang)}")
         # Auto-czytanie TTS
         if APP_SETTINGS.get("audio_enabled", False):
             raw = c.get("word", "")
@@ -2011,7 +1735,7 @@ class CategoryWindow(_DraggableWindow):
         li.setFont(QFont("Segoe UI", 15))
         li.setStyleSheet("background:transparent;")
         li.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ln = QLabel(cat_display(cat["code"]))
+        ln = QLabel(cat["label"])
         ln.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         ln.setStyleSheet("color:rgba(220,235,255,220); background:transparent;")
         ln.setAlignment(Qt.AlignmentFlag.AlignCenter)
