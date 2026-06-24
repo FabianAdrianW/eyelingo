@@ -5046,7 +5046,7 @@ async function chatSend(){
 
     var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
     var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
-    var langNames={en:'English',es:'Spanish',fr:'French',de:'German',nl:'Dutch',jp:'Japanese',it:'Italian',pt:'Portuguese'};
+    var langNames=getLangENMap();
     var cefr=((document.getElementById('chat-level')||{}).value)||'B1';
     var levelInstructions={
       A1:'CEFR A1. Very simple words, short sentences (max 8 words), speak slowly. Add a Polish gloss in parentheses for any non-basic word. Gently correct mistakes.',
@@ -5137,7 +5137,7 @@ async function analyzeLyrics(){
   if(prevErr) prevErr.remove();
 
   try{
-    var langNames={en:'English',es:'Spanish',fr:'French',de:'German',nl:'Dutch',jp:'Japanese',it:'Italian',pt:'Portuguese'};
+    var langNames=getLangENMap();
     var genreNames={hiphop:'hip-hop/rap (WAŻNE: slang uliczny, double entendre, flow, rymy)',pop:'pop',rnb:'R&B/soul',rock:'rock',other:'music'};
 
     // Podziel tekst na mniejsze bloki (krótszy JSON = mniejsze ryzyko ucięcia)
@@ -6213,7 +6213,7 @@ async function loadTcpConvList(){
       if(isLektor){
         // Pobierz język lektora z nameMap extended
         var tutorLangs=roleMap[otherId+'_langs']||[];
-        var langNames={en:'angielskiego',es:'hiszpańskiego',nl:'holenderskiego',jp:'japońskiego',de:'niemieckiego',fr:'francuskiego'};
+        var langNames=getLangGenMap();
         sublabel='Lektor'+(tutorLangs.length?' '+langNames[tutorLangs[0]]:'');
       }
       item.innerHTML='<div class="tcp-conv-avatar" style="background:'+(isLektor?'var(--orange)':'var(--navy)')+'">'+name[0].toUpperCase()+'</div>'
@@ -6240,7 +6240,7 @@ async function activateTcpConv(tutorId, tutorName){
   var nameEl=document.getElementById('tcp-thread-name');
   var statusEl=document.getElementById('tcp-thread-status');
   var avEl=document.getElementById('tcp-thread-avatar');
-  var langNames={en:'angielskiego',es:'hiszpańskiego',nl:'holenderskiego',jp:'japońskiego',de:'niemieckiego',fr:'francuskiego'};
+  var langNames=getLangGenMap();
   if(headEl) headEl.style.display='flex';
   if(meta.isLektor){
     if(avEl){ avEl.style.background='var(--orange)'; avEl.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>'; }
@@ -6460,7 +6460,7 @@ function renderTutors(tutors){
     el.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center">Brak lektorów spełniających kryteria</div>';
     return;
   }
-  var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
+  var langFlags=getLangFlagMap();
   var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
   var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
 
@@ -7726,7 +7726,7 @@ async function showTrybMiniStory(){
 
   try{
     var lang=(card&&card.lang)||window._trybStudyLang||window._trybLang||'en';
-    var langName=({en:'angielskim',es:'hiszpańskim',nl:'niderlandzkim',jp:'japońskim'}[lang]||'angielskim');
+    var langName=getLangLoc(lang);
     var prompt='Ułóż jedno naturalne, krótkie zdanie w języku '+langName+' używające słowa "'+word+'" (znaczenie po polsku: '+translation+').'
       +' Zdanie ma być przydatne do nauki, na poziomie średnim. Odpowiedz TYLKO JSON bez backticks: {"sentence":"zdanie w '+langName+'","translation_pl":"polskie tłumaczenie zdania"}';
     var tok=(await db.auth.getSession()).data.session?.access_token||'';
@@ -8638,8 +8638,8 @@ async function viewTutor(tutorId){
 
     var DAYS_PL=['Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota','Niedziela'];
     var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
-    var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
-    var langNames={'en':'Angielski','es':'Hiszpański','nl':'Holenderski','jp':'Japoński','de':'Niemiecki','fr':'Francuski','it':'Włoski','pt':'Portugalski'};
+    var langFlags=getLangFlagMap();
+    var langNames=getLangNameMap();
     var avail=t.availability||{};
     var activeDays=DAYS_EN.filter(function(d){return avail[d]&&avail[d].active;});
 
@@ -10458,7 +10458,8 @@ async function doOdkryjSearch(){
 }
 
 function getLangName(lang){
-  return{en:'Angielski',es:'Hiszpański',nl:'Holenderski',jp:'Japoński',de:'Niemiecki',fr:'Francuski',it:'Włoski',pt:'Portugalski'}[lang]||lang;
+  var i=(typeof LEX_LANG_MAP!=='undefined') && LEX_LANG_MAP[lang];
+  return (i&&i.label)||lang;
 }
 
 function _isBadArticle(title, content){
@@ -10563,7 +10564,7 @@ async function getSemanticTags(topic, lang, tok){
 
   // Generuj przez AI
   try{
-    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'};
+    var langNames=getLangENMap();
     var res = await fetch(ODKRYJ_AI_URL, {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':ODKRYJ_APIKEY},
@@ -10592,7 +10593,7 @@ async function getSemanticTags(topic, lang, tok){
 
 async function fetchOdkryjVideos(topic, lang, level, tok){
   var YT_KEY='AIzaSyCUQJksAT-HtZ3GBBMr3__b19nNlHqxajI';
-  var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'};
+  var langNames=getLangENMap();
   var langCodes={en:'en',es:'es',nl:'nl',jp:'ja',de:'de',fr:'fr'};
   var levelKeywords={A1:'beginner simple',A2:'elementary easy',B1:'intermediate',B2:'upper intermediate',C1:'advanced',C2:'native fluent'};
   var levelKw = levelKeywords[level]||'intermediate';
@@ -10665,7 +10666,7 @@ async function fetchOdkryjVideos(topic, lang, level, tok){
 
 async function fetchOdkryjVocab(topic, lang, level, tok){
   try{
-    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
+    var langNames=getLangENMap();
     var res=await fetch(ODKRYJ_AI_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':ODKRYJ_APIKEY},
@@ -10801,17 +10802,44 @@ var _lexTopGap = null;
 var _lexRecommendedGap = null;
 
 var LEX_LANG_MAP = {
-  en: {name:'angielski', native:'English', flag:'🇬🇧'},
-  es: {name:'hiszpański', native:'Español', flag:'🇪🇸'},
-  nl: {name:'niderlandzki', native:'Nederlands', flag:'🇳🇱'},
-  jp: {name:'japoński', native:'日本語', flag:'🇯🇵'}
+  // name = przymiotnik PL (mianownik, małą literą); label = mianownik z wielkiej; gen = dopełniacz; loc = miejscownik.
+  // en = nazwa angielska (prompty LLM); bcp47 = kod Web Speech; tts = 'cloud'|'web'; translit = transliteracja (romaji).
+  en: {name:'angielski',    label:'Angielski',    gen:'angielskiego',    loc:'angielskim',    native:'English',    en:'English',    flag:'🇬🇧', bcp47:'en-US', tts:'cloud', translit:false},
+  es: {name:'hiszpański',   label:'Hiszpański',   gen:'hiszpańskiego',   loc:'hiszpańskim',   native:'Español',    en:'Spanish',    flag:'🇪🇸', bcp47:'es-ES', tts:'cloud', translit:false},
+  de: {name:'niemiecki',    label:'Niemiecki',    gen:'niemieckiego',    loc:'niemieckim',    native:'Deutsch',    en:'German',     flag:'🇩🇪', bcp47:'de-DE', tts:'cloud', translit:false},
+  fr: {name:'francuski',    label:'Francuski',    gen:'francuskiego',    loc:'francuskim',    native:'Français',   en:'French',     flag:'🇫🇷', bcp47:'fr-FR', tts:'cloud', translit:false},
+  it: {name:'włoski',       label:'Włoski',       gen:'włoskiego',       loc:'włoskim',       native:'Italiano',   en:'Italian',    flag:'🇮🇹', bcp47:'it-IT', tts:'cloud', translit:false},
+  nl: {name:'niderlandzki', label:'Niderlandzki', gen:'niderlandzkiego', loc:'niderlandzkim', native:'Nederlands', en:'Dutch',      flag:'🇳🇱', bcp47:'nl-NL', tts:'cloud', translit:false},
+  pt: {name:'portugalski',  label:'Portugalski',  gen:'portugalskiego',  loc:'portugalskim',  native:'Português',  en:'Portuguese', flag:'🇵🇹', bcp47:'pt-PT', tts:'cloud', translit:false},
+  no: {name:'norweski',     label:'Norweski',     gen:'norweskiego',     loc:'norweskim',     native:'Norsk',      en:'Norwegian',  flag:'🇳🇴', bcp47:'nb-NO', tts:'cloud', translit:false},
+  ru: {name:'rosyjski',     label:'Rosyjski',     gen:'rosyjskiego',     loc:'rosyjskim',     native:'Русский',    en:'Russian',    flag:'🇷🇺', bcp47:'ru-RU', tts:'cloud', translit:true},
+  uk: {name:'ukraiński',    label:'Ukraiński',    gen:'ukraińskiego',    loc:'ukraińskim',    native:'Українська', en:'Ukrainian',  flag:'🇺🇦', bcp47:'uk-UA', tts:'cloud', translit:true},
+  ar: {name:'arabski',      label:'Arabski',      gen:'arabskiego',      loc:'arabskim',      native:'العربية',    en:'Arabic',     flag:'🇸🇦', bcp47:'ar-SA', tts:'web',   translit:true},
+  jp: {name:'japoński',     label:'Japoński',     gen:'japońskiego',     loc:'japońskim',     native:'日本語',      en:'Japanese',   flag:'🇯🇵', bcp47:'ja-JP', tts:'web',   translit:true},
+  zh: {name:'chiński',      label:'Chiński',      gen:'chińskiego',      loc:'chińskim',      native:'中文',        en:'Chinese',    flag:'🇨🇳', bcp47:'zh-CN', tts:'web',   translit:true},
+  ko: {name:'koreański',    label:'Koreański',    gen:'koreańskiego',    loc:'koreańskim',    native:'한국어',      en:'Korean',     flag:'🇰🇷', bcp47:'ko-KR', tts:'web',   translit:true}
 };
+
+// ── Helpery językowe (globalne) — jedno źródło prawdy ──
+function _lmInfo(l){ return (typeof LEX_LANG_MAP!=='undefined') && LEX_LANG_MAP[String(l||'').toLowerCase().split('-')[0]]; }
+function getLangEN(l){ var i=_lmInfo(l); return (i&&i.en)||'English'; }
+function getLangNative(l){ var i=_lmInfo(l); return (i&&i.native)||l; }
+function getLangFlag(l){ var i=_lmInfo(l); return (i&&i.flag)||'🌐'; }
+function getLangGen(l){ var i=_lmInfo(l); return (i&&i.gen)||(i&&i.name)||l; }
+function getLangLoc(l){ var i=_lmInfo(l); return (i&&i.loc)||(i&&i.name)||'angielskim'; }
+function ttsEngineFor(l){ var i=_lmInfo(l); return (i&&i.tts)||'cloud'; }
+function getLangENMap(){ var o={}; for(var k in LEX_LANG_MAP) o[k]=LEX_LANG_MAP[k].en; return o; }
+function getLangGenMap(){ var o={}; for(var k in LEX_LANG_MAP) o[k]=LEX_LANG_MAP[k].gen; return o; }
+function getLangNameMap(){ var o={}; for(var k in LEX_LANG_MAP) o[k]=LEX_LANG_MAP[k].label; return o; }
+function getLangFlagMap(){ var o={}; for(var k in LEX_LANG_MAP) o[k]=LEX_LANG_MAP[k].flag; return o; }
 
 // Mapa kodu języka apki → BCP47 (Web Speech) / baza dla ElevenLabs (po split '-').
 // jp → ja-JP (japoński zawsze przez Web Speech — głos ElevenLabs nie ma dubbingu JP).
 window.ttsLangCode = function(lang){
   var L = String(lang||'').toLowerCase().split('-')[0];
-  var m = { en:'en-US', es:'es-ES', nl:'nl-NL', jp:'ja-JP', ja:'ja-JP', pl:'pl-PL' };
+  var i=(typeof LEX_LANG_MAP!=='undefined') && LEX_LANG_MAP[L];
+  if(i && i.bcp47) return i.bcp47;
+  var m = { ja:'ja-JP', pl:'pl-PL' };
   return m[L] || (L ? (L + '-' + L.toUpperCase()) : 'en-US');
 };
 
