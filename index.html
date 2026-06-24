@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Eyelingo – See The Progress</title>
 <link rel="icon" type="image/x-icon" href="favicon.ico">
-<link rel="apple-touch-icon" href="apple-touch-icon-180.png">
+<link rel="apple-touch-icon" href="appletouchicon180.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1a2340">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1177,8 +1177,8 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
 
 /* ═══ FISZKA 3D FLIP ═══ */
 .tryb-card-scene{width:100%;cursor:pointer}
-.tryb-card-flipper{position:relative;width:100%;min-height:300px}
-.tryb-card-front,.tryb-card-back{position:absolute;inset:0;width:100%;min-height:300px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;box-sizing:border-box;text-align:center;transition:opacity .28s ease,transform .28s ease;will-change:opacity,transform}
+.tryb-card-flipper{position:relative;display:grid;width:100%;min-height:300px}
+.tryb-card-front,.tryb-card-back{grid-area:1/1;width:100%;min-height:300px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 26px;box-sizing:border-box;text-align:center;transition:opacity .28s ease,transform .28s ease;will-change:opacity,transform}
 .tryb-card-front{background:#fff;color:var(--navy);cursor:pointer;border:1.5px solid var(--border);box-shadow:0 10px 32px rgba(26,35,64,.08);opacity:1;transform:none;z-index:2}
 .tryb-card-back{background:#fff;color:var(--navy);border:1.5px solid var(--border);border-top:3px solid var(--orange);box-shadow:0 10px 32px rgba(26,35,64,.08);opacity:0;transform:translateY(8px);pointer-events:none;z-index:1}
 .tryb-card-flipper.flipped .tryb-card-front{opacity:0;transform:translateY(-8px);pointer-events:none}
@@ -1826,6 +1826,7 @@ window.switchMatTab = function(tab){
 const SUPABASE_URL='https://sntlgkhktscezxpxrchl.supabase.co';
 const GENERATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-sentence';
 const AI_PROXY_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/super-endpoint';
+const PEXELS_PROXY_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/pexels-search';
 console.log('%c✅ EYELINGO BUILD v-FABIAN-NAPRAWY załadowany','color:#c96a2a;font-size:16px;font-weight:bold');
 const APIKEY_CONST = 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 const GENERATE_ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
@@ -2348,22 +2349,40 @@ window.showSetModal = function showSetModal(s, editMode){
   } else {
     html+='<div style="margin-bottom:14px"><button onclick="addSetToMine('+s.id+')" class="btn btn-orange" style="font-size:12px;padding:7px 16px">+ Dodaj do moich</button></div>';
   }
-  html+='<div class="mat-modal-cards">'+cards.slice(0,50).map(function(c){
+  html+='<div class="mat-modal-cards" id="mat-modal-cards">'+cards.slice(0,50).map(function(c){
     return '<div class="mat-modal-row"><span>'+esc(c.word||'')+'</span><span class="mat-modal-tr">'+esc(c.translation||'')+'</span></div>';
   }).join('')+'</div>';
   if(body) body.innerHTML=html;
   modal.style.display='flex';
+  try{ window.matFillSetPreviewImages(s.id); }catch(e){}
+};
+
+window.matFillSetPreviewImages = async function(setId){
+  try{
+    var r=await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id',setId).limit(50);
+    var cards=(r&&r.data)||[]; if(!cards.length) return;
+    if(!cards.some(function(c){return c.image_url;})) return;
+    if(!(_matModal && _matModal.id===setId)) return;
+    var box=document.getElementById('mat-modal-cards'); if(!box) return;
+    box.innerHTML=cards.map(function(c){
+      var thumb=c.image_url
+        ? '<img src="'+esc(c.image_url)+'" alt="" loading="lazy" style="width:34px;height:34px;border-radius:7px;object-fit:cover;border:.5px solid var(--border);flex-shrink:0">'
+        : '<span style="width:34px;height:34px;border-radius:7px;background:var(--paper);border:.5px solid var(--border);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--border2)" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span>';
+      return '<div class="mat-modal-row" style="display:flex;align-items:center;gap:10px">'+thumb+'<span style="flex:1">'+esc(c.word||'')+'</span><span class="mat-modal-tr" style="text-align:right">'+esc(c.translation||'')+'</span></div>';
+    }).join('');
+  }catch(e){}
 };
 
 window.closeMatModal = function closeMatModal(){
   var m=document.getElementById('mat-modal'); if(m) m.style.display='none';
 };
 
-window.startStudyFromModal = function startStudyFromModal(id){
+window.startStudyFromModal = async function startStudyFromModal(id){
   closeMatModal();
   var s=_matSets.find(function(x){return x.id===id;});
   if(!s) return;
   var cards=(s.user_set_cards||[]).map(function(c){return{word:c.word||'',translation:c.translation||''};});
+  try{ var _ir=await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id',id); if(_ir&&_ir.data&&_ir.data.length) cards=_ir.data.map(function(c){return{word:c.word||'',translation:c.translation||'',image_url:c.image_url||'',image_attr:c.image_attr||''};}); }catch(e){}
   if(!cards.length){typeof showToast!=='undefined'&&showToast('Brak fiszek','');return;}
   window._trybStudyLang=s.lang||''; if(s.lang) cards.forEach(function(_c){ _c.lang=s.lang; });
   _trybExternalCards=cards; _trybExternalName=s.name;
@@ -2454,7 +2473,7 @@ window.addNewSetRow = function addNewSetRow(focusWord){
   if(!container) return;
   var rowIdx=container.children.length;
   var row=document.createElement('div');
-  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;align-items:center';
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px 28px;gap:6px;align-items:center';
   var wInp=document.createElement('input');
   wInp.className='fi'; wInp.placeholder='słowo'; wInp.style.fontSize='13px'; wInp.dataset.row=rowIdx;
   var tInp=document.createElement('input');
@@ -2472,7 +2491,9 @@ window.addNewSetRow = function addNewSetRow(focusWord){
       else { window.addNewSetRow(true); }
     }
   });
-  row.appendChild(wInp); row.appendChild(tInp); row.appendChild(del);
+  row.appendChild(wInp); row.appendChild(tInp);
+  try{ if(window.elImgMakeBtn) row.appendChild(window.elImgMakeBtn(row,function(){return wInp.value;})); }catch(e){}
+  row.appendChild(del);
   container.appendChild(row);
   if(focusWord){ setTimeout(function(){ wInp.focus(); },50); }
 };
@@ -2487,7 +2508,7 @@ window.saveNewSet = async function saveNewSet(){
     var inputs=r.querySelectorAll('input');
     var w=(inputs[0]?inputs[0].value:'').trim();
     var t=(inputs[1]?inputs[1].value:'').trim();
-    if(w&&t) cards.push({word:w,translation:t});
+    if(w&&t){ var _im=r._elImg||null; cards.push(_im&&_im.url?{word:w,translation:t,image_url:_im.url,image_attr:_im.attr||''}:{word:w,translation:t}); }
   });
   try{
     var sess=(await db.auth.getSession()).data.session;
@@ -2545,15 +2566,16 @@ window.openEditSet = async function openEditSet(id){
     +'</div>';
   modal.style.display='flex';
   var cards=s.user_set_cards||[];
-  if(cards.length){ cards.forEach(function(c){ window.addEditSetRow(c.word||'', c.translation||'', false); }); }
+  try{ var _fr=await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id',id); if(_fr&&_fr.data) cards=_fr.data; }catch(e){}
+  if(cards.length){ cards.forEach(function(c){ window.addEditSetRow(c.word||'', c.translation||'', false, (c.image_url?{url:c.image_url,attr:c.image_attr||''}:null)); }); }
   else { window.addEditSetRow('','',false); window.addEditSetRow('','',false); window.addEditSetRow('','',false); }
 };
 
-window.addEditSetRow = function addEditSetRow(word, translation, focusWord){
+window.addEditSetRow = function addEditSetRow(word, translation, focusWord, image){
   var container=document.getElementById('edit-set-rows');
   if(!container) return;
   var row=document.createElement('div');
-  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:6px;align-items:center';
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px 28px;gap:6px;align-items:center';
   var wInp=document.createElement('input');
   wInp.className='fi'; wInp.placeholder='słowo'; wInp.style.fontSize='13px'; if(word) wInp.value=word;
   var tInp=document.createElement('input');
@@ -2574,7 +2596,9 @@ window.addEditSetRow = function addEditSetRow(word, translation, focusWord){
       else { window.addEditSetRow('','',true); }
     }
   });
-  row.appendChild(wInp); row.appendChild(tInp); row.appendChild(del);
+  row.appendChild(wInp); row.appendChild(tInp);
+  try{ if(window.elImgMakeBtn) row.appendChild(window.elImgMakeBtn(row,function(){return wInp.value;}, image||null)); }catch(e){}
+  row.appendChild(del);
   container.appendChild(row);
   if(focusWord){ setTimeout(function(){ wInp.focus(); },50); }
 };
@@ -2587,7 +2611,7 @@ window.saveEditSet = async function saveEditSet(id){
     var inps=r.querySelectorAll('input');
     var w=(inps[0]?inps[0].value:'').trim();
     var tr=(inps[1]?inps[1].value:'').trim();
-    if(w&&tr) cards.push({word:w,translation:tr,set_id:id});
+    if(w&&tr){ var _im=r._elImg||null; cards.push(_im&&_im.url?{word:w,translation:tr,set_id:id,image_url:_im.url,image_attr:_im.attr||''}:{word:w,translation:tr,set_id:id}); }
   });
   try{
     await db.from('user_sets').update({name}).eq('id',id);
@@ -2927,11 +2951,11 @@ window.matCardLexGo=function(setId, langCode){
 window.matCardStartSRS=async function(setId, setName){
   // Zestaw wybrany → od razu ekran wyboru 4 trybow nauki (bez podgladu slow).
   try{
-    var {data:cards} = await db.from('user_set_cards').select('word,translation').eq('set_id', setId);
+    var {data:cards} = await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id', setId);
     if(!cards||!cards.length){ if(typeof showToast==='function') showToast('Brak fiszek w tym zestawie',''); return; }
     var _ms=(typeof _matSets!=='undefined'&&_matSets)?_matSets.find(function(x){return x.id===setId;}):null;
     window._trybStudyLang=(_ms&&_ms.lang)||'';
-    _trybExternalCards = cards.map(function(c){ return {word:c.word||'', translation:c.translation||'', lang:(_ms&&_ms.lang)||undefined}; });
+    _trybExternalCards = cards.map(function(c){ return {word:c.word||'', translation:c.translation||'', image_url:c.image_url||'', image_attr:c.image_attr||'', lang:(_ms&&_ms.lang)||undefined}; });
     _trybExternalName = setName||'';
     window._trybSource='strefa';
     if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
@@ -5022,7 +5046,7 @@ async function chatSend(){
 
     var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
     var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
-    var langNames=getLangENMap();
+    var langNames={en:'English',es:'Spanish',fr:'French',de:'German',nl:'Dutch',jp:'Japanese',it:'Italian',pt:'Portuguese'};
     var cefr=((document.getElementById('chat-level')||{}).value)||'B1';
     var levelInstructions={
       A1:'CEFR A1. Very simple words, short sentences (max 8 words), speak slowly. Add a Polish gloss in parentheses for any non-basic word. Gently correct mistakes.',
@@ -5113,7 +5137,7 @@ async function analyzeLyrics(){
   if(prevErr) prevErr.remove();
 
   try{
-    var langNames=getLangENMap();
+    var langNames={en:'English',es:'Spanish',fr:'French',de:'German',nl:'Dutch',jp:'Japanese',it:'Italian',pt:'Portuguese'};
     var genreNames={hiphop:'hip-hop/rap (WAŻNE: slang uliczny, double entendre, flow, rymy)',pop:'pop',rnb:'R&B/soul',rock:'rock',other:'music'};
 
     // Podziel tekst na mniejsze bloki (krótszy JSON = mniejsze ryzyko ucięcia)
@@ -6189,7 +6213,7 @@ async function loadTcpConvList(){
       if(isLektor){
         // Pobierz język lektora z nameMap extended
         var tutorLangs=roleMap[otherId+'_langs']||[];
-        var langNames=getLangGenMap();
+        var langNames={en:'angielskiego',es:'hiszpańskiego',nl:'holenderskiego',jp:'japońskiego',de:'niemieckiego',fr:'francuskiego'};
         sublabel='Lektor'+(tutorLangs.length?' '+langNames[tutorLangs[0]]:'');
       }
       item.innerHTML='<div class="tcp-conv-avatar" style="background:'+(isLektor?'var(--orange)':'var(--navy)')+'">'+name[0].toUpperCase()+'</div>'
@@ -6216,7 +6240,7 @@ async function activateTcpConv(tutorId, tutorName){
   var nameEl=document.getElementById('tcp-thread-name');
   var statusEl=document.getElementById('tcp-thread-status');
   var avEl=document.getElementById('tcp-thread-avatar');
-  var langNames=getLangGenMap();
+  var langNames={en:'angielskiego',es:'hiszpańskiego',nl:'holenderskiego',jp:'japońskiego',de:'niemieckiego',fr:'francuskiego'};
   if(headEl) headEl.style.display='flex';
   if(meta.isLektor){
     if(avEl){ avEl.style.background='var(--orange)'; avEl.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>'; }
@@ -6436,7 +6460,7 @@ function renderTutors(tutors){
     el.innerHTML='<div style="color:var(--dim2);font-size:14px;padding:40px;text-align:center">Brak lektorów spełniających kryteria</div>';
     return;
   }
-  var langFlags=getLangFlagMap();
+  var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
   var DAYS_PL=['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
   var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
 
@@ -6742,7 +6766,7 @@ async function startSession(mode){
   if(hdr)hdr.textContent=_trybChallengeMode?'Tryb Wyzwania aktywny':'Sesja nauki';
   if(mode==='set_external'&&_trybExternalCards){
     _trybSetCards=_trybExternalCards.slice();
-    _trybCards=shuffleArr(_trybExternalCards.slice()).map(function(c){return{word:c.word||c.front||'',translation:c.translation||c.back||'',emoji:'',example:'',etymology:'',ease_factor:2.5,repetitions:0,interval_days:1,id:(c.flashcard_id!=null?c.flashcard_id:null)};});
+    _trybCards=shuffleArr(_trybExternalCards.slice()).map(function(c){return{word:c.word||c.front||'',translation:c.translation||c.back||'',emoji:'',example:'',etymology:'',image_url:c.image_url||'',image_attr:c.image_attr||'',ease_factor:2.5,repetitions:0,interval_days:1,id:(c.flashcard_id!=null?c.flashcard_id:null)};});
     if(hdr)hdr.textContent=(typeof stripEmoji==='function'?stripEmoji(_trybExternalName||'Zestaw'):(_trybExternalName||'Zestaw'))+(_trybChallengeMode?' · Wyzwanie':'');
   }else{
     _trybCards=await loadDueCardsForTryb();_trybSetCards=_trybCards.slice();
@@ -7148,6 +7172,7 @@ function loadTrybFlipCard(direction){
   if(backAnswer) backAnswer.textContent='';
   if(backIcon) backIcon.textContent='';
   if(backWrote) backWrote.textContent='';
+  try{ var _iw=document.getElementById('tryb-card-image-wrap'); if(_iw){ _iw.style.display='none'; } }catch(e){}
 
   // Show flip hint, hide write zone
   var writeZone = document.getElementById('tryb-write-zone');
@@ -7199,6 +7224,7 @@ function trybFlipReveal(backText){
   if(cardAns) cardAns.textContent = backText || (card&&(_trybCardDirection==='foreign'?card.translation:card.word)||'');
   if(resIcon) resIcon.textContent = '';
   if(userWrote) userWrote.textContent = '';
+  try{ if(window.elTrybShowImage) window.elTrybShowImage(card); }catch(e){}
 
   // Hide flip hint
   var flipHint = document.getElementById('tryb-flip-hint');
@@ -7568,6 +7594,7 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
   if(cardAns) cardAns.textContent=card?(card.translation||''):'';
   if(resIcon) resIcon.textContent=isCorrect?(isTypo?'⚠️ Literówka':'✅ Poprawnie'):'❌ Błędna';
   if(userWrote) userWrote.textContent=!userAns?'Nie wpisałeś odpowiedzi':(isTypo?'Twoja: "'+userAns+'" — literówka':'Twoja: "'+userAns+'"');
+  try{ if(window.elTrybShowImage) window.elTrybShowImage(card); }catch(e){}
 
   // For write mode: add SRS buttons to back face (like flip mode does)
   if(_trybMode==='write'||_trybMode==='memorize'){
@@ -7699,7 +7726,7 @@ async function showTrybMiniStory(){
 
   try{
     var lang=(card&&card.lang)||window._trybStudyLang||window._trybLang||'en';
-    var langName=getLangLoc(lang);
+    var langName=({en:'angielskim',es:'hiszpańskim',nl:'niderlandzkim',jp:'japońskim'}[lang]||'angielskim');
     var prompt='Ułóż jedno naturalne, krótkie zdanie w języku '+langName+' używające słowa "'+word+'" (znaczenie po polsku: '+translation+').'
       +' Zdanie ma być przydatne do nauki, na poziomie średnim. Odpowiedz TYLKO JSON bez backticks: {"sentence":"zdanie w '+langName+'","translation_pl":"polskie tłumaczenie zdania"}';
     var tok=(await db.auth.getSession()).data.session?.access_token||'';
@@ -8507,6 +8534,10 @@ function injectTrybPage(){
     +'<div class="tryb-card-back" id="tryb-a-side">'
     +'<div id="tryb-card-word-ans" style="font-family:DM Sans,sans-serif;font-size:28px;font-weight:500;color:var(--navy);margin-bottom:6px"></div>'
     +'<div id="tryb-card-answer" style="font-size:20px;color:var(--orange);font-weight:500;margin-bottom:10px"></div>'
+    +'<div id="tryb-card-image-wrap" style="display:none;width:min(78%,260px);margin:4px auto 14px">'
+    +'<img id="tryb-card-image" alt="" style="width:100%;aspect-ratio:4/3;max-height:200px;object-fit:cover;border-radius:14px;border:.5px solid var(--border);display:block">'
+    +''
+    +'</div>'
     +'<div id="tryb-result-icon" style="font-size:20px;margin-bottom:4px"></div>'
     +'<div id="tryb-user-wrote" style="font-size:12px;color:var(--dim2);margin-bottom:12px"></div>'
     +'</div>'
@@ -8607,8 +8638,8 @@ async function viewTutor(tutorId){
 
     var DAYS_PL=['Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota','Niedziela'];
     var DAYS_EN=['mon','tue','wed','thu','fri','sat','sun'];
-    var langFlags=getLangFlagMap();
-    var langNames=getLangNameMap();
+    var langFlags={'en':'🇬🇧','es':'🇪🇸','nl':'🇳🇱','jp':'🇯🇵','de':'🇩🇪','fr':'🇫🇷','it':'🇮🇹','pt':'🇵🇹'};
+    var langNames={'en':'Angielski','es':'Hiszpański','nl':'Holenderski','jp':'Japoński','de':'Niemiecki','fr':'Francuski','it':'Włoski','pt':'Portugalski'};
     var avail=t.availability||{};
     var activeDays=DAYS_EN.filter(function(d){return avail[d]&&avail[d].active;});
 
@@ -9705,10 +9736,10 @@ async function strefaSelectUserSet(setId, setNameEnc){
   var setName = decodeURIComponent(setNameEnc);
   setBreadcrumb('Moje zestawy → ' + setName);
   try{
-    var {data:cards} = await db.from('user_set_cards').select('word,translation').eq('set_id', setId);
+    var {data:cards} = await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id', setId);
     if(!cards||!cards.length){ strefaShowCenter('<div style="padding:20px;color:var(--dim2)">Brak fiszek w tym zestawie</div>'); return; }
     strefaShowWordPreview(cards, setName, function(){
-      _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||''}; });
+      _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',image_url:c.image_url||'',image_attr:c.image_attr||''}; });
       _trybExternalName = setName;
       window._trybSource='strefa';
       RewardSystem.load();
@@ -10427,8 +10458,7 @@ async function doOdkryjSearch(){
 }
 
 function getLangName(lang){
-  var i=(typeof LEX_LANG_MAP!=='undefined') && LEX_LANG_MAP[lang];
-  return (i&&i.label)||lang;
+  return{en:'Angielski',es:'Hiszpański',nl:'Holenderski',jp:'Japoński',de:'Niemiecki',fr:'Francuski',it:'Włoski',pt:'Portugalski'}[lang]||lang;
 }
 
 function _isBadArticle(title, content){
@@ -10533,7 +10563,7 @@ async function getSemanticTags(topic, lang, tok){
 
   // Generuj przez AI
   try{
-    var langNames=getLangENMap();
+    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'};
     var res = await fetch(ODKRYJ_AI_URL, {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':ODKRYJ_APIKEY},
@@ -10562,7 +10592,7 @@ async function getSemanticTags(topic, lang, tok){
 
 async function fetchOdkryjVideos(topic, lang, level, tok){
   var YT_KEY='AIzaSyCUQJksAT-HtZ3GBBMr3__b19nNlHqxajI';
-  var langNames=getLangENMap();
+  var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French'};
   var langCodes={en:'en',es:'es',nl:'nl',jp:'ja',de:'de',fr:'fr'};
   var levelKeywords={A1:'beginner simple',A2:'elementary easy',B1:'intermediate',B2:'upper intermediate',C1:'advanced',C2:'native fluent'};
   var levelKw = levelKeywords[level]||'intermediate';
@@ -10635,7 +10665,7 @@ async function fetchOdkryjVideos(topic, lang, level, tok){
 
 async function fetchOdkryjVocab(topic, lang, level, tok){
   try{
-    var langNames=getLangENMap();
+    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
     var res=await fetch(ODKRYJ_AI_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':ODKRYJ_APIKEY},
@@ -10771,45 +10801,17 @@ var _lexTopGap = null;
 var _lexRecommendedGap = null;
 
 var LEX_LANG_MAP = {
-  // name = przymiotnik PL (mianownik, małą literą) — używany przez _lexLangName.
-  // label = mianownik z wielkiej; gen = dopełniacz; loc = miejscownik (po „w języku …").
-  // en = nazwa angielska (do promptów LLM); bcp47 = kod Web Speech; tts = 'cloud'|'web'; translit = czy ma transliterację (romaji).
-  en: {name:'angielski',    label:'Angielski',    gen:'angielskiego',    loc:'angielskim',    native:'English',    en:'English',    flag:'🇬🇧', bcp47:'en-US', tts:'cloud', translit:false},
-  es: {name:'hiszpański',   label:'Hiszpański',   gen:'hiszpańskiego',   loc:'hiszpańskim',   native:'Español',    en:'Spanish',    flag:'🇪🇸', bcp47:'es-ES', tts:'cloud', translit:false},
-  de: {name:'niemiecki',    label:'Niemiecki',    gen:'niemieckiego',    loc:'niemieckim',    native:'Deutsch',    en:'German',     flag:'🇩🇪', bcp47:'de-DE', tts:'cloud', translit:false},
-  fr: {name:'francuski',    label:'Francuski',    gen:'francuskiego',    loc:'francuskim',    native:'Français',   en:'French',     flag:'🇫🇷', bcp47:'fr-FR', tts:'cloud', translit:false},
-  it: {name:'włoski',       label:'Włoski',       gen:'włoskiego',       loc:'włoskim',       native:'Italiano',   en:'Italian',    flag:'🇮🇹', bcp47:'it-IT', tts:'cloud', translit:false},
-  nl: {name:'niderlandzki', label:'Niderlandzki', gen:'niderlandzkiego', loc:'niderlandzkim', native:'Nederlands', en:'Dutch',      flag:'🇳🇱', bcp47:'nl-NL', tts:'cloud', translit:false},
-  pt: {name:'portugalski',  label:'Portugalski',  gen:'portugalskiego',  loc:'portugalskim',  native:'Português',  en:'Portuguese', flag:'🇵🇹', bcp47:'pt-PT', tts:'cloud', translit:false},
-  no: {name:'norweski',     label:'Norweski',     gen:'norweskiego',     loc:'norweskim',     native:'Norsk',      en:'Norwegian',  flag:'🇳🇴', bcp47:'nb-NO', tts:'cloud', translit:false},
-  ru: {name:'rosyjski',     label:'Rosyjski',     gen:'rosyjskiego',     loc:'rosyjskim',     native:'Русский',    en:'Russian',    flag:'🇷🇺', bcp47:'ru-RU', tts:'cloud', translit:true},
-  uk: {name:'ukraiński',    label:'Ukraiński',    gen:'ukraińskiego',    loc:'ukraińskim',    native:'Українська', en:'Ukrainian',  flag:'🇺🇦', bcp47:'uk-UA', tts:'cloud', translit:true},
-  ar: {name:'arabski',      label:'Arabski',      gen:'arabskiego',      loc:'arabskim',      native:'العربية',    en:'Arabic',     flag:'🇸🇦', bcp47:'ar-SA', tts:'web',   translit:true},
-  jp: {name:'japoński',     label:'Japoński',     gen:'japońskiego',     loc:'japońskim',     native:'日本語',      en:'Japanese',   flag:'🇯🇵', bcp47:'ja-JP', tts:'web',   translit:true},
-  zh: {name:'chiński',      label:'Chiński',      gen:'chińskiego',      loc:'chińskim',      native:'中文',        en:'Chinese',    flag:'🇨🇳', bcp47:'zh-CN', tts:'web',   translit:true},
-  ko: {name:'koreański',    label:'Koreański',    gen:'koreańskiego',    loc:'koreańskim',    native:'한국어',      en:'Korean',     flag:'🇰🇷', bcp47:'ko-KR', tts:'web',   translit:true}
+  en: {name:'angielski', native:'English', flag:'🇬🇧'},
+  es: {name:'hiszpański', native:'Español', flag:'🇪🇸'},
+  nl: {name:'niderlandzki', native:'Nederlands', flag:'🇳🇱'},
+  jp: {name:'japoński', native:'日本語', flag:'🇯🇵'}
 };
-
-// ── Helpery językowe (globalne) — jedno źródło prawdy dla wszystkich powierzchni ──
-function _lmInfo(l){ return (typeof LEX_LANG_MAP!=='undefined') && LEX_LANG_MAP[String(l||'').toLowerCase().split('-')[0]]; }
-function getLangEN(l){ var i=_lmInfo(l); return (i&&i.en)||'English'; }
-function getLangNative(l){ var i=_lmInfo(l); return (i&&i.native)||l; }
-function getLangFlag(l){ var i=_lmInfo(l); return (i&&i.flag)||'🌐'; }
-function getLangGen(l){ var i=_lmInfo(l); return (i&&i.gen)||(i&&i.name)||l; }
-function getLangLoc(l){ var i=_lmInfo(l); return (i&&i.loc)||(i&&i.name)||'angielskim'; }
-function ttsEngineFor(l){ var i=_lmInfo(l); return (i&&i.tts)||'cloud'; }
-function getLangENMap(){ var o={}; for(var k in LEX_LANG_MAP) o[k]=LEX_LANG_MAP[k].en; return o; }
-function getLangGenMap(){ var o={}; for(var k in LEX_LANG_MAP) o[k]=LEX_LANG_MAP[k].gen; return o; }
-function getLangNameMap(){ var o={}; for(var k in LEX_LANG_MAP) o[k]=LEX_LANG_MAP[k].label; return o; }
-function getLangFlagMap(){ var o={}; for(var k in LEX_LANG_MAP) o[k]=LEX_LANG_MAP[k].flag; return o; }
 
 // Mapa kodu języka apki → BCP47 (Web Speech) / baza dla ElevenLabs (po split '-').
 // jp → ja-JP (japoński zawsze przez Web Speech — głos ElevenLabs nie ma dubbingu JP).
 window.ttsLangCode = function(lang){
   var L = String(lang||'').toLowerCase().split('-')[0];
-  var i=(typeof LEX_LANG_MAP!=='undefined') && LEX_LANG_MAP[L];
-  if(i && i.bcp47) return i.bcp47;
-  var m = { ja:'ja-JP', pl:'pl-PL' };
+  var m = { en:'en-US', es:'es-ES', nl:'nl-NL', jp:'ja-JP', ja:'ja-JP', pl:'pl-PL' };
   return m[L] || (L ? (L + '-' + L.toUpperCase()) : 'en-US');
 };
 
@@ -16252,6 +16254,7 @@ async function lexInit(){
          +'<button onclick="_aiImageClear()" style="background:none;border:none;color:var(--orange);font-size:12px;cursor:pointer;padding:2px 0;font-family:DM Sans,sans-serif">Usuń zdjęcie</button></div>'
        +'</div>'
      +'</div>'
+     +'<div style="display:flex;align-items:center;gap:9px;margin-top:14px;padding:11px 13px;border:1px solid var(--border2);border-radius:11px;background:var(--paper)">'+'<input id="ai-set-images" type="checkbox" '+((window._elImgEnabled!==false)?'checked':'')+' style="width:17px;height:17px;accent-color:var(--orange);cursor:pointer;flex-shrink:0" onchange="_aiImgToggle(this.checked)">'+'<label for="ai-set-images" style="font-size:13px;color:var(--navy);cursor:pointer;line-height:1.4">Dodaj zdj\u0119cia do fiszek <span style="color:var(--dim2)">\u2014 tylko dla s\u0142\u00f3w konkretnych (Pexels)</span></label>'+'</div>'
      +'<div id="ai-gen-msg" style="font-size:12px;color:var(--dim2);min-height:16px;margin-top:10px"></div>'
      +'<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">'
        +'<button onclick="closeMatModal()" style="padding:10px 20px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif">Anuluj</button>'
@@ -16323,7 +16326,8 @@ async function lexInit(){
       prompt='Z poniższego tekstu wybierz '+count+' najważniejszych lub najtrudniejszych słów/wyrażeń w języku '+langName+' i podaj ich polskie tłumaczenia.\nTekst:\n'+text.slice(0,2000);
       defaultName=langName+' — z tekstu';
     }
-    prompt+='\n\nOdpowiedz WYŁĄCZNIE tablicą JSON, bez backticków i komentarzy, w formacie: [{"word":"...","translation":"..."}]';
+    prompt+='\n\nDla KAŻDEJ fiszki dodaj też: "concrete" (true jeśli słowo da się pokazać na zdjęciu — konkretny obiekt, miejsce, jedzenie, zwierzę, narzędzie, ubranie, zawód, albo czynność/akcję dającą się sfotografować (np. ołówek, most, jabłko, lotnisko, lekarz, biegać, jeść, pływać, pisać); false TYLKO dla pojęć abstrakcyjnych, emocji oraz czasowników abstrakcyjnych (np. uważać, zależeć, woleć), przyimków i spójników) oraz "image_query" (1–3 angielskie słowa do zdjęcia; dla rzeczy użyj nazwy obiektu, np. "pencil", "wooden bridge"; dla czynności dodaj osobę/akcję, np. "person running", "eating food", "swimming"; pomiń tylko przy abstraktach).';
+    prompt+='\n\nOdpowiedz WYŁĄCZNIE tablicą JSON, bez backticków i komentarzy, w formacie: [{"word":"...","translation":"...","concrete":true,"image_query":"..."}]';
     btn.disabled=true; var oldT=btn.textContent; btn.textContent='Generuję…'; msg.textContent='AI tworzy fiszki…';
     try{
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
@@ -16332,8 +16336,10 @@ async function lexInit(){
       var d=await res.json();
       var rawTxt=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
       var a=rawTxt.indexOf('['), b=rawTxt.lastIndexOf(']'), cards=[];
-      if(a>=0&&b>a){ try{ var arr=JSON.parse(rawTxt.slice(a,b+1)); cards=arr.map(function(c){return {word:String(c.word||c.term||'').trim(), translation:String(c.translation||c.tr||c.pl||'').trim()};}).filter(function(c){return c.word&&c.translation;}); }catch(e){} }
+      if(a>=0&&b>a){ try{ var arr=JSON.parse(rawTxt.slice(a,b+1)); cards=arr.map(function(c){return {word:String(c.word||c.term||'').trim(), translation:String(c.translation||c.tr||c.pl||'').trim(), concrete:(c.concrete===true||c.concrete==='true'), image_query:String(c.image_query||c.imageQuery||'').trim()};}).filter(function(c){return c.word&&c.translation;}); }catch(e){} }
       if(!cards.length){ msg.textContent='Nie udało się wygenerować. Spróbuj ponownie.'; btn.disabled=false; btn.textContent=oldT; return; }
+      var _nConc=cards.filter(function(c){return c.concrete&&c.image_query;}).length;
+      if(_nConc && window.elImgAutoAttach && window._elImgEnabled!==false){ msg.textContent='Dobieram zdjęcia (0/'+_nConc+')…'; try{ await window.elImgAutoAttach(cards,function(dn,tt){ msg.textContent='Dobieram zdjęcia ('+dn+'/'+tt+')…'; }); }catch(e){} }
       _aiRenderSetEditor(defaultName, cards, lang);
     }catch(e){ msg.textContent='Błąd generowania: '+(e.message||e); btn.disabled=false; btn.textContent=oldT; }
   };
@@ -16347,7 +16353,8 @@ async function lexInit(){
     var prompt='Przeanalizuj to zdjęcie. Rozpoznaj do '+count+' najważniejszych, wyraźnie widocznych obiektów, przedmiotów lub pojęć. '
       +'Dla każdego utwórz fiszkę: "word" = nazwa w języku '+langName+', "translation" = polskie tłumaczenie. '
       +'Pomiń rzeczy niejednoznaczne lub ledwo widoczne. '
-      +'Odpowiedz WYŁĄCZNIE tablicą JSON, bez backticków i komentarzy, w formacie: [{"word":"...","translation":"..."}]';
+      +'Dla KAŻDEJ fiszki dodaj: "concrete" (true dla konkretnych obiektów i czynności, np. running, eating) i "image_query" (1–3 angielskie słowa do wyszukania zdjęcia). '
+      +'Odpowiedz WYŁĄCZNIE tablicą JSON, bez backticków i komentarzy, w formacie: [{"word":"...","translation":"...","concrete":true,"image_query":"..."}]';
     btn.disabled=true; var oldT=btn.textContent; btn.textContent='Analizuję…'; if(msg) msg.textContent='AI rozpoznaje obiekty na zdjęciu…';
     try{
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
@@ -16360,8 +16367,10 @@ async function lexInit(){
       var d=await res.json();
       var rawTxt=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
       var a=rawTxt.indexOf('['), b=rawTxt.lastIndexOf(']'), cards=[];
-      if(a>=0&&b>a){ try{ var arr=JSON.parse(rawTxt.slice(a,b+1)); cards=arr.map(function(c){return {word:String(c.word||c.term||'').trim(), translation:String(c.translation||c.tr||c.pl||'').trim()};}).filter(function(c){return c.word&&c.translation;}); }catch(e){} }
+      if(a>=0&&b>a){ try{ var arr=JSON.parse(rawTxt.slice(a,b+1)); cards=arr.map(function(c){return {word:String(c.word||c.term||'').trim(), translation:String(c.translation||c.tr||c.pl||'').trim(), concrete:(c.concrete===true||c.concrete==='true'), image_query:String(c.image_query||c.imageQuery||'').trim()};}).filter(function(c){return c.word&&c.translation;}); }catch(e){} }
       if(!cards.length){ if(msg) msg.textContent='Nie udało się rozpoznać obiektów. Spróbuj wyraźniejszego zdjęcia.'; btn.disabled=false; btn.textContent=oldT; return; }
+      var _nConc=cards.filter(function(c){return c.concrete&&c.image_query;}).length;
+      if(_nConc && window.elImgAutoAttach && window._elImgEnabled!==false){ if(msg) msg.textContent='Dobieram zdjęcia (0/'+_nConc+')…'; try{ await window.elImgAutoAttach(cards,function(dn,tt){ if(msg) msg.textContent='Dobieram zdjęcia ('+dn+'/'+tt+')…'; }); }catch(e){} }
       _aiRenderSetEditor(langName+' — ze zdjęcia', cards, lang);
     }catch(e){ if(msg) msg.textContent='Błąd analizy zdjęcia: '+(e.message||e); btn.disabled=false; btn.textContent=oldT; }
   };
@@ -16394,7 +16403,131 @@ async function lexInit(){
     try{ var _nsl=document.getElementById('new-set-lang'); if(_nsl && lang) _nsl.value=lang; }catch(e){}
     cards.forEach(function(){ window.addNewSetRow(); });
     var rows=document.querySelectorAll('#new-set-rows > div');
-    cards.forEach(function(c,i){ if(!rows[i])return; var ins=rows[i].querySelectorAll('input'); if(ins[0])ins[0].value=c.word; if(ins[1])ins[1].value=c.translation; });
+    cards.forEach(function(c,i){ if(!rows[i])return; var ins=rows[i].querySelectorAll('input'); if(ins[0])ins[0].value=c.word; if(ins[1])ins[1].value=c.translation;
+      try{ if(c.image_url && window.elImgMakeBtn){ var _ob=rows[i].querySelector('.elimg-btn'); if(_ob){ var _nb=window.elImgMakeBtn(rows[i],(function(_in){return function(){return _in?_in.value:'';};})(ins[0]),{url:c.image_url,attr:c.image_attr||''}); _ob.parentNode.replaceChild(_nb,_ob); } } }catch(e){}
+    });
+  };
+})();
+</script>
+
+<!-- ═══ EYELINGO — Zdjęcia do fiszek (Pexels, dual coding) ═══ -->
+<style id="el-cardimg">
+.elimg-btn{width:28px;height:28px;border:1px solid var(--border2);border-radius:8px;background:transparent;cursor:pointer;color:var(--dim2);display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;transition:.15s;overflow:hidden}
+.elimg-btn:hover{border-color:var(--orange);color:var(--orange)}
+.elimg-btn.has-img{border-color:var(--orange)}
+.elimg-btn img{width:100%;height:100%;object-fit:cover;border-radius:7px}
+.elimg-modal{position:fixed;inset:0;z-index:10080;background:rgba(26,35,64,.5);display:flex;align-items:center;justify-content:center;padding:24px}
+.elimg-box{background:#fff;border-radius:18px;padding:22px;width:min(520px,94vw);max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(26,35,64,.28)}
+.elimg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.elimg-cell{aspect-ratio:1;border-radius:10px;overflow:hidden;cursor:pointer;border:2px solid transparent;background:var(--paper);transition:.12s}
+.elimg-cell:hover{border-color:var(--orange)}
+.elimg-cell img{width:100%;height:100%;object-fit:cover;display:block}
+</style>
+<script>
+(function(){
+  if(window.elImgSearch) return;
+  window.EL_IMG_PROXY_URL = window.EL_IMG_PROXY_URL || '';
+  try{ window._elImgEnabled = (localStorage.getItem('eyelingo_ai_images')!=='0'); }catch(e){ window._elImgEnabled = true; }
+  window._aiImgToggle = function(on){ window._elImgEnabled = !!on; try{ localStorage.setItem('eyelingo_ai_images', on?'1':'0'); }catch(e){} };
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function mapResults(d){
+    var arr=(d&&d.results)||[];
+    return arr.map(function(r){
+      return { thumb:(r.thumb||r.url), url:(r.url||r.thumb), attr:(r.attr||'') };
+    }).filter(function(x){ return x.thumb; });
+  }
+  window.elImgSearch = async function(query){
+    query=(query||'').trim(); if(!query) return [];
+    try{
+      var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
+      var res=await fetch(PEXELS_PROXY_URL,{method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:SUPABASE_KEY)},
+        body:JSON.stringify({q:query, n:9})});
+      if(res.status===429){ window._elImgRateLimited=true; return []; }
+      if(res.ok){ window._elImgRateLimited=false; var d=await res.json(); return mapResults(d); }
+    }catch(e){}
+    return [];
+  };
+  window.elImgMakeBtn = function(row, getWord, initial){
+    var btn=document.createElement('button'); btn.type='button'; btn.className='elimg-btn'; btn.title='Dodaj / zmie\u0144 zdj\u0119cie';
+    function refresh(){
+      if(row._elImg && row._elImg.url){ btn.classList.add('has-img'); btn.innerHTML='<img src="'+esc(row._elImg.url)+'" alt="">'; }
+      else { btn.classList.remove('has-img'); btn.innerHTML='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>'; }
+    }
+    if(initial && initial.url){ row._elImg={url:initial.url, attr:initial.attr||''}; }
+    btn.onclick=function(){ window.elImgOpenPicker((getWord&&getWord())||'', row._elImg, function(sel){ row._elImg = sel; refresh(); }); };
+    refresh();
+    return btn;
+  };
+  window.elImgOpenPicker = function(seedWord, current, onPick){
+    var old=document.getElementById('elimg-modal'); if(old) old.remove();
+    var m=document.createElement('div'); m.id='elimg-modal'; m.className='elimg-modal';
+    m.addEventListener('click',function(e){ if(e.target===m) m.remove(); });
+    var box=document.createElement('div'); box.className='elimg-box';
+    box.innerHTML='<div style="font-family:DM Sans,sans-serif;font-size:16px;font-weight:500;color:var(--navy);margin-bottom:2px">Zdj\u0119cie fiszki</div>'
+      +'<div style="font-size:12px;color:var(--dim2);margin-bottom:14px;line-height:1.5">Najlepiej dla s\u0142\u00f3w konkretnych. Tap = wyb\u00f3r. \u0179r\u00f3d\u0142o: Pexels.</div>'
+      +'<div style="display:flex;gap:8px"><input id="elimg-q" class="fi" style="flex:1" placeholder="np. pencil"><button id="elimg-go" class="btn btn-orange" style="white-space:nowrap">Szukaj</button></div>'
+      +'<div id="elimg-status" style="font-size:12px;color:var(--dim2);margin-top:10px;min-height:16px"></div>'
+      +'<div id="elimg-grid" class="elimg-grid"></div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:10px">'
+        +'<button id="elimg-clear" style="padding:8px 14px;border-radius:10px;border:1px solid var(--border2);background:transparent;cursor:pointer;font-size:13px;color:#a32d2d;font-family:DM Sans,sans-serif">Usu\u0144 zdj\u0119cie</button>'
+        +'<button id="elimg-close" style="padding:8px 16px;border-radius:10px;border:1px solid var(--border2);background:transparent;cursor:pointer;font-size:13px;font-family:DM Sans,sans-serif">Zamknij</button>'
+      +'</div>';
+    m.appendChild(box); document.body.appendChild(m);
+    var qEl=box.querySelector('#elimg-q'), grid=box.querySelector('#elimg-grid'), status=box.querySelector('#elimg-status');
+    qEl.value=seedWord||'';
+    function run(){
+      var q=qEl.value.trim(); if(!q){ status.textContent='Wpisz, czego szuka\u0107.'; return; }
+      status.textContent='Szukam\u2026'; grid.innerHTML='';
+      window.elImgSearch(q).then(function(items){
+        if(!items.length){ status.textContent=(window._elImgRateLimited?'Za dużo zapytań — spróbuj za chwilę.':'Brak wyników. Spróbuj prostszego/angielskiego słowa.'); return; }
+        status.textContent=items.length+' wynik\u00f3w \u2014 kliknij, aby wybra\u0107.';
+        items.forEach(function(it){
+          var c=document.createElement('div'); c.className='elimg-cell';
+          c.innerHTML='<img src="'+esc(it.thumb)+'" alt="" loading="lazy">';
+          c.onclick=function(){ onPick({url:it.url, attr:it.attr}); m.remove(); };
+          grid.appendChild(c);
+        });
+      });
+    }
+    box.querySelector('#elimg-go').onclick=run;
+    qEl.addEventListener('keydown',function(e){ if(e.key==='Enter') run(); });
+    box.querySelector('#elimg-clear').onclick=function(){ onPick(null); m.remove(); };
+    box.querySelector('#elimg-close').onclick=function(){ m.remove(); };
+    if(seedWord) run();
+  };
+  window.elImgAutoAttach = async function(cards, onProgress){
+    var targets=cards.filter(function(c){ return c.concrete && c.image_query && !(c.image_url); }).slice(0,40);
+    var done=0, i=0, CONC=3;
+    function _sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+    async function worker(){
+      while(i<targets.length){
+        if(window._elImgRateLimited) break;
+        var c=targets[i++];
+        try{ var items=await window.elImgSearch(c.image_query); if(items&&items[0]){ c.image_url=items[0].url; c.image_attr=items[0].attr; } }catch(e){}
+        done++; if(onProgress) onProgress(done, targets.length);
+        await _sleep(80);
+      }
+    }
+    window._elImgRateLimited=false;
+    var ws=[]; for(var k=0;k<CONC;k++) ws.push(worker());
+    await Promise.all(ws);
+    return cards;
+  };
+  window.elTrybShowImage = function(card){
+    var wrap=document.getElementById('tryb-card-image-wrap');
+    var img=document.getElementById('tryb-card-image');
+    var cap=document.getElementById('tryb-card-image-attr');
+    if(!wrap||!img) return;
+    var url=card&&card.image_url;
+    if(url){
+      img.src=url; wrap.style.display='block';
+      if(cap){
+        var a=(card.image_attr||''); var parts=a.split(' \u00b7 '); var link=parts[parts.length-1];
+        if(/^https?:\/\//.test(link)){ var label=parts.slice(0,-1).join(' \u00b7 ')||'Pexels'; cap.innerHTML='<a href="'+esc(link)+'" target="_blank" rel="noopener" style="color:var(--dim2);text-decoration:none;border-bottom:1px dotted var(--border2)">'+esc(label)+'</a>'; }
+        else { cap.textContent=a||''; }
+      }
+    } else { wrap.style.display='none'; img.removeAttribute('src'); if(cap) cap.textContent=''; }
   };
 })();
 </script>
