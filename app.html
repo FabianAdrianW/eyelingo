@@ -160,14 +160,6 @@
   .lbw .spk{width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--dim2);border:none;background:none;cursor:pointer}
   .lbw .spk:active{color:var(--orange)}
   .lbsh-empty{text-align:center;color:var(--dim2);font-size:12.5px;padding:34px 22px;line-height:1.6}
-  /* Podgląd zestawu — ikona oka w wierszu + dolny arkusz (tłumaczenia widoczne) */
-  .row-eye{width:38px;height:38px;flex-shrink:0;border:none;background:none;display:flex;align-items:center;justify-content:center;color:var(--dim2);cursor:pointer;border-radius:50%}
-  .row-eye:active{background:var(--paper2);color:var(--orange)}
-  .lang-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;letter-spacing:.3px;color:var(--dim);background:var(--paper2);border-radius:100px;padding:2px 7px;margin-left:6px;vertical-align:1px}
-  .lbw.plain{cursor:default}
-  #set-preview-backdrop{display:none;position:absolute;inset:0;background:rgba(26,35,64,.28);z-index:60;animation:fade .2s ease}
-  #set-preview-sheet{position:absolute;left:0;right:0;bottom:0;z-index:61;background:#fff;border-top:.5px solid var(--line);border-radius:22px 22px 0 0;box-shadow:0 -12px 34px rgba(26,35,64,.14);display:flex;flex-direction:column;max-height:76%;transform:translateY(110%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
-  #set-preview-sheet.open{transform:translateY(0)}
   .lexx-stage{display:flex;flex-direction:column}
   .lexx-loading{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--dim2);text-align:center;padding:60px 30px}
   .lexx-card{background:var(--navy);color:#fff;border-radius:var(--r);padding:15px 17px;margin:6px 0 14px}
@@ -291,10 +283,9 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
         <div class="scroll">
           <div class="mb16" style="padding-top:6px"><div class="h1">Ucz się</div>
             <div class="sub" style="margin-top:4px">Wybierz zestaw — przejdź do przeglądania fiszek albo lekcji z Lexem.</div></div>
-          <div class="resume" id="lex-resume-card" style="display:none">
+          <div class="resume" onclick="soon('Lekcja z Lexem','Krok 4 — wznawianie i nowe lekcje Lexa podłączymy wkrótce.')">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" style="flex-shrink:0"><polygon points="6 4 20 12 6 20"/></svg>
-            <div class="body"><div class="t">Kontynuuj lekcję z Lexem</div><div class="d">—</div></div>
-            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2" style="flex-shrink:0"><path d="M9 18l6-6-6-6"/></svg>
+            <div class="body"><div class="t">Kontynuuj lekcję z Lexem <span class="soon-badge">wkrótce</span></div><div class="d">Sync ze stroną — krok 4</div></div>
           </div>
           <div class="big" onclick="go('mine')">
             <div class="ic navy"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></div>
@@ -374,7 +365,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       <div class="field"><div class="lab">Język prowadzenia lekcji</div>
         <div class="opt2" id="lex-conduct">
           <div class="opt sel" data-v="pl" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot">Polski</div><div class="od">Lex tłumaczy po polsku</div></div>
-          <div class="opt" data-v="target" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot" id="lex-conduct-target-ot">Angielski</div><div class="od" id="lex-conduct-target-od">Lex prowadzi po angielsku</div></div>
+          <div class="opt" data-v="target" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot">Angielski</div><div class="od">Lex prowadzi po angielsku</div></div>
         </div></div>
     </div>
     <div class="thumb"><button class="btn btn-orange" onclick="lexStart()">Zaczynamy →</button></div>
@@ -398,17 +389,6 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       </div>
       <div class="lbsh-list" id="lex-board-list"></div>
     </div>
-  </div>
-
-  <!-- PODGLĄD ZESTAWU: dolny arkusz ze słowami (tłumaczenia widoczne) -->
-  <div id="set-preview-backdrop" onclick="closeSetPreview()"></div>
-  <div id="set-preview-sheet">
-    <div class="lbsh-grab"></div>
-    <div class="lbsh-head">
-      <div><div class="lbsh-eyebrow">Podgląd</div><div class="lbsh-title" id="set-preview-name">Zestaw</div></div>
-      <button class="lbsh-eye" onclick="closeSetPreview()" aria-label="Zamknij podgląd"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg><span>Zamknij</span></button>
-    </div>
-    <div class="lbsh-list" id="set-preview-list"></div>
   </div>
 
   <!-- IMMERSIVE: PRZEGLĄDANIE (real) -->
@@ -509,7 +489,6 @@ function go(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   var t=document.getElementById('t-'+name); if(t) t.classList.add('active');
   else if(name==='mine'||name==='set'){ document.getElementById('t-ucz').classList.add('active'); }
-  if(name==='ucz'){ try{ lexCheckResume(); }catch(e){} }
 }
 function closeImm(id){ document.getElementById(id).classList.remove('active'); }
 function soon(title,desc){ document.getElementById('soon-title').textContent=title; document.getElementById('soon-desc').textContent=desc; go('soon'); }
@@ -525,12 +504,9 @@ async function loadMine(){
     box.innerHTML=data.map(function(s){
       var cnt=(s.user_set_cards&&s.user_set_cards[0]&&s.user_set_cards[0].count)||0;
       var nm=escapeHtml(s.name||'Bez nazwy');
-      var lg=s.lang||'en';
-      var badge='<span class="lang-badge">'+lexLangFlag(lg)+' '+lg.toUpperCase()+'</span>';
-      return '<div class="row" onclick="openSet(\''+s.id+'\',\''+nm.replace(/'/g,"\\'")+'\','+cnt+',\''+lg+'\')">'
+      return '<div class="row" onclick="openSet(\''+s.id+'\',\''+nm.replace(/'/g,"\\'")+'\','+cnt+',\''+(s.lang||'')+'\')">'
         +'<div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg></div>'
-        +'<div class="body"><div class="t">'+nm+'</div><div class="m">'+cnt+' '+plural(cnt,'fiszka','fiszki','fiszek')+' '+badge+'</div></div>'
-        +'<button class="row-eye" aria-label="Podgląd słów" onclick="event.stopPropagation();previewSet(\''+s.id+'\',\''+nm.replace(/'/g,"\\'")+'\',\''+lg+'\')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
+        +'<div class="body"><div class="t">'+nm+'</div><div class="m">'+cnt+' '+plural(cnt,'fiszka','fiszki','fiszek')+'</div></div>'
         +'<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>';
     }).join('');
   }catch(e){ box.innerHTML='<div class="empty"><div class="h2">Nie udało się wczytać</div><div class="sub">Sprawdź połączenie i spróbuj ponownie.</div><button class="btn btn-ghost" style="margin-top:16px;width:auto;padding:12px 20px" onclick="loadMine()">Spróbuj ponownie</button></div>'; }
@@ -539,37 +515,14 @@ function plural(n,a,b,c){ n=Math.abs(n); if(n===1)return a; var t=n%10,h=n%100; 
 function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 /* ===== Zestaw ===== */
-let curSetId=null, curSetName='', curSetCount=0, curSetLang='en';
+let curSetId=null, curSetName='', curSetCount=0, curSetLang='';
 function openSet(id,name,count,lang){
-  curSetId=id; curSetName=name; curSetCount=count; curSetLang=lang||'en';
+  curSetId=id; curSetName=name; curSetCount=count;
+  curSetLang=lang||''; if(curSetLang){ _lexLang=String(curSetLang).toLowerCase().split('-')[0]; }
   document.getElementById('set-name').textContent=name;
-  document.getElementById('set-meta').textContent=count+' '+plural(count,'fiszka','fiszki','fiszek')+' · '+lexLangFlag(curSetLang)+' '+lexLangInfo(curSetLang).name;
+  document.getElementById('set-meta').textContent=count+' '+plural(count,'fiszka','fiszki','fiszek');
   go('set');
 }
-
-/* ===== Podgląd zestawu (dolny arkusz, tłumaczenia widoczne) ===== */
-async function previewSet(id,name,lang){
-  var sheet=document.getElementById('set-preview-sheet'), bd=document.getElementById('set-preview-backdrop');
-  var list=document.getElementById('set-preview-list'), nm=document.getElementById('set-preview-name');
-  var lg=lang||'en', tts=lexTtsCode(lg);
-  if(nm) nm.textContent=(lexLangFlag(lg)+' '+(name||'Zestaw'));
-  if(list) list.innerHTML=eyelingoSpinner(48);
-  if(bd) bd.style.display='block';
-  if(sheet) requestAnimationFrame(function(){ sheet.classList.add('open'); });
-  try{
-    var {data,error}=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',id).order('sort_order',{ascending:true});
-    if(error) throw error;
-    var cards=(data||[]).filter(function(c){return c.word||c.translation;});
-    if(!list) return;
-    if(!cards.length){ list.innerHTML='<div class="lbsh-empty">Ten zestaw nie ma jeszcze fiszek.</div>'; return; }
-    list.innerHTML=cards.map(function(c){
-      var w=esc(c.word||''), t=esc(c.translation||'');
-      var spk=c.word?'<button class="spk" aria-label="Wymowa" onclick="event.stopPropagation();lexSceneSpeak(this.getAttribute(\'data-w\'),this.getAttribute(\'data-tts\'))" data-w="'+w+'" data-tts="'+tts+'"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button>':'';
-      return '<div class="lbw plain"><span class="w">'+w+'</span>'+(t?'<span class="t">'+t+'</span>':'')+spk+'</div>';
-    }).join('');
-  }catch(e){ if(list) list.innerHTML='<div class="lbsh-empty">Nie udało się wczytać słów. Spróbuj ponownie.</div>'; }
-}
-function closeSetPreview(){ var s=document.getElementById('set-preview-sheet'), b=document.getElementById('set-preview-backdrop'); if(s) s.classList.remove('open'); if(b) b.style.display='none'; }
 
 /* ===== kierunek ===== */
 let dir='foreign';
@@ -620,7 +573,7 @@ function speakCard(){
   try{
     var c=CARDS[bi]; if(!c||!c.word) return;
     if(window.speechSynthesis){ window.speechSynthesis.cancel();
-      var u=new SpeechSynthesisUtterance(c.word); u.lang=lexTtsCode(curSetLang); u.rate=.95; window.speechSynthesis.speak(u); }
+      var u=new SpeechSynthesisUtterance(c.word); u.lang=ttsLangCode(curSetLang||_lexLang); u.rate=.95; window.speechSynthesis.speak(u); }
   }catch(e){}
 }
 
@@ -672,31 +625,32 @@ const esc=escapeHtml;
 let lexConductLang='pl', lexExLevel='intermediate', lexLevel='B1';
 let lexSourceWords=[];
 let _lexLang='en';
-var LEX_LANGS={
-  en:{name:'angielski',gen:'angielskiego',loc:'angielskim',adv:'angielsku',flag:'🇬🇧',tts:'en-US'},
-  es:{name:'hiszpański',gen:'hiszpańskiego',loc:'hiszpańskim',adv:'hiszpańsku',flag:'🇪🇸',tts:'es-ES'},
-  nl:{name:'niderlandzki',gen:'niderlandzkiego',loc:'niderlandzkim',adv:'niderlandzku',flag:'🇳🇱',tts:'nl-NL'},
-  jp:{name:'japoński',gen:'japońskiego',loc:'japońskim',adv:'japońsku',flag:'🇯🇵',tts:'ja-JP'}
+// Deklinacja polskiej nazwy języka docelowego (mianownik / dopełniacz / miejscownik / przysłówek po-...)
+const LEX_LANG_DECL={
+  en:{nom:'angielski', gen:'angielskiego', loc:'angielskim', adv:'angielsku'},
+  es:{nom:'hiszpański', gen:'hiszpańskiego', loc:'hiszpańskim', adv:'hiszpańsku'},
+  nl:{nom:'niderlandzki', gen:'niderlandzkiego', loc:'niderlandzkim', adv:'niderlandzku'},
+  de:{nom:'niemiecki', gen:'niemieckiego', loc:'niemieckim', adv:'niemiecku'},
+  fr:{nom:'francuski', gen:'francuskiego', loc:'francuskim', adv:'francusku'},
+  it:{nom:'włoski', gen:'włoskiego', loc:'włoskim', adv:'włosku'},
+  jp:{nom:'japoński', gen:'japońskiego', loc:'japońskim', adv:'japońsku'}
 };
-function lexLangInfo(code){ return LEX_LANGS[code||_lexLang]||LEX_LANGS.en; }
-function langName(){ return lexLangInfo().name; }            // mianownik
-function langGen(){ return lexLangInfo().gen; }              // dopełniacz: języka ~
-function langLoc(){ return lexLangInfo().loc; }              // miejscownik: w ~
-function langAdv(){ return lexLangInfo().adv; }              // po ~
-function lexTtsCode(code){ return lexLangInfo(code).tts; }   // BCP-47 dla Web Speech
-function lexLangFlag(code){ return lexLangInfo(code).flag; }
+function _lexDecl(){ return LEX_LANG_DECL[String(_lexLang||'en').toLowerCase().split('-')[0]]||LEX_LANG_DECL.en; }
+// Kod języka apki → BCP47 (Web Speech). jp → ja-JP.
+function ttsLangCode(code){
+  var L=String(code||'').toLowerCase().split('-')[0];
+  var m={en:'en-US',es:'es-ES',nl:'nl-NL',de:'de-DE',fr:'fr-FR',it:'it-IT',jp:'ja-JP',ja:'ja-JP',pl:'pl-PL'};
+  return m[L] || (L ? (L+'-'+L.toUpperCase()) : 'en-US');
+}
+function langName(){ return _lexDecl().nom; }         // mianownik
+function langGen(){ return _lexDecl().gen; }          // dopełniacz: języka ~
+function langLoc(){ return _lexDecl().loc; }          // miejscownik: w ~
+function langAdv(){ return _lexDecl().adv; }          // po ~
 function lang(){ return _lexLang; }
 
 function lexSel(el,grp){ document.querySelectorAll(grp).forEach(o=>o.classList.remove('sel')); el.classList.add('sel'); }
-function openLexSetup(){
-  document.getElementById('lex-src').textContent=(lexLangFlag(curSetLang)+' '+(curSetName||'Zestaw'));
-  var ot=document.getElementById('lex-conduct-target-ot'), od=document.getElementById('lex-conduct-target-od');
-  var inf=lexLangInfo(curSetLang), nm=inf.name.charAt(0).toUpperCase()+inf.name.slice(1);
-  if(ot) ot.textContent=nm;
-  if(od) od.textContent='Lex prowadzi po '+inf.adv;
-  document.getElementById('imm-lexsetup').classList.add('active');
-}
-function lexQuit(){ if(confirm('Zakończyć lekcję z Lexem?')){ try{speechSynthesis.cancel();}catch(e){} try{lexBoardFabShow(false);}catch(e){} closeImm('imm-lex'); } }
+function openLexSetup(){ document.getElementById('lex-src').textContent=curSetName||'Zestaw'; document.getElementById('imm-lexsetup').classList.add('active'); }
+function lexQuit(){ if(confirm('Zakończyć lekcję z Lexem?')){ try{lexStopSpeak();}catch(e){} try{lexBoardFabShow(false);}catch(e){} closeImm('imm-lex'); } }
 
 function extractAI(d){ try{
   if(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]) return d.candidates[0].content.parts[0].text||'';
@@ -793,7 +747,6 @@ let _lexData=null, _lexDone=[], _lexStep=-1, _lexSculpt={}, _lexGapN={}, _lexSwe
 let _lexPortionNum=0, _lexPortionTarget=5;
 
 async function lexGeneratePortion(){
-  try{ lexSaveCheckpoint(lexCheckpointSnap()); }catch(e){}
   _lexPortionNum++;
   var pn=_lexPortionNum;
   var focus=null;
@@ -847,10 +800,11 @@ async function lexGeneratePortion(){
 async function lexStart(){
   var elx=document.querySelector('#lex-exlvl .opt.sel'); lexExLevel=(elx&&elx.dataset.v)||'intermediate';
   var ecd=document.querySelector('#lex-conduct .opt.sel'); lexConductLang=(ecd&&ecd.dataset.v)||'pl';
-  _lexLang=curSetLang||'en';
   closeImm('imm-lexsetup'); document.getElementById('imm-lex').classList.add('active');
   lexLoading('Lex przygotowuje lekcję z Twojego zestawu…');
   try{
+    if(!curSetLang){ try{ var sl=await db.from('user_sets').select('lang').eq('id',curSetId).maybeSingle(); if(sl&&sl.data&&sl.data.lang){ curSetLang=sl.data.lang; } }catch(e){} }
+    if(curSetLang){ _lexLang=String(curSetLang).toLowerCase().split('-')[0]; }
     var {data,error}=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',curSetId).order('sort_order',{ascending:true});
     if(error) throw error;
     lexSourceWords=(data||[]).filter(function(c){return c.word;}).map(function(c){return {word:c.word,translation:c.translation||''};});
@@ -860,79 +814,6 @@ async function lexStart(){
   try{ lexBoardReset(); lexBoardFabShow(true); lexBoardRender(); }catch(e){}
   var base=Math.ceil(lexSourceWords.length/4);
   _lexPortionTarget=Math.min(15, Math.max(2, base));
-  await lexGeneratePortion();
-}
-
-/* ── Wznawianie lekcji (mobile) — migawka per (user, set) w mobile_lesson_state ── */
-function _setIdNum(v){ var n=Number(v); return (v!=null && v!=='' && !isNaN(n)) ? n : v; }
-function lexCheckpointSnap(){
-  return {
-    set_id:_setIdNum(curSetId), set_name:curSetName, set_count:curSetCount, lang:(_lexLang||curSetLang||'en'),
-    level:lexLevel, exLevel:lexExLevel, conductLang:lexConductLang,
-    portionNum:_lexPortionNum, portionTarget:_lexPortionTarget,
-    vocab:JSON.parse(JSON.stringify(_lexVocab||[])),
-    sweepPool:JSON.parse(JSON.stringify(_lexSweepPool||[])),
-    shapeS:JSON.parse(JSON.stringify(_lexShapeS||{lastShape:null,recog:0,total:0})),
-    sweepDone:!!_lexSweepDone, reflectionDone:!!_lexReflectionDone, ts:Date.now()
-  };
-}
-async function lexSaveCheckpoint(snap){
-  try{
-    if(!snap||!snap.set_id) return;
-    var sess=(await db.auth.getSession()).data.session; if(!sess) return;
-    await db.from('mobile_lesson_state').upsert(
-      {user_id:sess.user.id, set_id:snap.set_id, snapshot:snap, updated_at:new Date().toISOString(), completed_at:null},
-      {onConflict:'user_id,set_id'});
-  }catch(e){}
-}
-async function lexClearCheckpoint(){
-  try{
-    if(!curSetId) return;
-    var sess=(await db.auth.getSession()).data.session; if(!sess) return;
-    await db.from('mobile_lesson_state').delete().eq('user_id',sess.user.id).eq('set_id',_setIdNum(curSetId));
-  }catch(e){}
-}
-async function lexCheckResume(){
-  var card=document.getElementById('lex-resume-card'); if(!card) return;
-  card.style.display='none';
-  try{
-    var sess=(await db.auth.getSession()).data.session; if(!sess) return;
-    var {data,error}=await db.from('mobile_lesson_state')
-      .select('set_id,snapshot,updated_at').eq('user_id',sess.user.id)
-      .is('completed_at',null).order('updated_at',{ascending:false}).limit(1);
-    if(error||!data||!data.length) return;
-    var snap=data[0].snapshot; if(!snap||!snap.set_id) return;
-    window._lexResumeSnap=snap;
-    var tot=snap.portionTarget||1;
-    var cur=Math.min((snap.portionNum||0)+1, tot);
-    var tEl=card.querySelector('.t'), dEl=card.querySelector('.d');
-    if(tEl) tEl.textContent='Kontynuuj: '+(snap.set_name||'Twój zestaw');
-    if(dEl) dEl.textContent='Porcja '+cur+' z '+tot;
-    card.onclick=function(){ resumeLesson(window._lexResumeSnap); };
-    card.style.display='flex';
-  }catch(e){}
-}
-async function resumeLesson(snap){
-  if(!snap||!snap.set_id) return;
-  curSetId=snap.set_id; curSetName=snap.set_name||''; curSetCount=snap.set_count||0;
-  curSetLang=snap.lang||'en'; _lexLang=curSetLang;
-  lexLevel=snap.level||'B1'; lexExLevel=snap.exLevel||'intermediate'; lexConductLang=snap.conductLang||'pl';
-  var src=document.getElementById('lex-src'); if(src) src.textContent=curSetName||'Zestaw';
-  document.getElementById('imm-lex').classList.add('active');
-  lexLoading('Wracam do Twojej lekcji…');
-  try{
-    var {data,error}=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',curSetId).order('sort_order',{ascending:true});
-    if(error) throw error;
-    lexSourceWords=(data||[]).filter(function(c){return c.word;}).map(function(c){return {word:c.word,translation:c.translation||''};});
-  }catch(e){ lexSourceWords=[]; }
-  if(!lexSourceWords.length){ lexError('Nie udało się wczytać słów tego zestawu.'); return; }
-  _lexPortionNum=snap.portionNum||0;
-  _lexPortionTarget=snap.portionTarget||Math.min(15,Math.max(2,Math.ceil(lexSourceWords.length/4)));
-  _lexVocab=Array.isArray(snap.vocab)?snap.vocab:[];
-  _lexSweepPool=Array.isArray(snap.sweepPool)?snap.sweepPool:[];
-  _lexShapeS=snap.shapeS||{lastShape:null,recog:0,total:0};
-  _lexSweepDone=!!snap.sweepDone; _lexReflectionDone=!!snap.reflectionDone;
-  try{ lexBoardReset(); lexBoardFabShow(true); lexBoardRender(); }catch(e){}
   await lexGeneratePortion();
 }
 
@@ -956,7 +837,48 @@ function exScene(src,txt,withAudio){
   var audio=withAudio?'<button type="button" class="lexx-sceneaudio" onclick="lexSceneSpeak(this.getAttribute(\'data-say\'))" data-say="'+esc(String(txt||''))+'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>':'';
   return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><div class="lexx-scene-line"><p class="lexx-scene-txt">'+esc(txt)+'</p>'+audio+'</div></div>';
 }
-window.lexSceneSpeak=function(text,code){ if(!text)return; try{speechSynthesis.cancel();}catch(e){} try{ var u=new SpeechSynthesisUtterance(String(text)); u.lang=code||lexTtsCode(); u.rate=.92; speechSynthesis.speak(u);}catch(e){} };
+// Sekwencyjny odtwarzacz segmentów {t,lang} — każdy fragment we własnym języku.
+var _lexSpeakTok=0;
+function lexStopSpeak(){ _lexSpeakTok++; try{speechSynthesis.cancel();}catch(e){} }
+function lexSpeakSegs(segs){
+  if(!window.speechSynthesis) return;
+  var tok=(++_lexSpeakTok);
+  try{speechSynthesis.cancel();}catch(e){}
+  segs=(segs||[]).filter(function(s){return s&&s.t;});
+  if(!segs.length) return;
+  var i=0;
+  function pickVoice(code){ try{ var vs=speechSynthesis.getVoices()||[]; var base=String(code).split('-')[0];
+    return vs.find(function(x){return x.lang===code&&/Google/.test(x.name);})||vs.find(function(x){return x.lang===code;})||vs.find(function(x){return x.lang.indexOf(base)===0;})||null; }catch(e){ return null; } }
+  function next(){
+    if(tok!==_lexSpeakTok) return;
+    if(i>=segs.length) return;
+    var seg=segs[i++];
+    try{
+      var u=new SpeechSynthesisUtterance(String(seg.t).slice(0,300));
+      u.lang=seg.lang; u.rate=.92; u.pitch=1.0;
+      var v=pickVoice(seg.lang); if(v) u.voice=v;
+      u.onend=next; u.onerror=next;
+      speechSynthesis.speak(u);
+    }catch(e){ next(); }
+  }
+  next();
+}
+// Dzieli tekst: fragmenty w **gwiazdkach** = język docelowy; reszta = język prowadzenia (PL lub docelowy).
+function lexSplitMixed(text){
+  var tgt=ttsLangCode(_lexLang);
+  var base=(typeof lexConductLang!=='undefined' && lexConductLang==='target') ? tgt : 'pl-PL';
+  var FS='\u0001';
+  var s=String(text||'').replace(/\*\*([^*]+)\*\*/g, function(m,x){ return FS+x.trim()+FS; }).replace(/\*/g,'');
+  var parts=s.split(FS), out=[];
+  parts.forEach(function(seg,idx){ var t=(seg||'').replace(/\s+/g,' ').trim(); if(!t) return; out.push({t:t, lang:(idx%2===1)?tgt:base}); });
+  var merged=[];
+  out.forEach(function(q){ var last=merged[merged.length-1]; if(last&&last.lang===q.lang){ last.t+=' '+q.t; } else merged.push({t:q.t,lang:q.lang}); });
+  return merged;
+}
+// Słowo/scena w języku docelowym (chipy słów, scenki cue).
+window.lexSceneSpeak=function(text){ if(!text)return; lexSpeakSegs([{t:String(text).replace(/\*\*/g,'').replace(/\s+/g,' ').trim(), lang:ttsLangCode(_lexLang)}]); };
+// Narracja mieszana PL + słowa docelowe (intro porcji, klucze).
+window.lexSpeakMixed=function(text){ if(!text)return; lexSpeakSegs(lexSplitMixed(text)); };
 
 function lexSegHtml(){ var total=((_lexData&&_lexData.exercises)||[]).length, out=''; for(var k=0;k<total;k++){ var cls=_lexDone[k]?'done':(k===_lexStep?'cur':''); out+='<span class="'+cls+'"></span>'; } return '<div class="lexx-seg" id="lexx-seg">'+out+'</div>'; }
 function lexStageHtml(html){ var s=document.getElementById('lex-stage'); if(s) s.innerHTML='<div class="lexx-stage">'+html+'</div>'; }
@@ -973,7 +895,7 @@ function lexShowStep(s){
     stage.appendChild(box);
     var st=document.createElement('button'); st.className='lexx-next'; st.textContent='Zaczynamy →'; st.onclick=function(){ lexShowStep(0); };
     stage.appendChild(st); w.appendChild(stage);
-    try{ if(data.intro && (typeof _lexSpeechOn==='undefined'||_lexSpeechOn)){ var spoken=String(data.intro).replace(/\*\*/g,''); setTimeout(function(){ lexSceneSpeak(spoken); },300); } }catch(e){}
+    try{ if(data.intro && (typeof _lexSpeechOn==='undefined'||_lexSpeechOn)){ var spoken=String(data.intro); setTimeout(function(){ lexSpeakMixed(spoken); },300); } }catch(e){}
     return;
   }
   var ex=(data.exercises||[])[s]; if(!ex) return;
@@ -1280,7 +1202,6 @@ window.lexReflectSubmit=async function(){
 function lexEndLesson(){
   try{speechSynthesis.cancel();}catch(e){}
   try{ lexBoardFabShow(false); }catch(e){}
-  try{ lexClearCheckpoint(); }catch(e){}
   var pf=document.getElementById('lex-portionfill'); if(pf) pf.style.width='100%';
   var w=document.getElementById('lex-stage'); if(w) w.innerHTML='<div class="lexx-stage"><div style="text-align:center;padding:30px 10px"><div style="font-size:10.5px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2);margin-bottom:14px">Lekcja zakończona</div>'
     +'<div class="lexx-card" style="text-align:left"><div class="lexx-who">Lex</div><div class="lexx-say">Dobra robota. Te słowa wróciły do Ciebie z pamięci — i o to chodziło. Postęp zapisałem do powtórek.</div></div>'
