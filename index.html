@@ -10914,35 +10914,250 @@ function lexQuickStart(){
   if(!host) return;
   host.innerHTML =
     '<div style="max-width:540px;margin:0 auto;padding:28px 0 48px">'
-    + (function(){ try{ var st=(typeof lexxHasResume==='function')?lexxHasResume():null; if(!st) return '';
-        var nm=(st.sources&&st.sources.length? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'lekcja'));
-        return '<div onclick="lexxResume()" style="margin:0 0 22px;cursor:pointer;background:var(--paper2);border:1.5px solid var(--orange);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;text-align:left">'
-          +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>'
-          +'<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--navy)">Kontynuuj przerwaną lekcję</div>'
-          +'<div style="font-size:11.5px;color:var(--dim2)">'+lexEsc(nm)+' · porcja '+st.portionNum+' z '+st.portionTarget+'</div></div>'
-          +'<span style="font-size:18px;color:var(--orange)">→</span></div>'; }catch(e){ return ''; } })()
     + topic
-    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 12px">Ostatnio przerabiane</div>'
+    + '<div id="lex-hero"></div>'
+    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:22px 0 10px" id="lex-list-head">Lub kontynuuj inny materiał</div>'
     + '<div id="lex-source-picker"></div>'
-    + '<div style="margin:24px 0 8px;text-align:left;padding:16px 18px;background:var(--paper2);border-radius:14px;border:1px solid var(--border)">'
-    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Poziom języka w przykładach Lexa</div>'
-    + '<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;line-height:1.4">Jak trudne mają być zdania i konteksty, którymi Lex uczy? (Nie dotyczy słówek z Twoich zestawów.)</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="lex-teacher-level-btns">'
-    + '<button onclick="lexSetTeacherLevel(\'basic\',this)" class="lex-tl-btn" style="padding:10px 6px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--navy);transition:.15s;text-align:center"><span style="display:block;font-weight:600;font-size:13px;margin-bottom:2px">Podstawowy</span><span style="font-size:10.5px;color:var(--dim2)">Proste, codzienne zdania</span></button>'
-    + '<button onclick="lexSetTeacherLevel(\'intermediate\',this)" class="lex-tl-btn" data-active="1" style="padding:10px 6px;border-radius:10px;border:2px solid var(--orange);background:#fff8f3;font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--navy);transition:.15s;text-align:center"><span style="display:block;font-weight:600;font-size:13px;margin-bottom:2px">Średniozaaw.</span><span style="font-size:10.5px;color:var(--dim2)">B1–B2, naturalne</span></button>'
-    + '<button onclick="lexSetTeacherLevel(\'advanced\',this)" class="lex-tl-btn" style="padding:10px 6px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--navy);transition:.15s;text-align:center"><span style="display:block;font-weight:600;font-size:13px;margin-bottom:2px">Zaawansowany</span><span style="font-size:10.5px;color:var(--dim2)">C1–C2, złożone</span></button>'
-    + '</div>'
-    + '</div>'
-    + '<div style="margin:18px 0 8px;text-align:left">'
-    + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px">Język prowadzenia lekcji</div>'
-    + '<div id="lex-lessonlang-row" style="display:flex;gap:10px"></div>'
-    + '</div>'
-    + '<button onclick="lexQuickGo()" style="width:100%;margin-top:20px;padding:15px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zaczynamy →</button>'
+    + '<div id="lex-suggest"></div>'
+    + '<div id="lex-adjust"></div>'
     + '</div>';
   lexShowScreen('lex-onboarding');
-  window._lexSources=[]; // reset wyboru na każdym wejściu
+  window._lexSources=[];        // reset — domyślny materiał ustawi lexRenderEntry
+  window._lexUserPicked=false;  // świeże wejście: nie ma jeszcze ręcznego wyboru
+  if(typeof lexRenderEntry==='function') lexRenderEntry();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Ekran wejścia Lex 2.0 — hero „Wznów/Kontynuuj" + lista + Dostosuj
+//  Jedna dominująca akcja; reszta wyborów schowana (progressive disclosure).
+// ════════════════════════════════════════════════════════════════
+window._lexEntryChips=[];
+window._lexAdjustOpen=false;
+window._lexUserPicked=false;
+
+window.lexRenderEntry=async function(){
+  var heroEl=document.getElementById('lex-hero');
+  var listEl=document.getElementById('lex-source-picker');
+  var headEl=document.getElementById('lex-list-head');
+  var sugEl=document.getElementById('lex-suggest');
+  var adjEl=document.getElementById('lex-adjust');
+  if(!heroEl) return;
+  var esc=(typeof lexEsc==='function')?lexEsc:function(x){return String(x==null?'':x);};
+
+  var resume=null; try{ resume=(typeof lexxHasResume==='function')?lexxHasResume():null; }catch(e){}
+
+  var src={eyelingo:[],user:[]}; try{ src=(await lexLoadStudySources())||src; }catch(e){}
+  var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
+  var chips=[];
+  (src.eyelingo||[]).forEach(function(c){ chips.push({kind:'eyelingo',id:c.id,label:c.label,level:c.level||lvlUser,count:c.count,lang:c.lang||null,recent:(c.recent||'')}); });
+  (src.user||[]).forEach(function(u){ chips.push({kind:'user',id:u.id,label:u.label,level:lvlUser,count:u.count,lang:u.lang||null,recent:(u.recent||'')}); });
+  chips.sort(function(a,b){ return String(b.recent||'').localeCompare(String(a.recent||'')); });
+  chips=chips.slice(0,6);
+  window._lexEntryChips=chips;
+
+  // Domyślny materiał = najświeższy (preferuj główny język) — gdy brak resume i brak ręcznego wyboru
+  var hasSel=!!(window._lexSources&&window._lexSources.length>0);
+  if(!resume && !hasSel && chips.length){
+    var prim=window._lexLang||null;
+    var pk=(prim&&chips.find(function(c){return c.lang===prim;}))||chips[0];
+    window._lexLang=pk.lang||window._lexLang||'en';
+    window._lexSources=[{kind:pk.kind,id:pk.id,label:pk.label,level:pk.level,count:pk.count,lang:window._lexLang}];
+    hasSel=true;
+  }
+
+  var showResume=(resume && !window._lexUserPicked);
+
+  // Hero
+  if(showResume){
+    heroEl.innerHTML=lexHeroResumeHTML(resume,esc);
+  } else if(hasSel){
+    heroEl.innerHTML=lexHeroMaterialHTML(window._lexSources[0],esc);
+  } else {
+    heroEl.innerHTML='';
+  }
+
+  // Lista „inny materiał" (bez tego, co w hero)
+  var selKey=(hasSel && !showResume)?(window._lexSources[0].kind+'|'+window._lexSources[0].id):null;
+  var listChips=chips.filter(function(c){ return (c.kind+'|'+c.id)!==selKey; });
+  if(headEl) headEl.style.display=(chips.length&&listChips.length)?'block':'none';
+  lexRenderEntryList(listEl, listChips, chips, esc);
+
+  // Sugestia poznawcza: gdy hero pokazuje materiał — zapewnij usera o auto-dostrojeniu poziomu
+  if(sugEl){
+    sugEl.innerHTML=(!showResume && hasSel) ? lexLevelReassureHTML() : '';
+  }
+
+  // Dostosuj (zwijane) — chowamy dla zupełnie pustego usera
+  if(adjEl){
+    if(!showResume && !hasSel){ adjEl.innerHTML=''; }
+    else { adjEl.innerHTML=lexAdjustHTML(esc); if(window._lexAdjustOpen && typeof lexAdjustRenderBody==='function') lexAdjustRenderBody(); }
+  }
+
+  // Mastery — dolicz paski po renderze (nie blokuje ekranu)
+  try{
+    if(typeof lexComputeMastery==='function'){
+      var all=chips.slice();
+      if(hasSel && !showResume && window._lexSources[0]) all.push(window._lexSources[0]);
+      lexComputeMastery(all, function(m){ if(typeof lexApplyMastery==='function') lexApplyMastery(m); });
+    }
+  }catch(e){}
+};
+
+function lexHeroResumeHTML(st,esc){
+  var nm=(st.sources&&st.sources.length? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'lekcja'));
+  var pct=(st.portionTarget? Math.max(6, Math.round((Math.max(0,st.portionNum-1))/st.portionTarget*100)) : 0);
+  return '<div style="background:#fff;border:2px solid var(--orange);border-radius:14px;padding:18px 18px 16px">'
+    +'<div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--orange);margin-bottom:10px"><svg viewBox="0 0 24 24" width="13" height="13" fill="var(--orange)"><polygon points="6 4 20 12 6 20"></polygon></svg>Wznów lekcję</div>'
+    +'<div style="font-size:20px;font-weight:500;color:var(--navy);letter-spacing:-.3px;margin-bottom:10px">'+esc(nm)+'</div>'
+    +'<div style="height:6px;background:var(--paper2);border-radius:3px;overflow:hidden;margin-bottom:6px"><div style="width:'+pct+'%;height:100%;background:var(--orange);border-radius:3px"></div></div>'
+    +'<div style="font-size:11px;color:var(--dim2);margin-bottom:16px">porcja '+st.portionNum+' z '+st.portionTarget+'</div>'
+    +'<button onclick="lexxResume()" style="width:100%;padding:13px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Wznów →</button>'
+    +'</div>';
+}
+
+function lexHeroMaterialHTML(s,esc){
+  var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[s.lang])||null;
+  var langNm=(s.lang&&typeof getLangName==='function')?getLangName(s.lang):((info&&info.name)||'');
+  var meta=[]; if(s.level) meta.push(esc(s.level)); if(langNm) meta.push(esc(langNm));
+  var dur=window._lexObDur||25;
+  function dbtn(d){ var on=String(dur)===String(d); return '<button onclick="lexHeroDur('+d+')" class="lex-qd" data-qd="'+d+'" style="font-family:DM Sans,sans-serif;font-size:12px;font-weight:500;padding:7px 14px;border-radius:10px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';color:'+(on?'var(--navy)':'var(--dim)')+';cursor:pointer">'+d+' min</button>'; }
+  return '<div style="background:#fff;border:2px solid var(--orange);border-radius:14px;padding:18px 18px 16px">'
+    +'<div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--orange);margin-bottom:10px"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Kontynuuj naukę</div>'
+    +'<div style="font-size:20px;font-weight:500;color:var(--navy);letter-spacing:-.3px;margin-bottom:8px">'+esc(s.label)+'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim2);margin-bottom:14px">'+(s.lang?'<span style="font-weight:500;background:var(--navy);color:#fff;padding:2px 7px;border-radius:4px;font-size:10px">'+esc(String(s.lang).toUpperCase())+'</span>':'')+'<span>'+meta.join(' · ')+'</span></div>'
+    +'<div data-mastery="'+s.kind+'|'+s.id+'" style="margin-bottom:16px"></div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><span style="font-size:11px;color:var(--dim2);margin-right:2px">Czas:</span>'+dbtn(10)+dbtn(25)+'</div>'
+    +'<button onclick="lexQuickGo()" style="width:100%;padding:13px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zacznij →</button>'
+    +'</div>';
+}
+
+window.lexHeroDur=function(d){
+  window._lexObDur=d;
+  document.querySelectorAll('.lex-qd').forEach(function(b){
+    var on=String(b.getAttribute('data-qd'))===String(d);
+    b.style.border=on?'2px solid var(--orange)':'1.5px solid var(--border2)';
+    b.style.background=on?'#fff8f3':'#fff';
+    b.style.color=on?'var(--navy)':'var(--dim)';
+  });
+};
+
+function lexRenderEntryList(listEl, listChips, allChips, esc){
+  if(!listEl) return;
+  if(!allChips.length){ listEl.innerHTML=lexEntryEmptyHTML(); return; }
+  var freshKey=allChips.length?(allChips[0].kind+'|'+allChips[0].id):null;
+  var rows=listChips.map(function(c){
+    var key=c.kind+'|'+c.id;
+    var idx=window._lexEntryChips.findIndex(function(x){return x.kind===c.kind&&String(x.id)===String(c.id);});
+    var dot=(key===freshKey)?'var(--orange)':'var(--border2)';
+    var rec=lexRecentLabel(c.recent);
+    return '<div onclick="lexEntryPick('+idx+')" style="display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--border2);border-radius:10px;padding:11px 13px;cursor:pointer;margin-bottom:8px;transition:.15s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'
+      +'<span style="width:7px;height:7px;border-radius:50%;background:'+dot+';flex-shrink:0"></span>'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(c.lang?'<span style="font-weight:500;color:var(--dim2);font-size:10px;margin-right:6px">'+esc(String(c.lang).toUpperCase())+'</span>':'')+esc(c.label)+'</div>'
+      +'<div data-mastery="'+key+'" data-mastery-sm="1" style="max-width:170px"><div style="font-size:10.5px;color:var(--dim2)">'+(c.count||0)+' słów</div></div>'
+      +'</div>'
+      +(rec?'<span style="font-size:11px;color:var(--dim2);white-space:nowrap">'+rec+'</span>':'')+'</div>';
+  }).join('');
+  var browse='<div style="display:flex;gap:8px;margin-top:4px">'
+    +'<button onclick="lexCatalogOpen()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;font-family:DM Sans,sans-serif;font-size:12.5px;font-weight:500;padding:11px;border-radius:10px;border:none;background:var(--orange);color:#fff;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"></path></svg>Zestawy Eyelingo</button>'
+    +'<button onclick="lexCatalogOpen()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;font-family:DM Sans,sans-serif;font-size:12.5px;font-weight:500;padding:11px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;color:var(--navy);cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>Moje zestawy</button></div>';
+  listEl.innerHTML=rows+browse;
+}
+
+window.lexEntryPick=function(i){
+  var c=(window._lexEntryChips||[])[i]; if(!c) return;
+  function pick(langCode){
+    window._lexLang=langCode||c.lang||window._lexLang||'en';
+    window._lexSources=[{kind:c.kind,id:c.id,label:c.label,level:c.level,count:c.count,lang:window._lexLang}];
+    window._lexUserPicked=true;
+    if(typeof lexRenderEntry==='function') lexRenderEntry();
+  }
+  if(c.kind==='user' && !c.lang && typeof lexAskSetLang==='function'){ lexAskSetLang(c.id,c.label,function(code){ c.lang=code; pick(code); }); }
+  else pick(c.lang);
+};
+
+function lexRecentLabel(iso){
+  if(!iso) return '';
+  var t=Date.parse(iso); if(isNaN(t)) return '';
+  var d=Math.floor((Date.now()-t)/86400000);
+  if(d<=0) return 'dziś';
+  if(d===1) return 'wczoraj';
+  if(d<7) return d+' dni temu';
+  if(d<14) return 'tydzień temu';
+  if(d<60) return Math.round(d/7)+' tyg. temu';
+  return Math.round(d/30)+' mies. temu';
+}
+
+function lexLevelReassureHTML(){
+  return '<div style="display:flex;align-items:center;gap:11px;background:#E1F5EE;border-radius:10px;padding:11px 14px;margin:14px 0 0">'
+    +'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"></path></svg>'
+    +'<div style="font-size:12px;color:#0F6E56;line-height:1.5">Nie musisz znać swojego poziomu — Lex dostroi trudność po pierwszej lekcji.</div></div>';
+}
+
+function lexEntryEmptyHTML(){
+  return '<div style="text-align:center;padding:20px 0 10px">'
+    +'<div style="width:52px;height:52px;border-radius:14px;background:rgba(26,35,64,.06);display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M12 12v4m0-4V8"></path></svg></div>'
+    +'<div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy);margin-bottom:6px">Najpierw przejrzyj fiszki</div>'
+    +'<div style="font-size:13px;color:var(--dim2);line-height:1.55;max-width:340px;margin:0 auto 18px">Lex utrwala to, czego się już uczyłeś — w Twoich zestawach lub w kategoriach Eyelingo. Zacznij od przejrzenia fiszek, a Lex pomoże Ci je zapamiętać na stałe.</div>'
+    +'<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
+    +'<button onclick="if(typeof switchTab===\'function\')switchTab(\'community\',document.getElementById(\'ntab-community\'))" style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;color:var(--navy);font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>Twoje zestawy</button>'
+    +'<button onclick="lexCatalogOpen()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:100px;border:none;background:var(--orange);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>Przeglądaj Eyelingo</button>'
+    +'</div></div>';
+}
+
+window.lexApplyMastery=function(m){
+  if(!m) return;
+  Object.keys(m).forEach(function(key){
+    var info=m[key]; if(!info||!info.total) return;
+    var pct=Math.round(info.mastered/info.total*100);
+    var nodes=document.querySelectorAll('[data-mastery="'+key+'"]');
+    nodes.forEach(function(el){
+      var sm=el.getAttribute('data-mastery-sm');
+      var h=sm?'4px':'6px';
+      el.innerHTML='<div style="height:'+h+';background:var(--paper2);border-radius:3px;overflow:hidden;margin-bottom:5px"><div style="width:'+pct+'%;height:100%;background:var(--orange);border-radius:3px"></div></div>'
+        +'<div style="font-size:10.5px;color:var(--dim2)">'+info.mastered+' z '+info.total+' słów opanowanych</div>';
+    });
+  });
+};
+
+// ── „Dostosuj lekcję" — zwijane: poziom przykładów + język prowadzenia ──
+window.lexAdjustToggle=function(){
+  window._lexAdjustOpen=!window._lexAdjustOpen;
+  var adjEl=document.getElementById('lex-adjust'); if(!adjEl) return;
+  var esc=(typeof lexEsc==='function')?lexEsc:function(x){return x;};
+  adjEl.innerHTML=lexAdjustHTML(esc);
+  if(window._lexAdjustOpen) lexAdjustRenderBody();
+};
+
+function lexAdjustHTML(esc){
+  var open=!!window._lexAdjustOpen;
+  return '<div onclick="lexAdjustToggle()" style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding:12px 4px;cursor:pointer;border-top:1px solid var(--border)">'
+    +'<span style="font-size:12px;color:var(--dim2);display:flex;align-items:center;gap:7px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line><circle cx="9" cy="6" r="2" fill="var(--paper)"></circle><circle cx="15" cy="12" r="2" fill="var(--paper)"></circle><circle cx="8" cy="18" r="2" fill="var(--paper)"></circle></svg>Dostosuj lekcję — poziom przykładów, język prowadzenia</span>'
+    +'<span style="font-size:13px;color:var(--dim2);transition:.15s;display:inline-block;transform:rotate('+(open?'180deg':'0deg')+')">▾</span></div>'
+    +'<div id="lex-adjust-body" style="display:'+(open?'block':'none')+'"></div>';
+}
+
+window.lexAdjustRenderBody=function(){
+  var body=document.getElementById('lex-adjust-body'); if(!body) return;
+  body.innerHTML=
+    '<div style="padding:4px 0 8px">'
+    +'<div style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin:6px 0 8px">Poziom języka w przykładach Lexa</div>'
+    +'<div style="font-size:12px;color:var(--dim2);margin-bottom:10px;line-height:1.4">Domyślnie dobierany z materiału. Zmień, jeśli zdania mają być prostsze lub trudniejsze (nie dotyczy słówek z Twoich zestawów).</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'
+    + lexExLevelBtn('basic','Podstawowy','Proste, codzienne zdania')
+    + lexExLevelBtn('intermediate','Średniozaaw.','B1–B2, naturalne')
+    + lexExLevelBtn('advanced','Zaawansowany','C1–C2, złożone')
+    +'</div>'
+    +'<div style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin:18px 0 8px">Język prowadzenia lekcji</div>'
+    +'<div id="lex-lessonlang-row" style="display:flex;gap:10px"></div>'
+    +'<div style="font-size:11px;color:var(--dim2);margin-top:8px;line-height:1.4">Zapamiętywane na stałe. Domyślnie polski — Lex tłumaczy po polsku, a słowa w języku uczonym wymawia w tym języku.</div>'
+    +'</div>';
   if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
-  if(typeof lexRenderSourcePicker==='function') lexRenderSourcePicker();
+};
+
+function lexExLevelBtn(val,title,sub){
+  var on=(window._lexTeacherExLevel||'intermediate')===val;
+  return '<button onclick="lexSetTeacherLevel(\''+val+'\',this)" class="lex-tl-btn"'+(on?' data-active="1"':'')+' style="padding:10px 6px;border-radius:10px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--navy);transition:.15s;text-align:center"><span style="display:block;font-weight:600;font-size:13px;margin-bottom:2px">'+title+'</span><span style="font-size:10.5px;color:var(--dim2)">'+sub+'</span></button>';
 }
 function lexQuickDur(d){
   _lexObDur = d;
@@ -15735,25 +15950,62 @@ async function lexInit(){
     }).join('')+browseBtn+'</div>';
   };
 
-  // Odśwież zaznaczenie kafelków pickera po wyborze z katalogu (i pokaż wybrane spoza listy)
+  // Po wyborze z katalogu — user wybrał świadomie: przerenderuj cały ekran wejścia (hero + lista)
   window.lexRefreshPickerSelection=function(){
-    if(typeof lexRenderSourcePicker==='function') lexRenderSourcePicker();
-    if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons(); // ZAWSZE — przed ewentualnymi wczesnymi return niżej
-    // dołóż wybrane z katalogu, których nie ma wśród świeżych — jako oznaczone kafelki
+    window._lexUserPicked=true;
+    if(typeof lexRenderEntry==='function') lexRenderEntry();
+    else if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
+  };
+
+  // Mastery per materiał (pasek „X z Y słów opanowanych") — z lokalnego cache SRS (reps>=5),
+  // jeden zbiorczy zapyt na typ źródła; fallback: brak paska, nigdy nie blokuje renderu.
+  window.lexComputeMastery=async function(chips, cb){
+    var out={};
     try{
-      var host=document.getElementById('lex-source-picker'); if(!host) return;
-      var avail=window._lexSourcesAvail||[];
-      var extra=(window._lexSources||[]).filter(function(srcSel){ return !avail.some(function(a){return a.kind===srcSel.kind&&String(a.id)===String(srcSel.id);}); });
-      if(!extra.length) return;
-      var row=host.querySelector('div'); if(!row) return;
-      extra.forEach(function(c){
-        var b=document.createElement('button'); b.type='button';
-        b.style.cssText='display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:2px solid var(--orange);background:#fff8f3;border-radius:14px;padding:10px 14px;cursor:pointer;font-family:DM Sans,sans-serif;min-width:130px;text-align:left';
-        b.innerHTML='<span style="font-size:13.5px;font-weight:500;color:var(--navy)">'+esc(String(c.label).replace(/^[^\w]+\s*/,''))+'</span><span style="font-size:10.5px;color:var(--dim2)">'+(c.level?c.level+' · ':'')+'wybrane</span>';
-        b.onclick=function(){ var i=(window._lexSources||[]).findIndex(function(x){return x.kind===c.kind&&String(x.id)===String(c.id);}); if(i>=0) window._lexSources.splice(i,1); lexRefreshPickerSelection(); };
-        row.insertBefore(b, row.lastChild);
+      var uid=(typeof _usrsUid==='function')?await _usrsUid():null;
+      var store=(uid&&typeof _usrsLoad==='function')?(_usrsLoad(uid)||{}):{};
+      var byFc={}, byWord={};
+      Object.keys(store).forEach(function(k){
+        var r=store[k]; if(!r) return;
+        var reps=(r.reps!=null?r.reps:0);
+        if(r.fc!=null) byFc[r.fc]=Math.max(byFc[r.fc]||0,reps);
+        var w=String(r.word||'').toLowerCase().trim();
+        if(w){ var wk=w+'|'+(r.lang||''); byWord[wk]=Math.max(byWord[wk]||0,reps); }
       });
+      var eyeCats=[], setIds=[];
+      (chips||[]).forEach(function(c){
+        if(c.kind==='eyelingo'&&c.id!=null) eyeCats.push(c.id);
+        else if(c.kind==='user'&&c.id!=null) setIds.push(c.id);
+      });
+      function uniq(a){ return a.filter(function(v,i,arr){return arr.indexOf(v)===i;}); }
+      if(eyeCats.length){
+        try{
+          var fr=await db.from('flashcards').select('id,category_id').in('category_id', uniq(eyeCats));
+          var catFc={}; (fr.data||[]).forEach(function(f){ (catFc[f.category_id]=catFc[f.category_id]||[]).push(f.id); });
+          (chips||[]).forEach(function(c){
+            if(c.kind!=='eyelingo') return;
+            var ids=catFc[c.id]||[]; if(!ids.length) return;
+            var mastered=0; ids.forEach(function(id){ if((byFc[id]||0)>=5) mastered++; });
+            out[c.kind+'|'+c.id]={mastered:mastered,total:ids.length};
+          });
+        }catch(e){}
+      }
+      if(setIds.length){
+        try{
+          var ur=await db.from('user_set_cards').select('set_id,word').in('set_id', uniq(setIds));
+          var setW={}; (ur.data||[]).forEach(function(r){ (setW[r.set_id]=setW[r.set_id]||[]).push(String(r.word||'').toLowerCase().trim()); });
+          (chips||[]).forEach(function(c){
+            if(c.kind!=='user') return;
+            var ws=setW[c.id]||[]; if(!ws.length) return;
+            var lang=c.lang||''; var mastered=0;
+            ws.forEach(function(w){ if(!w) return; if((byWord[w+'|'+lang]||byWord[w+'|']||0)>=5) mastered++; });
+            out[c.kind+'|'+c.id]={mastered:mastered,total:ws.length};
+          });
+        }catch(e){}
+      }
     }catch(e){}
+    if(cb) cb(out);
+    return out;
   };
 
   window.lexToggleSource=function(i){
