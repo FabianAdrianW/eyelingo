@@ -1237,6 +1237,13 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 .eylc-cat{position:relative;background:var(--white);border:.5px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;transition:.15s;box-shadow:0 1px 3px rgba(26,35,64,.05)}
 .eylc-cat:hover{border-color:var(--orange);box-shadow:0 4px 14px rgba(216,90,48,.13)}
 .eylc-cont{display:flex;align-items:center;gap:10px;width:100%;border:none;border-left:3px solid #d85a30;background:#faece7;border-radius:8px;padding:11px 14px;cursor:pointer;font-family:DM Sans,sans-serif}
+.eylc-resume{display:flex;align-items:center;gap:13px;width:100%;text-align:left;background:#fff;border:1.5px solid var(--orange);border-radius:14px;padding:13px 16px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;box-shadow:0 1px 3px rgba(216,90,48,.08)}
+.eylc-resume:hover{box-shadow:0 7px 20px rgba(216,90,48,.16);transform:translateY(-1px)}
+.eylc-resume .ic{width:36px;height:36px;border-radius:50%;background:rgba(216,90,48,.1);color:var(--orange);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.eylc-resume .bd{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.eylc-resume .nm{font-size:14.5px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eylc-resume .mt{font-size:11.5px;color:var(--dim2)}
+.eylc-resume .go{color:var(--orange);font-weight:700;font-size:18px;flex-shrink:0}
 .eylc-eye{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:8px;border:none;background:var(--paper2);color:var(--dim2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s;z-index:2}
 .eylc-eye:hover{background:var(--navy);color:#fff}
 .eylc-modal{position:fixed;inset:0;background:rgba(26,35,64,.45);z-index:10040;display:flex;align-items:flex-end;justify-content:center}
@@ -1436,11 +1443,12 @@ window.switchMatTab = function(tab){
     var recents=await _getRecents();
     if(recents.length){
       var contItems=recents.slice(0,4).map(function(r){ var info=_langInfo(r.lang);
-        return '<button onclick="eylOpenCat('+JSON.stringify(r.lang).replace(/"/g,'&quot;')+','+JSON.stringify(r.level).replace(/"/g,'&quot;')+','+JSON.stringify(String(r.catId)).replace(/"/g,'&quot;')+','+JSON.stringify(r.catLabel||'').replace(/"/g,'&quot;')+')" class="eylc-cont">'
-          +'<span style="font-size:18px">'+info.flag+'</span>'
-          +'<span style="flex:1;min-width:0;font-size:13.5px;font-weight:500;color:#4a1b0c;text-align:left">'+_eEsc(info.label)+' · '+_eEsc(r.level)+' · '+_eEsc(r.catLabel||'')+'</span>'
-          +'<span style="font-size:12px;color:#993c1d;font-weight:500;white-space:nowrap">wróć →</span></button>'; }).join('');
-      html+='<div style="margin-bottom:22px"><div class="eylc-flabel" style="color:#993c1d">Kontynuuj</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">'+contItems+'</div></div>';
+        var meta=info.flag+' '+_eEsc(info.label)+(r.level?(' · '+_eEsc(r.level)):'');
+        return '<button onclick="eylOpenCat('+JSON.stringify(r.lang).replace(/"/g,'&quot;')+','+JSON.stringify(r.level).replace(/"/g,'&quot;')+','+JSON.stringify(String(r.catId)).replace(/"/g,'&quot;')+','+JSON.stringify(r.catLabel||'').replace(/"/g,'&quot;')+')" class="eylc-resume">'
+          +'<span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></span>'
+          +'<span class="bd"><span class="nm">'+_eEsc(r.catLabel||'Kategoria')+'</span><span class="mt">'+meta+'</span></span>'
+          +'<span class="go">→</span></button>'; }).join('');
+      html+='<div style="margin-bottom:24px"><div class="eylc-flabel" style="color:var(--orange)">Kontynuuj naukę</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">'+contItems+'</div></div>';
     }
     html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow">'+codes.map(function(c){ var info=_langInfo(c); return '<button class="eylc-chip'+(c===code?' on':'')+'" onclick="eylPickLang('+JSON.stringify(c).replace(/"/g,'&quot;')+')">'+info.flag+' '+_eEsc(info.label)+'</button>'; }).join('')+'</div>';
     if(levels.length){
@@ -1517,6 +1525,7 @@ window.switchMatTab = function(tab){
 
   // ── Przełącznik segmentów Moje / Eyelingo ──
   window.setMatSegment=function(seg){
+    window._matSeg=seg;
     var bMine=document.getElementById('mseg-mine'), bEyl=document.getElementById('mseg-eyl');
     var on='background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.08)';
     var off='background:transparent;color:var(--dim2);box-shadow:none';
@@ -1528,12 +1537,12 @@ window.switchMatTab = function(tab){
       var box=_seg(); if(box) box.style.display='block';
       if(title) title.textContent='Zestawy Eyelingo';
       if(sub) sub.textContent='Program językowy · 14 języków';
-      var _sb=document.getElementById('mat-sidebar'); if(_sb) _sb.style.display='none';
+      var _sb=document.getElementById('mat-sidebar'); if(_sb){ _sb.style.display=''; _sb.style.visibility='hidden'; }
       var _sbt=document.getElementById('mat-sidebar-toggle'); if(_sbt) _sbt.style.display='none';
       eylBrowse();
     } else {
       setBtn(bMine,true); setBtn(bEyl,false);
-      var _sb=document.getElementById('mat-sidebar'); if(_sb) _sb.style.display='';
+      var _sb=document.getElementById('mat-sidebar'); if(_sb){ _sb.style.display=''; _sb.style.visibility=''; }
       var _sbt=document.getElementById('mat-sidebar-toggle'); if(_sbt) _sbt.style.display='';
       var box=_seg(); if(box) box.style.display='none';
       var sr=document.getElementById('mat-search'); if(sr) sr.style.display='';
@@ -2523,7 +2532,7 @@ function showPage(name){
       if(typeof matEnterLearn==='function') matEnterLearn();
     } else {
       var _ls0=document.getElementById('mat-learn-surface'); if(_ls0) _ls0.style.display='none';
-      switchMatTab('mine');
+      if(typeof setMatSegment==='function') setMatSegment(window._matSeg||'mine'); else switchMatTab('mine');
     }
     if(typeof updatePowtorkiTile==='function'){ try{ updatePowtorkiTile(); }catch(e){} }
   }
