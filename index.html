@@ -10913,7 +10913,7 @@ function lexQuickStart(){
   var host = document.getElementById('lex-onboarding');
   if(!host) return;
   host.innerHTML =
-    '<div style="max-width:540px;margin:0 auto;padding:28px 0 48px">'
+    '<div style="max-width:960px;margin:0;padding:24px 0 48px">'
     + topic
     + '<div id="lex-hero"></div>'
     + '<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:22px 0 10px" id="lex-list-head">Lub kontynuuj inny materiał</div>'
@@ -11006,12 +11006,14 @@ window.lexRenderEntry=async function(){
 function lexHeroResumeHTML(st,esc){
   var nm=(st.sources&&st.sources.length? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'lekcja'));
   var pct=(st.portionTarget? Math.max(6, Math.round((Math.max(0,st.portionNum-1))/st.portionTarget*100)) : 0);
-  return '<div style="background:#fff;border:2px solid var(--orange);border-radius:14px;padding:18px 18px 16px">'
+  return '<div style="background:#fff;border:2px solid var(--orange);border-radius:16px;padding:22px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap">'
+    +'<div style="flex:1;min-width:240px">'
     +'<div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--orange);margin-bottom:10px"><svg viewBox="0 0 24 24" width="13" height="13" fill="var(--orange)"><polygon points="6 4 20 12 6 20"></polygon></svg>Wznów lekcję</div>'
-    +'<div style="font-size:20px;font-weight:500;color:var(--navy);letter-spacing:-.3px;margin-bottom:10px">'+esc(nm)+'</div>'
-    +'<div style="height:6px;background:var(--paper2);border-radius:3px;overflow:hidden;margin-bottom:6px"><div style="width:'+pct+'%;height:100%;background:var(--orange);border-radius:3px"></div></div>'
-    +'<div style="font-size:11px;color:var(--dim2);margin-bottom:16px">porcja '+st.portionNum+' z '+st.portionTarget+'</div>'
-    +'<button onclick="lexxResume()" style="width:100%;padding:13px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Wznów →</button>'
+    +'<div style="font-size:22px;font-weight:500;color:var(--navy);letter-spacing:-.3px;margin-bottom:12px">'+esc(nm)+'</div>'
+    +'<div style="height:6px;background:var(--paper2);border-radius:3px;overflow:hidden;margin-bottom:6px;max-width:340px"><div style="width:'+pct+'%;height:100%;background:var(--orange);border-radius:3px"></div></div>'
+    +'<div style="font-size:12px;color:var(--dim2)">porcja '+st.portionNum+' z '+st.portionTarget+'</div>'
+    +'</div>'
+    +'<button onclick="lexxResume()" style="flex-shrink:0;min-width:200px;padding:15px 28px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Wznów →</button>'
     +'</div>';
 }
 
@@ -11019,15 +11021,14 @@ function lexHeroMaterialHTML(s,esc){
   var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[s.lang])||null;
   var langNm=(s.lang&&typeof getLangName==='function')?getLangName(s.lang):((info&&info.name)||'');
   var meta=[]; if(s.level) meta.push(esc(s.level)); if(langNm) meta.push(esc(langNm));
-  var dur=window._lexObDur||25;
-  function dbtn(d){ var on=String(dur)===String(d); return '<button onclick="lexHeroDur('+d+')" class="lex-qd" data-qd="'+d+'" style="font-family:DM Sans,sans-serif;font-size:12px;font-weight:500;padding:7px 14px;border-radius:10px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';color:'+(on?'var(--navy)':'var(--dim)')+';cursor:pointer">'+d+' min</button>'; }
-  return '<div style="background:#fff;border:2px solid var(--orange);border-radius:14px;padding:18px 18px 16px">'
+  return '<div style="background:#fff;border:2px solid var(--orange);border-radius:16px;padding:22px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap">'
+    +'<div style="flex:1;min-width:240px">'
     +'<div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--orange);margin-bottom:10px"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Kontynuuj naukę</div>'
-    +'<div style="font-size:20px;font-weight:500;color:var(--navy);letter-spacing:-.3px;margin-bottom:8px">'+esc(s.label)+'</div>'
-    +'<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim2);margin-bottom:14px">'+(s.lang?'<span style="font-weight:500;background:var(--navy);color:#fff;padding:2px 7px;border-radius:4px;font-size:10px">'+esc(String(s.lang).toUpperCase())+'</span>':'')+'<span>'+meta.join(' · ')+'</span></div>'
-    +'<div data-mastery="'+s.kind+'|'+s.id+'" style="margin-bottom:16px"></div>'
-    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><span style="font-size:11px;color:var(--dim2);margin-right:2px">Czas:</span>'+dbtn(10)+dbtn(25)+'</div>'
-    +'<button onclick="lexQuickGo()" style="width:100%;padding:13px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zacznij →</button>'
+    +'<div style="font-size:22px;font-weight:500;color:var(--navy);letter-spacing:-.3px;margin-bottom:8px">'+esc(s.label)+'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim2);margin-bottom:12px">'+(s.lang?'<span style="font-weight:500;background:var(--navy);color:#fff;padding:2px 7px;border-radius:4px;font-size:10px">'+esc(String(s.lang).toUpperCase())+'</span>':'')+'<span>'+meta.join(' · ')+'</span></div>'
+    +'<div data-mastery="'+s.kind+'|'+s.id+'" style="max-width:340px"></div>'
+    +'</div>'
+    +'<button onclick="lexQuickGo()" style="flex-shrink:0;min-width:200px;padding:15px 28px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zacznij lekcję →</button>'
     +'</div>';
 }
 
@@ -11050,18 +11051,19 @@ function lexRenderEntryList(listEl, listChips, allChips, esc){
     var idx=window._lexEntryChips.findIndex(function(x){return x.kind===c.kind&&String(x.id)===String(c.id);});
     var dot=(key===freshKey)?'var(--orange)':'var(--border2)';
     var rec=lexRecentLabel(c.recent);
-    return '<div onclick="lexEntryPick('+idx+')" style="display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--border2);border-radius:10px;padding:11px 13px;cursor:pointer;margin-bottom:8px;transition:.15s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'
+    return '<div onclick="lexEntryPick('+idx+')" style="display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--border2);border-radius:12px;padding:14px 16px;cursor:pointer;transition:.15s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'
       +'<span style="width:7px;height:7px;border-radius:50%;background:'+dot+';flex-shrink:0"></span>'
       +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:13px;font-weight:500;color:var(--navy);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(c.lang?'<span style="font-weight:500;color:var(--dim2);font-size:10px;margin-right:6px">'+esc(String(c.lang).toUpperCase())+'</span>':'')+esc(c.label)+'</div>'
-      +'<div data-mastery="'+key+'" data-mastery-sm="1" style="max-width:170px"><div style="font-size:10.5px;color:var(--dim2)">'+(c.count||0)+' słów</div></div>'
+      +'<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(c.lang?'<span style="font-weight:500;color:var(--dim2);font-size:10px;margin-right:6px">'+esc(String(c.lang).toUpperCase())+'</span>':'')+esc(c.label)+'</div>'
+      +'<div data-mastery="'+key+'" data-mastery-sm="1"><div style="font-size:11px;color:var(--dim2)">'+(c.count||0)+' słów</div></div>'
       +'</div>'
-      +(rec?'<span style="font-size:11px;color:var(--dim2);white-space:nowrap">'+rec+'</span>':'')+'</div>';
+      +(rec?'<span style="font-size:11px;color:var(--dim2);white-space:nowrap;flex-shrink:0">'+rec+'</span>':'')+'</div>';
   }).join('');
-  var browse='<div style="display:flex;gap:8px;margin-top:4px">'
-    +'<button onclick="lexCatalogOpen()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;font-family:DM Sans,sans-serif;font-size:12.5px;font-weight:500;padding:11px;border-radius:10px;border:none;background:var(--orange);color:#fff;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"></path></svg>Zestawy Eyelingo</button>'
-    +'<button onclick="lexCatalogOpen()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;font-family:DM Sans,sans-serif;font-size:12.5px;font-weight:500;padding:11px;border-radius:10px;border:1.5px solid var(--border2);background:#fff;color:var(--navy);cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path></svg>Moje zestawy</button></div>';
-  listEl.innerHTML=rows+browse;
+  var grid='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px">'+rows+'</div>';
+  var browse='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+    +'<button onclick="lexCatalogOpen(\'eyelingo\')" style="display:flex;align-items:center;gap:12px;text-align:left;border:none;background:var(--orange);border-radius:14px;padding:16px 18px;cursor:pointer;font-family:DM Sans,sans-serif;box-shadow:0 6px 18px rgba(201,106,42,.18)"><span style="width:38px;height:38px;border-radius:11px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"></path></svg></span><span style="min-width:0"><span style="display:block;font-size:14px;font-weight:600;color:#fff;margin-bottom:2px">Zestawy Eyelingo</span><span style="display:block;font-size:11px;color:rgba(255,255,255,.85)">Gotowe zestawy — wszystkie języki i poziomy</span></span></button>'
+    +'<button onclick="lexCatalogOpen(\'user\')" style="display:flex;align-items:center;gap:12px;text-align:left;border:1.5px solid var(--border2);background:#fff;border-radius:14px;padding:16px 18px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s" onmouseover="this.style.borderColor=\'var(--navy)\'" onmouseout="this.style.borderColor=\'var(--border2)\'"><span style="width:38px;height:38px;border-radius:11px;background:var(--paper2);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--navy)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"></path><path d="M8 4v16"></path></svg></span><span style="min-width:0"><span style="display:block;font-size:14px;font-weight:600;color:var(--navy);margin-bottom:2px">Moje zestawy</span><span style="display:block;font-size:11px;color:var(--dim2)">Twoje własne zestawy fiszek</span></span></button></div>';
+  listEl.innerHTML=grid+browse;
 }
 
 window.lexEntryPick=function(i){
@@ -15588,6 +15590,14 @@ async function lexInit(){
 .lexcat-lvlrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
 .lexcat-lvl{padding:9px 20px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:13.5px;font-weight:500;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s}
 .lexcat-lvl:hover{border-color:var(--orange)}
+.lexcat-seg{display:inline-flex;background:var(--paper2);border-radius:100px;padding:3px;gap:2px}
+.lexcat-seg-btn{border:none;background:none;padding:8px 18px;border-radius:100px;font-size:13px;font-weight:500;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s}
+.lexcat-seg-btn.on{background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(26,35,64,.1)}
+.lexcat-chiprow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.lexcat-chip{padding:7px 16px;border-radius:100px;border:1.5px solid var(--border2);background:#fff;font-size:13px;font-weight:500;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s}
+.lexcat-chip:hover{border-color:var(--orange)}
+.lexcat-chip.on{border-color:var(--orange);background:#fff8f3}
+.lexcat-bar{display:block;margin-top:8px}
 </style>
 <script>
 (function(){
@@ -15648,37 +15658,50 @@ async function lexInit(){
     }catch(e){ return []; }
   }
 
+  function masteryFill(){
+    try{
+      if(typeof window.lexComputeMastery!=='function') return;
+      var chips=Object.keys(_picks).map(function(t){ var p=_picks[t]; return {kind:p.kind,id:p.id,lang:p.lang}; });
+      if(!chips.length) return;
+      window.lexComputeMastery(chips, function(m){ if(typeof window.lexApplyMastery==='function') window.lexApplyMastery(m); });
+    }catch(e){}
+  }
+
   function tileEyelingo(c){
     var tok='e'+c.id;
     _picks[tok]={kind:'eyelingo',id:c.id,label:c.label,level:c.level,lang:(_state.lang||window._lexLang||'en')};
     return '<button class="lexcat-tile'+(isSel('eyelingo',c.id)?' sel':'')+'" data-pick="'+tok+'">'
-      +'<span class="lexcat-ic">'+ICO_FOLDER+'</span>'
       +'<span class="nm">'+esc(c.label)+'</span>'
-      +'<span class="mt">'+(c.level?esc(c.level)+' · ':'')+c.count+' słów · wybierz →</span></button>';
+      +'<span class="mt">'+(c.level?esc(c.level)+' · ':'')+c.count+' słów</span>'
+      +'<span class="lexcat-bar" data-mastery="eyelingo|'+c.id+'" data-mastery-sm="1"></span></button>';
   }
   function tileUserSet(st){
     var tok='u'+st.id;
     _picks[tok]={kind:'user',id:st.id,label:st.label,level:null,lang:st.lang||null};
     var badge=st.lang?'<span class="lexcat-langbadge">'+esc(langBadge(st.lang))+'</span>':'<span class="lexcat-langbadge" style="opacity:.6">?</span>';
-    return '<div class="lexcat-tile'+(isSel('user',st.id)?' sel':'')+'" data-pick="'+tok+'">'
-      +'<span class="lexcat-ic">'+ICO_BOOK+'</span>'
+    return '<button class="lexcat-tile'+(isSel('user',st.id)?' sel':'')+'" data-pick="'+tok+'">'
       +'<span class="nm">'+esc(st.label)+'</span>'
-      +'<span class="mt">'+badge+(badge?' · ':'')+st.count+' słów</span>'
-      +'<button class="lexcat-learn" data-learn="'+tok+'">Wybierz →</button></div>';
+      +'<span class="mt">'+badge+' · '+st.count+' słów</span>'
+      +'<span class="lexcat-bar" data-mastery="user|'+st.id+'" data-mastery-sm="1"></span></button>';
   }
 
-  window.lexCatalogOpen=function(){
-    _state={view:'root', lang:(window._lexLang||'en'), level:null}; _picks={};
+  function segHTML(){
+    function b(mode,label){ var on=(_state.view===mode); return '<button class="lexcat-seg-btn'+(on?' on':'')+'" data-mode="'+mode+'">'+label+'</button>'; }
+    return '<div class="lexcat-seg">'+b('eyelingo','Zestawy Eyelingo')+b('user','Moje zestawy')+'</div>';
+  }
+
+  window.lexCatalogOpen=function(mode){
+    _state={view:(mode==='user'?'user':'eyelingo'), lang:(window._lexLang||'en'), level:null}; _picks={};
     var old=document.getElementById('lexcat-modal'); if(old) old.remove();
     var m=document.createElement('div'); m.className='lexcat-modal'; m.id='lexcat-modal';
     m.addEventListener('click', function(ev){ if(ev.target===m) m.remove(); });
     m.innerHTML='<div class="lexcat-sheet">'
       +'<div class="lexcat-head">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
-      +'<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy)">Katalog materiału</div>'
+      +'<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy)">Materiał do nauki</div>'
       +'<button id="lexcat-close" style="background:none;border:none;font-size:22px;color:var(--dim2);cursor:pointer;width:30px;height:30px">×</button>'
       +'</div>'
-      +'<div class="lexcat-bcrumb" id="lexcat-bcrumb"></div>'
+      +'<div id="lexcat-seg-wrap" style="margin-bottom:14px"></div>'
       +'<div class="lexcat-searchwrap"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>'
       +'<input id="lexcat-search" class="lexcat-search" placeholder="Szukaj kategorii lub zestawu…"></div>'
       +'</div>'
@@ -15687,82 +15710,66 @@ async function lexInit(){
     document.body.appendChild(m);
     document.getElementById('lexcat-close').addEventListener('click', function(){ m.remove(); });
     document.getElementById('lexcat-search').addEventListener('input', function(){ lexCatalogSearch(this.value); });
-    // Delegacja kliknięć w body (odporna na dowolne znaki w nazwach)
+    var head=m.querySelector('.lexcat-head');
+    head.addEventListener('click', function(ev){
+      var seg=ev.target.closest('[data-mode]'); if(seg){ _state.view=seg.getAttribute('data-mode'); _state.level=null; var s=document.getElementById('lexcat-search'); if(s) s.value=''; renderSeg(); renderBody(); }
+    });
     var body=document.getElementById('lexcat-body');
     body.addEventListener('click', function(ev){
-      var nav=ev.target.closest('[data-nav]'); if(nav){ var n=nav.getAttribute('data-nav'); if(n==='root') renderRoot(); else if(n==='lang') openLang(_state.lang); return; }
-      var lang=ev.target.closest('[data-lang]'); if(lang){ openLang(lang.getAttribute('data-lang')); return; }
-      var lvl=ev.target.closest('[data-lvl]'); if(lvl){ renderCats(_state.lang, lvl.getAttribute('data-lvl')); return; }
-      var learn=ev.target.closest('[data-learn]'); if(learn){ ev.stopPropagation(); doPick(_picks[learn.getAttribute('data-learn')], null, true); return; }
+      var lang=ev.target.closest('[data-lang]'); if(lang){ _state.lang=lang.getAttribute('data-lang'); _state.level=null; renderEyelingo(); return; }
+      var lvl=ev.target.closest('[data-lvl]'); if(lvl){ _state.level=lvl.getAttribute('data-lvl')||null; renderEyelingo(); return; }
       var pick=ev.target.closest('[data-pick]'); if(pick){ doPick(_picks[pick.getAttribute('data-pick')], pick, true); return; }
     });
-    renderRoot();
+    renderSeg(); renderBody();
   };
 
-  function setBcrumb(html){ var b=document.getElementById('lexcat-bcrumb'); if(b) b.innerHTML=html; }
+  function renderSeg(){ var w=document.getElementById('lexcat-seg-wrap'); if(w) w.innerHTML=segHTML(); }
+  function renderBody(){ if(_state.view==='user') renderUserSets(); else renderEyelingo(); }
 
-  async function renderRoot(){
-    _state.view='root';
-    setBcrumb('<span style="color:var(--navy);font-weight:500">Wszystko</span>');
+  async function renderEyelingo(){
     var body=document.getElementById('lexcat-body'); if(!body) return;
     body.innerHTML=eyelingoLoader('Wczytuję…',44);
-    var sets=await loadUserSets();
     var langs=[];
     try{ var lr=await db.from('languages').select('code'); langs=(lr.data||[]).map(function(x){return x.code;}); }catch(e){}
     if(!langs.length) langs=Object.keys((typeof LEX_LANG_MAP!=='undefined'?LEX_LANG_MAP:{en:1}));
-    var html='<div class="lexcat-secth">Języki Eyelingo</div><div class="lexcat-grid">';
-    langs.forEach(function(c){
-      html+='<button class="lexcat-tile" data-lang="'+esc(c)+'"><span class="lexcat-ic">'+ICO_GLOBE+'</span><span class="nm">'+esc(langName(c))+'</span><span class="mt">Wybierz poziom →</span></button>';
-    });
-    html+='</div>';
-    html+='<div class="lexcat-secth">Twoje zestawy</div>';
-    html+= sets.length ? ('<div class="lexcat-grid">'+sets.map(tileUserSet).join('')+'</div>') : '<div class="lexcat-empty">Nie masz jeszcze własnych zestawów.</div>';
-    body.innerHTML=html;
-  }
-
-  async function openLang(code){
-    _state.view='lang'; _state.lang=code; _state.level=null;
-    setBcrumb('<a data-nav="root">Wszystko</a><span>›</span><span style="color:var(--navy);font-weight:500">'+esc(langName(code))+'</span>');
-    var body=document.getElementById('lexcat-body'); if(!body) return;
-    body.innerHTML=eyelingoLoader('Wczytuję poziomy…',44);
-    var cats=await loadLangCats(code);
+    var cats=await loadLangCats(_state.lang);
     var ORD=['A1','A2','B1','B2','C1','C2'];
-    var present={}; cats.forEach(function(c){ (c.allLevels||[]).forEach(function(l){ present[l]=1; }); if(c.level) present[c.level]=1; });
-    var levels=ORD.filter(function(l){ return present[l]; });
-    if(!levels.length){ renderCats(code, null); return; }
-    var html='<div class="lexcat-secth">Wybierz poziom</div><div class="lexcat-lvlrow">';
-    levels.forEach(function(lv){ html+='<button class="lexcat-lvl" data-lvl="'+esc(lv)+'">'+esc(lv)+'</button>'; });
-    html+='</div><div style="font-size:12px;color:var(--dim2);line-height:1.5">Każdy poziom otwiera kategorie — to są zestawy gotowe do utrwalenia z Lexem.</div>';
-    body.innerHTML=html;
+    var present={}; cats.forEach(function(c){ (c.allLevels||[]).forEach(function(l){present[l]=1;}); if(c.level) present[c.level]=1; });
+    var levels=ORD.filter(function(l){return present[l];});
+    var list=_state.level?cats.filter(function(c){return c.level===_state.level||(c.allLevels&&c.allLevels.indexOf(_state.level)>=0);}):cats;
+    var html='<div class="lexcat-chiprow">'+langs.map(function(c){ return '<button class="lexcat-chip'+(c===_state.lang?' on':'')+'" data-lang="'+esc(c)+'">'+esc(langName(c))+'</button>'; }).join('')+'</div>';
+    if(levels.length){
+      html+='<div class="lexcat-chiprow" style="margin-bottom:18px"><button class="lexcat-chip'+(!_state.level?' on':'')+'" data-lvl="">Wszystkie</button>'+levels.map(function(lv){ return '<button class="lexcat-chip'+(_state.level===lv?' on':'')+'" data-lvl="'+esc(lv)+'">'+esc(lv)+'</button>'; }).join('')+'</div>';
+    }
+    if(!list.length){ html+='<div class="lexcat-empty">Brak kategorii'+(_state.level?(' na poziomie '+esc(_state.level)):'')+'.</div>'; }
+    else { html+='<div class="lexcat-secth">Kategorie ('+list.length+')</div><div class="lexcat-grid">'+list.map(tileEyelingo).join('')+'</div>'; }
+    body.innerHTML=html; masteryFill();
   }
 
-  async function renderCats(code, lv){
-    _state.view='cats'; _state.lang=code; _state.level=lv;
-    setBcrumb('<a data-nav="root">Wszystko</a><span>›</span><a data-lang="'+esc(code)+'" >'+esc(langName(code))+'</a>'+(lv?('<span>›</span><span style="color:var(--navy);font-weight:500">'+esc(lv)+'</span>'):''));
+  async function renderUserSets(){
     var body=document.getElementById('lexcat-body'); if(!body) return;
-    var cats=await loadLangCats(code);
-    var list=lv?cats.filter(function(c){return c.level===lv || (c.allLevels&&c.allLevels.indexOf(lv)>=0);}):cats;
-    if(!list.length){ body.innerHTML='<div class="lexcat-empty">Brak kategorii na tym poziomie.</div>'; return; }
-    body.innerHTML='<div class="lexcat-secth">Kategorie = zestawy ('+list.length+')</div><div class="lexcat-grid">'+list.map(tileEyelingo).join('')+'</div>';
+    body.innerHTML=eyelingoLoader('Wczytuję…',44);
+    var sets=await loadUserSets();
+    if(!sets.length){ body.innerHTML='<div class="lexcat-empty">Nie masz jeszcze własnych zestawów. Utwórz je w „Twoje zestawy".</div>'; return; }
+    body.innerHTML='<div class="lexcat-secth">Twoje zestawy ('+sets.length+')</div><div class="lexcat-grid">'+sets.map(tileUserSet).join('')+'</div>';
+    masteryFill();
   }
 
   window.lexCatalogSearch=async function(q){
     q=(q||'').trim().toLowerCase();
+    if(!q){ renderBody(); return; }
     var body=document.getElementById('lexcat-body'); if(!body) return;
-    if(!q){ if(_state.view==='root') renderRoot(); else if(_state.view==='lang') openLang(_state.lang); else renderCats(_state.lang,_state.level); return; }
-    setBcrumb('<a data-nav="root">Wszystko</a><span>›</span><span style="color:var(--navy);font-weight:500">Wyniki: „'+esc(q)+'"</span>');
     var sets=await loadUserSets();
-    var cats=await loadLangCats(window._lexLang||'en');
-    var setHits=sets.filter(function(st){ return String(st.label).toLowerCase().indexOf(q)>=0; });
+    var cats=await loadLangCats(_state.lang||window._lexLang||'en');
     var catHits=cats.filter(function(c){ return String(c.label).toLowerCase().indexOf(q)>=0; });
+    var setHits=sets.filter(function(st){ return String(st.label).toLowerCase().indexOf(q)>=0; });
     var html='';
-    if(catHits.length){ html+='<div class="lexcat-secth">Kategorie Eyelingo ('+esc(langName(window._lexLang||'en'))+')</div><div class="lexcat-grid">'+catHits.slice(0,24).map(tileEyelingo).join('')+'</div>'; }
-    if(setHits.length){ html+='<div class="lexcat-secth">Twoje zestawy</div><div class="lexcat-grid">'+setHits.slice(0,24).map(tileUserSet).join('')+'</div>'; }
+    if(catHits.length){ html+='<div class="lexcat-secth">Kategorie Eyelingo ('+esc(langName(_state.lang||'en'))+')</div><div class="lexcat-grid">'+catHits.slice(0,30).map(tileEyelingo).join('')+'</div>'; }
+    if(setHits.length){ html+='<div class="lexcat-secth">Twoje zestawy</div><div class="lexcat-grid">'+setHits.slice(0,30).map(tileUserSet).join('')+'</div>'; }
     if(!html) html='<div class="lexcat-empty">Brak wyników dla „'+esc(q)+'".</div>';
-    body.innerHTML=html;
+    body.innerHTML=html; masteryFill();
   };
 
-  // Wybór z katalogu: zaznacz materiał, zamknij okno i wróć do ekranu ustawień (bez auto-startu lekcji).
   function doPick(p, el, learnNow){
     if(!p) return;
     var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
@@ -15771,18 +15778,13 @@ async function lexInit(){
       window._lexSources=[{kind:p.kind,id:p.id,label:p.label,level:p.level||lvlUser,lang:window._lexLang}];
       try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet(p.kind,p.id,p.label,p.level||null,0,window._lexLang); }catch(e){}
       var m=document.getElementById('lexcat-modal'); if(m) m.remove();
-      // Wróć do ekranu startu z zaznaczonym materiałem; user dokończy poziom/język i kliknie „Zaczynamy".
       if(typeof lexRefreshPickerSelection==='function') lexRefreshPickerSelection();
-      if(typeof lexRenderLessonLangButtons==='function') lexRenderLessonLangButtons();
     }
     if(p.kind==='user' && !p.lang){
       if(typeof lexAskSetLang==='function') lexAskSetLang(p.id, p.label, function(code){ p.lang=code; select(code); });
       else select('en');
-    } else {
-      select(p.lang);
-    }
+    } else { select(p.lang); }
   }
-  // ekspozycja dla ewentualnych wywołań zewnętrznych
   window.lexCatalogPick=function(kind,id,label,level){ doPick({kind:kind,id:id,label:label,level:level}, null, false); };
 })();
 </script>
