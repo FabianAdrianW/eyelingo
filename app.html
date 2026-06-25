@@ -304,6 +304,42 @@ function eyelingoLoader(text,size){
 function eylInitSpinners(){try{var ns=document.querySelectorAll('[data-eyl-spin]');for(var i=0;i<ns.length;i++){var el=ns[i];if(el.getAttribute('data-eyl-done'))continue;el.setAttribute('data-eyl-done','1');el.innerHTML=eyelingoSpinner(parseInt(el.getAttribute('data-eyl-spin'),10)||64);}}catch(e){}}
 if(document.readyState!=='loading')eylInitSpinners();else document.addEventListener('DOMContentLoaded',eylInitSpinners);
 </script>
+<style>
+  /* ===== Redesign: status / postęp / nawigacja / ocena ===== */
+  .st-pill{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:3px 8px;border-radius:100px;vertical-align:1px}
+  .st-pill.new{background:var(--paper2);color:var(--dim)}
+  .st-pill.prog{background:#fff3e9;color:var(--orange)}
+  .st-pill.done{background:#eef5e6;color:#3b7d3b}
+  .st-bar{height:5px;background:var(--paper2);border-radius:3px;overflow:hidden;margin-top:8px}
+  .st-bar i{display:block;height:100%;border-radius:3px;background:var(--orange);transition:width .35s}
+  .st-bar.done i{background:#6aa84f}
+  .row.mine{border-left:3px solid var(--navy)}
+  .eyl-cat.eyl{border-left:3px solid var(--orange)}
+  #set-status{margin:0 0 14px}
+  .ss-card{background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:14px 16px}
+  .ss-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .ss-lbl{font-size:13px;color:var(--dim);font-weight:500}
+  .ss-num{font-size:12.5px;color:var(--navy);font-weight:600;margin-top:8px}
+  .catnav{display:flex;align-items:center;gap:8px;margin:0 0 14px}
+  .catnav button{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;background:#fff;border:.5px solid var(--line2);border-radius:12px;padding:11px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--navy);cursor:pointer;transition:.12s}
+  .catnav button:active{background:var(--paper2)}.catnav button:disabled{opacity:.4}
+  .catnav .pos{flex:0 0 auto;font-size:11px;color:var(--dim2);font-weight:600;padding:0 2px;white-space:nowrap}
+  .action.know{border:.5px solid #cfe0bd;background:#f3f8ec}
+  .action.know .ic{background:rgba(106,168,79,.16);color:#3b7d3b}
+  .br-grades{display:none;grid-template-columns:repeat(4,1fr);gap:7px;padding:2px 20px 8px}
+  .br-g{border:none;border-radius:12px;padding:11px 4px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:#fff;display:flex;flex-direction:column;align-items:center;gap:1px;transition:.12s}
+  .br-g:active{transform:scale(.96)}
+  .br-g .ph{font-size:9px;font-weight:500;opacity:.85}
+  .br-g.q1{background:#A32D2D}.br-g.q2{background:#c07f24}.br-g.q3{background:#3b7d3b}.br-g.q4{background:#2b6cb0}
+  .br-hint{text-align:center;font-size:12px;color:var(--dim2);padding:2px 22px}
+  .br-graded{display:inline-block;margin-left:8px;font-size:11px;color:#3b7d3b;font-weight:600}
+  .cont-card{scroll-snap-align:center;flex:0 0 78%;text-align:left;background:#fff;border:1.5px solid var(--line2);border-radius:var(--r);padding:15px 17px;cursor:pointer;font-family:inherit;transition:transform .12s}
+  .cont-card:active{transform:scale(.985)}.cont-card.solo{flex:0 0 100%}
+  .cont-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+  .cont-eyebrow{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+  .cont-eyebrow.mine{color:var(--navy)}.cont-eyebrow.eyl{color:var(--orange)}
+  .cont-name{font-family:'DM Sans';font-size:17px;font-weight:600;color:var(--navy);margin-bottom:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
 </head>
 <body>
 <div class="phone"><div class="app" id="app-root">
@@ -338,6 +374,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
           <div class="mb16" style="padding-top:6px"><div class="h1">Ucz się</div>
             <div class="sub" style="margin-top:4px">Wybierz zestaw — przejdź do przeglądania fiszek albo lekcji z Lexem.</div></div>
           <div id="lex-resume-wrap" style="display:none;margin-bottom:22px"></div>
+          <div id="continue-wrap" style="display:none;margin-bottom:22px"></div>
           <div class="big" onclick="go('mine')">
             <div class="ic navy"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></div>
             <div class="body"><div class="t">Moje zestawy</div><div class="d">Wszystkie zestawy z Twojego konta</div></div>
@@ -368,7 +405,9 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
         <div class="backbar"><button class="back" onclick="setBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> <span id="set-back-label">Moje zestawy</span></button></div>
         <div class="scroll">
           <div class="set-head"><div class="name" id="set-name"></div><div class="meta" id="set-meta"></div></div>
-          <div style="height:18px"></div>
+          <div style="height:14px"></div>
+          <div id="set-status"></div>
+          <div id="eyl-catnav" style="display:none"></div>
           <div class="action primary" onclick="lexStart()">
             <div class="ic orange"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"/></svg></div>
             <div class="body"><div class="t">Ucz się z Lexem</div><div class="d">Lex utrwala te słowa — wydobywasz je z pamięci</div></div></div>
@@ -378,6 +417,9 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
           <button class="lex-adjust-link" onclick="openLexSetup()">Dostosuj lekcję — poziom przykładów, język prowadzenia</button>
           <div class="dir-row"><span class="lbl">Kierunek kart</span>
             <button class="dir-btn" id="dirbtn" onclick="toggleDir()">Obcy <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Polski</button></div>
+          <div class="action know" onclick="markKnownCurrent()" style="margin-top:12px">
+            <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+            <div class="body"><div class="t">Już znam ten materiał</div><div class="d">Oznacz słowa jako opanowane — pomijasz powtórki</div></div></div>
         </div>
       </section>
 
@@ -399,12 +441,6 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 
     </div>
 
-    <nav class="tabbar">
-      <button class="tab active" id="t-ucz" onclick="go('ucz')">
-        <svg class="ti" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2"/><path d="M19 17H6"/></svg>Ucz się</button>
-      <button class="tab" id="t-powtorki" onclick="openPowt()">
-        <svg class="ti" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Powtórki<span class="tab-due" id="tab-due-pill" style="display:none">0</span></button>
-    </nav>
   </div>
 
   <!-- IMMERSIVE: LEX SETUP -->
@@ -463,7 +499,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   <!-- IMMERSIVE: PRZEGLĄDANIE (real) -->
   <div class="immersive" id="imm-browse">
     <div class="imm-bar">
-      <button class="icon-btn" onclick="closeImm('imm-browse')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <button class="icon-btn" onclick="brClose()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       <div class="imm-title" id="br-title">Przeglądanie</div>
       <button class="dir-btn" id="br-dir" onclick="toggleDir(true)" style="font-size:11px">Obcy → PL</button>
     </div>
@@ -473,6 +509,13 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
         <div class="face back"><div class="kic">Tłumaczenie</div><div class="word" id="br-back"></div>
           <button class="speak" id="br-speak" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div>
       </div>
+    </div>
+    <div class="br-hint" id="br-hint">Dotknij kartę, aby zobaczyć tłumaczenie i ocenić.</div>
+    <div class="br-grades" id="br-grades">
+      <button class="br-g q1" onclick="brGrade(1)">Nie<span class="ph">wkrótce</span></button>
+      <button class="br-g q2" onclick="brGrade(2)">Prawie<span class="ph">jutro</span></button>
+      <button class="br-g q3" onclick="brGrade(3)">Wiem<span class="ph">za dni</span></button>
+      <button class="br-g q4" onclick="brGrade(4)">Łatwe<span class="ph">dłużej</span></button>
     </div>
     <div class="flip-nav">
       <button class="nav-arrow" id="br-prev" onclick="brNav(-1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -522,7 +565,7 @@ function onAuthed(session){
   document.getElementById('app-main').classList.remove('hide');
   var ini=(USER_EMAIL||'U').slice(0,2).toUpperCase();
   document.getElementById('avatar').textContent=ini;
-  go('ucz'); loadMine(); refreshDueBadge();
+  loadProg().then(homeRefresh); go('ucz'); loadMine(); refreshDueBadge();
 }
 
 /* ===== Auth ===== */
@@ -565,15 +608,181 @@ async function askLogout(){ if(confirm('Wylogować się?')){ try{ await db.auth.
 /* ===== Nawigacja ===== */
 const TABS=['ucz'];
 function go(name){
-  document.querySelectorAll('#app-main .screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('#app-main .screen').forEach(function(sc){sc.classList.remove('active');});
   var el=document.getElementById('s-'+name); if(el) el.classList.add('active');
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  var t=document.getElementById('t-'+name); if(t) t.classList.add('active');
-  else if(name==='mine'||name==='set'||name==='eyelingo'){ document.getElementById('t-ucz').classList.add('active'); }
-  if(name==='ucz'){ try{ lexCheckResume(); }catch(e){} }
+  if(name==='ucz'){ try{ homeRefresh(); }catch(e){} }
 }
 function closeImm(id){ document.getElementById(id).classList.remove('active'); }
 function soon(title,desc){ document.getElementById('soon-title').textContent=title; document.getElementById('soon-desc').textContent=desc; go('soon'); }
+
+/* ═══════════════ SILNIK POSTĘPU (PROG) — wspólny ze stroną przez srs_progress ═══════════════ */
+var PROG={}, PROG_READY=false, MASTER_REPS=3, MASTER_IV=21;
+async function loadProg(){
+  PROG={}; if(!UID){ PROG_READY=true; return; }
+  try{
+    var from=0,pg=1000,today=_usrsTodayLocal();
+    while(true){
+      var r=await db.from('srs_progress').select('card_key,repetitions,interval_days,next_review').eq('user_id',UID).range(from,from+pg-1);
+      var d=(r&&r.data)||[];
+      d.forEach(function(x){ if(!x.card_key) return; PROG[x.card_key]={r:(x.repetitions||0),iv:(x.interval_days||0),due:(x.next_review&&x.next_review<=today)}; });
+      if(d.length<pg) break; from+=pg; if(from>20000) break;
+    }
+  }catch(e){}
+  PROG_READY=true;
+}
+function progState(key){ var p=PROG[key]; if(!p) return 'new'; if(p.r>=MASTER_REPS && p.iv>=MASTER_IV) return 'done'; return 'prog'; }
+function keysOf(cards){ return (cards||[]).filter(function(c){return c.word||c.translation;}).map(function(c){return _usrsCK(c.word||'',c.translation||'');}); }
+function aggKeys(keys){
+  keys=keys||[]; var total=keys.length,touched=0,mastered=0;
+  for(var i=0;i<keys.length;i++){ var st=progState(keys[i]); if(st!=='new'){ touched++; if(st==='done') mastered++; } }
+  var pct=total?Math.round(mastered/total*100):0;
+  var status=total===0?'empty':(mastered===total?'done':(touched>0?'prog':'new'));
+  return {total:total,touched:touched,mastered:mastered,pct:pct,status:status};
+}
+function pillHtml(a){
+  if(a.status==='done') return '<span class="st-pill done"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M20 6L9 17l-5-5"/></svg>Opanowane</span>';
+  if(a.status==='prog') return '<span class="st-pill prog">W toku \u00b7 '+a.pct+'%</span>';
+  if(a.status==='new')  return '<span class="st-pill new">Nowe</span>';
+  return '';
+}
+function barHtml(a){ if(a.total===0) return ''; var w=Math.max(a.status==='prog'?6:0,a.pct); return '<div class="st-bar'+(a.status==='done'?' done':'')+'"><i style="width:'+w+'%"></i></div>'; }
+
+/* ═══════════════ Ostatnio otwierane (per-uid, localStorage) — zasila „Kontynuuj" ═══════════════ */
+function recentsKey(){ return 'eyl_recent_'+(UID||'anon'); }
+function getRecents(){ try{ return JSON.parse(localStorage.getItem(recentsKey())||'[]')||[]; }catch(e){ return []; } }
+function pushRecent(item){
+  try{
+    if(!item||!item.id) return;
+    var list=getRecents().filter(function(x){return x.id!==item.id;});
+    item.ts=Date.now(); list.unshift(item); list=list.slice(0,12);
+    localStorage.setItem(recentsKey(), JSON.stringify(list));
+  }catch(e){}
+}
+function openRecent(i){
+  var r=getRecents()[i]; if(!r) return;
+  if(r.kind==='eyl'){ var p=String(r.id).split(':'); eylOpenCat(p[1]||r.lang||'en', r.level||null, p[2], r.name||'Kategoria'); }
+  else { openSet(r.id, r.name||'Zestaw', r.count||0, r.lang||'en'); }
+}
+function renderContinue(){
+  var wrap=document.getElementById('continue-wrap'); if(!wrap) return;
+  wrap.style.display='none'; wrap.innerHTML='';
+  var recents=getRecents(); if(!recents.length) return;
+  var items=[];
+  recents.forEach(function(r,i){
+    var keys=r.keys||[]; if(!keys.length) return;
+    var a=aggKeys(keys);
+    if(a.status!=='done' && a.total>0) items.push({i:i,r:r,a:a});
+  });
+  if(!items.length) return;
+  items=items.slice(0,6);
+  var single=items.length===1;
+  var cards=items.map(function(o){
+    var r=o.r,a=o.a,eyl=(r.kind==='eyl');
+    var flag=(typeof lexLangFlag==='function')?lexLangFlag(r.lang||'en'):'';
+    var meta=(a.status==='prog')?('W toku \u00b7 '+a.pct+'% \u00b7 '+a.mastered+' / '+a.total):('Wr\u00f3\u0107 do nauki \u00b7 0 / '+a.total);
+    return '<button class="cont-card'+(single?' solo':'')+'" onclick="openRecent('+o.i+')">'
+      +'<div class="cont-top"><span class="cont-eyebrow '+(eyl?'eyl':'mine')+'">'+(eyl?'Zestawy Eyelingo':'Moje zestawy')+'</span><span class="rz-flag">'+flag+'</span></div>'
+      +'<div class="cont-name">'+esc(r.name||'Zestaw')+'</div>'
+      +barHtml(a)
+      +'<div class="rz-meta" style="margin-top:7px">'+meta+'</div>'
+      +'</button>';
+  }).join('');
+  wrap.innerHTML='<div class="rz-head">Kontynuuj zestaw</div><div class="rz-scroller">'+cards+'</div>';
+  wrap.style.display='block';
+}
+function homeRefresh(){ try{ lexCheckResume(); }catch(e){} try{ renderContinue(); }catch(e){} }
+
+/* ═══════════════ Status zestawu + nawigacja kategorii + „Już znam" ═══════════════ */
+var curSetCards=[], _setCardsCache={};
+async function loadCurSetCards(){
+  if(curSetKind==='eyelingo'){ curSetCards=(_eylCards||[]).map(function(c){return {word:c.word||'',translation:c.translation||'',flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null)};}); return curSetCards; }
+  if(_setCardsCache[curSetId]){ curSetCards=_setCardsCache[curSetId]; return curSetCards; }
+  try{
+    var rs=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',curSetId).order('sort_order',{ascending:true});
+    curSetCards=((rs.data)||[]).filter(function(c){return c.word||c.translation;}).map(function(c){return {word:c.word||'',translation:c.translation||'',flashcard_id:null};});
+    _setCardsCache[curSetId]=curSetCards;
+  }catch(e){ curSetCards=[]; }
+  return curSetCards;
+}
+async function renderSetStatus(){
+  var box=document.getElementById('set-status'); if(box) box.innerHTML='';
+  var nav=document.getElementById('eyl-catnav'); if(nav){ nav.style.display='none'; nav.innerHTML=''; }
+  await loadCurSetCards();
+  var keys=keysOf(curSetCards); var a=aggKeys(keys);
+  pushRecent({id:curSetId, kind:(curSetKind==='eyelingo'?'eyl':'set'), name:curSetName, lang:curSetLang, level:(curSetKind==='eyelingo'?(window._eylNavLevel||null):null), count:curSetCount, keys:keys});
+  if(box){
+    box.innerHTML='<div class="ss-card"><div class="ss-top"><span class="ss-lbl">Tw\u00f3j post\u0119p</span>'+pillHtml(a)+'</div>'
+      +(a.total?'<div class="ss-num">'+a.mastered+' / '+a.total+' '+plural(a.total,'s\u0142owo','s\u0142owa','s\u0142\u00f3w')+' opanowane</div>':'')
+      +barHtml(a)+'</div>';
+  }
+  if(curSetKind==='eyelingo' && Array.isArray(window._eylNavList) && window._eylNavList.length && nav){
+    var catId=String(curSetId).split(':')[2];
+    var idx=-1; for(var i=0;i<window._eylNavList.length;i++){ if(String(window._eylNavList[i].id)===String(catId)){ idx=i; break; } }
+    if(idx>=0){
+      var prev=idx>0, next=idx<window._eylNavList.length-1;
+      nav.innerHTML=''
+        +'<button '+(prev?'':'disabled')+' onclick="eylJump(-1)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>Poprzednia</button>'
+        +'<span class="pos">'+(idx+1)+' / '+window._eylNavList.length+'</span>'
+        +'<button '+(next?'':'disabled')+' onclick="eylJump(1)">Nast\u0119pna<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>';
+      nav.style.display='flex';
+    }
+  }
+}
+function eylJump(delta){
+  var list=window._eylNavList||[]; if(!list.length) return;
+  var catId=String(curSetId).split(':')[2], idx=-1;
+  for(var i=0;i<list.length;i++){ if(String(list[i].id)===String(catId)){ idx=i; break; } }
+  var n=idx+delta; if(n<0||n>=list.length) return;
+  var c=list[n];
+  eylOpenCat(window._eylNavLang||curSetLang, window._eylNavLevel||null, c.id, c.label||'Kategoria');
+}
+async function markKnownBulk(cards, lang){
+  if(!UID||!cards||!cards.length) return 0;
+  var iv=60, nr=new Date(Date.now()+iv*86400000).toISOString().slice(0,10);
+  var rows=[], seen={};
+  cards.forEach(function(c){
+    var w=c.word||'', t=c.translation||''; if(!w&&!t) return;
+    var ck=_usrsCK(w,t); if(seen[ck]) return; seen[ck]=1;
+    var fc=(c.flashcard_id!=null?c.flashcard_id:null);
+    rows.push({user_id:UID,card_key:ck,word:w,translation:t,lang:(lang||'en'),source:(fc!=null?'eyelingo':'custom'),flashcard_id:fc,ease_factor:2.6,repetitions:5,interval_days:iv,next_review:nr});
+    PROG[ck]={r:5,iv:iv,due:false};
+  });
+  if(!rows.length) return 0;
+  try{ for(var i=0;i<rows.length;i+=400){ await db.from('srs_progress').upsert(rows.slice(i,i+400),{onConflict:'user_id,card_key'}); } }catch(e){}
+  return rows.length;
+}
+async function markKnownCurrent(){
+  if(!curSetCards||!curSetCards.length){ await loadCurSetCards(); }
+  if(!curSetCards.length){ alert('Brak s\u0142\u00f3w w tym zestawie.'); return; }
+  if(!confirm('Oznaczy\u0107 wszystkie s\u0142owa ('+curSetCards.length+') jako znane? Trafi\u0105 do d\u0142ugich powt\u00f3rek i znikn\u0105 z dzisiejszej kolejki. Zawsze mo\u017cesz je p\u00f3\u017aniej powt\u00f3rzy\u0107.')) return;
+  await markKnownBulk(curSetCards, curSetLang);
+  try{ await renderSetStatus(); }catch(e){}
+  try{ refreshDueBadge(); }catch(e){}
+  try{ homeRefresh(); }catch(e){}
+}
+
+/* ═══════════════ Przeglądanie: oceny SM-2 ═══════════════ */
+var _brGraded=0;
+function brShowGrades(show){
+  var g=document.getElementById('br-grades'); if(g) g.style.display=show?'grid':'none';
+  var h=document.getElementById('br-hint'); if(h) h.textContent=show?'Jak Ci posz\u0142o? Ocena zapisze post\u0119p.':'Dotknij kart\u0119, aby zobaczy\u0107 t\u0142umaczenie i oceni\u0107.';
+}
+async function brGrade(q){
+  var c=CARDS[bi]; if(!c) return;
+  if(navigator.vibrate) navigator.vibrate(6);
+  try{
+    var ck=_usrsCK(c.word||'',c.translation||'');
+    var ns=await srsUpsertCanon(c.word||'', c.translation||'', q, {lang:curSetLang, flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null), card_key:ck});
+    if(ns) PROG[ck]={r:ns.repetitions,iv:ns.interval_days,due:false};
+  }catch(e){}
+  _brGraded++;
+  if(bi<CARDS.length-1){ bi++; renderCard(); }
+  else { brShowGrades(false); var h=document.getElementById('br-hint'); if(h) h.textContent='Koniec zestawu \u2014 oceniono '+_brGraded+'. Post\u0119p zapisany.'; }
+}
+function brClose(){
+  closeImm('imm-browse');
+  loadProg().then(function(){ try{ if(document.getElementById('s-set').classList.contains('active')) renderSetStatus(); }catch(e){} try{homeRefresh();}catch(e){} try{refreshDueBadge();}catch(e){} });
+}
 
 /* ===== Moje zestawy (REAL) ===== */
 async function loadMine(){
@@ -608,7 +817,7 @@ function openSet(id,name,count,lang){
   var bl=document.getElementById('set-back-label'); if(bl) bl.textContent='Moje zestawy';
   document.getElementById('set-name').textContent=name;
   document.getElementById('set-meta').textContent=count+' '+plural(count,'fiszka','fiszki','fiszek')+' · '+lexLangFlag(curSetLang)+' '+lexLangInfo(curSetLang).name;
-  go('set');
+  go('set'); try{ renderSetStatus(); }catch(e){}
 }
 
 /* ===== Podgląd zestawu (dolny arkusz, tłumaczenia widoczne) ===== */
@@ -654,11 +863,11 @@ async function openBrowse(){
   stage.innerHTML=eyelingoSpinner(48);
   try{
     var data;
-    if(curSetKind==='eyelingo'){ data=(_eylCards||[]).map(function(c){return {word:c.word,translation:c.translation};}); }
+    if(curSetKind==='eyelingo'){ data=(_eylCards||[]).map(function(c){return {word:c.word,translation:c.translation,flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null)};}); }
     else { var rs=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',curSetId).order('sort_order',{ascending:true}); if(rs.error) throw rs.error; data=rs.data; }
     CARDS=(data||[]).filter(function(c){return c.word||c.translation;});
     if(!CARDS.length){ stage.innerHTML='<div class="empty" style="margin:auto"><div class="h2">Pusty zestaw</div><div class="sub">Ten zestaw nie ma jeszcze fiszek.</div></div>'; document.getElementById('br-count').textContent=''; return; }
-    bi=0; restoreFlipMarkup(); renderCard();
+    bi=0; _brGraded=0; brShowGrades(false); restoreFlipMarkup(); renderCard();
   }catch(e){ stage.innerHTML='<div class="empty" style="margin:auto"><div class="h2">Nie udało się wczytać</div><div class="sub">Spróbuj ponownie za chwilę.</div></div>'; }
 }
 function restoreFlipMarkup(){
@@ -675,11 +884,12 @@ function renderCard(){
   document.getElementById('br-kic').textContent=ff?'Słowo':'Tłumaczenie';
   document.getElementById('br-front').textContent=ff?(c.word||'—'):(c.translation||'—');
   document.getElementById('br-back').textContent=ff?(c.translation||'—'):(c.word||'—');
-  document.getElementById('br-count').textContent=(bi+1)+' / '+CARDS.length;
+  document.getElementById('br-count').innerHTML=(bi+1)+' / '+CARDS.length+(_brGraded?'<span class="br-graded">'+_brGraded+' \u2713</span>':'');
+  brShowGrades(false);
   document.getElementById('br-prev').disabled=bi===0;
   document.getElementById('br-next').disabled=bi===CARDS.length-1;
 }
-function doFlip(){ flipped=!flipped; document.getElementById('flip').classList.toggle('flipped',flipped); if(navigator.vibrate)navigator.vibrate(6); }
+function doFlip(){ flipped=!flipped; document.getElementById('flip').classList.toggle('flipped',flipped); if(navigator.vibrate)navigator.vibrate(6); brShowGrades(flipped); }
 function brNav(d){ var n=bi+d; if(n<0||n>=CARDS.length)return; bi=n; renderCard(); }
 function speakCard(){
   try{
@@ -1463,14 +1673,15 @@ async function _eylLoadCats(code){
     if(langId==null){ _eylCatCache[code]=out; return out; }
     var all=[], pg=1000, from=0;
     while(true){
-      var r=await db.from('flashcards').select('category_id,levels(code)').eq('language_id',langId).range(from,from+pg-1);
+      var r=await db.from('flashcards').select('category_id,word,translation,levels(code)').eq('language_id',langId).range(from,from+pg-1);
       var d=(r&&r.data)||[]; all=all.concat(d);
       if(d.length<pg) break; from+=pg; if(from>40000) break;
     }
     var byCat={};
     all.forEach(function(r){ if(r.category_id==null) return; var lv=(r.levels&&r.levels.code)||null;
-      if(!byCat[r.category_id]) byCat[r.category_id]={count:0,levels:{}};
+      if(!byCat[r.category_id]) byCat[r.category_id]={count:0,levels:{},keys:[]};
       byCat[r.category_id].count++; if(lv) byCat[r.category_id].levels[lv]=(byCat[r.category_id].levels[lv]||0)+1;
+      if(r.word||r.translation) byCat[r.category_id].keys.push(_usrsCK(r.word||'',r.translation||''));
     });
     var ids=Object.keys(byCat).map(function(k){return isNaN(+k)?k:+k;});
     if(ids.length){
@@ -1478,7 +1689,7 @@ async function _eylLoadCats(code){
       (cats.data||[]).forEach(function(c){
         var lk=Object.keys(byCat[c.id].levels);
         var lv=lk.sort(function(a,b){return byCat[c.id].levels[b]-byCat[c.id].levels[a];})[0]||null;
-        out.push({id:c.id,label:eylCleanCat(c.label||c.code),level:lv,count:byCat[c.id].count,allLevels:lk});
+        out.push({id:c.id,label:eylCleanCat(c.label||c.code),level:lv,count:byCat[c.id].count,allLevels:lk,keys:byCat[c.id].keys});
       });
     }
   }catch(e){}
@@ -1506,6 +1717,7 @@ async function eylRenderBrowse(){
   var present={}; cats.forEach(function(c){ (c.allLevels||[]).forEach(function(l){present[l]=1;}); if(c.level) present[c.level]=1; });
   var levels=EYL_LEVELS_ORD.filter(function(l){return present[l];});
   var list=_eylState.level?cats.filter(function(c){return c.level===_eylState.level||(c.allLevels&&c.allLevels.indexOf(_eylState.level)>=0);}):cats;
+  window._eylNavList=list; window._eylNavLevel=_eylState.level||null; window._eylNavLang=_eylState.lang;
 
   var html='<div class="eyl-h">Zestawy Eyelingo</div>';
   html+='<div class="eyl-flabel">Język</div><div class="eyl-chiprow">'+langs.map(function(c){ return '<button class="eyl-chip'+(c===_eylState.lang?' on':'')+'" onclick="eylPickLang(\''+esc(c)+'\')">'+eylLangFlag(c)+' '+esc(eylLangLabel(c))+'</button>'; }).join('')+'</div>';
@@ -1515,11 +1727,12 @@ async function eylRenderBrowse(){
   if(!list.length){ html+='<div class="empty" style="margin-top:20px"><div class="h2">Brak kategorii</div><div class="sub">Na tym poziomie nie ma jeszcze zestawów.</div></div>'; b.innerHTML=html; return; }
   html+='<div class="eyl-catlist">'+list.map(function(c){
     var nm=esc(c.label||'Kategoria');
+    var a=aggKeys(c.keys||[]);
     var sub=(c.level?esc(c.level)+' \u00b7 ':'')+c.count+' '+plural(c.count,'s\u0142owo','s\u0142owa','s\u0142\u00f3w');
     var lvlArg=_eylState.level?('\''+_eylState.level+'\''):'null';
-    return '<div class="eyl-cat" data-nm="'+nm+'" onclick="eylOpenCat(\''+esc(_eylState.lang)+'\','+lvlArg+','+c.id+',this.getAttribute(\'data-nm\'))">'
+    return '<div class="eyl-cat eyl" data-nm="'+nm+'" onclick="eylOpenCat(\''+esc(_eylState.lang)+'\','+lvlArg+','+c.id+',this.getAttribute(\'data-nm\'))">'
       +'<span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></span>'
-      +'<span class="bd"><span class="lb">'+nm+'</span><span class="mt">'+sub+'</span></span>'
+      +'<span class="bd"><span class="lb">'+nm+'</span><span class="mt">'+sub+' '+pillHtml(a)+'</span>'+barHtml(a)+'</span>'
       +'<button class="row-eye" aria-label="Podgl\u0105d s\u0142\u00f3w" onclick="event.stopPropagation();previewCat(\''+esc(_eylState.lang)+'\','+c.id+',this.parentNode.getAttribute(\'data-nm\'))"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
       +'</div>';
   }).join('')+'</div>';
@@ -1568,7 +1781,7 @@ async function eylOpenCat(lang,lvl,catId,catName){
     document.getElementById('set-name').textContent=catName;
     document.getElementById('set-meta').textContent=curSetCount+' '+plural(curSetCount,'fiszka','fiszki','fiszek')+' \u00b7 '+eylLangFlag(lang)+' '+eylLangLabel(lang)+(lvl?' \u00b7 '+lvl:'');
     if(b) b.innerHTML=prev;
-    go('set');
+    go('set'); try{ renderSetStatus(); }catch(e){}
   }catch(e){ if(b) b.innerHTML=prev; alert('Nie uda\u0142o si\u0119 wczyta\u0107 fiszek. Spr\u00f3buj ponownie.'); }
 }
 
@@ -1618,6 +1831,7 @@ function closePowt(){
   closeImm('imm-powt');
   go('ucz');
   refreshDueBadge();
+  loadProg().then(homeRefresh);
 }
 function pwRenderEmpty(){
   var stage=document.getElementById('pw-stage');
