@@ -1228,6 +1228,29 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 .mat-card.dragging{opacity:.6;transform:scale(1.03) rotate(1.5deg);box-shadow:0 20px 60px rgba(26,35,64,.35)!important;cursor:grabbing;z-index:100;position:relative}
 .mat-card.drag-over{transform:scale(1.02);border-color:var(--orange)!important;box-shadow:0 0 0 2px var(--orange)}
 .sb-catalog-tile.drop-target{border-color:var(--orange)!important;background:rgba(232,112,26,.08)!important;transform:scale(1.02)}
+.eylc-flabel{font-family:DM Sans,sans-serif;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px}
+.eylc-chiprow{display:flex;gap:8px;flex-wrap:wrap}
+.eylc-chip{padding:7px 15px;border-radius:100px;border:1.5px solid var(--border2,#D8D2C0);background:#fff;font-size:13px;font-weight:500;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s}
+.eylc-chip:hover{border-color:var(--orange)}
+.eylc-chip.on{border-color:var(--orange);background:var(--orange);color:#fff}
+.eylc-secth{font-family:DM Sans,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin:22px 0 12px}
+.eylc-cat{position:relative;background:var(--white);border:.5px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;transition:.15s;box-shadow:0 1px 3px rgba(26,35,64,.05)}
+.eylc-cat:hover{border-color:var(--orange);box-shadow:0 4px 14px rgba(216,90,48,.13)}
+.eylc-cont{display:flex;align-items:center;gap:10px;width:100%;border:none;border-left:3px solid #d85a30;background:#faece7;border-radius:8px;padding:11px 14px;cursor:pointer;font-family:DM Sans,sans-serif}
+.eylc-eye{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:8px;border:none;background:var(--paper2);color:var(--dim2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s;z-index:2}
+.eylc-eye:hover{background:var(--navy);color:#fff}
+.eylc-modal{position:fixed;inset:0;background:rgba(26,35,64,.45);z-index:10040;display:flex;align-items:flex-end;justify-content:center}
+.eylc-sheet{background:var(--paper);width:100%;max-width:560px;max-height:86vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column;overflow:hidden}
+@media(min-width:640px){.eylc-modal{align-items:center}.eylc-sheet{border-radius:18px}}
+.eylc-shead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 22px 14px;border-bottom:.5px solid var(--border)}
+.eylc-x{background:none;border:none;font-size:24px;color:var(--dim2);cursor:pointer;width:32px;height:32px;flex-shrink:0;line-height:1}
+.eylc-sbody{flex:1;overflow-y:auto;padding:8px 22px}
+.eylc-sfoot{padding:14px 22px;border-top:.5px solid var(--border)}
+.eylc-learn{width:100%;padding:13px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:14px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif}
+.eylc-prevlist{display:flex;flex-direction:column}
+.eylc-prow{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:11px 2px;border-bottom:.5px solid var(--border)}
+.eylc-prow .w{font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy)}
+.eylc-prow .t{font-size:13px;color:var(--dim2);text-align:right}
 
 /* Hide old tab selectors when sidebar is present */
 #page-daily .daily-tab-selector,
@@ -1385,126 +1408,81 @@ window.switchMatTab = function(tab){
 
   function _seg(){ return document.getElementById('eyl-segment'); }
 
-  // ── Widok 1: języki + Kontynuuj ──
-  async function eylHome(){
-    _eylSeg={lang:null,level:null};
+  // ── Jeden ekran: chipy języka + poziomu, kategorie (kolejność wprowadzenia) + oko ──
+  async function eylBrowse(){
     var box=_seg(); if(!box) return;
     box.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:20px 0">Ładowanie…</div>';
     if(!EYLPROG_READY) await eylLoadProg();
+    await _ensureIds();
+    var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','nl','jp'];
+    if(!_eylSeg.lang || codes.indexOf(_eylSeg.lang)<0) _eylSeg.lang=codes[0]||'en';
+    var code=_eylSeg.lang, langId=_eylLangIds[code];
+    var lvlCode={}; Object.keys(_eylLevelIds||{}).forEach(function(c){ lvlCode[_eylLevelIds[c]]=c; });
+    var rows=[];
+    if(langId!=null){
+      try{ var from=0,pg=1000; while(true){ var r=await db.from('flashcards').select('category_id,level_id,word,translation').eq('language_id',langId).range(from,from+pg-1); var d=(r&&r.data)||[]; rows=rows.concat(d); if(d.length<pg) break; from+=pg; if(from>20000) break; } }catch(e){}
+    }
+    var presentLv={}; rows.forEach(function(r){ var lc=lvlCode[r.level_id]; if(lc) presentLv[lc]=1; });
+    var levels=EYL_LEVELS.filter(function(l){return presentLv[l];});
+    if(_eylSeg.level && !presentLv[_eylSeg.level]) _eylSeg.level=null;
+    var fr=_eylSeg.level?rows.filter(function(r){return lvlCode[r.level_id]===_eylSeg.level;}):rows;
+    var byCat={}; fr.forEach(function(r){ var c=r.category_id; if(c==null) return; (byCat[c]=byCat[c]||[]).push(_ck(r.word,r.translation)); });
+    var catIds=Object.keys(byCat);
+    var meta={};
+    if(catIds.length){ try{ var rc=await db.from('categories').select('id,label,icon').in('id',catIds).order('id',{ascending:true}); (rc.data||[]).forEach(function(c){ meta[c.id]={label:c.label,icon:c.icon}; }); }catch(e){} }
+    var orderedIds=Object.keys(meta).length?Object.keys(meta):catIds;
 
     var html='';
-    // Kontynuuj (recents niedokończone)
     var recents=await _getRecents();
     if(recents.length){
-      var contItems=recents.slice(0,4).map(function(r){
-        var info=_langInfo(r.lang);
-        return '<button onclick="eylOpenCat('+JSON.stringify(r.lang).replace(/"/g,'&quot;')+','+JSON.stringify(r.level).replace(/"/g,'&quot;')+','+JSON.stringify(String(r.catId)).replace(/"/g,'&quot;')+','+JSON.stringify(r.catLabel||'').replace(/"/g,'&quot;')+')" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;border-left:3px solid '+ORANGE+';background:#faece7;border-radius:0;padding:11px 14px;margin-bottom:6px;cursor:pointer;font-family:DM Sans,sans-serif">'
+      var contItems=recents.slice(0,4).map(function(r){ var info=_langInfo(r.lang);
+        return '<button onclick="eylOpenCat('+JSON.stringify(r.lang).replace(/"/g,'&quot;')+','+JSON.stringify(r.level).replace(/"/g,'&quot;')+','+JSON.stringify(String(r.catId)).replace(/"/g,'&quot;')+','+JSON.stringify(r.catLabel||'').replace(/"/g,'&quot;')+')" class="eylc-cont">'
           +'<span style="font-size:18px">'+info.flag+'</span>'
-          +'<span style="flex:1;min-width:0;font-size:13.5px;font-weight:500;color:#4a1b0c">'+_eEsc(info.label)+' · '+_eEsc(r.level)+' · '+_eEsc(r.catLabel||'')+'</span>'
-          +'<span style="font-size:12px;color:#993c1d;font-weight:500;white-space:nowrap">wróć →</span></button>';
-      }).join('');
-      html+='<div style="margin-bottom:18px"><div style="font-size:11px;color:#993c1d;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Kontynuuj</div>'+contItems+'</div>';
+          +'<span style="flex:1;min-width:0;font-size:13.5px;font-weight:500;color:#4a1b0c;text-align:left">'+_eEsc(info.label)+' · '+_eEsc(r.level)+' · '+_eEsc(r.catLabel||'')+'</span>'
+          +'<span style="font-size:12px;color:#993c1d;font-weight:500;white-space:nowrap">wróć →</span></button>'; }).join('');
+      html+='<div style="margin-bottom:22px"><div class="eylc-flabel" style="color:#993c1d">Kontynuuj</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">'+contItems+'</div></div>';
     }
-
-    // Siatka języków (14)
-    html+='<div style="font-size:13px;color:var(--dim2);margin-bottom:10px">Wybierz język programu Eyelingo</div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">';
-    var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','nl','jp'];
-    codes.forEach(function(code){
-      var info=_langInfo(code);
-      html+='<button onclick="eylLevels('+JSON.stringify(code).replace(/"/g,'&quot;')+')" style="display:flex;align-items:center;gap:10px;border:none;border-left:3px solid '+ORANGE+';background:var(--white);border-radius:0;box-shadow:0 1px 3px rgba(26,35,64,.06);padding:13px 14px;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left;transition:.15s" onmouseover="this.style.boxShadow=\'0 4px 14px rgba(216,90,48,.16)\'" onmouseout="this.style.boxShadow=\'0 1px 3px rgba(26,35,64,.06)\'">'
-        +'<span style="font-size:22px">'+info.flag+'</span>'
-        +'<span style="font-size:14px;font-weight:500;color:var(--navy)">'+_eEsc(info.label)+'</span></button>';
-    });
-    html+='</div>';
-    box.innerHTML=html;
-  }
-
-  function _crumb(parts){
-    // parts: array of {label, onclick?}
-    var out='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:16px;font-size:12.5px">';
-    parts.forEach(function(p,i){
-      if(i>0) out+='<span style="color:var(--dim2)">›</span>';
-      if(p.onclick) out+='<button onclick="'+p.onclick+'" style="border:none;background:transparent;color:#993c1d;cursor:pointer;font-size:12.5px;padding:0;font-family:DM Sans,sans-serif">'+_eEsc(p.label)+'</button>';
-      else out+='<span style="color:var(--navy);font-weight:500">'+_eEsc(p.label)+'</span>';
-    });
-    out+='</div>';
-    return out;
-  }
-
-  // ── Widok 2: poziomy ──
-  async function eylLevels(code){
-    _eylSeg={lang:code,level:null};
-    var box=_seg(); if(!box) return;
-    var info=_langInfo(code);
-    var html=_crumb([{label:'Zestawy Eyelingo', onclick:'eylHome()'},{label:info.flag+' '+info.label}]);
-    html+='<div style="font-size:13px;color:var(--dim2);margin-bottom:10px">Wybierz poziom</div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px">';
-    EYL_LEVELS.forEach(function(lvl){
-      html+='<button onclick="eylCats('+JSON.stringify(code).replace(/"/g,'&quot;')+','+JSON.stringify(lvl).replace(/"/g,'&quot;')+')" style="border:none;border-left:3px solid '+ORANGE+';background:var(--white);border-radius:0;box-shadow:0 1px 3px rgba(26,35,64,.06);padding:18px;cursor:pointer;font-family:DM Sans,sans-serif;text-align:center;transition:.15s" onmouseover="this.style.boxShadow=\'0 4px 14px rgba(216,90,48,.16)\'" onmouseout="this.style.boxShadow=\'0 1px 3px rgba(26,35,64,.06)\'">'
-        +'<div style="font-size:20px;font-weight:500;color:var(--navy)">'+lvl+'</div></button>';
-    });
-    html+='</div>';
-    box.innerHTML=html;
-  }
-
-  // ── Widok 3: kategorie (kolejność wg ID wstawienia) + postęp ──
-  async function eylCats(code, level){
-    _eylSeg={lang:code,level:level};
-    var box=_seg(); if(!box) return;
-    var info=_langInfo(code);
-    box.innerHTML=_crumb([{label:'Zestawy Eyelingo', onclick:'eylHome()'},{label:info.flag+' '+info.label, onclick:'eylLevels('+JSON.stringify(code).replace(/"/g,'&quot;')+')'},{label:level}])
-      +'<div style="color:var(--dim2);font-size:13px;padding:8px 0">Ładowanie kategorii…</div>';
-    if(!EYLPROG_READY) await eylLoadProg();
-    await _ensureIds();
-    var langId=_eylLangIds[code], lvlId=_eylLevelIds[level];
-    if(langId==null){ box.innerHTML+='<div style="color:#c33;font-size:13px">Brak danych dla tego języka.</div>'; return; }
-
-    // Pobierz fiszki lang+level (category_id,word,translation) — paginacja PostgREST (~1000/strona)
-    var rows=[];
-    try{
-      var from=0, pg=1000;
-      while(true){
-        var q=db.from('flashcards').select('category_id,word,translation').eq('language_id',langId);
-        if(lvlId!=null) q=q.eq('level_id',lvlId);
-        var r=await q.range(from,from+pg-1);
-        var d=(r&&r.data)||[];
-        rows=rows.concat(d);
-        if(d.length<pg) break; from+=pg; if(from>20000) break;
-      }
-    }catch(e){}
-    if(!rows.length){
-      box.innerHTML=_crumb([{label:'Zestawy Eyelingo', onclick:'eylHome()'},{label:info.flag+' '+info.label, onclick:'eylLevels('+JSON.stringify(code).replace(/"/g,'&quot;')+')'},{label:level}])
-        +'<div style="text-align:center;padding:48px 20px;color:var(--dim2);font-size:14px">Brak fiszek dla '+_eEsc(info.label)+' · '+_eEsc(level)+'.</div>';
-      return;
+    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow">'+codes.map(function(c){ var info=_langInfo(c); return '<button class="eylc-chip'+(c===code?' on':'')+'" onclick="eylPickLang('+JSON.stringify(c).replace(/"/g,'&quot;')+')">'+info.flag+' '+_eEsc(info.label)+'</button>'; }).join('')+'</div>';
+    if(levels.length){
+      html+='<div class="eylc-flabel" style="margin-top:16px">Poziom</div><div class="eylc-chiprow"><button class="eylc-chip'+(!_eylSeg.level?' on':'')+'" onclick="eylPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eylc-chip'+(_eylSeg.level===lv?' on':'')+'" onclick="eylPickLvl('+JSON.stringify(lv).replace(/"/g,'&quot;')+')">'+lv+'</button>'; }).join('')+'</div>';
     }
-    // Grupuj klucze per category_id
-    var byCat={};
-    rows.forEach(function(r){ var c=r.category_id; if(c==null) return; (byCat[c]=byCat[c]||[]).push(_ck(r.word,r.translation)); });
-    var catIds=Object.keys(byCat);
-    // Meta kategorii w kolejności wstawienia (id asc)
-    var meta={};
-    try{
-      var rc=await db.from('categories').select('id,label,icon').in('id',catIds).order('id',{ascending:true});
-      (rc.data||[]).forEach(function(c){ meta[c.id]={label:c.label, icon:c.icon}; });
-    }catch(e){}
-    var orderedIds=Object.keys(meta).length ? Object.keys(meta) : catIds;
-    // (categories.in zwraca w kolejności id asc → orderedIds zachowuje porządek pedagogiczny)
-
-    var html=_crumb([{label:'Zestawy Eyelingo', onclick:'eylHome()'},{label:info.flag+' '+info.label, onclick:'eylLevels('+JSON.stringify(code).replace(/"/g,'&quot;')+')'},{label:level}]);
-    html+='<div style="font-size:13px;color:var(--dim2);margin-bottom:10px">'+info.flag+' '+_eEsc(info.label)+' · '+level+' — wybierz kategorię</div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">';
+    if(!orderedIds.length){ html+='<div style="text-align:center;padding:44px 20px;color:var(--dim2);font-size:14px;margin-top:20px">Brak kategorii'+(_eylSeg.level?(' na poziomie '+_eEsc(_eylSeg.level)):'')+'.</div>'; box.innerHTML=html; return; }
+    html+='<div class="eylc-secth">Kategorie ('+orderedIds.length+')</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">';
+    var lvlArg=_eylSeg.level||'';
     orderedIds.forEach(function(cid){
-      var keys=byCat[cid]||[]; var a=_agg(keys);
-      var m=meta[cid]||{label:'Kategoria '+cid};
-      html+='<button onclick="eylOpenCat('+JSON.stringify(code).replace(/"/g,'&quot;')+','+JSON.stringify(level).replace(/"/g,'&quot;')+','+JSON.stringify(String(cid)).replace(/"/g,'&quot;')+','+JSON.stringify(m.label||'').replace(/"/g,'&quot;')+')" style="display:block;width:100%;text-align:left;border:none;border-left:3px solid '+ORANGE+';background:var(--white);border-radius:0;box-shadow:0 1px 3px rgba(26,35,64,.06);padding:13px 15px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s" onmouseover="this.style.boxShadow=\'0 4px 14px rgba(216,90,48,.16)\'" onmouseout="this.style.boxShadow=\'0 1px 3px rgba(26,35,64,.06)\'">'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px">'
-        +'<span style="font-size:14px;font-weight:500;color:var(--navy)">'+_eEsc(m.label)+'</span>'+_pill(a)+'</div>'
-        +'<div style="font-size:11px;color:var(--dim2)">'+a.total+' fiszek'+(a.touched?(' · '+a.mastered+' opanowanych'):'')+'</div>'
-        +_bar(a)+'</button>';
+      var keys=byCat[cid]||[]; var a=_agg(keys); var m=meta[cid]||{label:'Kategoria '+cid};
+      var args=JSON.stringify(code).replace(/"/g,'&quot;')+','+JSON.stringify(lvlArg).replace(/"/g,'&quot;')+','+JSON.stringify(String(cid)).replace(/"/g,'&quot;')+','+JSON.stringify(m.label||'').replace(/"/g,'&quot;');
+      html+='<div class="eylc-cat" onclick="eylOpenCat('+args+')">'
+        +'<button class="eylc-eye" title="Podejrzyj słowa" onclick="event.stopPropagation();eylPreview('+args+')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;padding-right:30px"><span style="font-size:14px;font-weight:500;color:var(--navy)">'+_eEsc(m.label)+'</span>'+_pill(a)+'</div>'
+        +'<div style="font-size:11px;color:var(--dim2)">'+a.total+' fiszek'+(a.touched?(' · '+a.mastered+' opanowanych'):'')+'</div>'+_bar(a)+'</div>';
     });
     html+='</div>';
     box.innerHTML=html;
+  }
+  function eylPickLang(c){ _eylSeg.lang=c; _eylSeg.level=null; eylBrowse(); }
+  function eylPickLvl(l){ _eylSeg.level=l||null; eylBrowse(); }
+
+  // ── Podgląd zawartości kategorii („oko") ──
+  async function eylPreview(code, level, catId, label){
+    await _ensureIds();
+    var langId=_eylLangIds[code], lvlId=level?_eylLevelIds[level]:null, info=_langInfo(code);
+    var ov=document.getElementById('eylc-preview'); if(ov) ov.remove();
+    ov=document.createElement('div'); ov.id='eylc-preview'; ov.className='eylc-modal';
+    ov.addEventListener('click', function(e){ if(e.target===ov) ov.remove(); });
+    var learnArgs=JSON.stringify(code).replace(/"/g,'&quot;')+','+JSON.stringify(level||'').replace(/"/g,'&quot;')+','+JSON.stringify(String(catId)).replace(/"/g,'&quot;')+','+JSON.stringify(label||'').replace(/"/g,'&quot;');
+    ov.innerHTML='<div class="eylc-sheet"><div class="eylc-shead"><div style="min-width:0"><div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_eEsc(label||'Kategoria')+'</div><div style="font-size:12px;color:var(--dim2);margin-top:3px">'+info.flag+' '+_eEsc(info.label)+(level?(' · '+_eEsc(level)):'')+' · podgląd</div></div><button class="eylc-x" onclick="document.getElementById(\'eylc-preview\').remove()">×</button></div><div class="eylc-sbody" id="eylc-pbody"><div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Wczytuję słowa…</div></div><div class="eylc-sfoot"><button class="eylc-learn" onclick="document.getElementById(\'eylc-preview\').remove();eylOpenCat('+learnArgs+')">Ucz się tej kategorii →</button></div></div>';
+    document.body.appendChild(ov);
+    var body=document.getElementById('eylc-pbody');
+    try{
+      var rows=[],from=0,pg=1000;
+      while(true){ var q=db.from('flashcards').select('word,translation').eq('language_id',langId).eq('category_id',catId); if(lvlId!=null) q=q.eq('level_id',lvlId); var r=await q.order('id',{ascending:true}).range(from,from+pg-1); var d=(r&&r.data)||[]; rows=rows.concat(d); if(d.length<pg) break; from+=pg; if(from>8000) break; }
+      rows=rows.filter(function(c){return c.word||c.translation;});
+      if(!body) return;
+      if(!rows.length){ body.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Brak słów do podglądu.</div>'; return; }
+      body.innerHTML='<div class="eylc-prevlist">'+rows.map(function(c){ return '<div class="eylc-prow"><span class="w">'+_eEsc(c.word||'')+'</span><span class="t">'+_eEsc(c.translation||'')+'</span></div>'; }).join('')+'</div>';
+    }catch(e){ if(body) body.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Nie udało się wczytać słów.</div>'; }
   }
 
   // ── Wejście w kategorię → ekran 4 trybów (ten sam co zestawy własne) ──
@@ -1530,7 +1508,7 @@ window.switchMatTab = function(tab){
     _pushRecent({lang:code, level:level, catId:String(catId), catLabel:catLabel||'', ts:Date.now()});
     window._trybStudyLang=code;
     window._trybExternalCards=cards;
-    window._trybExternalName=info.flag+' '+info.label+' · '+level+' · '+(catLabel||'');
+    window._trybExternalName=info.flag+' '+info.label+(level?(' · '+level):'')+' · '+(catLabel||'');
     window._trybSource='eyelingo';
     if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
     if(typeof showPage==='function') showPage('tryb');
@@ -1550,9 +1528,13 @@ window.switchMatTab = function(tab){
       var box=_seg(); if(box) box.style.display='block';
       if(title) title.textContent='Zestawy Eyelingo';
       if(sub) sub.textContent='Program językowy · 14 języków';
-      eylHome();
+      var _sb=document.getElementById('mat-sidebar'); if(_sb) _sb.style.display='none';
+      var _sbt=document.getElementById('mat-sidebar-toggle'); if(_sbt) _sbt.style.display='none';
+      eylBrowse();
     } else {
       setBtn(bMine,true); setBtn(bEyl,false);
+      var _sb=document.getElementById('mat-sidebar'); if(_sb) _sb.style.display='';
+      var _sbt=document.getElementById('mat-sidebar-toggle'); if(_sbt) _sbt.style.display='';
       var box=_seg(); if(box) box.style.display='none';
       var sr=document.getElementById('mat-search'); if(sr) sr.style.display='';
       if(typeof switchMatTab==='function') switchMatTab(window._matTab||'mine');
@@ -1560,7 +1542,7 @@ window.switchMatTab = function(tab){
   };
 
   // Eksport do globalnego scope (wywoływane z inline onclick)
-  window.eylHome=eylHome; window.eylLevels=eylLevels; window.eylCats=eylCats; window.eylOpenCat=eylOpenCat;
+  window.eylBrowse=eylBrowse; window.eylPickLang=eylPickLang; window.eylPickLvl=eylPickLvl; window.eylPreview=eylPreview; window.eylOpenCat=eylOpenCat;
   window.eylReloadProg=function(){ EYLPROG_READY=false; return eylLoadProg(); };
 })();
 </script>
