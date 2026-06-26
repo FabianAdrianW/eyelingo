@@ -315,6 +315,31 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   .st-bar.done i{background:#6aa84f}
   .row.mine{border-left:3px solid var(--navy)}
   .eyl-cat.eyl{border-left:3px solid var(--orange)}
+  .eyl-cat.done{background:#f0f7ec;border-color:#cfe3bf}
+  .catnav{display:flex;flex-direction:column;align-items:center;gap:4px;margin:2px 0 14px}
+  .catnav .pos{font-size:12px;font-weight:600;color:var(--navy)}
+  .catnav .swipehint{font-size:11px;color:var(--dim2)}
+  .set-head{display:flex;align-items:flex-start;gap:12px}
+  .set-eye{flex-shrink:0;width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--navy);display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .set-eye:active{transform:scale(.95)}
+  .br-end{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;flex-direction:column}
+  .br-end-card{width:100%;max-width:360px;text-align:center}
+  .br-end-ico{width:62px;height:62px;border-radius:50%;background:rgba(216,90,48,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+  .br-end-h{font-family:'DM Sans';font-size:20px;font-weight:600;color:var(--navy);margin-bottom:14px}
+  .br-end-pct{margin-bottom:16px}
+  .br-end-bar{height:7px;background:var(--paper2);border-radius:4px;overflow:hidden;margin-bottom:7px}
+  .br-end-bar i{display:block;height:100%;background:var(--orange);border-radius:4px;transition:width .4s}
+  .br-end-bar.done i{background:#6aa84f}
+  .br-end-pct span{font-size:12.5px;color:var(--dim2)}
+  .br-end-rec{font-size:13.5px;color:var(--navy);line-height:1.5;margin-bottom:22px}
+  .br-end-actions{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+  .br-end-btn{width:100%;text-align:left;border-radius:14px;padding:15px 16px;cursor:pointer;font-family:inherit;border:1.5px solid var(--line2);background:#fff;transition:.15s}
+  .br-end-btn.primary{border:none;background:var(--orange);box-shadow:0 7px 20px rgba(216,90,48,.22)}
+  .br-end-btn.primary .t{color:#fff}
+  .br-end-btn.primary .d{color:rgba(255,255,255,.85)}
+  .br-end-btn .t{display:block;font-size:15px;font-weight:600;color:var(--navy);margin-bottom:2px}
+  .br-end-btn .d{display:block;font-size:11.5px;color:var(--dim2)}
+  .br-end-close{background:none;border:none;color:var(--dim2);font-size:13px;font-family:inherit;cursor:pointer;padding:10px;margin-top:2px}
   #set-status{margin:0 0 14px}
   .ss-card{background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:14px 16px}
   .ss-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -404,7 +429,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       <section class="screen" id="s-set">
         <div class="backbar"><button class="back" onclick="setBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> <span id="set-back-label">Moje zestawy</span></button></div>
         <div class="scroll">
-          <div class="set-head"><div class="name" id="set-name"></div><div class="meta" id="set-meta"></div></div>
+          <div class="set-head"><div style="flex:1;min-width:0"><div class="name" id="set-name"></div><div class="meta" id="set-meta"></div></div><button class="set-eye" onclick="previewCurrent()" aria-label="Podgląd słów"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
           <div style="height:14px"></div>
           <div id="set-status"></div>
           <div id="eyl-catnav" style="display:none"></div>
@@ -522,6 +547,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       <div class="flip-count" id="br-count">—</div>
       <button class="nav-arrow" id="br-next" onclick="brNav(1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
     </div>
+    <div class="br-end" id="br-end" style="display:none"></div>
   </div>
 
   <!-- IMMERSIVE: POWTÓRKI SM-2 (real) -->
@@ -720,11 +746,9 @@ async function renderSetStatus(){
     var idx=-1; for(var i=0;i<window._eylNavList.length;i++){ if(String(window._eylNavList[i].id)===String(catId)){ idx=i; break; } }
     if(idx>=0){
       var prev=idx>0, next=idx<window._eylNavList.length-1;
-      nav.innerHTML=''
-        +'<button '+(prev?'':'disabled')+' onclick="eylJump(-1)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>Poprzednia</button>'
-        +'<span class="pos">'+(idx+1)+' / '+window._eylNavList.length+'</span>'
-        +'<button '+(next?'':'disabled')+' onclick="eylJump(1)">Nast\u0119pna<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>';
-      nav.style.display='flex';
+      nav.innerHTML='<div class="catnav"><span class="pos">'+(idx+1)+' / '+window._eylNavList.length+'</span>'
+        +'<span class="swipehint">'+(prev?'\u2039 ':'')+'przesu\u0144 palcem, aby zmieni\u0107 kategori\u0119'+(next?' \u203a':'')+'</span></div>';
+      nav.style.display='block';
     }
   }
 }
@@ -736,6 +760,18 @@ function eylJump(delta){
   var c=list[n];
   eylOpenCat(window._eylNavLang||curSetLang, window._eylNavLevel||null, c.id, c.label||'Kategoria');
 }
+(function(){
+  var el=document.getElementById('s-set'); if(!el) return;
+  var sc=el.querySelector('.scroll')||el; var x0=null,y0=null;
+  sc.addEventListener('touchstart',function(e){ if(e.touches.length!==1){x0=null;return;} x0=e.touches[0].clientX; y0=e.touches[0].clientY; },{passive:true});
+  sc.addEventListener('touchend',function(e){
+    if(x0==null) return; var t=e.changedTouches[0]; var dx=t.clientX-x0, dy=t.clientY-y0; x0=null;
+    if(curSetKind!=='eyelingo') return;
+    if(!Array.isArray(window._eylNavList)||!window._eylNavList.length) return;
+    if(Math.abs(dx)<60 || Math.abs(dx)<Math.abs(dy)*1.4) return;
+    if(dx<0) eylJump(1); else eylJump(-1);
+  },{passive:true});
+})();
 async function markKnownBulk(cards, lang){
   if(!UID||!cards||!cards.length) return 0;
   var iv=60, nr=new Date(Date.now()+iv*86400000).toISOString().slice(0,10);
@@ -777,9 +813,57 @@ async function brGrade(q){
   }catch(e){}
   _brGraded++;
   if(bi<CARDS.length-1){ bi++; renderCard(); }
-  else { brShowGrades(false); var h=document.getElementById('br-hint'); if(h) h.textContent='Koniec zestawu \u2014 oceniono '+_brGraded+'. Post\u0119p zapisany.'; }
+  else { try{ brShowEnd(); }catch(e){ brShowGrades(false); } }
 }
+function previewCurrent(){
+  if(curSetKind==='eyelingo'){ var catId=String(curSetId).split(':')[2]; previewCat(curSetLang, catId, curSetName); }
+  else { previewSet(curSetId, curSetName, curSetLang); }
+}
+function _brResetEndUI(){
+  var el=document.getElementById('br-end'); if(el){ el.style.display='none'; el.innerHTML=''; }
+  var st=document.getElementById('br-stage'); if(st) st.style.display='';
+  var h=document.getElementById('br-hint'); if(h) h.style.display='';
+  var fn=document.querySelector('#imm-browse .flip-nav'); if(fn) fn.style.display='';
+}
+function brShowEnd(){
+  var a=aggKeys(keysOf(CARDS||[])); var pct=a.pct;
+  var isEyl=(curSetKind==='eyelingo'); var hasNext=false;
+  if(isEyl && Array.isArray(window._eylNavList)){
+    var catId=String(curSetId).split(':')[2], idx=-1;
+    for(var i=0;i<window._eylNavList.length;i++){ if(String(window._eylNavList[i].id)===String(catId)){ idx=i; break; } }
+    hasNext=(idx>=0 && idx<window._eylNavList.length-1);
+  }
+  var zone = pct<75?'lex':(pct>=90?'next':'mid');
+  var rec = pct<75 ? 'Materia\u0142 jeszcze nie jest pewny \u2014 utrwal go z Lexem, zanim p\u00f3jdziesz dalej.'
+          : (pct>=90 ? '\u015awietnie \u2014 ten materia\u0142 masz opanowany. Czas na kolejny.'
+          : 'Materia\u0142 w wi\u0119kszo\u015bci znasz. Mo\u017cesz i\u015b\u0107 dalej albo dla pewno\u015bci utrwali\u0107 z Lexem.');
+  var lexPrimary=(zone==='lex'), nextPrimary=(zone==='next');
+  function btn(primary, onclick, title, sub){
+    return '<button class="br-end-btn '+(primary?'primary':'ghost')+'" onclick="'+onclick+'"><span class="t">'+title+'</span>'+(sub?'<span class="d">'+sub+'</span>':'')+'</button>';
+  }
+  var lexBtn=btn(lexPrimary,'brStartLex()','Lekcja z Lexem','Utrwal ten materia\u0142 kontekstowo');
+  var nextBtn=hasNext ? btn(nextPrimary,'brNextCat()','Nast\u0119pna kategoria \u2192','Przegl\u0105daj kolejny temat')
+                      : btn(false,'brClose()','Wr\u00f3\u0107 do zestawu','');
+  var body=lexPrimary ? (lexBtn+nextBtn) : (nextBtn+lexBtn);
+  var el=document.getElementById('br-end'); if(!el) return;
+  el.innerHTML='<div class="br-end-card">'
+    +'<div class="br-end-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.7"><path d="M20 6L9 17l-5-5"/></svg></div>'
+    +'<div class="br-end-h">Koniec talii</div>'
+    +'<div class="br-end-pct"><div class="br-end-bar'+(a.status==='done'?' done':'')+'"><i style="width:'+Math.max(pct,(a.touched?6:0))+'%"></i></div><span>Opanowane '+pct+'% tego materia\u0142u</span></div>'
+    +'<div class="br-end-rec">'+rec+'</div>'
+    +'<div class="br-end-actions">'+body+'</div>'
+    +'<button class="br-end-close" onclick="brClose()">Zamknij</button>'
+    +'</div>';
+  var st=document.getElementById('br-stage'); if(st) st.style.display='none';
+  var h=document.getElementById('br-hint'); if(h) h.style.display='none';
+  brShowGrades(false);
+  var fn=document.querySelector('#imm-browse .flip-nav'); if(fn) fn.style.display='none';
+  el.style.display='flex';
+}
+function brStartLex(){ _brResetEndUI(); closeImm('imm-browse'); if(typeof lexStart==='function') lexStart(); }
+function brNextCat(){ _brResetEndUI(); closeImm('imm-browse'); window._brAutoBrowse=true; eylJump(1); }
 function brClose(){
+  try{ _brResetEndUI(); }catch(e){}
   closeImm('imm-browse');
   loadProg().then(function(){ try{ if(document.getElementById('s-set').classList.contains('active')) renderSetStatus(); }catch(e){} try{homeRefresh();}catch(e){} try{refreshDueBadge();}catch(e){} });
 }
@@ -811,7 +895,7 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replac
 /* ===== Zestaw ===== */
 let curSetId=null, curSetName='', curSetCount=0, curSetLang='en';
 let curSetKind='set', _eylCards=[];
-function setBack(){ if(curSetKind==='eyelingo'){ go('eyelingo'); } else { go('mine'); } }
+function setBack(){ if(curSetKind==='eyelingo'){ go('eyelingo'); if(typeof eylRenderBrowse==='function') eylRenderBrowse(); } else { go('mine'); } }
 function openSet(id,name,count,lang){
   curSetKind='set'; curSetId=id; curSetName=name; curSetCount=count; curSetLang=lang||'en';
   var bl=document.getElementById('set-back-label'); if(bl) bl.textContent='Moje zestawy';
@@ -857,6 +941,7 @@ function toggleDir(inBrowse){
 /* ===== Przeglądanie / flip (REAL) ===== */
 let CARDS=[], bi=0, flipped=false;
 async function openBrowse(){
+  try{ _brResetEndUI(); }catch(e){}
   document.getElementById('br-title').textContent=curSetName;
   document.getElementById('imm-browse').classList.add('active');
   var stage=document.getElementById('br-stage');
@@ -1713,6 +1798,7 @@ async function eylRenderBrowse(){
   var known=Object.keys(LEX_LANGS);
   langs.sort(function(a,bb){ var ia=known.indexOf(a), ib=known.indexOf(bb); if(ia<0&&ib<0) return a.localeCompare(bb); if(ia<0) return 1; if(ib<0) return -1; return ia-ib; });
   if(langs.indexOf(_eylState.lang)<0) _eylState.lang=langs[0]||'en';
+  if(!PROG_READY) await loadProg();
   var cats=await _eylLoadCats(_eylState.lang);
   var present={}; cats.forEach(function(c){ (c.allLevels||[]).forEach(function(l){present[l]=1;}); if(c.level) present[c.level]=1; });
   var levels=EYL_LEVELS_ORD.filter(function(l){return present[l];});
@@ -1730,7 +1816,7 @@ async function eylRenderBrowse(){
     var a=aggKeys(c.keys||[]);
     var sub=(c.level?esc(c.level)+' \u00b7 ':'')+c.count+' '+plural(c.count,'s\u0142owo','s\u0142owa','s\u0142\u00f3w');
     var lvlArg=_eylState.level?('\''+_eylState.level+'\''):'null';
-    return '<div class="eyl-cat eyl" data-nm="'+nm+'" onclick="eylOpenCat(\''+esc(_eylState.lang)+'\','+lvlArg+','+c.id+',this.getAttribute(\'data-nm\'))">'
+    return '<div class="eyl-cat eyl'+(a.status==='done'?' done':'')+'" data-nm="'+nm+'" onclick="eylOpenCat(\''+esc(_eylState.lang)+'\','+lvlArg+','+c.id+',this.getAttribute(\'data-nm\'))">'
       +'<span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></span>'
       +'<span class="bd"><span class="lb">'+nm+'</span><span class="mt">'+sub+' '+pillHtml(a)+'</span>'+barHtml(a)+'</span>'
       +'<button class="row-eye" aria-label="Podgl\u0105d s\u0142\u00f3w" onclick="event.stopPropagation();previewCat(\''+esc(_eylState.lang)+'\','+c.id+',this.parentNode.getAttribute(\'data-nm\'))"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
@@ -1782,6 +1868,7 @@ async function eylOpenCat(lang,lvl,catId,catName){
     document.getElementById('set-meta').textContent=curSetCount+' '+plural(curSetCount,'fiszka','fiszki','fiszek')+' \u00b7 '+eylLangFlag(lang)+' '+eylLangLabel(lang)+(lvl?' \u00b7 '+lvl:'');
     if(b) b.innerHTML=prev;
     go('set'); try{ renderSetStatus(); }catch(e){}
+    if(window._brAutoBrowse){ window._brAutoBrowse=false; setTimeout(function(){ try{ openBrowse(); }catch(e){} }, 80); }
   }catch(e){ if(b) b.innerHTML=prev; alert('Nie uda\u0142o si\u0119 wczyta\u0107 fiszek. Spr\u00f3buj ponownie.'); }
 }
 
