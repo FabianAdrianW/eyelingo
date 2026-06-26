@@ -275,6 +275,15 @@
   .pw-g .ph{font-size:10.5px;font-weight:500;opacity:.85}
   .pw-g.q1{background:#A32D2D}.pw-g.q2{background:#c07f24}.pw-g.q3{background:#3b7d3b}.pw-g.q4{background:#2b6cb0}
   .pw-hint{text-align:center;font-size:12.5px;color:var(--dim2);padding:6px 22px 2px}
+  /* ── Swipe affordance (zmiana kategorii) ── */
+  @keyframes eylNudge{0%{transform:translateX(0)}18%{transform:translateX(-10px)}36%{transform:translateX(7px)}54%{transform:translateX(-4px)}72%{transform:translateX(2px)}100%{transform:translateX(0)}}
+  @keyframes eylChev{0%,100%{opacity:.4;transform:translateX(0)}50%{opacity:1;transform:translateX(3px)}}
+  .eyl-swipe-cue{display:flex;align-items:center;justify-content:center;gap:9px;margin-top:11px;padding:9px 16px;background:#fff5ec;border:1px solid #ffe1c6;border-radius:24px;font-size:12px;font-weight:600;color:var(--orange)}
+  .eyl-swipe-cue svg{animation:eylChev 1.3s ease-in-out infinite}
+  .eyl-swipe-cue svg.l{animation-direction:reverse}
+  .eyl-nudge{animation:eylNudge .62s cubic-bezier(.36,.07,.19,.97) 1}
+  .eyl-slideout-l{transition:transform .16s ease,opacity .16s ease;transform:translateX(-46px);opacity:.15}
+  .eyl-slideout-r{transition:transform .16s ease,opacity .16s ease;transform:translateX(46px);opacity:.15}
 </style>
 <style>@keyframes eyelingo-ring-spin{to{transform:rotate(360deg)}}</style>
 <script>
@@ -656,12 +665,23 @@ async function loadProg(){
   }catch(e){}
   PROG_READY=true;
 }
-function progState(key){ var p=PROG[key]; if(!p) return 'new'; if(p.r>=MASTER_REPS && p.iv>=MASTER_IV) return 'done'; return 'prog'; }
+/* Siła słowa 0–100 (model ciągły, WSPÓLNY z index.html — identyczna formuła = identyczny % na app i web).
+   Czytana wyłącznie z srs_progress (reps, iv) → bez migracji schematu. Każda interakcja widocznie rusza pasek. */
+var MASTER_STR=85; // próg „opanowane” (zielone)
+function srsStrength(reps, iv){
+  reps=+reps||0; iv=+iv||0; if(reps<=0) return 0;
+  var base = reps>=5?92 : reps>=4?85 : reps>=3?70 : reps>=2?50 : 30;
+  var mat = Math.max(0, Math.min(1,(iv-1)/20));         // dojrzałość: 0 przy iv≤1, pełna przy iv≥21
+  return Math.round(Math.max(0, Math.min(100, base + (100-base)*mat)));
+}
+function strengthTier(s){ return s<=0?'new':(s<41?'recog':(s<MASTER_STR?'prog':(s<100?'near':'done'))); }
+function tierLabel(t){ return ({'new':'Nowe','recog':'Rozpoznane','prog':'W toku','near':'Prawie','done':'Opanowane'})[t]||''; }
+function progState(key){ var p=PROG[key]; if(!p) return 'new'; var s=srsStrength(p.r,p.iv); return s<=0?'new':(s>=MASTER_STR?'done':'prog'); }
 function keysOf(cards){ return (cards||[]).filter(function(c){return c.word||c.translation;}).map(function(c){return _usrsCK(c.word||'',c.translation||'');}); }
 function aggKeys(keys){
-  keys=keys||[]; var total=keys.length,touched=0,mastered=0;
-  for(var i=0;i<keys.length;i++){ var st=progState(keys[i]); if(st!=='new'){ touched++; if(st==='done') mastered++; } }
-  var pct=total?Math.round(mastered/total*100):0;
+  keys=keys||[]; var total=keys.length,touched=0,mastered=0,sum=0;
+  for(var i=0;i<keys.length;i++){ var p=PROG[keys[i]]; var s=p?srsStrength(p.r,p.iv):0; if(s>0) touched++; if(s>=MASTER_STR) mastered++; sum+=s; }
+  var pct=total?Math.round(sum/total):0;                // % = ŚREDNIA siła (nie % w pełni dojrzałych) → praca zawsze rusza pasek
   var status=total===0?'empty':(mastered===total?'done':(touched>0?'prog':'new'));
   return {total:total,touched:touched,mastered:mastered,pct:pct,status:status};
 }
@@ -746,9 +766,10 @@ async function renderSetStatus(){
     var idx=-1; for(var i=0;i<window._eylNavList.length;i++){ if(String(window._eylNavList[i].id)===String(catId)){ idx=i; break; } }
     if(idx>=0){
       var prev=idx>0, next=idx<window._eylNavList.length-1;
-      nav.innerHTML='<div class="catnav"><span class="pos">'+(idx+1)+' / '+window._eylNavList.length+'</span>'
-        +'<span class="swipehint">'+(prev?'\u2039 ':'')+'przesu\u0144 palcem, aby zmieni\u0107 kategori\u0119'+(next?' \u203a':'')+'</span></div>';
+      nav.innerHTML='<div class="catnav"><span class="pos">'+(idx+1)+' / '+window._eylNavList.length+'</span></div>'
+        +'<div class="eyl-swipe-cue">'+(prev?'<svg class="l" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 18l-6-6 6-6"/></svg>':'')+'Przesu\u0144, aby zmieni\u0107 temat'+(next?'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6l6 6-6 6"/></svg>':'')+'</div>';
       nav.style.display='block';
+      try{ var _scN=document.querySelector('#s-set .scroll'); if(_scN){ _scN.classList.remove('eyl-nudge'); void _scN.offsetWidth; _scN.classList.add('eyl-nudge'); } }catch(e){}
     }
   }
 }
@@ -758,7 +779,9 @@ function eylJump(delta){
   for(var i=0;i<list.length;i++){ if(String(list[i].id)===String(catId)){ idx=i; break; } }
   var n=idx+delta; if(n<0||n>=list.length) return;
   var c=list[n];
-  eylOpenCat(window._eylNavLang||curSetLang, window._eylNavLevel||null, c.id, c.label||'Kategoria');
+  if(navigator.vibrate) navigator.vibrate(9);
+  try{ var sc=document.querySelector('#s-set .scroll'); if(sc) sc.classList.add(delta>0?'eyl-slideout-l':'eyl-slideout-r'); }catch(e){}
+  setTimeout(function(){ eylOpenCat(window._eylNavLang||curSetLang, window._eylNavLevel||null, c.id, c.label||'Kategoria'); }, 150);
 }
 (function(){
   var el=document.getElementById('s-set'); if(!el) return;
@@ -803,13 +826,31 @@ function brShowGrades(show){
   var g=document.getElementById('br-grades'); if(g) g.style.display=show?'grid':'none';
   var h=document.getElementById('br-hint'); if(h) h.textContent=show?'Jak Ci posz\u0142o? Ocena zapisze post\u0119p.':'Dotknij kart\u0119, aby zobaczy\u0107 t\u0142umaczenie i oceni\u0107.';
 }
+// Przeglądaj = SAMOOCENA (deklaracja), nie test → zapis deterministyczny do stałego pułapu siły.
+// Nie→0% (przeucz), Prawie→~34%, Wiem→~80%, Łatwe→100% (zielone). Odstęp powtórki dobrany do pułapu.
+var BR_TIERS={1:{r:0,iv:1},2:{r:1,iv:2},3:{r:3,iv:7},4:{r:5,iv:45}};
+async function srsDeclare(word,translation,q,opts){
+  if(!word||!UID) return null; opts=opts||{};
+  var t=BR_TIERS[q]||BR_TIERS[3];
+  var ck=opts.card_key||_usrsCK(word,translation);
+  var fc=(opts.flashcard_id!=null?opts.flashcard_id:null);
+  var nr=new Date(Date.now()+t.iv*86400000).toISOString().slice(0,10);
+  try{
+    await db.from('srs_progress').upsert({
+      user_id:UID, card_key:ck, word:word, translation:translation||'', lang:(opts.lang||curSetLang||'en'),
+      source:(fc!=null?'eyelingo':'custom'), flashcard_id:fc,
+      ease_factor:2.5, repetitions:t.r, interval_days:t.iv, next_review:nr
+    },{onConflict:'user_id,card_key'});
+  }catch(e){}
+  PROG[ck]={r:t.r,iv:t.iv,due:false};
+  return {repetitions:t.r,interval_days:t.iv};
+}
 async function brGrade(q){
   var c=CARDS[bi]; if(!c) return;
-  if(navigator.vibrate) navigator.vibrate(6);
+  if(navigator.vibrate) navigator.vibrate(q>=3?[5,18,8]:6);
   try{
     var ck=_usrsCK(c.word||'',c.translation||'');
-    var ns=await srsUpsertCanon(c.word||'', c.translation||'', q, {lang:curSetLang, flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null), card_key:ck});
-    if(ns) PROG[ck]={r:ns.repetitions,iv:ns.interval_days,due:false};
+    await srsDeclare(c.word||'', c.translation||'', q, {lang:curSetLang, flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null), card_key:ck});
   }catch(e){}
   _brGraded++;
   if(bi<CARDS.length-1){ bi++; renderCard(); }
@@ -1161,6 +1202,8 @@ async function lexGenSimple(focus, dueWords){
 /* ── generator porcji (port lexxGeneratePortion) ── */
 let _lexData=null, _lexDone=[], _lexStep=-1, _lexSculpt={}, _lexGapN={}, _lexSweepPool=[], _lexVocab=[];
 let _lexPortionNum=0, _lexPortionTarget=5;
+var LEX_STAGE_PORTIONS=3;            // ~12 słów na etap; po etapie = checkpoint
+var _lexStartStr={};                 // card_key → siła na start lekcji (raport końcowy)
 
 async function lexGeneratePortion(){
   try{ lexSaveCheckpoint(lexCheckpointSnap()); }catch(e){}
@@ -1232,17 +1275,19 @@ async function lexStart(){
   if(!lexSourceWords.length){ lexError('Ten zestaw nie ma jeszcze słów do utrwalania.'); return; }
   _lexPortionNum=0; _lexShapeS={lastShape:null,recog:0,total:0}; _lexSweepPool=[]; _lexVocab=[]; _lexSweepDone=false; _lexReflectionDone=false;
   try{ lexBoardReset(); lexBoardFabShow(true); lexBoardRender(); }catch(e){}
-  var _eff=lexSourceWords.length;
+  var _fam={}, _famIv={};
   try{
     if(typeof UID!=='undefined' && UID){
-      var _sr=await db.from('srs_progress').select('word,repetitions').eq('user_id',UID).eq('lang',(_lexLang||curSetLang||'en')).limit(3000);
-      var _fam={}; ((_sr&&_sr.data)||[]).forEach(function(r){ var w=String(r.word||'').toLowerCase().trim(); if(w) _fam[w]=Math.max(_fam[w]||0,(r.repetitions!=null?r.repetitions:0)); });
-      var _W=[1,0.85,0.65,0.45,0.3]; _eff=0;
-      lexSourceWords.forEach(function(pw){ var w=String((pw&&pw.word)||'').toLowerCase().trim(); var rp=(w in _fam)?_fam[w]:0; _eff += (rp<=0?1:(rp>=5?0.15:(_W[rp]!=null?_W[rp]:0.3))); });
+      var _sr=await db.from('srs_progress').select('word,repetitions,interval_days').eq('user_id',UID).eq('lang',(_lexLang||curSetLang||'en')).limit(3000);
+      ((_sr&&_sr.data)||[]).forEach(function(r){ var w=String(r.word||'').toLowerCase().trim(); if(!w) return; _fam[w]=Math.max(_fam[w]||0,(r.repetitions!=null?r.repetitions:0)); _famIv[w]=Math.max(_famIv[w]||0,(r.interval_days!=null?r.interval_days:0)); });
     }
   }catch(e){}
-  var base=Math.ceil((_eff||lexSourceWords.length)/4); // świeże słowa → dłuższa lekcja; znane → krótsza
-  _lexPortionTarget=Math.min(15, Math.max(2, base));
+  // Najsłabsze/nieznane słowa PIERWSZE → najważniejszy materiał w pierwszych etapach (gdyby ktoś przerwał wcześnie)
+  try{ lexSourceWords.sort(function(a,b){ var ra=_fam[String((a&&a.word)||'').toLowerCase().trim()]||0, rb=_fam[String((b&&b.word)||'').toLowerCase().trim()]||0; return ra-rb; }); }catch(e){}
+  // Migawka siły NA START → raport „co poszło do przodu” po lekcji
+  _lexStartStr={}; try{ lexSourceWords.forEach(function(pw){ var w=String((pw&&pw.word)||'').toLowerCase().trim(); if(!w) return; _lexStartStr[_usrsCK(pw.word||'',pw.translation||'')]=srsStrength(_fam[w]||0,_famIv[w]||0); }); }catch(e){}
+  // PEŁNA KATEGORIA = JEDNA LEKCJA: pokrywamy WSZYSTKIE słowa (4/porcję), bez capa. Lekcja dzielona na etapy z checkpointami.
+  _lexPortionTarget=Math.max(2, Math.ceil(lexSourceWords.length/4));
   await lexGeneratePortion();
 }
 
@@ -1341,11 +1386,12 @@ async function resumeLesson(snap){
   }catch(e){ lexSourceWords=[]; }
   if(!lexSourceWords.length){ lexError('Nie udało się wczytać słów tego zestawu.'); return; }
   _lexPortionNum=snap.portionNum||0;
-  _lexPortionTarget=snap.portionTarget||Math.min(15,Math.max(2,Math.ceil(lexSourceWords.length/4)));
+  _lexPortionTarget=snap.portionTarget||Math.max(2,Math.ceil(lexSourceWords.length/4));
   _lexVocab=Array.isArray(snap.vocab)?snap.vocab:[];
   _lexSweepPool=Array.isArray(snap.sweepPool)?snap.sweepPool:[];
   _lexShapeS=snap.shapeS||{lastShape:null,recog:0,total:0};
   _lexSweepDone=!!snap.sweepDone; _lexReflectionDone=!!snap.reflectionDone;
+  _lexStartStr={}; try{ lexSourceWords.forEach(function(pw){ var ck=_usrsCK(pw.word||'',pw.translation||''); var p=PROG[ck]; _lexStartStr[ck]=p?srsStrength(p.r,p.iv):0; }); }catch(e){}
   try{ lexBoardReset(); lexBoardFabShow(true); lexBoardRender(); }catch(e){}
   await lexGeneratePortion();
 }
@@ -1652,13 +1698,37 @@ window.lexxCheck=async function(i){
 let _lexSweepDone=false, _lexReflectionDone=false, _lexSweepItems=[], _lexSweepIdx=0;
 window.lexMarkSweepWrong=function(ex){ (_lexSweepPool||[]).forEach(function(p){ if(p.sentence===ex.sentence) p.wrong=true; }); };
 function lexSweepItemsList(){ var pool=(_lexSweepPool||[]).slice(); var seen={}, out=[]; pool.sort(function(a,b){ return (b.wrong?1:0)-(a.wrong?1:0) || (a.portion-b.portion); }); pool.forEach(function(p){ var k=lexNormEx(p.answer); if(!seen[k]){ seen[k]=1; out.push(p); } }); return out.slice(0,4); }
+function lexCurStage(){ return Math.floor((_lexPortionNum-1)/LEX_STAGE_PORTIONS)+1; }
+function lexStagesTotal(){ return Math.max(1, Math.ceil(_lexPortionTarget/LEX_STAGE_PORTIONS)); }
 function lexNext(){
   try{speechSynthesis.cancel();}catch(e){}
   if(_lexPortionNum>=_lexPortionTarget){
     if(!_lexSweepDone && lexSweepItemsList().length>=2){ lexRenderSweep(); return; }
     lexFinish(); return;
   }
+  // Koniec etapu (ale nie koniec lekcji) → checkpoint
+  if(_lexPortionNum % LEX_STAGE_PORTIONS === 0){ lexStageCheckpoint(); return; }
   lexLoading('Lex układa następną porcję…'); lexGeneratePortion();
+}
+window.lexContinueStage=function(){ lexLoading('Lex układa następny etap…'); lexGeneratePortion(); };
+function lexStageCheckpoint(){
+  try{ lexSaveCheckpoint(lexCheckpointSnap()); }catch(e){}
+  if(navigator.vibrate) navigator.vibrate([6,30,6]);
+  var w=document.getElementById('lex-stage'); if(!w){ window.lexContinueStage(); return; }
+  var done=lexCurStage(), tot=lexStagesTotal();
+  var covered=Math.min(lexSourceWords.length, _lexPortionNum*4), total=lexSourceWords.length;
+  var pct=Math.round(_lexPortionNum/_lexPortionTarget*100);
+  var pf=document.getElementById('lex-portionfill'); if(pf) pf.style.width=pct+'%';
+  w.innerHTML='<div class="lexx-stage"><div style="text-align:center;padding:22px 8px;max-width:340px;margin:0 auto">'
+    +'<div style="width:62px;height:62px;border-radius:18px;background:#fff5ec;display:flex;align-items:center;justify-content:center;margin:0 auto 16px"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg></div>'
+    +'<div style="font-size:10.5px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--orange);margin-bottom:8px">Checkpoint · etap '+done+' z '+tot+'</div>'
+    +'<div style="font-size:21px;font-weight:600;color:var(--navy);margin-bottom:8px">Etap zaliczony</div>'
+    +'<div style="font-size:13.5px;line-height:1.5;color:var(--dim2);margin-bottom:16px">Przerobiłeś <strong style="color:var(--navy)">'+covered+'</strong> z '+total+' słów tej kategorii. Postęp zapisany — zrób przerwę albo leć dalej.</div>'
+    +'<div style="height:7px;background:var(--line2,#eee);border-radius:4px;overflow:hidden;margin:0 0 4px"><i style="display:block;height:100%;width:'+Math.max(6,pct)+'%;background:var(--orange);border-radius:4px;transition:width .5s"></i></div>'
+    +'<div style="font-size:11px;color:var(--dim2);margin-bottom:18px">'+pct+'% kategorii</div>'
+    +'<button class="lexx-next" onclick="lexContinueStage()">Następny etap →</button>'
+    +'<button onclick="closeImm(\'imm-lex\');go(\'ucz\')" style="background:transparent;border:none;color:var(--dim2);text-decoration:underline;font-size:12.5px;margin-top:12px;cursor:pointer">Przerwij — zapisano</button>'
+    +'</div></div>';
 }
 function lexRenderSweep(){
   _lexSweepItems=lexSweepItemsList(); _lexSweepIdx=0; lexProgressBar();
@@ -1716,15 +1786,52 @@ window.lexReflectSubmit=async function(){
   var fb=document.getElementById('lexx-reflect-fb'); if(fb){ fb.className='lexx-fb ok'; fb.style.display='block'; fb.innerHTML=esc(feedback); }
   if(btn){ btn.textContent='Zakończ lekcję'; btn.disabled=false; btn.onclick=function(){ _lexReflectionDone=true; lexEndLesson(); }; }
 };
-function lexEndLesson(){
+async function lexEndLesson(){
   try{speechSynthesis.cancel();}catch(e){}
   try{ lexBoardFabShow(false); }catch(e){}
   try{ lexClearCheckpoint(); }catch(e){}
   var pf=document.getElementById('lex-portionfill'); if(pf) pf.style.width='100%';
-  var w=document.getElementById('lex-stage'); if(w) w.innerHTML='<div class="lexx-stage"><div style="text-align:center;padding:30px 10px"><div style="font-size:10.5px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2);margin-bottom:14px">Lekcja zakończona</div>'
-    +'<div class="lexx-card" style="text-align:left"><div class="lexx-who">Lex</div><div class="lexx-say">Dobra robota. Te słowa wróciły do Ciebie z pamięci — i o to chodziło. Postęp zapisałem do powtórek.</div></div>'
-    +'<button class="lexx-next" onclick="closeImm(\'imm-lex\');go(\'ucz\')" style="margin-top:18px">Gotowe</button></div></div>';
+  var w=document.getElementById('lex-stage'); if(!w) return;
+  w.innerHTML='<div class="lexx-loading">'+eyelingoSpinner(56)+'<div>Podsumowuj\u0119 post\u0119p\u2026</div></div>';
+  var moved=[];
+  try{
+    var keys=(lexSourceWords||[]).map(function(c){return _usrsCK(c.word||'',c.translation||'');});
+    var nowStr={};
+    if(typeof UID!=='undefined' && UID && keys.length){
+      for(var off=0; off<keys.length; off+=200){
+        var chunk=keys.slice(off,off+200);
+        var r=await db.from('srs_progress').select('card_key,repetitions,interval_days').eq('user_id',UID).in('card_key',chunk);
+        ((r&&r.data)||[]).forEach(function(x){ if(x.card_key) nowStr[x.card_key]=srsStrength(x.repetitions,x.interval_days); });
+      }
+    }
+    (lexSourceWords||[]).forEach(function(c){
+      var ck=_usrsCK(c.word||'',c.translation||'');
+      var before=(_lexStartStr&&_lexStartStr[ck]!=null)?_lexStartStr[ck]:0;
+      var after=(nowStr[ck]!=null)?nowStr[ck]:before;
+      if(after>before) moved.push({word:c.word||'',translation:c.translation||'',before:before,after:after,tier:strengthTier(after)});
+    });
+    moved.sort(function(a,b){ return (b.after-b.before)-(a.after-a.before); });
+  }catch(e){}
+  var head='<div class="lexx-stage"><div style="padding:18px 4px 8px"><div style="font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2);text-align:center;margin-bottom:14px">Lekcja zako\u0144czona</div>'
+    +'<div class="lexx-card" style="text-align:left"><div class="lexx-who">Lex</div><div class="lexx-say">Dobra robota. Post\u0119p zapisa\u0142em do powt\u00f3rek \u2014 oto co ruszy\u0142o do przodu.</div></div>';
+  var listHtml='';
+  if(moved.length){
+    var rows=moved.slice(0,14).map(function(mv){
+      var col=mv.tier==='done'?'#3b7d3b':(mv.tier==='near'?'#c6781f':'var(--orange)');
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#fff;border:1px solid var(--border2,#eee);border-radius:12px;margin-bottom:7px">'
+        +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(mv.word)+'</div>'
+        +(mv.translation?('<div style="font-size:11.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(mv.translation)+'</div>'):'')+'</div>'
+        +'<div style="text-align:right;flex-shrink:0"><div style="font-size:13px;font-weight:700;color:'+col+'">'+mv.before+'% \u2192 '+mv.after+'%</div>'
+        +'<div style="font-size:10px;color:var(--dim2)">'+tierLabel(mv.tier)+'</div></div></div>';
+    }).join('');
+    var more=moved.length>14?('<div style="text-align:center;font-size:11.5px;color:var(--dim2);margin-top:4px">\u2026i jeszcze '+(moved.length-14)+'</div>'):'';
+    listHtml='<div style="margin-top:14px"><div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:9px">Co posz\u0142o do przodu ('+moved.length+')</div>'+rows+more+'</div>';
+  } else {
+    listHtml='<div style="margin-top:14px;text-align:center;font-size:13px;color:var(--dim2)">Te s\u0142owa ju\u017c by\u0142y mocne \u2014 od\u015bwie\u017cy\u0142e\u015b je i utrzymuj\u0105 poziom.</div>';
+  }
+  w.innerHTML=head+listHtml+'<button class="lexx-next" onclick="closeImm(\'imm-lex\');go(\'ucz\')" style="margin-top:18px">Gotowe</button></div></div>';
 }
+
 function lexLoading(msg){ var s=document.getElementById('lex-stage'); if(s) s.innerHTML='<div class="lexx-loading">'+eyelingoSpinner(64)+'<div>'+esc(msg)+'</div></div>'; }
 function lexError(msg){ var s=document.getElementById('lex-stage'); if(s) s.innerHTML='<div class="lexx-loading"><div class="h2" style="color:var(--navy)">Coś poszło nie tak</div><div class="sub">'+esc(msg)+'</div><button class="lexx-next" onclick="closeImm(\'imm-lex\')" style="margin-top:16px">Zamknij</button></div>'; }
 
@@ -1811,7 +1918,7 @@ async function eylRenderBrowse(){
     html+='<div class="eyl-flabel">Poziom</div><div class="eyl-chiprow"><button class="eyl-chip'+(!_eylState.level?' on':'')+'" onclick="eylPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eyl-chip'+(_eylState.level===lv?' on':'')+'" onclick="eylPickLvl(\''+lv+'\')">'+lv+'</button>'; }).join('')+'</div>';
   }
   if(!list.length){ html+='<div class="empty" style="margin-top:20px"><div class="h2">Brak kategorii</div><div class="sub">Na tym poziomie nie ma jeszcze zestawów.</div></div>'; b.innerHTML=html; return; }
-  html+='<div class="eyl-catlist">'+list.map(function(c){
+  function _eylCatCard(c){
     var nm=esc(c.label||'Kategoria');
     var a=aggKeys(c.keys||[]);
     var sub=(c.level?esc(c.level)+' \u00b7 ':'')+c.count+' '+plural(c.count,'s\u0142owo','s\u0142owa','s\u0142\u00f3w');
@@ -1821,9 +1928,29 @@ async function eylRenderBrowse(){
       +'<span class="bd"><span class="lb">'+nm+'</span><span class="mt">'+sub+' '+pillHtml(a)+'</span>'+barHtml(a)+'</span>'
       +'<button class="row-eye" aria-label="Podgl\u0105d s\u0142\u00f3w" onclick="event.stopPropagation();previewCat(\''+esc(_eylState.lang)+'\','+c.id+',this.parentNode.getAttribute(\'data-nm\'))"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
       +'</div>';
-  }).join('')+'</div>';
+  }
+  var activeC=[], doneC=[];
+  list.forEach(function(c){ (aggKeys(c.keys||[]).status==='done'?doneC:activeC).push(c); });
+  if(activeC.length){ html+='<div class="eyl-catlist">'+activeC.map(_eylCatCard).join('')+'</div>'; }
+  else if(doneC.length){ html+='<div class="empty" style="margin-top:18px;padding:18px 14px"><div class="h2" style="font-size:15px">Wszystko przerobione \u2713</div><div class="sub">Ca\u0142y materia\u0142 na tym poziomie masz opanowany. Zajrzyj ni\u017cej, by powt\u00f3rzy\u0107.</div></div>'; }
+  if(doneC.length){
+    var dOpen=!!window._eylDoneOpen;
+    html+='<div class="eyl-doneacc" style="margin-top:16px">'
+      +'<button class="eyl-doneacc-h" onclick="eylToggleDone()" style="width:100%;display:flex;align-items:center;gap:9px;background:#f4f7f2;border:1px solid #e2ebe0;border-radius:14px;padding:13px 15px;cursor:pointer;font-family:inherit">'
+        +'<span style="width:24px;height:24px;border-radius:8px;background:#e4efe1;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b7d3b" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg></span>'
+        +'<span style="flex:1;text-align:left;font-size:13.5px;font-weight:600;color:var(--navy)">Materia\u0142y przerobione</span>'
+        +'<span style="font-size:12px;font-weight:700;color:#3b7d3b;background:#e4efe1;border-radius:20px;padding:2px 9px">'+doneC.length+'</span>'
+        +'<svg class="eyl-doneacc-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2" style="transition:transform .25s;transform:rotate('+(dOpen?'180deg':'0deg')+')"><path d="M6 9l6 6 6-6"/></svg>'
+      +'</button>'
+      +'<div class="eyl-doneacc-body" id="eyl-doneacc-body" style="display:'+(dOpen?'block':'none')+';margin-top:10px">'
+        +'<div class="eyl-catlist">'+doneC.map(_eylCatCard).join('')+'</div>'
+      +'</div>'
+    +'</div>';
+  }
   b.innerHTML=html;
 }
+
+window.eylToggleDone=function(){ window._eylDoneOpen=!window._eylDoneOpen; var b=document.getElementById('eyl-doneacc-body'); var ch=document.querySelector('.eyl-doneacc-chev'); if(b) b.style.display=window._eylDoneOpen?'block':'none'; if(ch) ch.style.transform='rotate('+(window._eylDoneOpen?'180deg':'0deg')+')'; };
 
 async function previewCat(lang,catId,name){
   var sheet=document.getElementById('set-preview-sheet'), bd=document.getElementById('set-preview-backdrop');
