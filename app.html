@@ -104,6 +104,7 @@
   .flip.flipped .front{opacity:0;transform:translateY(-8px);pointer-events:none}
   .flip.flipped .back{opacity:1;transform:none;pointer-events:auto;z-index:3}
   .face .kic{font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2);margin-bottom:18px}
+  .face .cue{font-size:16px;font-weight:500;color:var(--dim);margin-bottom:14px;line-height:1.2;word-break:break-word}
   .face .word{font-size:32px;font-weight:600;color:var(--navy);letter-spacing:-.4px;line-height:1.15;word-break:break-word}
   .face .tap{font-size:12px;color:var(--dim2);margin-top:22px}
   .speak{width:38px;height:38px;border-radius:50%;border:1px solid var(--line2);background:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--navy);margin-top:20px}
@@ -540,7 +541,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
     <div class="flip-stage" id="br-stage">
       <div class="flip" id="flip" onclick="doFlip()">
         <div class="face front"><div class="kic" id="br-kic">Słowo</div><div class="word" id="br-front"></div><div class="tap">Dotknij, aby obrócić</div></div>
-        <div class="face back"><div class="kic">Tłumaczenie</div><div class="word" id="br-back"></div>
+        <div class="face back"><div class="cue" id="br-back-cue"></div><div class="kic" id="br-kic-back">Tłumaczenie</div><div class="word" id="br-back"></div>
           <button class="speak" id="br-speak" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div>
       </div>
     </div>
@@ -1003,7 +1004,7 @@ function restoreFlipMarkup(){
   document.getElementById('br-stage').innerHTML=
     '<div class="flip" id="flip" onclick="doFlip()">'
     +'<div class="face front"><div class="kic" id="br-kic">Słowo</div><div class="word" id="br-front"></div><div class="tap">Dotknij, aby obrócić</div></div>'
-    +'<div class="face back"><div class="kic">Tłumaczenie</div><div class="word" id="br-back"></div>'
+    +'<div class="face back"><div class="cue" id="br-back-cue"></div><div class="kic" id="br-kic-back">Tłumaczenie</div><div class="word" id="br-back"></div>'
     +'<button class="speak" id="br-speak" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div></div>';
 }
 function renderCard(){
@@ -1011,8 +1012,12 @@ function renderCard(){
   flipped=false; var fl=document.getElementById('flip'); if(fl) fl.classList.remove('flipped');
   var ff=dir==='foreign';
   document.getElementById('br-kic').textContent=ff?'Słowo':'Tłumaczenie';
-  document.getElementById('br-front').textContent=ff?(c.word||'—'):(c.translation||'—');
-  document.getElementById('br-back').textContent=ff?(c.translation||'—'):(c.word||'—');
+  var _bkb=document.getElementById('br-kic-back'); if(_bkb) _bkb.textContent=ff?'Tłumaczenie':'Słowo';
+  var _frontTxt=ff?(c.word||'—'):(c.translation||'—');
+  var _backTxt=ff?(c.translation||'—'):(c.word||'—');
+  document.getElementById('br-front').textContent=_frontTxt;
+  document.getElementById('br-back').textContent=_backTxt;
+  var _cue=document.getElementById('br-back-cue'); if(_cue) _cue.textContent=_frontTxt;
   document.getElementById('br-count').innerHTML=(bi+1)+' / '+CARDS.length+(_brGraded?'<span class="br-graded">'+_brGraded+' \u2713</span>':'');
   brShowGrades(false);
   document.getElementById('br-prev').disabled=bi===0;
@@ -1419,7 +1424,68 @@ function exScene(src,txt,withAudio){
   var audio=withAudio?'<button type="button" class="lexx-sceneaudio" onclick="lexSceneSpeak(this.getAttribute(\'data-say\'))" data-say="'+esc(String(txt||''))+'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>':'';
   return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><div class="lexx-scene-line"><p class="lexx-scene-txt">'+esc(txt)+'</p>'+audio+'</div></div>';
 }
-window.lexSceneSpeak=function(text,code){ if(!text)return; try{speechSynthesis.cancel();}catch(e){} try{ var u=new SpeechSynthesisUtterance(String(text)); u.lang=code||lexTtsCode(); u.rate=.92; speechSynthesis.speak(u);}catch(e){} };
+// ── Dwujęzyczne TTS: narracja po polsku, słowa-cele (**…**) w języku uczonym ──
+var _lexSpkToken=0;
+function lexPickVoice(langCode){
+  try{
+    var voices=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
+    if(!voices.length) return null;
+    var base=String(langCode||'').split('-')[0].toLowerCase();
+    return voices.find(function(v){return v.lang===langCode&&/Google/.test(v.name);})
+      ||voices.find(function(v){return v.lang===langCode;})
+      ||voices.find(function(v){return String(v.lang).toLowerCase().indexOf(base)===0;})||null;
+  }catch(e){ return null; }
+}
+function lexSpeakChain(segs){
+  if(!window.speechSynthesis||!segs||!segs.length) return;
+  var myTok=(++_lexSpkToken);
+  try{speechSynthesis.cancel();}catch(e){}
+  var i=0;
+  (function next(){
+    if(myTok!==_lexSpkToken) return;
+    if(i>=segs.length) return;
+    var seg=segs[i++];
+    var t=String(seg.t||'').replace(/\s+/g,' ').trim();
+    if(!t){ next(); return; }
+    var u=new SpeechSynthesisUtterance(t);
+    u.lang=seg.lang; u.rate=.92; u.pitch=1.0;
+    var v=lexPickVoice(seg.lang); if(v) u.voice=v;
+    u.onend=function(){ if(myTok===_lexSpkToken) next(); };
+    u.onerror=function(){ if(myTok===_lexSpkToken) next(); };
+    try{ speechSynthesis.speak(u); }catch(e){ next(); }
+  })();
+}
+function lexSpeakBilingual(text){
+  var tgt=lexTtsCode(_lexLang);
+  var clean=String(text||'').replace(/<[^>]+>/g,' ').replace(/[#`]/g,' ');
+  var re=/\*\*([^*]+)\*\*/g, raw=[], last=0, m;
+  while((m=re.exec(clean))){
+    if(m.index>last){ var pl=clean.slice(last,m.index); if(pl.trim()) raw.push({t:pl,lang:'pl-PL'}); }
+    var fw=(m[1]||'').trim(); if(fw) raw.push({t:fw,lang:tgt});
+    last=re.lastIndex;
+  }
+  if(last<clean.length){ var tail=clean.slice(last); if(tail.trim()) raw.push({t:tail,lang:'pl-PL'}); }
+  // scal sąsiednie fragmenty w tym samym języku (płynniejsze czytanie)
+  var merged=[]; raw.forEach(function(q){ var l=merged[merged.length-1]; if(l&&l.lang===q.lang){ l.t+=' '+q.t; } else merged.push({t:q.t,lang:q.lang}); });
+  // potnij długie fragmenty na zdania (Web Speech ucina bardzo długie wypowiedzi)
+  var segs=[];
+  merged.forEach(function(q){
+    var t=q.t.trim();
+    if(t.length<=240){ if(t) segs.push({t:t,lang:q.lang}); return; }
+    var parts=t.split(/(?<=[.!?…])\s+/), cur='';
+    parts.forEach(function(sn){ if((cur+' '+sn).trim().length>240){ if(cur) segs.push({t:cur.trim(),lang:q.lang}); cur=sn; } else cur=(cur?cur+' ':'')+sn; });
+    if(cur.trim()) segs.push({t:cur.trim(),lang:q.lang});
+  });
+  lexSpeakChain(segs);
+}
+window.lexSceneSpeak=function(text,code){
+  if(!text) return;
+  var s=String(text);
+  // Tok dwujęzyczny: narracja PL + **słowa docelowe** → każdy fragment swoim głosem
+  if(!code && s.indexOf('**')>=0){ lexSpeakBilingual(s); return; }
+  // Jednojęzyczny: przycisk wymowy słowa lub tekst bez markerów
+  lexSpeakChain([{ t:s.replace(/\*\*/g,'').replace(/<[^>]+>/g,' '), lang:(code||lexTtsCode()) }]);
+};
 
 function lexSegHtml(){ var total=((_lexData&&_lexData.exercises)||[]).length, out=''; for(var k=0;k<total;k++){ var cls=_lexDone[k]?'done':(k===_lexStep?'cur':''); out+='<span class="'+cls+'"></span>'; } return '<div class="lexx-seg" id="lexx-seg">'+out+'</div>'; }
 function lexStageHtml(html){ var s=document.getElementById('lex-stage'); if(s) s.innerHTML='<div class="lexx-stage">'+html+'</div>'; }
@@ -1436,7 +1502,7 @@ function lexShowStep(s){
     stage.appendChild(box);
     var st=document.createElement('button'); st.className='lexx-next'; st.textContent='Zaczynamy →'; st.onclick=function(){ lexShowStep(0); };
     stage.appendChild(st); w.appendChild(stage);
-    try{ if(data.intro && (typeof _lexSpeechOn==='undefined'||_lexSpeechOn)){ var spoken=String(data.intro).replace(/\*\*/g,''); setTimeout(function(){ lexSceneSpeak(spoken); },300); } }catch(e){}
+    try{ if(data.intro && (typeof _lexSpeechOn==='undefined'||_lexSpeechOn)){ setTimeout(function(){ lexSceneSpeak(String(data.intro)); },300); } }catch(e){}
     return;
   }
   var ex=(data.exercises||[])[s]; if(!ex) return;
@@ -1520,7 +1586,7 @@ window.lexxSculptTap=function(i,k){ var box=document.querySelector('.lexx-ex[dat
 window.lexxSculptUntap=function(i,k){ var box=document.querySelector('.lexx-ex[data-i="'+i+'"]'); if(box&&box.dataset.checked) return; var st=_lexSculpt[i]; if(!st) return; st.pool.push(st.built[k]); st.built.splice(k,1); var el=document.getElementById('lexx-sc-'+i); if(el) el.innerHTML=lexSculptHtml(i); };
 
 /* ── 1-tap odpowiedzi (port lexxCueAnswer/Contrast/Pick) ── */
-function lexBoldKey(html){ return String(html||'').replace(/\*\*([^*]+)\*\*/g,'<span style="color:var(--orange);font-weight:600">$1</span>').replace(/\*([^*\n]+)\*/g,'$1'); }
+function lexBoldKey(html){ return String(html||'').replace(/\*\*([^*]+)\*\*/g,'<span style="color:var(--orange)">$1</span>').replace(/\*([^*\n]+)\*/g,'$1'); }
 function showFb(i,kind,html){ var fb=document.getElementById('lexx-fb-'+i); if(!fb) return; fb.className='lexx-fb '+kind; fb.style.display='block'; fb.innerHTML=lexBoldKey(html); try{ fb.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(e){} }
 function feedGap(t){}
 function markDone(i){
@@ -2076,9 +2142,11 @@ function pwReveal(){
   var r=_pwQueue[_pwIdx]; if(!r) return;
   var ff=_pwDir==='foreign';
   var back=ff?(r.translation||'—'):(r.word||'—');
+  var promptTxt=ff?(r.word||'—'):(r.translation||'—');
   var spkWord=r.word||'';
   var stage=document.getElementById('pw-stage');
   stage.innerHTML='<div class="flip"><div class="face front" style="opacity:1;position:relative">'
+    +'<div class="cue">'+esc(promptTxt)+'</div>'
     +'<div class="kic">'+(ff?'Tłumaczenie':'Słowo')+'</div><div class="word">'+esc(back)+'</div>'
     +(spkWord?'<button class="speak" onclick="event.stopPropagation();pwSpeak()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button>':'')
     +'</div></div>';
