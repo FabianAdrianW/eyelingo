@@ -1109,14 +1109,14 @@ let _lexScript='native', _lexScriptPref=null;   // pismo lekcji jp: 'native'(kan
 async function loadJpScriptPref(){
   if(_lexScriptPref!=null) return _lexScriptPref;
   var v=null;
-  try{ if(UID){ var r=await db.from('profiles').select('jp_script').eq('id',UID).maybeSingle(); if(r&&r.data&&r.data.jp_script) v=r.data.jp_script; } }catch(e){}
+  try{ if(UID){ var r=await db.from('profiles').select('jp_script').eq('user_id',UID).maybeSingle(); if(r&&r.data&&r.data.jp_script) v=r.data.jp_script; } }catch(e){}
   if(!v){ try{ v=localStorage.getItem('eyl_jpscript_'+(UID||'anon')); }catch(e){} }
   _lexScriptPref=(v==='romaji'?'romaji':'native'); return _lexScriptPref;
 }
 async function saveJpScriptPref(v){
   v=(v==='romaji'?'romaji':'native'); _lexScriptPref=v;
   try{ localStorage.setItem('eyl_jpscript_'+(UID||'anon'), v); }catch(e){}
-  try{ if(UID) await db.from('profiles').update({jp_script:v}).eq('id',UID); }catch(e){}
+  try{ if(UID) await db.from('profiles').update({jp_script:v}).eq('user_id',UID); }catch(e){}
 }
 let lexSourceWords=[];
 let _lexLang='en';
