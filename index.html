@@ -1396,9 +1396,12 @@ window.switchMatTab = function(tab){
     return '<span style="font-size:10.5px;color:var(--dim2);background:rgba(26,35,64,.05);padding:2px 9px;border-radius:100px">Nowe</span>';
   }
   function _bar(a){
-    var fill = a.status==='done'?'#1d9e75':(a.status==='prog'?'#ba7517':ORANGE);
-    var track = a.status==='done'?'#e1f5ee':(a.status==='prog'?'#faeeda':'rgba(26,35,64,.06)');
-    return '<div style="height:5px;background:'+track+';border-radius:100px;overflow:hidden;margin-top:7px"><div style="width:'+(a.status==='done'?100:a.pct)+'%;height:100%;background:'+fill+'"></div></div>';
+    if(a.total===0) return '';
+    var seen=a.pct;                                   // przejrzane = średnia siła (rusza się od 1 oceny)
+    var mast=Math.round((a.mastered/a.total)*100);    // opanowane = % w pełni dojrzałych (tylko retrieval)
+    return '<div style="position:relative;height:6px;background:rgba(26,35,64,.06);border-radius:100px;overflow:hidden;margin-top:7px">'
+      +'<div style="position:absolute;inset:0;width:'+seen+'%;background:rgba(201,106,42,.22)"></div>'
+      +'<div style="position:absolute;inset:0;width:'+mast+'%;background:#1d9e75"></div></div>';
   }
 
   // ── Recents (per-konto, localStorage) ──
@@ -7528,12 +7531,16 @@ function trybFlipReveal(backText){
       b.onmouseup = function(){ this.style.transform='scale(1)'; };
       b.onmouseover = function(){ this.style.boxShadow='0 4px 14px rgba(26,35,64,.10)'; };
       b.onmouseout = function(){ this.style.boxShadow='none'; };
-      var _nx=''; try{ var _bt2=({1:1,2:2,3:7,4:45})[opt.q]||7; _nx=(typeof trybFmtNext==='function')?trybFmtNext(_bt2):''; }catch(e){}
+      var _nx=''; try{ var _bt2=({1:1,2:3,3:6,4:12})[opt.q]||6; _nx=(typeof trybFmtNext==='function')?trybFmtNext(_bt2):''; }catch(e){}
       b.innerHTML = '<span style="font-size:13px;font-weight:500">'+opt.l+'</span><span style="font-size:10.5px;opacity:.72">wróci '+_nx+'</span>';
       b.onclick = function(){ rateCard(opt.q, true); nav.remove(); };
       btnRow.appendChild(b);
     });
     nav.appendChild(btnRow);
+    var _hintMastery=document.createElement('div');
+    _hintMastery.style.cssText='font-size:10.5px;color:var(--dim2);text-align:center;margin-top:4px;line-height:1.45;max-width:420px';
+    _hintMastery.textContent='100% opanowania zdobywasz, gdy przypomnisz sobie słowo po przerwie — nie z samej oceny.';
+    nav.appendChild(_hintMastery);
 
     // Prev / Next navigation
     var navRow = document.createElement('div');
@@ -7908,7 +7915,7 @@ async function rateCard(btnRating, declare){
   var qMap={1:0,2:2,3:4,4:5};
   var quality=Math.max(0,(qMap[eff]||0)-_trybHintPenalty);
   var newSRS;
-  if(declare){ var _bt=({1:{r:0,iv:1},2:{r:1,iv:2},3:{r:3,iv:7},4:{r:5,iv:45}})[eff]||{r:3,iv:7};
+  if(declare){ var _bt=({1:{r:0,iv:1},2:{r:1,iv:3},3:{r:2,iv:6},4:{r:2,iv:12}})[eff]||{r:2,iv:6};
     newSRS={ease_factor:(card.ease_factor||2.5),repetitions:_bt.r,interval_days:_bt.iv,next_review:new Date(Date.now()+_bt.iv*86400000).toISOString().slice(0,10)}; }
   else { newSRS=sm2Local(card,quality); }
   await saveTrybSRS(card,newSRS);

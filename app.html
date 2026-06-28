@@ -334,9 +334,9 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   .st-pill.new{background:var(--paper2);color:var(--dim)}
   .st-pill.prog{background:#fff3e9;color:var(--orange)}
   .st-pill.done{background:#eef5e6;color:#3b7d3b}
-  .st-bar{height:5px;background:var(--paper2);border-radius:3px;overflow:hidden;margin-top:8px}
-  .st-bar i{display:block;height:100%;border-radius:3px;background:var(--orange);transition:width .35s}
-  .st-bar.done i{background:#6aa84f}
+  .st-bar{position:relative;height:6px;background:var(--paper2);border-radius:3px;overflow:hidden;margin-top:8px}
+  .st-bar i.seen{position:absolute;inset:0;height:100%;border-radius:3px;background:rgba(201,106,42,.22);transition:width .35s}
+  .st-bar b.mast{position:absolute;inset:0;height:100%;border-radius:3px;background:#6aa84f;transition:width .35s}
   .row.mine{border-left:3px solid var(--navy)}
   .eyl-cat.eyl{border-left:3px solid var(--orange)}
   .eyl-cat.done{background:#f0f7ec;border-color:#cfe3bf}
@@ -381,6 +381,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   .br-g .ph{font-size:9px;font-weight:500;opacity:.85}
   .br-g.q1{background:#A32D2D}.br-g.q2{background:#c07f24}.br-g.q3{background:#3b7d3b}.br-g.q4{background:#2b6cb0}
   .br-hint{text-align:center;font-size:12px;color:var(--dim2);padding:2px 22px}
+  .br-note{display:none;text-align:center;font-size:10.5px;color:var(--dim2);padding:0 22px 4px;line-height:1.45}
   .br-graded{display:inline-block;margin-left:8px;font-size:11px;color:#3b7d3b;font-weight:600}
   .cont-card{scroll-snap-align:center;flex:0 0 78%;text-align:left;background:#fff;border:1.5px solid var(--line2);border-radius:var(--r);padding:15px 17px;cursor:pointer;font-family:inherit;transition:transform .12s}
   .cont-card:active{transform:scale(.985)}.cont-card.solo{flex:0 0 100%}
@@ -572,6 +573,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       <button class="br-g q3" onclick="brGrade(3)">Wiem<span class="ph">za dni</span></button>
       <button class="br-g q4" onclick="brGrade(4)">Łatwe<span class="ph">dłużej</span></button>
     </div>
+    <div class="br-note" id="br-note">100% opanowania pojawia się po udanej powtórce — nie z samej oceny.</div>
     <div class="flip-nav">
       <button class="nav-arrow" id="br-prev" onclick="brNav(-1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
       <div class="flip-count" id="br-count">—</div>
@@ -712,7 +714,7 @@ function pillHtml(a){
   if(a.status==='new')  return '<span class="st-pill new">Nowe</span>';
   return '';
 }
-function barHtml(a){ if(a.total===0) return ''; var w=Math.max(a.status==='prog'?6:0,a.pct); return '<div class="st-bar'+(a.status==='done'?' done':'')+'"><i style="width:'+w+'%"></i></div>'; }
+function barHtml(a){ if(a.total===0) return ''; var seen=Math.max(a.touched>0?6:0,a.pct); var mast=Math.round((a.mastered/a.total)*100); return '<div class="st-bar"><i class="seen" style="width:'+seen+'%"></i><b class="mast" style="width:'+mast+'%"></b></div>'; }
 
 /* ═══════════════ Ostatnio otwierane (per-uid, localStorage) — zasila „Kontynuuj" ═══════════════ */
 function recentsKey(){ return 'eyl_recent_'+(UID||'anon'); }
@@ -779,7 +781,7 @@ async function renderSetStatus(){
   pushRecent({id:curSetId, kind:(curSetKind==='eyelingo'?'eyl':'set'), name:curSetName, lang:curSetLang, level:(curSetKind==='eyelingo'?(window._eylNavLevel||null):null), count:curSetCount, keys:keys});
   if(box){
     box.innerHTML='<div class="ss-card"><div class="ss-top"><span class="ss-lbl">Tw\u00f3j post\u0119p</span>'+pillHtml(a)+'</div>'
-      +(a.total?'<div class="ss-num">'+a.mastered+' / '+a.total+' '+plural(a.total,'s\u0142owo','s\u0142owa','s\u0142\u00f3w')+' opanowane</div>':'')
+      +(a.total?'<div class="ss-num">'+a.mastered+' / '+a.total+' opanowane'+(a.touched>a.mastered?(' \u00b7 '+a.touched+' przejrzane'):'')+'</div>':'')
       +barHtml(a)+'</div>';
   }
   if(curSetKind==='eyelingo' && Array.isArray(window._eylNavList) && window._eylNavList.length && nav){
@@ -848,11 +850,14 @@ async function markKnownCurrent(){
 var _brGraded=0;
 function brShowGrades(show){
   var g=document.getElementById('br-grades'); if(g) g.style.display=show?'grid':'none';
+  var n=document.getElementById('br-note'); if(n) n.style.display=show?'block':'none';
   var h=document.getElementById('br-hint'); if(h) h.textContent=show?'Jak Ci posz\u0142o? Ocena zapisze post\u0119p.':'Dotknij kart\u0119, aby zobaczy\u0107 t\u0142umaczenie i oceni\u0107.';
 }
-// Przeglądaj = SAMOOCENA (deklaracja), nie test → zapis deterministyczny do stałego pułapu siły.
-// Nie→0% (przeucz), Prawie→~34%, Wiem→~80%, Łatwe→100% (zielone). Odstęp powtórki dobrany do pułapu.
-var BR_TIERS={1:{r:0,iv:1},2:{r:1,iv:2},3:{r:3,iv:7},4:{r:5,iv:45}};
+// Przeglądaj = SAMOOCENA (deklaracja), nie test. Deklaracja NIE daje „opanowane” — to wymaga
+// retrievalu w Powtórkach/Lexie (Pedagogy §1.4/§2.1). Pasek rusza się od 1 przejścia, ale pułap
+// deklaracji < próg(85): Nie→0%, Prawie→~37%, Wiem→~62%, Łatwe→~78%. Słowo wraca (iv 1/3/6/12 dni)
+// → system weryfikuje deklarację w realnym teście. To zamyka pętlę sprzężenia zwrotnego.
+var BR_TIERS={1:{r:0,iv:1},2:{r:1,iv:3},3:{r:2,iv:6},4:{r:2,iv:12}};
 async function srsDeclare(word,translation,q,opts){
   if(!word||!UID) return null; opts=opts||{};
   var t=BR_TIERS[q]||BR_TIERS[3];
