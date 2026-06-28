@@ -263,6 +263,19 @@
   .eyl-chiprow{display:flex;gap:8px;flex-wrap:wrap}
   .eyl-chip{padding:8px 14px;border-radius:100px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;color:var(--navy);font-family:inherit;cursor:pointer}
   .eyl-chip.on{background:var(--orange);border-color:var(--orange);color:#fff}
+  .eyl-chip.done{background:#eef5e6;border-color:#cfe3bf;color:#3b7d3b}
+  .eyl-chip.done.on{background:#3b7d3b;border-color:#3b7d3b;color:#fff}
+  .eyl-langprog{margin:14px 0 4px;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:13px 14px}
+  .eyl-langprog-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:11px}
+  .eyl-langprog-lang{font-size:14px;font-weight:700;color:var(--navy)}
+  .eyl-langprog-pct{font-size:12.5px;font-weight:600;color:var(--orange);white-space:nowrap}
+  .eyl-ladder{display:flex;gap:6px;align-items:flex-end}
+  .eyl-rung{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px}
+  .eyl-rung .bar{width:100%;height:34px;background:var(--paper2);border-radius:5px;overflow:hidden;display:flex;align-items:flex-end}
+  .eyl-rung .bar i{display:block;width:100%;background:var(--orange);transition:height .4s;border-radius:5px 5px 0 0}
+  .eyl-rung.done .bar i{background:#6aa84f}
+  .eyl-rung b{font-size:10px;font-weight:700;color:var(--dim2)}
+  .eyl-rung.done b{color:#3b7d3b}
   .eyl-catlist{display:flex;flex-direction:column;gap:8px;margin-top:18px}
   .eyl-cat{display:flex;align-items:center;gap:11px;background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:13px 14px;cursor:pointer;transition:.15s}
   .eyl-cat:active{transform:scale(.99)}
@@ -1958,6 +1971,16 @@ var EYL_LEVELS_ORD=['A1','A2','B1','B2','C1','C2'];
 var _eylCatCache={};      // langCode -> [{id,label,level,count,allLevels}]
 var _eylLangIdCache={};   // langCode -> language_id
 var _eylNav=[];           // stos kroków: {kind:'langs'|'levels'|'cats', lang, lvl}
+var _eylLevelKeysCache={}; // langCode -> { A1:[card_key...], A2:[...], ... }
+function _eylLevelAggs(code){
+  var lk=_eylLevelKeysCache[code]||{}, out=[];
+  EYL_LEVELS_ORD.forEach(function(lv){ if(lk[lv]&&lk[lv].length) out.push({level:lv, agg:aggKeys(lk[lv])}); });
+  return out;
+}
+function _eylWorkingLevel(aggs){
+  for(var i=0;i<aggs.length;i++){ if(aggs[i].agg.status!=='done') return aggs[i]; }
+  return aggs.length?aggs[aggs.length-1]:null;
+}
 
 function eylCleanCat(n){ return String(n||'').replace(/\s*[\u00b7\-\u2013]?\s*(a1|a2|b1|b2|c1|c2)\s*$/i,'').replace(/\s{2,}/g,' ').trim(); }
 function eylLangLabel(code){ var i=LEX_LANGS[code]; return i?(i.name.charAt(0).toUpperCase()+i.name.slice(1)):String(code||'').toUpperCase(); }
@@ -1982,11 +2005,11 @@ async function _eylLoadCats(code){
       var d=(r&&r.data)||[]; all=all.concat(d);
       if(d.length<pg) break; from+=pg; if(from>40000) break;
     }
-    var byCat={};
+    var byCat={}, _lvlK={};
     all.forEach(function(r){ if(r.category_id==null) return; var lv=(r.levels&&r.levels.code)||null;
       if(!byCat[r.category_id]) byCat[r.category_id]={count:0,levels:{},keys:[]};
       byCat[r.category_id].count++; if(lv) byCat[r.category_id].levels[lv]=(byCat[r.category_id].levels[lv]||0)+1;
-      if(r.word||r.translation) byCat[r.category_id].keys.push(_usrsCK(r.word||'',r.translation||''));
+      if(r.word||r.translation){ var _ck=_usrsCK(r.word||'',r.translation||''); byCat[r.category_id].keys.push(_ck); if(lv){ (_lvlK[lv]=_lvlK[lv]||[]).push(_ck); } }
     });
     var ids=Object.keys(byCat).map(function(k){return isNaN(+k)?k:+k;});
     if(ids.length){
@@ -1999,6 +2022,7 @@ async function _eylLoadCats(code){
     }
   }catch(e){}
   out.sort(function(a,b){ var na=+a.id, nb=+b.id; if(!isNaN(na)&&!isNaN(nb)) return na-nb; return String(a.id).localeCompare(String(b.id)); });
+  _eylLevelKeysCache[code]=_lvlK;
   _eylCatCache[code]=out; return out;
 }
 
@@ -2022,13 +2046,22 @@ async function eylRenderBrowse(){
   var cats=await _eylLoadCats(_eylState.lang);
   var present={}; cats.forEach(function(c){ (c.allLevels||[]).forEach(function(l){present[l]=1;}); if(c.level) present[c.level]=1; });
   var levels=EYL_LEVELS_ORD.filter(function(l){return present[l];});
+  var _lvlAggs=_eylLevelAggs(_eylState.lang), _lvlAggMap={};
+  _lvlAggs.forEach(function(x){ _lvlAggMap[x.level]=x.agg; });
   var list=_eylState.level?cats.filter(function(c){return c.level===_eylState.level||(c.allLevels&&c.allLevels.indexOf(_eylState.level)>=0);}):cats;
   window._eylNavList=list; window._eylNavLevel=_eylState.level||null; window._eylNavLang=_eylState.lang;
 
   var html='<div class="eyl-h">Zestawy Eyelingo</div>';
   html+='<div class="eyl-flabel">Język</div><div class="eyl-chiprow">'+langs.map(function(c){ return '<button class="eyl-chip'+(c===_eylState.lang?' on':'')+'" onclick="eylPickLang(\''+esc(c)+'\')">'+eylLangFlag(c)+' '+esc(eylLangLabel(c))+'</button>'; }).join('')+'</div>';
+  if(_lvlAggs.length){
+    var _wk=_eylWorkingLevel(_lvlAggs);
+    var _allDone=_lvlAggs.every(function(x){return x.agg.status==='done';});
+    var _headTxt=_allDone?'Cały materiał opanowany \u2713':('Pracujesz na '+esc(_wk.level)+' \u00b7 '+_wk.agg.pct+'%');
+    var _ladder='<div class="eyl-ladder">'+_lvlAggs.map(function(x){ var cls=(x.agg.status==='done')?' done':''; var w=Math.max(x.agg.status==='prog'?6:0,x.agg.pct); return '<div class="eyl-rung'+cls+'"><div class="bar"><i style="height:'+w+'%"></i></div><b>'+esc(x.level)+'</b></div>'; }).join('')+'</div>';
+    html+='<div class="eyl-langprog"><div class="eyl-langprog-top"><span class="eyl-langprog-lang">'+eylLangFlag(_eylState.lang)+' '+esc(eylLangLabel(_eylState.lang))+'</span><span class="eyl-langprog-pct">'+_headTxt+'</span></div>'+_ladder+'</div>';
+  }
   if(levels.length){
-    html+='<div class="eyl-flabel">Poziom</div><div class="eyl-chiprow"><button class="eyl-chip'+(!_eylState.level?' on':'')+'" onclick="eylPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eyl-chip'+(_eylState.level===lv?' on':'')+'" onclick="eylPickLvl(\''+lv+'\')">'+lv+'</button>'; }).join('')+'</div>';
+    html+='<div class="eyl-flabel">Poziom</div><div class="eyl-chiprow"><button class="eyl-chip'+(!_eylState.level?' on':'')+'" onclick="eylPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ var la=_lvlAggMap[lv]; var pc=(la&&la.total)?(' \u00b7 '+la.pct+'%'):''; var dn=(la&&la.status==='done')?' done':''; return '<button class="eyl-chip'+dn+(_eylState.level===lv?' on':'')+'" onclick="eylPickLvl(\''+lv+'\')">'+lv+pc+'</button>'; }).join('')+'</div>';
   }
   if(!list.length){ html+='<div class="empty" style="margin-top:20px"><div class="h2">Brak kategorii</div><div class="sub">Na tym poziomie nie ma jeszcze zestawów.</div></div>'; b.innerHTML=html; return; }
   function _eylCatCard(c){
