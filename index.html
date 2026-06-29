@@ -1368,6 +1368,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 
 /* ambient mock */
 .lp-visual{position:relative}
+@media (max-width:960px){.lp .fbadge{display:none}}
 .lp-mock{position:relative;border-radius:16px;background:linear-gradient(180deg,#202a48,#141b30);box-shadow:0 34px 80px -30px rgba(15,23,41,.62),inset 0 0 0 1px rgba(255,255,255,.045);overflow:hidden}
 .lp-mock-bar{display:flex;align-items:center;gap:7px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,.06)}
 .lp-mock-bar>span{width:11px;height:11px;border-radius:50%;background:rgba(255,255,255,.16)}
@@ -1866,26 +1867,46 @@ window.switchMatTab = function(tab){
       </div>
 
       <div class="lp-visual lp-reveal" data-d="2">
-        <div class="lp-mock" aria-hidden="true">
-          <div class="lp-mock-bar"><span></span><span></span><span></span><span class="lp-mock-url">twoja-praca.doc — Eyelingo pracuje w tle</span></div>
-          <div class="lp-mock-body">
-            <div class="lp-mock-lines">
-              <div class="lp-ml" style="width:82%"></div>
-              <div class="lp-ml" style="width:94%"></div>
-              <div class="lp-ml" style="width:68%"></div>
-              <div class="lp-ml" style="width:88%"></div>
-              <div class="lp-ml" style="width:54%"></div>
-              <div class="lp-ml" style="width:76%"></div>
+        <div style="margin-bottom:20px"><img src="https://fabianadrianw.github.io/eyelingo/logo_transparent.png" alt="Eyelingo" style="width:100%;max-width:360px;display:block"></div>
+        <div style="position:relative;display:inline-block" aria-hidden="true">
+          <div class="mock">
+            <div class="mock-bar"><div class="md"></div><div class="md"></div><div class="md"></div></div>
+            <div class="fc">
+              <div class="fc-top"><div class="fc-badge">Angielski · A2</div></div>
+              <div class="fc-word">achievement</div>
+              <div class="fc-tr">osiągnięcie</div>
+              <div class="fc-bar"><div class="fc-prog"></div></div>
             </div>
-            <div class="lp-card" id="lpCard">
-              <div class="lp-card-head"><span class="lp-card-flag" id="lpFlag">🇬🇧</span><span class="lp-card-lvl" id="lpLvl">Angielski · A2</span></div>
-              <div class="lp-card-word" id="lpWord">achievement</div>
-              <div class="lp-card-tr" id="lpTr">osiągnięcie</div>
-              <div class="lp-card-bar"><i id="lpProg" style="width:64%"></i></div>
+            <div class="mock-langs">
+              <div class="lc on">EN</div>
+              <div class="lc">ES</div>
+              <div class="lc">JP</div>
+              <div class="lc">NL</div>
+              <div class="lc" style="opacity:.4">DE</div>
+              <div class="lc" style="opacity:.4">FR</div>
+            </div>
+          </div>
+
+          <div class="fbadge" style="position:absolute;top:-18px;right:-60px;animation:fl 4s 1.2s ease-in-out infinite">
+            <span class="fb-i">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c96a2a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 0 0 12 21a4 4 0 0 0 7.967-3.517 4 4 0 0 0 .556-6.588 4 4 0 0 0-2.526-5.77A3 3 0 1 0 12 5"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/></svg>
+            </span>
+            <div>
+              <div>+18 słów dziś</div>
+              <div class="fb-l">Bez wysiłku</div>
+            </div>
+          </div>
+
+          <div class="fbadge fb1">
+            <span class="fb-i">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </span>
+            <div>
+              <div>Zapamiętane</div>
+              <div class="fb-l">Powtórka za 3 dni</div>
             </div>
           </div>
         </div>
-        <p class="lp-mock-cap">Tak wygląda nauka peryferyjna — słowo pojawia się, gdy pracujesz, i samo zmienia się w tle.</p>
       </div>
     </div>
   </div>
@@ -2797,7 +2818,6 @@ function plWord(n,one,few,many){
 function startAlexSession(words){
   var list=(words&&words.length?words:(window._bridge1Words||[])).map(function(w){return typeof w==='string'?w:w.word;}).filter(Boolean);
   window._chatSeedWords = list.length?list:null;
-  try{ localStorage.setItem('alex_handoff_click_ts', String(Date.now())); if(typeof alexLogEvent==='function') alexLogEvent('handoff_click',{n:list.length}); }catch(e){}
   var blang = window._dashBridgeLang || 'en';
   showPage('teacher');
   setTimeout(function(){
@@ -5264,9 +5284,6 @@ var _chatPersonas={
   jp:{name:'Yuki',desc:'ネイティブスピーカー · 東京',greeting:'こんにちは！ゆきです。一緒に日本語を練習しましょう。何について話したいですか？'}
 };
 
-// BCP47 dla read-aloud (lokalna mapa — bez zależności od strefy Lexa). JP zawsze Web Speech.
-var _ALEX_BCP47={en:'en-US',es:'es-ES',nl:'nl-NL',jp:'ja-JP'};
-
 function chatLangLevel(){
   try{ return (typeof LANG_LEVELS!=='undefined' && LANG_LEVELS[_chatLang]) || 'B1'; }catch(e){ return 'B1'; }
 }
@@ -5297,16 +5314,7 @@ async function initChat(){
   chatUpdatePersona();
   await loadChatWeakWords();
   await chatRenderSetPicker();
-  await alexLoadUsageToday();          // licznik z Supabase (fallback localStorage)
   if(!_chatHistory.length) chatReset();
-  // pomiar realizacji handoffu (D-format): start sesji w 10 min od kliknięcia w dashboardzie
-  try{
-    var hc=parseInt(localStorage.getItem('alex_handoff_click_ts')||'0');
-    if(hc && (Date.now()-hc)<=10*60*1000){
-      alexLogEvent('alex_session_start_within_10min',{lag_ms:Date.now()-hc});
-      localStorage.removeItem('alex_handoff_click_ts');
-    }
-  }catch(e){}
   updateChatLimitUI();
 }
 
@@ -5316,6 +5324,7 @@ async function chatRenderSetPicker(){
   var host=document.getElementById('chat-set-picker'); if(!host) return;
   if(typeof lexLoadStudySources!=='function'){ host.style.display='none'; return; }
   host.innerHTML='<div style="font-size:11px;color:var(--dim2)">Sprawdzam ostatnie zestawy…</div>';
+  // lexLoadStudySources używa window._lexLang — zsynchronizuj z językiem rozmowy
   var prevLang=window._lexLang;
   window._lexLang=(document.getElementById('chat-lang')?document.getElementById('chat-lang').value:(window._chatLang||'en'));
   var src=await lexLoadStudySources();
@@ -5341,6 +5350,7 @@ window.chatToggleSet=async function(i){
   var idx=(window._chatSources||[]).findIndex(function(x){ return x.kind===c.kind&&String(x.id)===String(c.id); });
   if(idx>=0){ _chatSources.splice(idx,1); if(btn){ btn.style.border='1.5px solid var(--border2)'; btn.style.background='#fff'; } }
   else { (window._chatSources=window._chatSources||[]).push(c); if(btn){ btn.style.border='2px solid var(--orange)'; btn.style.background='#fff8f3'; } }
+  // Zestaw Eyelingo → dostosuj poziom rozmowy do poziomu kategorii (najniższy z wybranych)
   try{
     var ey=_chatSources.filter(function(x){return x.kind==='eyelingo'&&x.level;});
     if(ey.length){
@@ -5349,6 +5359,7 @@ window.chatToggleSet=async function(i){
       var sel=document.getElementById('chat-level'); if(sel&&low){ sel.value=low; if(typeof chatLevelChanged==='function') chatLevelChanged(); }
     }
   }catch(e){}
+  // Zbierz słowa z wybranych zestawów → seed words wplatane w rozmowę
   await chatLoadSeedFromSets();
 };
 async function chatLoadSeedFromSets(){
@@ -5359,18 +5370,12 @@ async function chatLoadSeedFromSets(){
     window._lexSources=_chatSources.map(function(c){return {kind:c.kind,id:c.id,label:c.label,level:c.level};});
     var words=(typeof lexFetchSourceWords==='function')?await lexFetchSourceWords():[];
     window._lexLang=prevLang; window._lexSources=prevSrc;
-    // zachowaj też tłumaczenia → potrzebne do canonical card_key przy write-backu D-persona
     window._chatSeedWords=words.map(function(w){return w.word;}).filter(Boolean);
-    (words||[]).forEach(function(w){
-      if(w&&w.word && !(_chatFlashcards||[]).some(function(f){return (f.word||'').toLowerCase()===(w.word||'').toLowerCase();})){
-        _chatFlashcards.push({id:w.id||null,word:w.word,translation:w.translation||'',ease:2.5,reps:0});
-      }
-    });
     renderWeakWords(window._chatSeedWords.slice(0,10), window._chatLang);
   }catch(e){}
 }
 
-// Wywoływane przyciskiem „Zacznij rozmowę"
+// Wywoływane przyciskiem „Zacznij rozmowę" (wcześniej niezdefiniowane → błąd)
 function chatStart(){
   chatReset();
   var inp=document.getElementById('chat-input');
@@ -5379,9 +5384,7 @@ function chatStart(){
 
 // Pełna lista fiszek usera dla aktywnego języka: {id, word, translation, ease, reps}
 var _chatFlashcards=[];
-var _chatSeedWords=null; // słowa zasiane z Mostu #1 (utrzymywane przez całą sesję, NIE zerowane po 1 turze)
-var _chatSessionUsed={};  // słowa fiszek użyte w tej sesji (do podsumowania, peak-end)
-var _chatSessionFixes=[]; // delikatne korekty z tej sesji (różnicowanie #4 + Most #3)
+var _chatSeedWords=null; // słowa zasiane z Mostu #1 (dashboard)
 
 async function loadChatWeakWords(){
   var lang=document.getElementById('chat-lang')?document.getElementById('chat-lang').value:'en';
@@ -5392,16 +5395,16 @@ async function loadChatWeakWords(){
     if(!sess){renderWeakWords([]);return;}
     try{
       var{data:wp}=await db.from('srs_progress')
-        .select('flashcard_id,card_key,word,translation,lang,ease_factor,repetitions,interval_days,updated_at')
+        .select('flashcard_id,word,translation,lang,ease_factor,repetitions,updated_at')
         .eq('user_id',sess.user.id)
         .order('updated_at',{ascending:false})
-        .limit(120);
+        .limit(80);
       if(wp&&wp.length){
         var filtered=wp.filter(function(r){ return r.word && (!r.lang || r.lang===lang); });
         var pool=filtered.length?filtered:wp.filter(function(r){return r.word;});
         _chatFlashcards=pool.map(function(r){return {
-          id:r.flashcard_id, card_key:r.card_key||null, word:r.word, translation:r.translation||'',
-          ease:r.ease_factor||2.5, reps:r.repetitions||0, iv:r.interval_days||0
+          id:r.flashcard_id, word:r.word, translation:r.translation||'',
+          ease:r.ease_factor||2.5, reps:r.repetitions||0
         };});
         words=_chatFlashcards.slice(0,8).map(function(f){return f.word;});
       }
@@ -5410,7 +5413,7 @@ async function loadChatWeakWords(){
       var{data:sets2}=await db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',sess.user.id).limit(5);
       var allW=[];
       if(sets2)sets2.forEach(function(s){if(s.user_set_cards)allW=allW.concat(s.user_set_cards);});
-      _chatFlashcards=allW.slice(0,50).map(function(c){return {id:null,card_key:null,word:c.word,translation:c.translation||'',ease:2.5,reps:0,iv:0};});
+      _chatFlashcards=allW.slice(0,50).map(function(c){return {id:null,word:c.word,translation:c.translation||'',ease:2.5,reps:0};});
       words=_chatFlashcards.slice(0,8).map(function(f){return f.word;});
     }
   }catch(e){}
@@ -5418,9 +5421,10 @@ async function loadChatWeakWords(){
 }
 
 function renderWeakWords(words, lang){
+  // Pigułki słów pokazujemy WYŁĄCZNIE po wyborze zestawu (seed words). Bez zestawu — czysto.
   var el=document.getElementById('chat-weak-words');
   if(!el)return;
-  var hasSet=(window._chatSources && _chatSources.length>0) || (_chatSeedWords && _chatSeedWords.length);
+  var hasSet=(window._chatSources && _chatSources.length>0);
   if(hasSet && words && words.length){
     el.style.marginTop='8px';
     el.innerHTML=words.map(function(w){
@@ -5433,19 +5437,17 @@ function renderWeakWords(words, lang){
 
 var _chatLevel='beginner';
 
+
 function chatLevelChanged(){
   var lvl=((document.getElementById('chat-level')||{}).value)||'B1';
   chatSyncLevelBadge();
   var hasUserTurn=(_chatHistory||[]).some(function(m){return m.role==='user';});
   if(hasUserTurn) chatReset();
-  showChatHints();
   if(typeof showToast==='function') showToast('Poziom rozmowy: '+lvl,'success');
 }
 
 function chatReset(){
   _chatHistory=[];
-  _chatSessionUsed={};
-  _chatSessionFixes=[];
   var msgs=document.getElementById('chat-messages');
   if(msgs) msgs.innerHTML='';
   var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
@@ -5459,8 +5461,6 @@ function chatReset(){
     _chatHistory.push({role:'assistant',content:p.greeting});
     appendChatMsg('ai',p.greeting);
   }
-  // RZ-17 L1: stała mikrokopia — co Alex robi i jak liczy się rozmowa
-  appendChatInfo('Alex wplata słowa z Twoich fiszek i dopasowuje poziom. Poprawne użycie liczy się jako lekka praktyka — pełne opanowanie potwierdzasz w lekcji z Lexem.','known');
   showChatHints();
 }
 
@@ -5472,62 +5472,20 @@ function chatRenderHistory(){
   });
 }
 
-// ── Renderowanie odpowiedzi AI z REALNYM podświetleniem fiszek ──
+// ── Renderowanie odpowiedzi AI z podświetleniem fiszek ──
 function _escFcRegex(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
 
-// Aktywne słowa do podświetlania = seed (Most #1) ∪ fiszki usera w tym języku
-function _chatActiveWords(){
-  var map={};
-  (_chatSeedWords||[]).forEach(function(w){ if(w) map[String(w).toLowerCase()]=String(w); });
-  (_chatFlashcards||[]).forEach(function(f){ if(f&&f.word) map[String(f.word).toLowerCase()]=String(f.word); });
-  return map;
-}
 
-// Zwraca {html, used:[słowa fiszek faktycznie użyte w odpowiedzi]}
+// Zwraca {html, used:[słowa fiszek użyte w odpowiedzi]}
 function renderAiHtml(text){
-  var raw=String(text||'');
-  var active=_chatActiveWords();
-  var usedSet={};
-  // 1) słowa oznaczone przez model **word** — traktuj jako zamierzone użycie fiszki
-  raw.replace(/\*\*(.*?)\*\*/g,function(_m,w){ var k=(w||'').trim().toLowerCase(); if(active[k]) usedSet[k]=active[k]; return _m; });
-  // 2) realny match aktywnych słów w treści (granica słowa, case-insensitive)
-  Object.keys(active).forEach(function(k){
-    try{ var re=new RegExp('(^|[^\\p{L}])('+_escFcRegex(active[k])+')(?![\\p{L}])','iu');
-      if(re.test(raw)) usedSet[k]=active[k];
-    }catch(e){ if(raw.toLowerCase().indexOf(k)>=0) usedSet[k]=active[k]; }
-  });
-  // 3) zbuduj HTML: escape → ** na <strong> → podświetl wszystkie użyte aktywne słowa z tooltipem
-  var html=escH(raw).replace(/\*\*(.*?)\*\*/g,'$1'); // usuń markery (podświetlamy poniżej jednolicie)
-  Object.keys(usedSet).forEach(function(k){
-    var disp=usedSet[k];
-    try{
-      var re=new RegExp('(^|[^\\p{L}])('+_escFcRegex(escH(disp))+')(?![\\p{L}])','giu');
-      html=html.replace(re,function(_m,pre,w){
-        return pre+'<span class="fc-hl" title="Z Twoich fiszek" style="background:#fff1e3;border-bottom:2px solid var(--orange);border-radius:3px;padding:0 2px;font-weight:600;color:#9a4a12">'+w+'</span>';
-      });
-    }catch(e){}
-  });
-  return {html:html, used:Object.keys(usedSet).map(function(k){return usedSet[k];})};
-}
-
-// Read-aloud (Speaking = Alex) — Web Speech; honoruje język rozmowy, JP zawsze Web Speech.
-function alexSpeak(btn, text){
-  try{
-    if(typeof speechSynthesis==='undefined') return;
-    speechSynthesis.cancel();
-    var clean=String(text||'').replace(/\*\*/g,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-    if(!clean) return;
-    var u=new SpeechSynthesisUtterance(clean.slice(0,400));
-    u.lang=_ALEX_BCP47[_chatLang]||'en-US';
-    u.rate=(_chatLang==='jp')?0.9:0.96;
-    if(btn){ btn.textContent='⏸'; u.onend=function(){ try{btn.textContent='🔊';}catch(e){} }; u.onerror=u.onend; }
-    speechSynthesis.speak(u);
-  }catch(e){}
+  var html=escH(text);
+  html=html.replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--orange)">$1</strong>');
+  return {html:html, used:[]};
 }
 
 function appendChatMsg(who, text, info){
   var msgs=document.getElementById('chat-messages');
-  if(!msgs)return [];
+  if(!msgs)return 0;
   if(info){
     var di=document.createElement('div');
     di.className='chat-info';
@@ -5537,35 +5495,17 @@ function appendChatMsg(who, text, info){
   var d=document.createElement('div');
   d.className=who==='user'?'chat-msg-user':'chat-msg-ai';
   d.style.cssText='max-width:'+(who==='user'?'75%':'80%')+';align-self:'+(who==='user'?'flex-end':'flex-start');
-  var used=[];
+  var usedCount=0;
   if(who==='user'){
     d.innerHTML=escH(text).replace(/\*\*(.*?)\*\*/g,'<strong style="color:#f5c842">$1</strong>');
-    msgs.appendChild(d);
   } else {
     var r=renderAiHtml(text);
-    used=r.used;
-    var wrap=document.createElement('div');
-    wrap.style.cssText='display:flex;align-items:flex-start;gap:8px';
-    var body=document.createElement('div'); body.style.flex='1'; body.innerHTML=r.html;
-    var spk=document.createElement('button');
-    spk.type='button'; spk.title='Posłuchaj'; spk.textContent='🔊';
-    spk.style.cssText='flex-shrink:0;border:none;background:transparent;cursor:pointer;font-size:15px;line-height:1;padding:2px;opacity:.6';
-    spk.onclick=function(){ alexSpeak(spk,text); };
-    wrap.appendChild(body); wrap.appendChild(spk);
-    d.appendChild(wrap);
-    msgs.appendChild(d);
-    // mikro-komunikat „użył N słów z Twoich fiszek" (zielony) — RZ-17 L1
-    if(used.length){
-      used.forEach(function(w){ _chatSessionUsed[String(w).toLowerCase()]=w; });
-      var mi=document.createElement('div');
-      mi.className='chat-info chat-info-known';
-      mi.style.cssText='align-self:flex-start;font-size:11px;color:#0a7a52';
-      mi.textContent='Użył '+used.length+' '+(used.length===1?'słowo':'słów')+' z Twoich fiszek: '+used.join(', ');
-      msgs.appendChild(mi);
-    }
+    d.innerHTML=r.html;
+    usedCount=r.used.length;
   }
+  msgs.appendChild(d);
   msgs.scrollTop=msgs.scrollHeight;
-  return used;
+  return usedCount;
 }
 
 function appendChatInfo(text, kind){
@@ -5578,13 +5518,14 @@ function appendChatInfo(text, kind){
   msgs.scrollTop=msgs.scrollHeight;
 }
 
-// ── Most #5: parsowanie sentinela [[KNOWN: word=conf, ...]] oraz [[FIX: złe -> dobre]] ──
+// ── Most #5: parsowanie sentinela [[KNOWN: word=conf, ...]] ──
 function parseKnownSentinel(reply){
-  var demos=[]; var fixes=[]; var cleaned=reply;
-  var mk=reply.match(/\[\[\s*KNOWN\s*:(.*?)\]\]/is);
-  if(mk){
-    cleaned=cleaned.replace(mk[0],'').trim();
-    var body=mk[1].trim();
+  var demos=[];
+  var cleaned=reply;
+  var m=reply.match(/\[\[\s*KNOWN\s*:(.*?)\]\]/is);
+  if(m){
+    cleaned=reply.replace(m[0],'').trim();
+    var body=m[1].trim();
     if(body && !/^none$/i.test(body)){
       body.split(',').forEach(function(part){
         var kv=part.split('=');
@@ -5595,68 +5536,16 @@ function parseKnownSentinel(reply){
       });
     }
   }
-  var mf=reply.match(/\[\[\s*FIX\s*:(.*?)\]\]/is);
-  if(mf){
-    cleaned=cleaned.replace(mf[0],'').trim();
-    var fb=mf[1].trim();
-    if(fb && !/^none$/i.test(fb)){
-      fb.split(';').forEach(function(pair){
-        var ab=pair.split(/->|→/);
-        var bad=(ab[0]||'').trim(), good=(ab[1]||'').trim();
-        if(bad&&good) fixes.push({bad:bad, good:good});
-      });
-    }
-  }
-  return {cleaned:cleaned, demos:demos, fixes:fixes};
+  return {cleaned:cleaned, demos:demos};
 }
 
-// ── D-persona: zapis ZDYSKONTOWANY do srs_progress (canonical). NIGDY nie awansuje do „opanowane". ──
-// Reguła: trzymamy reps<=3 oraz iv<=6 → siła <= ~78 < MASTER_STR(85). Nigdy nie cofamy mocniejszej karty.
-async function alexApplyKnown(demos){
-  if(!demos||!demos.length) return;
-  var applied=[];
-  try{
-    var sess=(await db.auth.getSession()).data.session; if(!sess) return;
-    var uid=sess.user.id;
-    var lang=document.getElementById('chat-lang')?document.getElementById('chat-lang').value:'en';
-    for(var i=0;i<demos.length;i++){
-      var d=demos[i];
-      if(d.confidence==='low') continue; // zbyt słaby sygnał — pomijamy
-      var fc=(_chatFlashcards||[]).find(function(f){return f.word&&f.word.toLowerCase()===d.word.toLowerCase();});
-      if(!fc) continue; // brak fiszki = brak canonical card_key → nie piszemy „z powietrza"
-      var ck=fc.card_key || ((fc.word||'').toLowerCase()+'|'+(fc.translation||'').toLowerCase());
-      var curReps=+fc.reps||0, curIv=+fc.iv||0;
-      // karta już mocniejsza niż sufit Alexa → zostaw Lexowi, nie cofaj
-      if(curReps>3 || curIv>6) continue;
-      var addReps=(d.confidence==='high')?1:0;
-      var addIv  =(d.confidence==='high')?2:1;
-      var newReps=Math.min(3, Math.max(curReps, Math.max(1,curReps)+addReps));
-      var newIv  =Math.min(6, Math.max(curIv, Math.max(1,curIv)+addIv));
-      if(newReps===curReps && newIv===curIv) continue; // brak realnej zmiany
-      try{
-        await db.from('srs_progress').upsert({
-          user_id:uid, card_key:ck, word:fc.word, translation:fc.translation||'', lang:lang,
-          ease_factor:fc.ease||2.5, repetitions:newReps, interval_days:newIv,
-          next_review:new Date(Date.now()+newIv*864e5).toISOString(),
-          source:'alex', updated_at:new Date().toISOString()
-        },{onConflict:'user_id,card_key'});
-        fc.reps=newReps; fc.iv=newIv;
-        applied.push(fc.word);
-      }catch(e){}
-    }
-  }catch(e){}
-  if(applied.length){
-    appendChatInfo('Zapisałem lekką praktykę: '+applied.join(', ')+' — utrwalisz je w pełni w lekcji z Lexem.','known');
-  }
-}
+// Boost SM-2 dla słów, które user zademonstrował poprawnie
 
 function showChatHints(){
   var hintsWrap=document.getElementById('chat-hints-wrap');
   if(!hintsWrap)return;
-  var lvl=((document.getElementById('chat-level')||{}).value)||'B1';
-  // Smart-replies jako RUSZTOWANIE: bogate na A1/A2, mniej na B1, znikają od B2+
-  // (Pedagogy: Generation > selection — na wyższym poziomie produkcja, nie wybór z gotowców)
-  if(lvl==='B2'||lvl==='C1'||lvl==='C2'){ hintsWrap.innerHTML=''; return; }
+  var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
+  if(mode==='brave'){hintsWrap.innerHTML='';return;}
   var hints={
     en:['Tell me more about that','I totally agree with you','That\'s an interesting point','Actually, I think...'],
     es:['Cuéntame más sobre eso','Totalmente de acuerdo','Es un punto interesante','En realidad, creo que...'],
@@ -5664,7 +5553,6 @@ function showChatHints(){
     jp:['もっと教えてください','そうですね','面白い考えですね','実は、私は...']
   };
   var arr=hints[_chatLang]||hints['en'];
-  if(lvl==='B1') arr=arr.slice(0,2); // mniej rusztowania na B1
   hintsWrap.innerHTML=arr.map(function(h){
     return '<span class="chat-hint" onclick="chatUseHint(\''+h.replace(/'/g,"\\'")+'\')">'+(h.length>30?h.slice(0,28)+'…':h)+'</span>';
   }).join('');
@@ -5676,57 +5564,26 @@ function chatUseHint(text){
 }
 
 const CHAT_DAILY_LIMIT = 15;
-var _chatUsageToday = 0;
 
-// Persystencja limitu: Supabase (chat_usage) z fallbackiem na localStorage.
-async function alexLoadUsageToday(){
-  var today=new Date().toISOString().slice(0,10);
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(sess){
-      var r=await db.from('chat_usage').select('count').eq('user_id',sess.user.id).eq('day',today).limit(1);
-      if(r && !r.error && r.data && r.data[0]){ _chatUsageToday=+r.data[0].count||0; return _chatUsageToday; }
-      if(r && !r.error){ _chatUsageToday=0; return 0; }
-    }
-  }catch(e){}
-  try{ _chatUsageToday=parseInt(localStorage.getItem(chatUsageKey())||'0'); }catch(e){ _chatUsageToday=0; }
-  return _chatUsageToday;
+function getChatUsageToday(){
+  try{ return parseInt(localStorage.getItem(chatUsageKey())||'0'); }
+  catch(e){return 0;}
 }
-function getChatUsageToday(){ return _chatUsageToday; }
-async function incrementChatUsage(){
-  _chatUsageToday++;
-  var today=new Date().toISOString().slice(0,10);
-  try{ localStorage.setItem(chatUsageKey(),String(_chatUsageToday)); }catch(e){}
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(sess){ await db.from('chat_usage').upsert({user_id:sess.user.id, day:today, count:_chatUsageToday},{onConflict:'user_id,day'}); }
-  }catch(e){}
-  return _chatUsageToday;
+function incrementChatUsage(){
+  try{ var key=chatUsageKey(); var n=getChatUsageToday()+1; localStorage.setItem(key,String(n)); return n; }
+  catch(e){return 1;}
 }
 function updateChatLimitUI(){
   var used=getChatUsageToday();
   var left=Math.max(0,CHAT_DAILY_LIMIT-used);
   var el=document.getElementById('chat-limit-info');
   if(el){
-    el.textContent=left>0?(left+' z '+CHAT_DAILY_LIMIT+' wiadomości pozostało dziś'):'Limit dzienny wyczerpany — odblokuj PRO dla nielimitowanych rozmów';
+    el.textContent=left>0?(left+' wiadomości pozostało dziś'):'Limit dzienny wyczerpany — odblokuj PRO dla nielimitowanych rozmów';
     el.style.color=left===0?'#dc2626':(left<=3?'#c96a2a':'var(--dim2,#888)');
   }
 }
 
-// ── Lekki log zdarzeń (handoff intencja/realizacja — D-format). Bufor + best-effort Supabase. ──
-function alexLogEvent(name, meta){
-  try{
-    var rec={name:name, ts:Date.now(), meta:meta||{}};
-    var buf=[]; try{ buf=JSON.parse(localStorage.getItem('alex_events')||'[]'); }catch(e){}
-    buf.push(rec); if(buf.length>50) buf=buf.slice(-50);
-    localStorage.setItem('alex_events', JSON.stringify(buf));
-    console.log('[alex-event]',name,meta||{});
-    // gdy powstanie tabela analytics_events — odkomentuj:
-    // db.auth.getSession().then(function(s){ if(s.data.session) db.from('analytics_events').insert({user_id:s.data.session.user.id,name:name,meta:meta||{}}); });
-  }catch(e){}
-}
-
-// ── Most #3/#4: boost priorytetu słowa (kanał desktop-sync, word_progress — osobny od SRS truth) ──
+// ── Most #3/#4: boost priorytetu słowa w word_progress (czyta desktop-sync) ──
 async function boostWordPriority(flashcardId, opts){
   opts=opts||{};
   try{
@@ -5744,6 +5601,7 @@ async function boostWordPriority(flashcardId, opts){
   }catch(e){ return false; }
 }
 
+// Most #4 — wyślij listę słów na desktop (priorytet na 5 dni). words: [{id}] lub [id].
 async function boostWordsOnDesktop(words){
   var ids=(words||[]).map(function(w){ return (w&&w.id!==undefined)?w.id:w; }).filter(Boolean);
   if(!ids.length) return;
@@ -5770,23 +5628,12 @@ function detectExplanationRequest(msg){
   return null;
 }
 
-// Podsumowanie sesji — framing KOMPETENCYJNY (peak-end), ZERO gamifikacji.
-function chatEndSession(){
-  var used=Object.keys(_chatSessionUsed).map(function(k){return _chatSessionUsed[k];});
-  var lines=[];
-  if(used.length) lines.push('W tej rozmowie użyłeś '+used.length+' swoich słów: '+used.join(', ')+'.');
-  else lines.push('Rozmowa zakończona. Następnym razem spróbuj wpleść kilka swoich fiszek — Alex je rozpozna.');
-  if(_chatSessionFixes.length) lines.push(_chatSessionFixes.length+' '+(_chatSessionFixes.length===1?'słowo wróci':'słów wróci')+' częściej na desktopie, żeby je domknąć.');
-  appendChatInfo(lines.join(' '),'known');
-  if(typeof teacherSaveConversation==='function') try{ teacherSaveConversation(); }catch(e){}
-}
-
 async function chatSend(){
   var input=document.getElementById('chat-input');
   var text=input.value.trim();
   if(!text)return;
   if(getChatUsageToday()>=CHAT_DAILY_LIMIT){
-    appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości z Alexem. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO.');
+    appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości z Alexem. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO. 🌟');
     return;
   }
   var btn=document.getElementById('chat-send-btn');
@@ -5803,7 +5650,6 @@ async function chatSend(){
       if(_fcMatch&&_fcMatch.id){
         appendChatInfo('📌 „'+_fcMatch.word+'" wróci częściej na desktopie przez kilka dni');
         boostWordPriority(_fcMatch.id,{days:3,makeDue:true,easeDelta:-0.2});
-        if(_chatSessionFixes.indexOf(_fcMatch.word)<0) _chatSessionFixes.push(_fcMatch.word);
       }
     }
   }catch(e){}
@@ -5816,14 +5662,14 @@ async function chatSend(){
   document.getElementById('chat-messages').scrollTop=99999;
 
   try{
-    // Słowa docelowe = seed z Mostu #1 (utrzymywane przez sesję). Bez nadgorliwego wstrzykiwania.
+    // AI Partner: słowa tylko z deliberate flow (Bridge #1), w wybranym języku; brak pasywnego wstrzykiwania
     var targetWords=[];
     if(window._chatSeedWords && window._chatSeedWords.length) targetWords=window._chatSeedWords.slice(0,8);
-    // Lista słownictwa do inferencji (Most #5): aktualne fiszki usera w tym języku
-    var vocabList=(_chatFlashcards||[]).slice(0,14).map(function(f){return f.word;}).filter(Boolean);
+    var vocabList=[];
 
+    var mode=document.querySelector('input[name="chat-mode"]:checked')?.value||'hints';
     var p=_chatPersonas[_chatLang]||_chatPersonas['en'];
-    var langNames=(typeof getLangENMap==='function')?getLangENMap():{en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
+    var langNames=getLangENMap();
     var cefr=((document.getElementById('chat-level')||{}).value)||'B1';
     var levelInstructions={
       A1:'CEFR A1. Very simple words, short sentences (max 8 words), speak slowly. Add a Polish gloss in parentheses for any non-basic word. Gently correct mistakes.',
@@ -5839,17 +5685,14 @@ async function chatSend(){
       +'This is a FREE, OPEN conversation: follow the user\'s lead and talk about whatever they bring up. Do NOT impose, suggest, or steer toward any preset topic — let the conversation flow naturally from what they say. '
       +'YOUR FIRST PRIORITY: respond genuinely and substantively to what the user actually said, at their level. If they ask for a story, tell a real, interesting story. '
       +'LEVEL (strict, do not drift below it): '+levelInst+' '
-      +'Respond in '+langNames[_chatLang]+'. '
-      +'CORRECTION STYLE: you are a conversation partner, NOT a teacher. Never break the flow with a grammar lecture. If the user makes a clear, meaning-affecting error, weave the correct form naturally into your reply (recast) and move on. Deep correction is Lex\'s job. '
+      +(mode==='brave'?('Respond ONLY in '+langNames[_chatLang]+'. If the user writes in Polish, gently nudge them back to '+langNames[_chatLang]+'. '):('Respond in '+langNames[_chatLang]+'. '))
       +(targetWords.length?('SECONDARY and OPTIONAL — the user is practising these words: '+targetWords.join(', ')+'. ONLY if one fits naturally in an otherwise on-topic reply, use it and wrap THAT word in **double asterisks**. Never force them, never steer the conversation toward them, never use more than two per reply. A natural, on-topic, level-appropriate answer ALWAYS beats inserting a practice word. '):'')
       +'Match the depth the level implies: at B2+ give detailed, interesting replies (3-6 sentences), not one-liners; below that keep it shorter. Be warm but never hollow.\n\n'
       +(vocabList.length?('The user is learning these flashcard words: '+vocabList.join('; ')+'.\n'
-        +'After your conversational reply, on NEW LINES at the very end, output up to two markers (omit a marker if empty). Never mention them in the conversation.\n'
-        +'1) Words from the list the user used CORRECTLY in their MOST RECENT message, with confidence. EXACT format:\n'
-        +'[[KNOWN: word=high, word=medium]]  (or [[KNOWN: none]])\n'
-        +'Confidence: high = clearly correct in context; medium = correct but ambiguous; low = mentioned, possibly guessing. Do NOT be over-generous.\n'
-        +'2) At most ONE clear, meaning-affecting mistake the user just made and how to say it, ONLY if it maps to a flashcard word. EXACT format:\n'
-        +'[[FIX: wrongword -> correctword]]  (or omit entirely if none)'):'');
+        +'After your conversational reply, on a NEW LINE at the very end, output a marker listing ONLY the flashcard words from that list which the user used CORRECTLY in their MOST RECENT message, with a confidence level. Use EXACTLY this format:\n'
+        +'[[KNOWN: word=high, word=medium]]\n'
+        +'If the user used none of those words, output: [[KNOWN: none]]\n'
+        +'Confidence: high = clearly correct in context; medium = correct but ambiguous; low = mentioned, possibly guessing. Do NOT be over-generous. Never mention this marker in your conversational reply.'):'');
 
     var tok2=(await db.auth.getSession()).data.session?.access_token||'';
     var res=await fetch(AI_PROXY_URL,{
@@ -5860,30 +5703,18 @@ async function chatSend(){
     var data=await res.json();
     var rawReply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Sorry, something went wrong. Try again!';
 
-    // Most #5: wytnij sentinele
+    // Most #5: wytnij sentinel, zboostuj zademonstrowane słowa
     var parsed=parseKnownSentinel(rawReply);
     var reply=parsed.cleaned;
 
     _chatHistory.push({role:'assistant',content:reply});
     typing.remove();
-    appendChatMsg('ai',reply);
-
-    // D-persona: zdyskontowany zapis poprawnie użytych słów do srs_progress
-    if(parsed.demos&&parsed.demos.length) await alexApplyKnown(parsed.demos);
-
-    // Most #3/#4: delikatna korekta → desktop boost + ślad do podsumowania
-    if(parsed.fixes&&parsed.fixes.length){
-      parsed.fixes.slice(0,1).forEach(function(fx){
-        var fc=(_chatFlashcards||[]).find(function(f){return f.word&&f.word.toLowerCase()===String(fx.good).toLowerCase();});
-        if(fc&&fc.id){ boostWordPriority(fc.id,{days:3,makeDue:true,easeDelta:-0.15}); }
-        if(_chatSessionFixes.indexOf(fx.good)<0) _chatSessionFixes.push(fx.good);
-        appendChatInfo('💡 Drobna poprawka: „'+fx.good+'" — wróci na desktopie, żeby się utrwaliła.');
-      });
-    }
-
     if(typeof teacherSaveConversation==='function') teacherSaveConversation();
 
-    await incrementChatUsage();
+    appendChatMsg('ai',reply);
+
+    _chatSeedWords=null; // seed zużyty po pierwszej wymianie
+    incrementChatUsage();
     updateChatLimitUI();
     showChatHints();
   }catch(e){
