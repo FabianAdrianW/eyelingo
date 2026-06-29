@@ -440,6 +440,11 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
             <div class="body"><div class="t">Powtórki <span class="due-pill" id="ucz-due-pill" style="display:none">0</span></div><div class="d">Słowa, które dziś dojrzały do powtórki</div></div>
             <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           </div>
+          <div class="big" onclick="alexOpen()">
+            <div class="ic orange"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg></div>
+            <div class="body"><div class="t">Porozmawiaj z Alexem</div><div class="d">Swobodna rozmowa — Alex wplata Twoje słowa i dopasowuje poziom</div></div>
+            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
           <div class="note">Wszystko działa na żywych danych Twojego konta — zestawy, postęp i powtórki są wspólne ze stroną i desktopem.</div>
         </div>
       </section>
@@ -592,6 +597,31 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
     <div class="flip-stage" id="pw-stage"></div>
     <div class="pw-hint" id="pw-hint"></div>
     <div class="pw-grades" id="pw-grades" style="display:none"></div>
+  </div>
+
+
+  <!-- IMMERSIVE: ROZMOWA Z ALEXEM (AI Partner) -->
+  <div class="immersive" id="imm-alex">
+    <div class="imm-bar">
+      <button class="icon-btn" onclick="alexClose()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <div class="imm-title">Rozmowa z Alexem</div>
+      <button class="icon-btn" onclick="alexReset()" title="Nowa rozmowa"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+    </div>
+    <div style="padding:8px 16px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line)">
+      <select id="alex-lang" onchange="alexLangChange()" style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--line2);font-size:12.5px;background:var(--paper);color:var(--navy)">
+        <option value="en">🇬🇧 Angielski</option><option value="es">🇪🇸 Hiszpański</option><option value="nl">🇳🇱 Holenderski</option><option value="jp">🇯🇵 Japoński</option>
+      </select>
+      <select id="alex-level" onchange="alexLevelChange()" style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--line2);font-size:12.5px;background:var(--paper);color:var(--navy)">
+        <option value="A1">A1</option><option value="A2">A2</option><option value="B1" selected>B1</option><option value="B2">B2</option><option value="C1">C1</option><option value="C2">C2</option>
+      </select>
+    </div>
+    <div id="alex-msgs" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch"></div>
+    <div id="alex-hints" style="padding:0 12px 6px;display:flex;flex-wrap:wrap;gap:6px"></div>
+    <div style="padding:2px 16px 0;text-align:right"><span id="alex-limit" style="font-size:11px;color:var(--dim2)"></span></div>
+    <div style="padding:10px 12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:flex-end">
+      <textarea id="alex-input" rows="1" placeholder="Napisz w wybranym języku..." style="flex:1;resize:none;padding:9px 12px;border-radius:12px;border:1px solid var(--line2);font-size:14px;font-family:inherit;background:#fff;color:var(--navy);max-height:90px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();alexSend();}"></textarea>
+      <button id="alex-send" onclick="alexSend()" style="flex-shrink:0;background:var(--orange);color:#fff;border:none;border-radius:12px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer">Wyślij</button>
+    </div>
   </div>
 
 </div></div>
@@ -2278,6 +2308,287 @@ function pwRenderDone(){
   refreshDueBadge();
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   ALEX — AI PARTNER (mobile). Parytet z index.html.
+   Free conversation: transfer + mówienie. Pisze ZDYSKONTOWANO do srs_progress
+   (D-persona: nigdy nie awansuje słowa do „opanowane"). Współdzieli chat_usage.
+   ═══════════════════════════════════════════════════════════════ */
+var _alexHistory=[];
+var _alexLang='en';
+var _alexFlashcards=[];      // {word, translation, card_key, reps, iv}
+var _alexSessionUsed={};
+var _alexUsageToday=0;
+const ALEX_DAILY_LIMIT=15;
+var _alexPersonas={
+  en:{name:'Alex',desc:'Native speaker · New York',greeting:"Hey! I'm Alex. Let's have a conversation in English. What would you like to talk about today?"},
+  es:{name:'Sofía',desc:'Hablante nativa · Madrid',greeting:'¡Hola! Soy Sofía. Vamos a practicar el español juntos. ¿De qué quieres hablar?'},
+  nl:{name:'Daan',desc:'Moedertaalspreker · Amsterdam',greeting:'Hallo! Ik ben Daan. Laten we Nederlands oefenen. Waar wil je het over hebben?'},
+  jp:{name:'Yuki',desc:'ネイティブスピーカー · 東京',greeting:'こんにちは！ゆきです。一緒に日本語を練習しましょう。何について話したいですか？'}
+};
+
+function alexOpen(){
+  document.getElementById('imm-alex').classList.add('active');
+  alexInit();
+}
+function alexClose(){
+  try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
+  alexEndSession();
+  document.getElementById('imm-alex').classList.remove('active');
+}
+
+async function alexInit(){
+  var ls=document.getElementById('alex-lang'); if(ls) _alexLang=ls.value||'en';
+  alexSyncPersona();
+  await alexLoadWeak();
+  await alexLoadUsage();
+  if(!_alexHistory.length) alexReset();
+  alexLimitUI();
+}
+function alexSyncPersona(){
+  var inp=document.getElementById('alex-input');
+  var ph={en:'Napisz po angielsku...',es:'Escribe en español...',nl:'Schrijf in het Nederlands...',jp:'日本語で書いてください...'};
+  if(inp) inp.placeholder=ph[_alexLang]||'Napisz...';
+}
+function alexLangChange(){ _alexLang=document.getElementById('alex-lang').value; alexSyncPersona(); alexLoadWeak(); alexReset(); }
+function alexLevelChange(){ var hasTurn=_alexHistory.some(function(m){return m.role==='user';}); if(hasTurn) alexReset(); alexHints(); }
+
+async function alexLoadWeak(){
+  _alexFlashcards=[];
+  if(!UID){ return; }
+  try{
+    var r=await db.from('srs_progress')
+      .select('card_key,word,translation,lang,repetitions,interval_days,updated_at')
+      .eq('user_id',UID).order('updated_at',{ascending:false}).limit(120);
+    var d=(r&&r.data)||[];
+    var filt=d.filter(function(x){ return x.word && (!x.lang || x.lang===_alexLang); });
+    var pool=filt.length?filt:d.filter(function(x){return x.word;});
+    _alexFlashcards=pool.map(function(x){return {
+      card_key:x.card_key||null, word:x.word, translation:x.translation||'',
+      reps:x.repetitions||0, iv:x.interval_days||0
+    };});
+  }catch(e){}
+}
+
+function alexReset(){
+  _alexHistory=[]; _alexSessionUsed={};
+  var msgs=document.getElementById('alex-msgs'); if(msgs) msgs.innerHTML='';
+  var p=_alexPersonas[_alexLang]||_alexPersonas['en'];
+  _alexHistory.push({role:'assistant',content:p.greeting});
+  alexAppend('ai',p.greeting);
+  alexInfo('Alex wplata słowa z Twoich fiszek i dopasowuje poziom. Poprawne użycie liczy się jako lekka praktyka — pełne opanowanie potwierdzasz w lekcji z Lexem.','known');
+  alexHints();
+}
+
+function _alexEscRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+function _alexActive(){
+  var map={};
+  (_alexFlashcards||[]).forEach(function(f){ if(f&&f.word) map[String(f.word).toLowerCase()]=String(f.word); });
+  return map;
+}
+function alexRenderHtml(text){
+  var raw=String(text||''); var active=_alexActive(); var usedSet={};
+  raw.replace(/\*\*(.*?)\*\*/g,function(_m,w){ var k=(w||'').trim().toLowerCase(); if(active[k]) usedSet[k]=active[k]; return _m; });
+  Object.keys(active).forEach(function(k){
+    try{ var re=new RegExp('(^|[^\\p{L}])('+_alexEscRe(active[k])+')(?![\\p{L}])','iu'); if(re.test(raw)) usedSet[k]=active[k]; }
+    catch(e){ if(raw.toLowerCase().indexOf(k)>=0) usedSet[k]=active[k]; }
+  });
+  var html=esc(raw).replace(/\*\*(.*?)\*\*/g,'$1');
+  Object.keys(usedSet).forEach(function(k){
+    var disp=usedSet[k];
+    try{
+      var re=new RegExp('(^|[^\\p{L}])('+_alexEscRe(esc(disp))+')(?![\\p{L}])','giu');
+      html=html.replace(re,function(_m,pre,w){ return pre+'<span style="background:#fff1e3;border-bottom:2px solid var(--orange);border-radius:3px;padding:0 2px;font-weight:600;color:#9a4a12">'+w+'</span>'; });
+    }catch(e){}
+  });
+  return {html:html, used:Object.keys(usedSet).map(function(k){return usedSet[k];})};
+}
+
+function alexSpeak(text){
+  try{
+    if(typeof window.lexSceneSpeak==='function'){ window.lexSceneSpeak(String(text||'').replace(/\*\*/g,''), lexTtsCode(_alexLang)); return; }
+    if(typeof speechSynthesis==='undefined') return;
+    speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(String(text||'').replace(/\*\*/g,'').replace(/<[^>]+>/g,' ').slice(0,400));
+    u.lang=lexTtsCode(_alexLang); u.rate=(_alexLang==='jp')?0.9:0.96; speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+function alexAppend(who,text){
+  var msgs=document.getElementById('alex-msgs'); if(!msgs) return [];
+  var d=document.createElement('div');
+  d.style.cssText='max-width:'+(who==='user'?'80%':'88%')+';align-self:'+(who==='user'?'flex-end':'flex-start')
+    +';background:'+(who==='user'?'var(--navy)':'#fff')+';color:'+(who==='user'?'#fff':'var(--navy)')
+    +';border:'+(who==='user'?'none':'1px solid var(--line)')+';border-radius:14px;padding:10px 13px;font-size:14px;line-height:1.45';
+  var used=[];
+  if(who==='user'){ d.innerHTML=esc(text); msgs.appendChild(d); }
+  else{
+    var r=alexRenderHtml(text); used=r.used;
+    var wrap=document.createElement('div'); wrap.style.cssText='display:flex;gap:8px;align-items:flex-start';
+    var body=document.createElement('div'); body.style.flex='1'; body.innerHTML=r.html;
+    var spk=document.createElement('button'); spk.type='button'; spk.textContent='🔊';
+    spk.style.cssText='flex-shrink:0;border:none;background:transparent;cursor:pointer;font-size:15px;padding:0;opacity:.6';
+    spk.onclick=function(){ alexSpeak(text); };
+    wrap.appendChild(body); wrap.appendChild(spk); d.appendChild(wrap); msgs.appendChild(d);
+    if(used.length){
+      used.forEach(function(w){ _alexSessionUsed[String(w).toLowerCase()]=w; });
+      var mi=document.createElement('div'); mi.style.cssText='align-self:flex-start;font-size:11px;color:#0a7a52';
+      mi.textContent='Użył '+used.length+' '+(used.length===1?'słowo':'słów')+' z Twoich fiszek: '+used.join(', ');
+      msgs.appendChild(mi);
+    }
+  }
+  msgs.scrollTop=msgs.scrollHeight; return used;
+}
+function alexInfo(text,kind){
+  var msgs=document.getElementById('alex-msgs'); if(!msgs) return;
+  var d=document.createElement('div');
+  d.style.cssText='align-self:center;font-size:11px;color:'+(kind==='known'?'#0a7a52':'var(--dim2)')+';text-align:center;max-width:90%;line-height:1.4';
+  d.textContent=text; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight;
+}
+
+function alexParseSentinels(reply){
+  var demos=[], fixes=[], cleaned=reply;
+  var mk=reply.match(/\[\[\s*KNOWN\s*:(.*?)\]\]/is);
+  if(mk){ cleaned=cleaned.replace(mk[0],'').trim(); var body=mk[1].trim();
+    if(body && !/^none$/i.test(body)){ body.split(',').forEach(function(part){ var kv=part.split('='); var w=(kv[0]||'').trim(); var c=(kv[1]||'medium').trim().toLowerCase(); if(!/^(high|medium|low)$/.test(c)) c='medium'; if(w) demos.push({word:w,confidence:c}); }); } }
+  var mf=reply.match(/\[\[\s*FIX\s*:(.*?)\]\]/is);
+  if(mf){ cleaned=cleaned.replace(mf[0],'').trim(); var fb=mf[1].trim();
+    if(fb && !/^none$/i.test(fb)){ fb.split(';').forEach(function(pair){ var ab=pair.split(/->|→/); var bad=(ab[0]||'').trim(), good=(ab[1]||'').trim(); if(bad&&good) fixes.push({bad:bad,good:good}); }); } }
+  return {cleaned:cleaned, demos:demos, fixes:fixes};
+}
+
+// D-persona: zdyskontowany zapis do srs_progress. Clamp reps<=3, iv<=6 → siła <~78 < MASTER_STR(85).
+async function alexApplyKnown(demos){
+  if(!demos||!demos.length||!UID) return;
+  var applied=[];
+  for(var i=0;i<demos.length;i++){
+    var d=demos[i]; if(d.confidence==='low') continue;
+    var fc=(_alexFlashcards||[]).find(function(f){return f.word&&f.word.toLowerCase()===d.word.toLowerCase();});
+    if(!fc) continue;
+    var ck=fc.card_key||_usrsCK(fc.word,fc.translation||'');
+    var curReps=+fc.reps||0, curIv=+fc.iv||0;
+    if(curReps>3 || curIv>6) continue; // mocniejsza karta → zostaw Lexowi, nie cofaj
+    var addR=(d.confidence==='high')?1:0, addI=(d.confidence==='high')?2:1;
+    var newReps=Math.min(3, Math.max(curReps, Math.max(1,curReps)+addR));
+    var newIv  =Math.min(6, Math.max(curIv, Math.max(1,curIv)+addI));
+    if(newReps===curReps && newIv===curIv) continue;
+    try{
+      await db.from('srs_progress').upsert({
+        user_id:UID, card_key:ck, word:fc.word, translation:fc.translation||'', lang:_alexLang,
+        repetitions:newReps, interval_days:newIv,
+        next_review:new Date(Date.now()+newIv*86400000).toISOString().slice(0,10),
+        source:'alex'
+      },{onConflict:'user_id,card_key'});
+      fc.reps=newReps; fc.iv=newIv; applied.push(fc.word);
+    }catch(e){}
+  }
+  if(applied.length) alexInfo('Zapisałem lekką praktykę: '+applied.join(', ')+' — utrwalisz je w pełni w lekcji z Lexem.','known');
+}
+
+function alexHints(){
+  var wrap=document.getElementById('alex-hints'); if(!wrap) return;
+  var lvl=(document.getElementById('alex-level')||{}).value||'B1';
+  if(lvl==='B2'||lvl==='C1'||lvl==='C2'){ wrap.innerHTML=''; return; }
+  var hints={
+    en:['Tell me more about that','I totally agree','That\'s interesting','Actually, I think...'],
+    es:['Cuéntame más','Totalmente de acuerdo','Es interesante','Creo que...'],
+    nl:['Vertel me meer','Ik ben het ermee eens','Interessant','Ik denk dat...'],
+    jp:['もっと教えて','そうですね','面白いね','実は...']
+  };
+  var arr=hints[_alexLang]||hints['en']; if(lvl==='B1') arr=arr.slice(0,2);
+  wrap.innerHTML=arr.map(function(h){ return '<span onclick="alexUseHint(\''+h.replace(/'/g,"\\'")+'\')" style="font-size:12px;padding:5px 10px;background:#fff;border:1px solid var(--line);border-radius:100px;cursor:pointer;color:var(--navy)">'+esc(h)+'</span>'; }).join('');
+}
+function alexUseHint(t){ var i=document.getElementById('alex-input'); if(i){ i.value=t; i.focus(); } }
+
+async function alexLoadUsage(){
+  var today=new Date().toISOString().slice(0,10);
+  try{ if(UID){ var r=await db.from('chat_usage').select('count').eq('user_id',UID).eq('day',today).limit(1);
+    if(r && !r.error){ _alexUsageToday=(r.data&&r.data[0])?(+r.data[0].count||0):0; return; } } }catch(e){}
+  try{ _alexUsageToday=parseInt(localStorage.getItem('chat_usage_'+(UID||'anon')+'_'+today)||'0'); }catch(e){ _alexUsageToday=0; }
+}
+async function alexInc(){
+  _alexUsageToday++; var today=new Date().toISOString().slice(0,10);
+  try{ localStorage.setItem('chat_usage_'+(UID||'anon')+'_'+today, String(_alexUsageToday)); }catch(e){}
+  try{ if(UID) await db.from('chat_usage').upsert({user_id:UID,day:today,count:_alexUsageToday},{onConflict:'user_id,day'}); }catch(e){}
+}
+function alexLimitUI(){
+  var left=Math.max(0,ALEX_DAILY_LIMIT-_alexUsageToday);
+  var el=document.getElementById('alex-limit'); if(!el) return;
+  el.textContent=left>0?(left+' z '+ALEX_DAILY_LIMIT+' wiadomości dziś'):'Limit dzienny wyczerpany — odblokuj PRO';
+  el.style.color=left===0?'#dc2626':(left<=3?'var(--orange)':'var(--dim2)');
+}
+
+function alexEndSession(){
+  var used=Object.keys(_alexSessionUsed).map(function(k){return _alexSessionUsed[k];});
+  if(used.length) alexInfo('W tej rozmowie użyłeś '+used.length+' swoich słów: '+used.join(', ')+'.','known');
+}
+
+async function alexSend(){
+  var input=document.getElementById('alex-input'); var text=(input.value||'').trim(); if(!text) return;
+  if(_alexUsageToday>=ALEX_DAILY_LIMIT){ alexAppend('ai','Osiągnąłeś dzienny limit '+ALEX_DAILY_LIMIT+' wiadomości z Alexem. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO.'); return; }
+  var btn=document.getElementById('alex-send'); btn.disabled=true; input.value='';
+  alexAppend('user',text); _alexHistory.push({role:'user',content:text});
+
+  var msgs=document.getElementById('alex-msgs');
+  var typing=document.createElement('div'); typing.style.cssText='align-self:flex-start;color:var(--dim2);font-size:13px;padding:4px'; typing.textContent='pisze...'; msgs.appendChild(typing); msgs.scrollTop=99999;
+
+  try{
+    var vocabList=(_alexFlashcards||[]).slice(0,14).map(function(f){return f.word;}).filter(Boolean);
+    var p=_alexPersonas[_alexLang]||_alexPersonas['en'];
+    var langNames={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese'};
+    var cefr=(document.getElementById('alex-level')||{}).value||'B1';
+    var levelInstructions={
+      A1:'CEFR A1. Very simple words, short sentences (max 8 words), speak slowly. Add a Polish gloss in parentheses for any non-basic word. Gently correct mistakes.',
+      A2:'CEFR A2. Simple everyday vocabulary, short clear sentences. Occasional Polish gloss for hard words. Correct major mistakes gently.',
+      B1:'CEFR B1. Natural everyday vocabulary, normal sentence length. Minimal Polish. Correct only significant errors.',
+      B2:'CEFR B2. Rich vocabulary, idioms, varied structure. No Polish. Engage with substance — give real opinions and concrete details.',
+      C1:'CEFR C1. Sophisticated, nuanced language and idioms. No Polish. Treat the user as a fluent peer; give detailed, substantive answers.',
+      C2:'CEFR C2. Native-level register, subtle nuance, wit, complex structures. No Polish. Be a sharp, articulate equal — never simplify or talk down.'
+    };
+    var levelInst=levelInstructions[cefr]||levelInstructions['B1'];
+
+    var systemPrompt='You are '+p.name+', a friendly native '+langNames[_alexLang]+' speaker from '+p.desc.split('·')[1].trim()+'. '
+      +'This is a FREE, OPEN conversation: follow the user\'s lead and talk about whatever they bring up. Do NOT impose, suggest, or steer toward any preset topic — let the conversation flow naturally from what they say. '
+      +'YOUR FIRST PRIORITY: respond genuinely and substantively to what the user actually said, at their level. If they ask for a story, tell a real, interesting story. '
+      +'LEVEL (strict, do not drift below it): '+levelInst+' '
+      +'Respond in '+langNames[_alexLang]+'. '
+      +'CORRECTION STYLE: you are a conversation partner, NOT a teacher. Never break the flow with a grammar lecture. If the user makes a clear, meaning-affecting error, weave the correct form naturally into your reply (recast) and move on. Deep correction is Lex\'s job. '
+      +'Match the depth the level implies: at B2+ give detailed, interesting replies (3-6 sentences), not one-liners; below that keep it shorter. Be warm but never hollow.\n\n'
+      +(vocabList.length?('The user is learning these flashcard words: '+vocabList.join('; ')+'.\n'
+        +'After your conversational reply, on NEW LINES at the very end, output up to two markers (omit a marker if empty). Never mention them in the conversation.\n'
+        +'1) Words from the list the user used CORRECTLY in their MOST RECENT message, with confidence. EXACT format:\n'
+        +'[[KNOWN: word=high, word=medium]]  (or [[KNOWN: none]])\n'
+        +'Confidence: high = clearly correct in context; medium = correct but ambiguous; low = mentioned, possibly guessing. Do NOT be over-generous.\n'
+        +'2) At most ONE clear, meaning-affecting mistake the user just made and how to say it, ONLY if it maps to a flashcard word. EXACT format:\n'
+        +'[[FIX: wrongword -> correctword]]  (or omit entirely if none)'):'');
+
+    var tok=(await db.auth.getSession()).data.session?.access_token||'';
+    var res=await fetch(LEX_PROXY,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},
+      body:JSON.stringify({ systemPrompt:systemPrompt, messages:_alexHistory.slice(-10), max_tokens:((cefr==='B2'||cefr==='C1'||cefr==='C2')?850:500) })
+    });
+    var data=await res.json();
+    var rawReply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Sorry, something went wrong. Try again!';
+
+    var parsed=alexParseSentinels(rawReply);
+    var reply=parsed.cleaned;
+    _alexHistory.push({role:'assistant',content:reply});
+    typing.remove();
+    alexAppend('ai',reply);
+
+    if(parsed.demos&&parsed.demos.length) await alexApplyKnown(parsed.demos);
+    if(parsed.fixes&&parsed.fixes.length){
+      parsed.fixes.slice(0,1).forEach(function(fx){ alexInfo('💡 Drobna poprawka: „'+fx.good+'" — powtórz ją w powtórkach, żeby się utrwaliła.'); });
+    }
+
+    await alexInc(); alexLimitUI(); alexHints();
+  }catch(e){
+    typing.remove(); console.error('[Alex mobile]',e);
+    alexAppend('ai','Błąd połączenia z AI. Spróbuj ponownie.');
+  }
+  btn.disabled=false;
+}
 </script>
 </body>
 </html>
