@@ -1823,6 +1823,7 @@ window.switchMatTab = function(tab){
     <!-- Zakładki: w jednym rzędzie obok logo, widoczne dla zalogowanych -->
     <div class="nav-tabs" id="nav-tabs">
       <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Zestawy</button>
+      <button class="nav-tab" id="ntab-powtorki" onclick="navPowtorki(this)">Powtórki <span id="nav-due-badge" style="display:none;font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px;font-weight:600;vertical-align:middle">0</span></button>
       <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">Nauczyciel AI <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
       <button class="nav-tab" id="ntab-odkryj" onclick="switchTab('odkryj',this)">Odkryj</button>
       <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
@@ -2842,6 +2843,7 @@ function updateNav(li,email){
     const initials=(email||'?').substring(0,2).toUpperCase();
     n.innerHTML=`<button id="chat-nav-btn" onclick="toggleChatPanel()" title="Wiadomości" style="position:relative;background:transparent;border:1.5px solid rgba(255,255,255,.2);border-radius:100px;padding:7px 12px;cursor:pointer;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:6px;font-size:13px;transition:.2s"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span id="chat-badge" style="position:absolute;top:-4px;right:-4px;background:#e53e3e;color:#fff;font-size:9px;font-weight:500;min-width:15px;height:15px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px"></span></button><div class="nav-avatar" onclick="showPage('dash')" title="${email}">${initials}</div><button class="btn btn-ghost" style="padding:8px 16px;font-size:13px" onclick="logout()">Wyloguj</button>`;
     if(tabs) tabs.classList.add('visible');
+    if(typeof refreshNavDueBadge==='function'){ try{ refreshNavDueBadge(); }catch(e){} }
   } else {
     n.innerHTML=`<button class="btn btn-ghost" onclick="showAuth('login')">Zaloguj się</button><button class="btn btn-orange" onclick="showAuth('register')">Zacznij za darmo</button>`;
     if(tabs) tabs.classList.remove('visible');
@@ -2858,6 +2860,32 @@ function setActiveTab(page){
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   const btn=document.getElementById('ntab-'+page);
   if(btn) btn.classList.add('active');
+}
+
+function navPowtorki(btn){
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  if(typeof startSrsSession==='function'){ startSrsSession(); }
+  else if(typeof strefaStartPowtorki==='function'){ showPage('strefa'); setTimeout(strefaStartPowtorki,200); }
+}
+// Badge liczby należnych powtórek w navbarze — PULL (ile realnie dojrzało wg SM-2), nie licznik dni.
+async function refreshNavDueBadge(){
+  var badge=document.getElementById('nav-due-badge');
+  if(!badge) return;
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){ badge.style.display='none'; return; }
+    var cnt=0;
+    try{ if(typeof usrsDueCount==='function') cnt=await usrsDueCount(); }catch(e){}
+    if(!cnt){
+      try{ var today=new Date().toISOString().split('T')[0];
+        var q=await db.from('word_progress').select('*',{count:'exact',head:true}).eq('user_id',sess.user.id).lte('next_review',today);
+        cnt=q.count||0;
+      }catch(e){}
+    }
+    if(cnt>0){ badge.style.display='inline-block'; badge.textContent=String(cnt>99?'99+':cnt); }
+    else { badge.style.display='none'; }
+  }catch(e){}
 }
 
 async function logout(){ try{ await db.auth.signOut(); }catch(e){} try{ clearUserLocalData(); }catch(e){} try{ history.replaceState(null,'','#home'); }catch(e){} try{ window.location.reload(); return; }catch(e){} updateNav(false); showPage('home'); }
@@ -2907,9 +2935,10 @@ function showPage(name){
       if(typeof matEnterLearn==='function') matEnterLearn();
     } else {
       var _ls0=document.getElementById('mat-learn-surface'); if(_ls0) _ls0.style.display='none';
-      if(typeof setMatSegment==='function') setMatSegment(window._matSeg||'mine'); else switchMatTab('mine');
+      if(typeof setMatSegment==='function') setMatSegment(window._matSeg||'eyl'); else switchMatTab('mine');
     }
     if(typeof updatePowtorkiTile==='function'){ try{ updatePowtorkiTile(); }catch(e){} }
+    if(typeof refreshNavDueBadge==='function'){ try{ refreshNavDueBadge(); }catch(e){} }
   }
   if(name==='messages'){ if(typeof loadTcpConvList==='function') loadTcpConvList(); if(typeof tcpRenderMyIdentity==='function') tcpRenderMyIdentity(); }
   if(name==='ranking'){
@@ -3267,6 +3296,7 @@ window.deleteSet = async function deleteSet(id){
     if(window.loadMySets) loadMySets();
     if(typeof loadCollections==='function') loadCollections();
     if(typeof updatePowtorkiTile==='function') updatePowtorkiTile();
+    if(typeof refreshNavDueBadge==='function') refreshNavDueBadge();
   }catch(e){typeof showToast!=='undefined'&&showToast('Błąd: '+(e.message||e),'');}
 };
 
@@ -3684,8 +3714,8 @@ window.matSetLangApply=async function(setId, code){
 
       <!-- Przełącznik bibliotek: Moje zestawy / Zestawy Eyelingo -->
       <div id="mat-segment" style="display:inline-flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:100px;margin-bottom:14px">
-        <button id="mseg-mine" onclick="setMatSegment('mine')" style="border:none;background:#fff;color:var(--navy);font-weight:500;font-size:13px;padding:7px 18px;border-radius:100px;cursor:pointer;font-family:DM Sans,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.08);transition:.15s">Moje zestawy</button>
-        <button id="mseg-eyl" onclick="setMatSegment('eyl')" style="border:none;background:transparent;color:var(--dim2);font-weight:500;font-size:13px;padding:7px 18px;border-radius:100px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s">Zestawy Eyelingo</button>
+        <button id="mseg-eyl" onclick="setMatSegment('eyl')" style="border:none;background:#fff;color:var(--navy);font-weight:500;font-size:13px;padding:7px 18px;border-radius:100px;cursor:pointer;font-family:DM Sans,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.08);transition:.15s">Zestawy Eyelingo</button>
+        <button id="mseg-mine" onclick="setMatSegment('mine')" style="border:none;background:transparent;color:var(--dim2);font-weight:500;font-size:13px;padding:7px 18px;border-radius:100px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s">Moje zestawy</button>
       </div>
       <div id="eyl-segment" style="display:none"></div>
 
