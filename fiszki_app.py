@@ -19,7 +19,23 @@ from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QBrush, QPen
 
 import os
+import threading
 from dotenv import load_dotenv
+
+
+# ── Bootstrap platformy (cross-platform) — MUSI wykonać się przed QApplication ──
+def _bootstrap_platform():
+    """Ustawienia środowiska zależne od OS, wymagane zanim powstanie QApplication."""
+    import platform as _pf
+    if _pf.system() == "Linux":
+        # Natywny Wayland blokuje arbitralne pozycjonowanie okna nakładki → wymuś XWayland (xcb),
+        # o ile użytkownik nie nadpisał QT_QPA_PLATFORM ręcznie.
+        _sess = (os.environ.get("XDG_SESSION_TYPE", "") or "").lower()
+        _wayland = (_sess == "wayland") or bool(os.environ.get("WAYLAND_DISPLAY"))
+        if _wayland and not os.environ.get("QT_QPA_PLATFORM"):
+            os.environ["QT_QPA_PLATFORM"] = "xcb"
+
+_bootstrap_platform()
 
 # ── TTS (gTTS + playsound) ──────────────────────────
 _tts_available = False
@@ -72,9 +88,13 @@ def _jp_tts_word(word):
     return word
 
 LANG_TTS_MAP = {
-    "en": "en", "es": "es", "nl": "nl",
-    "jp": "ja", "de": "de", "fr": "fr",
+    "en": "en", "es": "es", "de": "de", "fr": "fr", "it": "it",
+    "nl": "nl", "pt": "pt", "no": "no", "ru": "ru", "uk": "uk",
+    "ar": "ar", "jp": "ja", "zh": "zh-CN", "ko": "ko",
 }
+
+# Jezyki o pismie nielatynskim — pokazujemy transliteracje (kolumna romaji), tak jak w japonskim
+NON_LATIN_LANGS = {"jp", "zh", "ko", "ar", "ru", "uk"}
 
 def speak_word(word, lang_code):
     """Czytaj słowo przez gTTS + playsound w osobnym wątku."""
@@ -102,7 +122,16 @@ def speak_word(word, lang_code):
     threading.Thread(target=_speak, daemon=True).start()
 from supabase import create_client, Client
 
-load_dotenv()
+def _resource_path(rel):
+    """Ścieżka do zasobu — działa też w spakowanej aplikacji (PyInstaller _MEIPASS)."""
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, rel)
+
+_env_path = _resource_path(".env")
+if os.path.exists(_env_path):
+    load_dotenv(_env_path)
+else:
+    load_dotenv()
 
 # ── POSTHOG ANALITYKI ──────────────────────────────
 from posthog import Posthog
@@ -138,6 +167,57 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     sys.exit(1)
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def _sync_postgrest_token(token=None):
+    """Propaguj access_token do klienta PostgREST/RPC.
+    supabase.auth.set_session()/refresh_session() NIE aktualizują nagłówka
+    Authorization dla zapytań do tabel i funkcji. Bez tego po restarcie
+    auth.uid() jest NULL → premium zablokowane, category_views z null user_id,
+    kategorie/fiszki się nie ładują (działa dopiero po świeżym logowaniu)."""
+    try:
+        if not token:
+            cur = supabase.auth.get_session()
+            token = getattr(cur, "access_token", None) or \
+                    getattr(getattr(cur, "session", None), "access_token", None)
+        if not token:
+            return
+        try:
+            supabase.postgrest.auth(token)
+        except Exception:
+            try:
+                supabase.postgrest.session.headers["Authorization"] = f"Bearer {token}"
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+_refresh_lock = threading.Lock()
+
+def _refresh_and_sync():
+    """Zserializowane odświeżenie JWT.
+    Rotujący refresh_token jest jednorazowy — bez locka równoległe
+    wątki (timer JWT, FetchWorker, current_user) unieważniają sesję
+    ('Sesja wygasła'). Po odświeżeniu persystujemy nową sesję i
+    synchronizujemy token postgrest (inaczej zapytania do tabel/RPC
+    lecą starym tokenem → RLS blokuje → premium czyta się jako FREE).
+    Zwraca True, gdy sesja jest ważna po operacji."""
+    with _refresh_lock:
+        try:
+            resp = supabase.auth.refresh_session()
+            sess = getattr(resp, "session", None) or resp
+            if sess is None or not getattr(sess, "access_token", None):
+                cur = supabase.auth.get_session()
+                sess = getattr(cur, "session", cur)
+            if sess and getattr(sess, "access_token", None):
+                try:
+                    save_session(sess)   # persystuje rotowany refresh_token + syncuje postgrest
+                except Exception:
+                    _sync_postgrest_token(getattr(sess, "access_token", None))
+                return True
+        except Exception as e:
+            print(f"[JWT] refresh_and_sync: {e}")
+        return False
 
 # ──────────────────────────────────────────────────────
 # STRIPE
@@ -221,6 +301,10 @@ def save_session(session):
         "access_token":  session.access_token,
         "refresh_token": session.refresh_token,
     }, open(SESSION_FILE, "w"))
+    try:
+        _sync_postgrest_token(getattr(session, "access_token", None))
+    except Exception:
+        pass
 
 def load_session():
     if not SESSION_FILE.exists():
@@ -278,16 +362,17 @@ def current_user():
     try:
         resp = supabase.auth.get_user()
         if resp and getattr(resp, "user", None):
+            _sync_postgrest_token()   # postgrest zawsze na aktualnym tokenie sesji
             return resp.user
     except Exception:
         pass
-    try:
-        supabase.auth.refresh_session()
-        resp = supabase.auth.get_user()
-        if resp and getattr(resp, "user", None):
-            return resp.user
-    except Exception:
-        pass
+    if _refresh_and_sync():
+        try:
+            resp = supabase.auth.get_user()
+            if resp and getattr(resp, "user", None):
+                return resp.user
+        except Exception:
+            pass
     return None
 
 
@@ -325,22 +410,39 @@ LANGUAGES = [
     {"code": "no", "label": "Norweski",     "flag": "🇳🇴", "available": True},
 ]
 LEVELS = [
-    {"code": "A1", "label": "A1", "desc": "Początkujący",        "free": False},
+    {"code": "A1", "label": "A1", "desc": "Początkujący",        "free": True},
     {"code": "A2", "label": "A2", "desc": "Podstawowy",          "free": False},
     {"code": "B1", "label": "B1", "desc": "Średniozaawansowany", "free": False},
     {"code": "B2", "label": "B2", "desc": "Wyższy średni",       "free": False},
     {"code": "C1", "label": "C1", "desc": "Zaawansowany",        "free": False},
     {"code": "C2", "label": "C2", "desc": "Biegły",              "free": False},
 ]
+
+def _premium_active(profile):
+    """Premium uznane, gdy flaga jest prawdziwa LUB premium_until w przyszłości.
+    Odporne na bool/int/string zwracane przez RPC get_player_profile."""
+    def _truthy(x):
+        if isinstance(x, bool): return x
+        if isinstance(x, (int, float)): return x != 0
+        if isinstance(x, str): return x.strip().lower() in ("true","t","1","yes","premium","active")
+        return bool(x)
+    if _truthy(profile.get("is_premium", False)):
+        return True
+    pu = profile.get("premium_until")
+    if pu:
+        try:
+            from datetime import datetime
+            until = datetime.fromisoformat(str(pu).replace("Z", "+00:00"))
+            now = datetime.now(until.tzinfo) if until.tzinfo else datetime.now()
+            return until > now
+        except Exception:
+            return False
+    return False
 CATEGORIES = []  # ładowane z bazy po wyborze języka/poziomu
 
 def _jwt_refresh_sync():
-    """Synchroniczne odświeżenie tokena JWT."""
-    try:
-        supabase.auth.refresh_session()
-        return True
-    except Exception:
-        return False
+    """Synchroniczne odświeżenie tokena JWT (+ sync postgrest, persystencja)."""
+    return _refresh_and_sync()
 
 
 def load_categories(lang=None, level=None, _retry=True):
@@ -353,7 +455,7 @@ def load_categories(lang=None, level=None, _retry=True):
                 }).execute()
                 if resp.data:
                     CATEGORIES = [{"code": r["code"], "label": r.get("label", r["code"]),
-                                   "icon": r.get("icon", "📚")}
+                                   "icon": r.get("icon", "")}
                                   for r in resp.data]
                     print(f"[CATEGORIES] RPC {lang}/{level}: {len(CATEGORIES)} kategorii")
                     return
@@ -369,7 +471,7 @@ def load_categories(lang=None, level=None, _retry=True):
             try:
                 resp = supabase.table("categories").select("code,label,icon").order("id").execute()
                 CATEGORIES = [{"code": r["code"], "label": r.get("label", r["code"]),
-                               "icon": r.get("icon", "📚")}
+                               "icon": r.get("icon", "")}
                               for r in (resp.data or [])]
                 print(f"[CATEGORIES] fallback: {len(CATEGORIES)} kategorii")
             except Exception as e2:
@@ -379,7 +481,7 @@ def load_categories(lang=None, level=None, _retry=True):
             return
         resp = supabase.table("categories").select("code,label,icon").order("id").execute()
         CATEGORIES = [{"code": r["code"], "label": r.get("label", r["code"]),
-                       "icon": r.get("icon", "📚")}
+                       "icon": r.get("icon", "")}
                       for r in (resp.data or [])]
     except Exception as e:
         err = str(e)
@@ -392,6 +494,18 @@ def load_categories(lang=None, level=None, _retry=True):
 
 INTERVAL_MS = 6000
 OPACITY     = 0.82
+
+# ── Konfiguracja: chowanie fiszki przy kursorze (hover-hide) ──
+HOVER_HIDE_ENABLED = True    # fiszka znika, gdy kursor jest blisko
+HOVER_HIDE_MARGIN  = 45      # px wokół fiszki — wejście w tę strefę chowa ją
+HOVER_SHOW_MARGIN  = 95      # px — kursor musi wyjść poza tę (szerszą) strefę, by wróciła (histereza)
+HOVER_POLL_MS      = 70      # co ile ms sprawdzamy pozycję kursora
+
+# ── Konfiguracja: przenoszenie trudnych słów między kategoriami (SRS carry-forward) ──
+MASTER_REPS_MIN     = 3      # kanoniczna bramka "Opanowane": powtórzenia >= 3 ...
+MASTER_INTERVAL_MIN = 21     # ... ORAZ interwał >= 21 dni (dopiero wtedy słowo przestaje krążyć)
+CARRY_OVERLAY_MAX   = 6      # max różnych powtórek wmieszanych w overlay naraz
+CARRY_TEST_MAX      = 8      # max słów z poprzednich kategorii dołożonych do testu
 
 # ── USTAWIENIA ─────────────────────────────────────────
 import json, pathlib
@@ -449,27 +563,27 @@ APP_SETTINGS = load_settings()
 
 # ── EFEKTY WIZUALNE SŁÓWKA ──────────────────────────────
 WORD_EFFECTS_LABELS = {
-    "none":        "🚫  Brak",
-    "flash_gold":  "✨  Złoty błysk",
-    "flash_red":   "🔴  Czerwony błysk",
-    "flash_cyan":  "🩵  Cyjanowy błysk",
-    "flash_pink":  "💗  Różowy błysk",
-    "flash_lime":  "💚  Limonkowy",
-    "flash_blue":  "🔵  Niebieski błysk",
-    "glow_white":  "⚪  Biały blask",
-    "glow_orange": "🟠  Pomarańcz",
-    "glow_purple": "🟣  Fiolet",
-    "neon_green":  "🟢  Neon zielony",
-    "neon_blue":   "💙  Neon niebieski",
-    "pulse":       "💓  Pulsowanie",
-    "shake":       "💫  Drżenie",
-    "rainbow":     "🌈  Tęcza",
-    "zoom_in":     "🔍  Powiększenie",
-    "zoom_out":    "🔎  Pomniejszenie",
-    "typewriter":  "⌨️   Maszyna",
-    "bounce":      "🏀  Odbicie",
-    "spin_color":  "🎡  Obrót kolorów",
-    "fire_text":   "🔥  Ognisty tekst",
+    "none":        "Brak",
+    "flash_gold":  "Złoty błysk",
+    "flash_red":   "Czerwony błysk",
+    "flash_cyan":  "Cyjanowy błysk",
+    "flash_pink":  "Różowy błysk",
+    "flash_lime":  "Limonkowy",
+    "flash_blue":  "Niebieski błysk",
+    "glow_white":  "Biały blask",
+    "glow_orange": "Pomarańcz",
+    "glow_purple": "Fiolet",
+    "neon_green":  "Neon zielony",
+    "neon_blue":   "Neon niebieski",
+    "pulse":       "Pulsowanie",
+    "shake":       "Drżenie",
+    "rainbow":     "Tęcza",
+    "zoom_in":     "Powiększenie",
+    "zoom_out":    "Pomniejszenie",
+    "typewriter":  "Maszyna",
+    "bounce":      "Odbicie",
+    "spin_color":  "Obrót kolorów",
+    "fire_text":   "Ognisty tekst",
 }
 
 def lang_label(code):
@@ -479,8 +593,8 @@ def lang_label(code):
 # ──────────────────────────────────────────────────────
 # HELPERS UI
 # ──────────────────────────────────────────────────────
-DARK_BG = QColor(20, 20, 45, 209)
-BORDER  = QColor(80, 100, 200, 100)
+DARK_BG = QColor(16, 22, 40, 214)
+BORDER  = QColor(60, 150, 110, 110)
 
 class _DraggableWindow(QWidget):
     """Mixin: przeciąganie przez pasek tytułu (górne 32px) + ESC zamyka."""
@@ -583,9 +697,9 @@ def _back_btn(text, cb):
     btn.setStyleSheet("""
         QPushButton { background:rgba(60,60,100,160);
             color:rgba(200,210,255,200);
-            border:1px solid rgba(100,110,180,100);
+            border:1px solid rgba(70,150,110,100);
             border-radius:10px; padding:8px; font-size:12px; }
-        QPushButton:hover { background:rgba(80,80,130,200); }
+        QPushButton:hover { background:rgba(56,140,104,200); }
     """)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.clicked.connect(cb)
@@ -692,12 +806,14 @@ class FetchWorker(QThread):
         self.cat   = cat
 
     def run(self):
-        # Auto-refresh JWT jeśli potrzeba
+        # Auto-refresh JWT jeśli potrzeba (+ sync postgrest)
         try:
-            supabase.auth.get_user()
+            if supabase.auth.get_user() is None:
+                _refresh_and_sync()
+            else:
+                _sync_postgrest_token()
         except Exception:
-            try: supabase.auth.refresh_session()
-            except Exception: pass
+            _refresh_and_sync()
         try:
             # Pobierz normalne fiszki
             resp = supabase.rpc("get_flashcards", {
@@ -715,23 +831,30 @@ class FetchWorker(QThread):
                     normal.append({"word": r["word"], "translation": r["translation"],
                                    "romaji": r.get("romaji", ""), "srs": False,
                                    "flashcard_id": r.get("id", 0)})
-            # Pobierz słowa do powtórki SRS
+            # Pobierz słowa do powtórki SRS (trudne z poprzednich kategorii)
             try:
                 srs_resp = supabase.rpc("get_due_cards_all", {
-                    "p_lang": self.lang, "p_limit": 5,
+                    "p_lang": self.lang, "p_limit": CARRY_OVERLAY_MAX * 3,
                 }).execute()
-                srs_cards = [{"word": r["word"], "translation": r["translation"],
-                              "romaji": r.get("romaji", ""), "srs": True,
-                              "flashcard_id": r.get("flashcard_id", 0),
-                              "category": r.get("category_code", "")}
-                             for r in (srs_resp.data or [])
-                             if r.get("category_code") != self.cat]
+                srs_cards = []
+                _seen_srs = set(seen_words)   # nie powielaj słów z bieżącej kategorii
+                for r in (srs_resp.data or []):
+                    if r.get("category_code") == self.cat:
+                        continue
+                    k = (r.get("word", "") or "").strip().lower()
+                    if not k or k in _seen_srs:
+                        continue
+                    _seen_srs.add(k)
+                    srs_cards.append({"word": r["word"], "translation": r["translation"],
+                                      "romaji": r.get("romaji", ""), "srs": True,
+                                      "flashcard_id": r.get("flashcard_id", 0),
+                                      "category": r.get("category_code", "")})
             except Exception:
                 srs_cards = []
-            # Mieszaj 70% normalne + 30% SRS
+            # Mieszaj normalne + powtórki, ale twardy limit powtórek (anti-bloat)
             import random
             if srs_cards and normal:
-                n_srs = max(1, len(normal) // 3)
+                n_srs = min(CARRY_OVERLAY_MAX, max(1, len(normal) // 3))
                 mixed = normal + srs_cards[:n_srs]
                 random.shuffle(mixed)
                 cards = mixed
@@ -757,11 +880,10 @@ class TokenRefreshWorker(QThread):
         self.finished.connect(self.deleteLater)
 
     def run(self):
-        try:
-            supabase.auth.refresh_session()
+        if _refresh_and_sync():
             self.refreshed.emit()
-        except Exception as e:
-            print(f"[JWT] Refresh failed: {e}")
+        else:
+            print("[JWT] Refresh failed")
             self.failed.emit()
 
 
@@ -844,16 +966,18 @@ class MarkAllKnownWorker(QThread):
             cards = resp.data or []
             user_id = current_uid()
             from datetime import date, timedelta
-            next_review = (date.today() + timedelta(days=90)).isoformat()
+            next_review = (date.today() + timedelta(days=7)).isoformat()
             for c in cards:
                 fid = c.get("id", 0)
                 if not fid: continue
                 try:
                     supabase.table("word_progress").upsert({
                         "user_id": user_id, "flashcard_id": fid,
-                        "ease_factor": 3.5, "interval_days": 90,
-                        "repetitions": 5, "next_review": next_review,
-                        "times_seen": 1, "times_correct": 1,
+                        # D1: stan „widziane, niezweryfikowane" — NIE mastery.
+                        # Recall w teście awansuje kartę; deklaracja nie.
+                        "ease_factor": 2.5, "interval_days": 7,
+                        "repetitions": 1, "next_review": next_review,
+                        "times_seen": 1, "times_correct": 0,
                     }, on_conflict="user_id,flashcard_id").execute()
                 except Exception: pass
                 _t.sleep(0.05)
@@ -879,34 +1003,63 @@ class TestCardsWorker(QThread):
             cat_cards = resp.data or []
             try:
                 due_resp = supabase.rpc("get_due_cards_all", {
-                    "p_lang": self.lang, "p_limit": 10
+                    "p_lang": self.lang, "p_limit": 40
                 }).execute()
                 due_cards = [r for r in (due_resp.data or [])
                             if r.get("category_code") != self.cat]
             except Exception:
                 due_cards = []
+            # Progres tylko dla potrzebnych fiszek (kategoria + due) — omija limit 1000 wierszy
+            _need_ids = list({c.get("id", 0) for c in cat_cards}
+                             | {c.get("flashcard_id", 0) for c in due_cards})
+            _need_ids = [i for i in _need_ids if i]
+            prog = {}
             try:
-                prog_resp = supabase.table("word_progress")                    .select("flashcard_id,repetitions,ease_factor")                    .eq("user_id", current_uid()).execute()
-                prog = {r["flashcard_id"]: r for r in (prog_resp.data or [])}
+                if _need_ids:
+                    prog_resp = (supabase.table("word_progress")
+                                 .select("flashcard_id,repetitions,ease_factor,interval_days")
+                                 .eq("user_id", current_uid())
+                                 .in_("flashcard_id", _need_ids).execute())
+                    prog = {r["flashcard_id"]: r for r in (prog_resp.data or [])}
             except Exception:
                 prog = {}
+
+            def _mastered(p):
+                # Kanoniczna bramka "Opanowane": reps >= 3 ORAZ interval >= 21 dni.
+                return bool(p) and p.get("repetitions", 0) >= MASTER_REPS_MIN \
+                       and p.get("interval_days", 0) >= MASTER_INTERVAL_MIN
+
+            # Słowa z bieżącej kategorii: wszystko, co NIE jest jeszcze opanowane
             test_from_cat = []
             for c in cat_cards:
                 fid = c.get("id", 0)
                 p = prog.get(fid)
-                if not p: status = "unknown"
-                elif p["repetitions"] < 3 or p["ease_factor"] < 2.0: status = "learning"
-                else: continue
+                if _mastered(p):
+                    continue
+                status = "unknown" if not p else "learning"
                 test_from_cat.append({
                     "flashcard_id": fid, "word": c["word"],
                     "translation": c["translation"], "romaji": c.get("romaji", ""),
                     "status": status, "from_cat": self.cat
                 })
-            max_due = max(1, len(test_from_cat) // 3)
-            test_due = []
-            for c in due_cards[:max_due]:
+
+            # Priorytet trudności: brak progresu > niski ease > mało powtórzeń
+            def _prio(c):
                 p = prog.get(c.get("flashcard_id", 0))
-                if p and p["repetitions"] >= 3 and p["ease_factor"] >= 2.0: continue
+                if not p:
+                    return (0, 0.0, 0)
+                return (1, p.get("ease_factor", 2.5), p.get("repetitions", 0))
+            due_cards.sort(key=_prio)
+
+            # Carry-forward: trudne słowa z innych kategorii, twardy limit (anti-bloat)
+            max_due = min(CARRY_TEST_MAX, max(1, len(test_from_cat) // 2))
+            test_due = []
+            for c in due_cards:
+                if len(test_due) >= max_due:
+                    break
+                p = prog.get(c.get("flashcard_id", 0))
+                if _mastered(p):
+                    continue
                 test_due.append({
                     "flashcard_id": c.get("flashcard_id", 0),
                     "word": c["word"], "translation": c["translation"],
@@ -926,60 +1079,65 @@ class TestCardsWorker(QThread):
 # ──────────────────────────────────────────────────────
 INPUT_STYLE = """
     QLineEdit {
-        background: rgba(40,40,80,180); color: white;
-        border: 1px solid rgba(100,120,220,150);
+        background: rgba(26,36,54,190); color: white;
+        border: 1px solid rgba(70,130,105,150);
         border-radius: 8px; padding: 8px 12px; font-size: 13px;
     }
-    QLineEdit:focus { border: 1px solid rgba(140,160,255,220); }
+    QLineEdit:focus { border: 1px solid rgba(80,190,130,230); }
 """
 BTN_PRIMARY = """
     QPushButton {
-        background: rgba(60,100,220,200); color: white;
+        background: rgba(42,158,102,215); color: white;
         border: none; border-radius: 10px;
         padding: 10px; font-size: 13px; font-weight: bold;
     }
-    QPushButton:hover   { background: rgba(80,130,255,220); }
-    QPushButton:pressed { background: rgba(40,70,160,255); }
-    QPushButton:disabled{ background: rgba(60,60,100,120); color: rgba(255,255,255,80); }
+    QPushButton:hover   { background: rgba(56,182,120,235); }
+    QPushButton:pressed { background: rgba(30,120,78,255); }
+    QPushButton:disabled{ background: rgba(52,70,64,120); color: rgba(255,255,255,80); }
 """
 
-ONBOARDING_KEY = "onboarding_done_v1"
+ONBOARDING_KEY = "onboarding_done_v2"
 
 class OnboardingWindow(_DraggableWindow):
-    """Okno onboardingu — pokazuje się przy pierwszym uruchomieniu."""
+    """Onboarding (D6-D10) — kontrakt zaufania i model myślowy przed logowaniem."""
     finished = pyqtSignal()
 
     SLIDES = [
         {
-            "icon": "👁️",
-            "title": "Witaj w Eyelingo!",
-            "body": "Uczysz się języków bez odrywania się od tego co robisz. Fiszki pojawiają się w tle ekranu — podczas pracy, gry, przeglądania.",
+            "tag": "WITAJ",
+            "title": "Twój komputer staje się nauczycielem",
+            "body": "Uczysz się obok pracy, nie zamiast niej. Fiszki pojawiają się dyskretnie w tle — podczas pracy, gry, przeglądania.",
         },
         {
-            "icon": "🌍",
-            "title": "Wybierz język",
-            "body": "Angielski, Hiszpański, Japoński, Niderlandzki — każdy z 6 poziomami od A1 do C2. Więcej języków już wkrótce.",
+            "tag": "JAK TO DZIAŁA",
+            "title": "Nauka na peryferiach uwagi",
+            "body": "Nie musisz się zatrzymywać. Słowa przewijają się w rogu ekranu, a mózg przyswaja je mimochodem — powtórka wtedy, gdy naprawdę jej potrzebujesz.",
         },
         {
-            "icon": "✏️",
-            "title": "Własne zestawy",
-            "body": "Stwórz własne fiszki z dowolnego materiału — Eyelingo pokaże je w tle podczas pracy, dokładnie wtedy, gdy mózg najlepiej je przyswaja.",
+            "tag": "UCZCIWOŚĆ",
+            "title": "Opanowane znaczy zapamiętane",
+            "body": "Kartę zaliczasz tylko wtedy, gdy odtworzysz słowo z pamięci — nie przez kliknięcie. Żadnych punktów, serii ani odznak. Tylko realny postęp.",
         },
         {
-            "icon": "🚀",
-            "title": "Zaczynajmy!",
-            "body": "Kliknij ikonę Eyelingo w zasobniku systemowym aby zarządzać fiszkami. Miłej nauki!",
+            "tag": "ZACZNIJ ZA DARMO",
+            "title": "Diagnostyka i mapa słów",
+            "body": "Na start sprawdzasz, co już umiesz, i dostajesz swoją mapę słownictwa. Bez zobowiązań — płacisz dopiero, gdy zechcesz więcej.",
+        },
+        {
+            "tag": "GOTOWE",
+            "title": "Zaczynajmy",
+            "body": "Zaloguj się i wybierz język — reszta dzieje się w tle. Ikonę Eyelingo w zasobniku klikasz, gdy chcesz otworzyć panel.",
         },
     ]
 
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(360, 420)
+        self.setFixedSize(360, 452)
         self._slide = 0
         self._build()
         sc = QApplication.primaryScreen().availableGeometry()
-        self.move(sc.center().x() - 180, sc.center().y() - 210)
+        self.move(sc.center().x() - 180, sc.center().y() - 226)
 
     def _build(self):
         lay = QVBoxLayout(self)
@@ -989,7 +1147,7 @@ class OnboardingWindow(_DraggableWindow):
         # Pasek drag
         hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("✨  Eyelingo")
+        t = QLabel("Eyelingo")
         t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         t.setStyleSheet("color:white;background:transparent;")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -997,19 +1155,21 @@ class OnboardingWindow(_DraggableWindow):
         lay.addWidget(hdr)
 
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        il = QVBoxLayout(inner); il.setContentsMargins(28, 20, 28, 24); il.setSpacing(16)
+        il = QVBoxLayout(inner); il.setContentsMargins(32, 24, 32, 26); il.setSpacing(14)
         lay.addWidget(inner, 1)
 
-        # Ikona
-        self.lbl_icon = QLabel()
-        self.lbl_icon.setFont(QFont("Segoe UI Emoji", 48))
-        self.lbl_icon.setStyleSheet("background:transparent;")
-        self.lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        il.addWidget(self.lbl_icon)
+        il.addStretch(1)
+
+        # Eyebrow (tag ekranu)
+        self.lbl_tag = QLabel()
+        self.lbl_tag.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        self.lbl_tag.setStyleSheet("color:rgba(150,170,225,190);background:transparent;letter-spacing:2px;")
+        self.lbl_tag.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        il.addWidget(self.lbl_tag)
 
         # Tytuł
         self.lbl_title = QLabel()
-        self.lbl_title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        self.lbl_title.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
         self.lbl_title.setStyleSheet("color:white;background:transparent;")
         self.lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_title.setWordWrap(True)
@@ -1023,14 +1183,14 @@ class OnboardingWindow(_DraggableWindow):
         self.lbl_body.setWordWrap(True)
         il.addWidget(self.lbl_body)
 
-        il.addStretch()
+        il.addStretch(2)
 
         # Dots
         dots_w = QWidget(); dots_w.setStyleSheet("background:transparent;")
-        dots_l = QHBoxLayout(dots_w); dots_l.setContentsMargins(0,0,0,0); dots_l.setSpacing(8)
+        dots_l = QHBoxLayout(dots_w); dots_l.setContentsMargins(0, 0, 0, 0); dots_l.setSpacing(8)
         dots_l.addStretch()
         self._dots = []
-        for i in range(len(self.SLIDES)):
+        for _ in range(len(self.SLIDES)):
             d = QLabel("●")
             d.setFont(QFont("Segoe UI", 8))
             d.setStyleSheet("background:transparent;")
@@ -1039,25 +1199,43 @@ class OnboardingWindow(_DraggableWindow):
         dots_l.addStretch()
         il.addWidget(dots_w)
 
-        # Przycisk
+        # Nawigacja: Wstecz (subtelny) + Dalej
+        nav = QWidget(); nav.setStyleSheet("background:transparent;")
+        nl = QHBoxLayout(nav); nl.setContentsMargins(0, 0, 0, 0); nl.setSpacing(10)
+        self.btn_back = QPushButton("Wstecz")
+        self.btn_back.setStyleSheet(
+            "QPushButton{background:transparent;color:rgba(170,180,215,160);"
+            "border:none;font-size:11px;} QPushButton:hover{color:rgba(220,228,255,220);}")
+        self.btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_back.clicked.connect(self._prev)
         self.btn_next = QPushButton("Dalej →")
         self.btn_next.setStyleSheet(BTN_PRIMARY)
         self.btn_next.setMinimumHeight(40)
         self.btn_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_next.clicked.connect(self._next)
-        il.addWidget(self.btn_next)
+        nl.addWidget(self.btn_back)
+        nl.addWidget(self.btn_next, 1)
+        il.addWidget(nav)
 
         self._update_slide()
 
     def _update_slide(self):
         s = self.SLIDES[self._slide]
-        self.lbl_icon.setText(s["icon"])
+        self.lbl_tag.setText(s["tag"])
         self.lbl_title.setText(s["title"])
         self.lbl_body.setText(s["body"])
         is_last = self._slide == len(self.SLIDES) - 1
-        self.btn_next.setText("Zaczynajmy! 🚀" if is_last else "Dalej →")
-        for i, d in enumerate(self._dots):
-            d.setStyleSheet(f"color:{'rgba(255,255,255,220)' if i==self._slide else 'rgba(255,255,255,60)'};background:transparent;")
+        self.btn_next.setText("Rozpocznij →" if is_last else "Dalej →")
+        self.btn_back.setVisible(self._slide > 0)
+        for k, d in enumerate(self._dots):
+            on = k == self._slide
+            d.setStyleSheet("color:%s;background:transparent;" % (
+                "rgba(255,255,255,220)" if on else "rgba(255,255,255,60)"))
+
+    def _prev(self):
+        if self._slide > 0:
+            self._slide -= 1
+            self._update_slide()
 
     def _next(self):
         if self._slide < len(self.SLIDES) - 1:
@@ -1102,7 +1280,7 @@ class LoginWindow(_DraggableWindow):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(320, 500)
+        self.setFixedSize(360, 500)
         self._mode = "login"
         self._build()
         _right_third_pos(self)
@@ -1324,6 +1502,9 @@ class FlashcardOverlay(QWidget):
         self._init_ui()
         self._init_timer()
         self._apply_click_through()
+        self._hover_hidden = False
+        self._hover_paused_rotation = False
+        self._init_hover_hide()
 
     def _init_window(self):
         self.setWindowFlags(
@@ -1336,7 +1517,7 @@ class FlashcardOverlay(QWidget):
         self.setWindowOpacity(OPACITY)
         screen = QApplication.primaryScreen().availableGeometry()
         self.setGeometry(screen.left() + 20, screen.top() + 20, 320, 130)
-        self.setFixedSize(320, 130)   # ZAWSZE stały rozmiar
+        self.setFixedSize(360, 130)   # ZAWSZE stały rozmiar
 
     def _init_ui(self):
         lay = QVBoxLayout(self)
@@ -1350,7 +1531,7 @@ class FlashcardOverlay(QWidget):
         top_lay.setContentsMargins(0,0,0,0)
         top_lay.setSpacing(4)
 
-        self.lbl_info = QLabel("📚  Wybierz język i kategorię")
+        self.lbl_info = QLabel("Wybierz język i kategorię")
         self.lbl_info.setFont(QFont("Segoe UI", 8))
         self.lbl_info.setStyleSheet("color:rgba(255,255,255,160); background:transparent;")
 
@@ -1400,8 +1581,7 @@ class FlashcardOverlay(QWidget):
             _last.write_text(json.dumps({"lang": lang, "level": level, "cat": cat}), encoding="utf-8")
         except Exception:
             pass
-        icon = next((c["icon"] for c in CATEGORIES if c["code"] == cat), "📚")
-        self.lbl_info.setText(f"{icon} {cat}  ·  {level}  ·  {lang_label(lang)}")
+        self.lbl_info.setText(f"{cat}  ·  {level}  ·  {lang_label(lang)}")
         self.lbl_word.setText("Ładowanie...")
         self.lbl_tr.setText("")
         self._worker = FetchWorker(lang, level, cat)
@@ -1469,8 +1649,8 @@ class FlashcardOverlay(QWidget):
         c = self.cards[self.index]
         romaji = c.get("romaji", "")
         word = c["word"]
-        if romaji and self.lang == "jp":
-            # Japoński: lbl_word = kanji (styl jak tłumaczenie), lbl_romaji = romaji pośrodku
+        if romaji and self.lang in NON_LATIN_LANGS:
+            # Pismo nielatyńskie: lbl_word = zapis natywny (styl jak tłumaczenie), lbl_romaji = transliteracja pośrodku
             font_size = self._get_word_font_size(romaji)
             self.lbl_word.setFont(QFont("Segoe UI", 13))
             self.lbl_word.setStyleSheet("color:rgba(200,220,255,210);")
@@ -1488,20 +1668,18 @@ class FlashcardOverlay(QWidget):
         # Dopasuj rozmiar okna do zawartości
         QTimer.singleShot(10, self.adjustSize)
         # Przywróć font słówka (na wypadek gdyby coś go zmieniło)
-        if not (romaji and self.lang == "jp"):
+        if not (romaji and self.lang in NON_LATIN_LANGS):
             self.lbl_word.setFont(QFont("Segoe UI", self._get_word_font_size(word), QFont.Weight.Bold))
         # Efekt wizualny słówka
         QTimer.singleShot(50, self._play_word_effect)
         # Etykieta SRS / własny zestaw
         if c.get("srs"):
             cat_label = c.get("category", "poprzednia kategoria")
-            icon_srs = next((x["icon"] for x in CATEGORIES if x["code"] == cat_label), "🔁")
-            self.lbl_info.setText(f"🔁  Powtórka · {icon_srs} {cat_label}")
+            self.lbl_info.setText(f"Powtórka · {cat_label}")
         elif getattr(self, "_is_custom", False):
-            self.lbl_info.setText(f"✏️  {self.cat}")
+            self.lbl_info.setText(f"Własny · {self.cat}")
         else:
-            icon = next((x["icon"] for x in CATEGORIES if x["code"] == self.cat), "📚")
-            self.lbl_info.setText(f"{icon}  {self.cat}  ·  {self.level}  ·  {lang_label(self.lang)}")
+            self.lbl_info.setText(f"{self.cat}  ·  {self.level}  ·  {lang_label(self.lang)}")
         # Auto-czytanie TTS
         if APP_SETTINGS.get("audio_enabled", False):
             raw = c.get("word", "")
@@ -1515,8 +1693,8 @@ class FlashcardOverlay(QWidget):
         fx = APP_SETTINGS.get("card_effect", "none")
         if fx == "none" or not fx:
             return
-        # Efekt na romaji jeśli JP, inaczej na słówku
-        lbl  = self.lbl_romaji if (self.lang == "jp" and self.lbl_romaji.isVisible()) else self.lbl_word
+        # Efekt na transliteracji jeśli pismo nielatyńskie, inaczej na słówku
+        lbl  = self.lbl_romaji if (self.lang in NON_LATIN_LANGS and self.lbl_romaji.isVisible()) else self.lbl_word
         alpha = int(APP_SETTINGS.get("text_alpha", 240))
         orig = f"color:rgba(255,255,255,{alpha});"
 
@@ -1531,12 +1709,12 @@ class FlashcardOverlay(QWidget):
             "flash_cyan":  "rgba(0,235,205,255)",
             "flash_pink":  "rgba(255,75,185,255)",
             "flash_lime":  "rgba(115,255,65,255)",
-            "flash_blue":  "rgba(75,145,255,255)",
+            "flash_blue":  "rgba(56,182,120,255)",
             "glow_white":  "rgba(255,255,255,255)",
             "glow_orange": "rgba(255,140,0,255)",
             "glow_purple": "rgba(185,75,255,255)",
             "neon_green":  "rgba(57,255,20,255)",
-            "neon_blue":   "rgba(77,77,255,255)",
+            "neon_blue":   "rgba(46,170,110,255)",
             "zoom_in":     "rgba(255,220,80,255)",
             "zoom_out":    "rgba(100,200,255,255)",
             "typewriter":  "rgba(200,255,200,255)",
@@ -1619,6 +1797,52 @@ class FlashcardOverlay(QWidget):
         except Exception as e:
             print(f"[click-through] {e}")
 
+    # ── Hover-hide: chowanie fiszki, gdy kursor jest blisko ──
+    def _init_hover_hide(self):
+        self._hover_timer = QTimer(self)
+        self._hover_timer.timeout.connect(self._check_cursor_proximity)
+        self._hover_timer.start(HOVER_POLL_MS)
+
+    def _hover_apply(self, hidden: bool):
+        """Chowa/pokazuje fiszkę przez przezroczystość (okno pozostaje click-through).
+        Nie używa hide()/show(), by nie kolidować z pauzą/wznowieniem z traya."""
+        if hidden == self._hover_hidden:
+            return
+        self._hover_hidden = hidden
+        if hidden:
+            # pauza rotacji, by żadna fiszka nie "przeleciała" za kursorem
+            self._hover_paused_rotation = self.timer.isActive()
+            if self._hover_paused_rotation:
+                self.timer.stop()
+            self.setWindowOpacity(0.0)
+        else:
+            self.setWindowOpacity(OPACITY)
+            if self._hover_paused_rotation:
+                self._hover_paused_rotation = False
+                self.timer.start(int(APP_SETTINGS.get("display_time", 8) * 1000))
+
+    def _check_cursor_proximity(self):
+        if not HOVER_HIDE_ENABLED:
+            return
+        # Nie ingeruj, gdy overlay ukryty przez pauzę / użytkownika (hide()).
+        # Przy hover-hide okno jest wciąż "visible" (tylko opacity=0), więc tu wchodzimy.
+        if not self.isVisible() or not self.cards:
+            return
+        try:
+            from PyQt6.QtGui import QCursor
+            cp  = QCursor.pos()
+            geo = self.geometry()
+        except Exception:
+            return
+        if not self._hover_hidden:
+            m = HOVER_HIDE_MARGIN
+            if geo.adjusted(-m, -m, m, m).contains(cp):
+                self._hover_apply(True)
+        else:
+            m = HOVER_SHOW_MARGIN
+            if not geo.adjusted(-m, -m, m, m).contains(cp):
+                self._hover_apply(False)
+
 
 # ──────────────────────────────────────────────────────
 # OKNO KATEGORII
@@ -1633,7 +1857,7 @@ class CategoryWindow(_DraggableWindow):
         self._is_premium  = False
         self._bought_levels = []
         _styled_window(self)
-        self.setFixedSize(400, 600)
+        self.setFixedSize(440, 600)
         self._build()
         _right_third_pos(self)
 
@@ -1650,7 +1874,7 @@ class CategoryWindow(_DraggableWindow):
         # Pasek drag z tytułem
         hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        self.title = QLabel("📚  Wybierz kategorię")
+        self.title = QLabel("Wybierz kategorię")
         self.title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         self.title.setStyleSheet("color:white;background:transparent;")
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1691,11 +1915,10 @@ class CategoryWindow(_DraggableWindow):
         if btn:
             labels = btn.findChildren(QLabel)
             if labels:
-                # Pierwszy label = ikona - zamień na ✅
-                icon_lbl = labels[0]
-                if "✅" not in icon_lbl.text():
-                    icon_lbl.setText("✅")
-                    icon_lbl.setStyleSheet("background:transparent; font-size:16px;")
+                # Pierwszy label = ikona - zamień na 
+                name_lbl = labels[0]
+                if not name_lbl.text().startswith("✓"):
+                    name_lbl.setText("✓  " + name_lbl.text())
             btn.setStyleSheet("QPushButton { background:rgba(30,100,50,180); border:1px solid rgba(80,200,120,150); border-radius:12px; } QPushButton:hover { background:rgba(40,130,70,220); }")
 
     def _rebuild_grid(self):
@@ -1723,23 +1946,20 @@ class CategoryWindow(_DraggableWindow):
         btn.setFixedHeight(58)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet("""
-            QPushButton { background:rgba(50,70,150,180);
-                border:1px solid rgba(100,130,220,120); border-radius:12px; }
-            QPushButton:hover  { background:rgba(70,100,190,220); }
-            QPushButton:pressed{ background:rgba(30,50,110,255); }
+            QPushButton { background:rgba(30,34,58,190);
+                border:1px solid rgba(80,92,130,110); border-radius:12px; }
+            QPushButton:hover  { background:rgba(44,52,86,225);
+                border:1px solid rgba(70,170,120,150); }
+            QPushButton:pressed{ background:rgba(26,30,50,255); }
         """)
         inner = QVBoxLayout(btn)
         inner.setContentsMargins(8, 5, 8, 5)
         inner.setSpacing(1)
-        li = QLabel(cat["icon"])
-        li.setFont(QFont("Segoe UI", 15))
-        li.setStyleSheet("background:transparent;")
-        li.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ln = QLabel(cat["label"])
-        ln.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        ln.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         ln.setStyleSheet("color:rgba(220,235,255,220); background:transparent;")
         ln.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        inner.addWidget(li)
+        ln.setWordWrap(True)
         inner.addWidget(ln)
         btn.clicked.connect(lambda _, c=cat["code"]: self._pick(c))
         return btn
@@ -1776,7 +1996,7 @@ class LevelWindow(_DraggableWindow):
         self._is_premium    = False
         self._bought_levels = []
         _styled_window(self)
-        self.setFixedSize(340, 400)
+        self.setFixedSize(360, 400)
         self._build()
         _right_third_pos(self)
 
@@ -1788,7 +2008,7 @@ class LevelWindow(_DraggableWindow):
         # Pasek drag z tytułem
         hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        self.title = QLabel("🎯  Wybierz poziom")
+        self.title = QLabel("Wybierz poziom")
         self.title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         self.title.setStyleSheet("color:white;background:transparent;")
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1838,7 +2058,7 @@ class LevelWindow(_DraggableWindow):
         inner.addWidget(ld)
 
         key = f"{self.current_lang}_{level['code']}"
-        unlocked = level["free"] or self._is_premium or key in self._bought_levels
+        unlocked = level["free"] or self._is_premium
         if unlocked:
             btn.setStyleSheet("""
                 QPushButton { background:rgba(40,130,80,180);
@@ -1848,7 +2068,7 @@ class LevelWindow(_DraggableWindow):
             """)
             btn.clicked.connect(lambda _, c=level["code"]: self._pick(c))
         else:
-            ll = QLabel("🔒")
+            ll = QLabel("")
             ll.setFont(QFont("Segoe UI", 10))
             ll.setStyleSheet("background:transparent;")
             ll.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1917,7 +2137,7 @@ class LanguageWindow(_DraggableWindow):
         super().__init__()
         self.on_selected = on_selected
         _styled_window(self)
-        self.setFixedSize(320, 620)
+        self.setFixedSize(360, 620)
         self._build()
         _right_third_pos(self)
 
@@ -1931,7 +2151,7 @@ class LanguageWindow(_DraggableWindow):
         hdr = QWidget(); hdr.setFixedHeight(32)
         hdr.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("🌍  Wybierz język")
+        t = QLabel("Wybierz język")
         t.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
         t.setStyleSheet("color:white;background:transparent;")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1953,7 +2173,7 @@ class LanguageWindow(_DraggableWindow):
         scroll.setWidgetResizable(True)
         scroll.setFixedHeight(220)
         scroll.setStyleSheet("""
-            QScrollArea { background: rgba(20,20,50,120); border: 1px solid rgba(100,110,180,60); border-radius: 10px; }
+            QScrollArea { background: rgba(20,20,50,120); border: 1px solid rgba(120,135,190,70); border-radius: 10px; }
             QScrollBar:vertical { background: rgba(255,255,255,0.05); width: 6px; border-radius: 3px; }
             QScrollBar::handle:vertical { background: rgba(255,255,255,0.25); border-radius: 3px; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
@@ -1962,11 +2182,11 @@ class LanguageWindow(_DraggableWindow):
         lang_l = QVBoxLayout(lang_w); lang_l.setContentsMargins(8, 8, 8, 8); lang_l.setSpacing(5)
 
         STY_LANG = """
-            QPushButton { background:rgba(60,80,160,180); color:white;
-                border:1px solid rgba(100,130,220,120);
+            QPushButton { background:rgba(44,120,84,180); color:white;
+                border:1px solid rgba(70,170,120,120);
                 border-radius:10px; padding:10px 16px;
                 font-size:14px; text-align:left; }
-            QPushButton:hover  { background:rgba(80,110,200,220); }
+            QPushButton:hover  { background:rgba(56,175,116,220); }
             QPushButton:pressed{ background:rgba(40,60,130,255); }
         """
         STY_GREY = """
@@ -1980,7 +2200,7 @@ class LanguageWindow(_DraggableWindow):
             available = lang.get("available", True)
             label = f"{lang['flag']}  {lang['label']}"
             if not available:
-                label += "  🔜"
+                label += "  "
             btn = QPushButton(label)
             btn.setStyleSheet(STY_LANG if available else STY_GREY)
             btn.setFont(QFont("Segoe UI", 12))
@@ -1996,7 +2216,7 @@ class LanguageWindow(_DraggableWindow):
 
         # Separator
         sep = QWidget(); sep.setFixedHeight(1)
-        sep.setStyleSheet("background:rgba(100,110,180,80);")
+        sep.setStyleSheet("background:rgba(210,220,255,22);")
         inner_l.addWidget(sep)
 
         # ── Przyciski akcji — ciemne z kolorową lewą krawędzią ──
@@ -2022,33 +2242,33 @@ class LanguageWindow(_DraggableWindow):
             """
 
         STY_PURPLE = _sty("rgba(130,100,230,220)", "rgba(50,40,90,180)")
-        STY_BLUE   = _sty("rgba(80,140,230,220)",  "rgba(30,50,90,180)")
+        STY_BLUE   = _sty("rgba(56,182,120,220)",  "rgba(30,50,90,180)")
         STY_GREY   = _sty("rgba(140,145,165,180)",  "rgba(40,40,65,180)")
         STY_GOLD   = _sty("rgba(210,175,0,220)",    "rgba(50,42,20,180)")
         STY_GREEN  = _sty("rgba(60,180,100,220)",   "rgba(20,50,35,180)")
 
-        btn_my = QPushButton("📂  Moje własne zestawy")
+        btn_my = QPushButton("Moje własne zestawy")
         btn_my.setStyleSheet(STY_PURPLE)
         btn_my.setFont(QFont("Segoe UI", 12))
         btn_my.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_my.clicked.connect(lambda: self.on_selected("my_sets"))
         inner_l.addWidget(btn_my)
 
-        btn_custom = QPushButton("✏️  Stwórz własne fiszki  ·  ⭐ Premium")
+        btn_custom = QPushButton("Stwórz własne fiszki  ·  Premium")
         btn_custom.setStyleSheet(_sty("rgba(130,80,220,220)", "rgba(40,20,60,180)"))
         btn_custom.setFont(QFont("Segoe UI", 12))
         btn_custom.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_custom.clicked.connect(lambda: self.on_selected("create"))
         inner_l.addWidget(btn_custom)
 
-        btn_settings = QPushButton("⚙️  Ustawienia")
+        btn_settings = QPushButton("Ustawienia")
         btn_settings.setStyleSheet(STY_GREY)
         btn_settings.setFont(QFont("Segoe UI", 12))
         btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_settings.clicked.connect(lambda: self.on_selected("settings"))
         inner_l.addWidget(btn_settings)
 
-        btn_test = QPushButton("📝  Zrób test")
+        btn_test = QPushButton("Zrób test")
         btn_test.setStyleSheet(STY_GREEN)
         btn_test.setFont(QFont("Segoe UI", 12))
         btn_test.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -2205,7 +2425,7 @@ class PublicSetsWindow(_DraggableWindow):
         super().__init__()
         self._is_premium = False
         _styled_window(self)
-        self.setFixedSize(420, 560)
+        self.setFixedSize(440, 560)
         self._build()
         _right_third_pos(self)
 
@@ -2218,7 +2438,7 @@ class PublicSetsWindow(_DraggableWindow):
 
         hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("🌐  Zestawy społeczności")
+        t = QLabel("Zestawy społeczności")
         t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         t.setStyleSheet("color:white;background:transparent;")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2226,12 +2446,12 @@ class PublicSetsWindow(_DraggableWindow):
         lay.addWidget(hdr)
 
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        il = QVBoxLayout(inner); il.setContentsMargins(16, 10, 16, 14); il.setSpacing(8)
+        il = QVBoxLayout(inner); il.setContentsMargins(20, 10, 20, 16); il.setSpacing(8)
         lay.addWidget(inner, 1)
 
         # Wyszukiwarka
         self.inp_search = QLineEdit()
-        self.inp_search.setPlaceholderText("🔍 Szukaj zestawów...")
+        self.inp_search.setPlaceholderText("Szukaj zestawów...")
         self.inp_search.setMinimumHeight(34)
         self.inp_search.setStyleSheet(INPUT_STYLE)
         self.inp_search.textChanged.connect(self._on_search)
@@ -2304,29 +2524,29 @@ class PublicSetsWindow(_DraggableWindow):
         rl = QHBoxLayout(row); rl.setContentsMargins(0,0,0,0); rl.setSpacing(6)
 
         info = QVBoxLayout(); info.setSpacing(1)
-        lname = QLabel(f"📖  {s['name']}")
+        lname = QLabel(f"{s['name']}")
         lname.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         lname.setStyleSheet("color:white;background:transparent;")
         cards = s.get("user_set_cards", [])
-        lmeta = QLabel(f"❤️ {s.get('likes_count',0)} · {len(cards)} fiszek")
+        lmeta = QLabel(f"{s.get('likes_count',0)} · {len(cards)} fiszek")
         lmeta.setFont(QFont("Segoe UI", 9))
         lmeta.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
         info.addWidget(lname); info.addWidget(lmeta)
 
-        btn = QPushButton("⬇ Importuj")
+        btn = QPushButton("Importuj")
         btn.setFixedWidth(90)
         btn.setStyleSheet("""
             QPushButton{background:rgba(30,32,60,160);color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);border-left:3px solid rgba(210,175,0,220);
+                border:1px solid rgba(80,85,120,80);border-left:3px solid rgba(120,135,190,150);
                 border-radius:8px;padding:6px 10px;font-size:11px;}
-            QPushButton:hover{background:rgba(50,42,20,180);color:white;}
-            QPushButton:disabled{color:rgba(100,255,150,220);border-left-color:rgba(60,200,100,150);}
+            QPushButton:hover{background:rgba(30,50,90,180);color:white;}
+            QPushButton:disabled{color:rgba(150,120,230,220);border-left-color:rgba(130,80,220,150);}
         """)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
         if not self._is_premium:
             btn.setEnabled(False)
-            btn.setText("⭐ Premium")
+            btn.setText("Premium")
         else:
             btn.clicked.connect(lambda _, sid=s["id"], sname=s["name"], sc=cards: self._import(sid, sname, sc, btn))
 
@@ -2335,10 +2555,10 @@ class PublicSetsWindow(_DraggableWindow):
         self._list_l.insertWidget(self._list_l.count()-1, row)
 
     def _import(self, set_id, set_name, cards, btn):
-        btn.setEnabled(False); btn.setText("⏳")
+        btn.setEnabled(False); btn.setText("")
         self._import_worker = ImportSetWorker(set_id, set_name, cards)
-        self._import_worker.done.connect(lambda n: (btn.__setattr__('_done', True), btn.setText("✅ Dodano"), self.set_imported.emit()))
-        self._import_worker.error.connect(lambda e: (btn.setEnabled(True), btn.setText("⬇ Importuj")))
+        self._import_worker.done.connect(lambda n: (btn.__setattr__('_done', True), btn.setText("Dodano"), self.set_imported.emit()))
+        self._import_worker.error.connect(lambda e: (btn.setEnabled(True), btn.setText("Importuj")))
         self._import_worker.start()
 
     def paintEvent(self, e):
@@ -2419,7 +2639,7 @@ class CustomSetWindow(_DraggableWindow):
         # Pasek drag
         hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("✏️  Stwórz własny zestaw")
+        t = QLabel("Stwórz własny zestaw")
         t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         t.setStyleSheet("color:white;background:transparent;")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2433,9 +2653,9 @@ class CustomSetWindow(_DraggableWindow):
         lay.addWidget(inner, 1)
 
         # Info o limicie dla darmowych
-        self.lbl_limit = QLabel(f"⭐ Plan darmowy: do {MAX_CARDS} fiszek w zestawie · Subskrypcja = bez limitu")
+        self.lbl_limit = QLabel(f"Plan darmowy: do {MAX_CARDS} fiszek w zestawie · Subskrypcja = bez limitu")
         self.lbl_limit.setFont(QFont("Segoe UI", 9))
-        self.lbl_limit.setStyleSheet("color:rgba(210,175,0,200);background:transparent;")
+        self.lbl_limit.setStyleSheet("color:rgba(150,120,230,200);background:transparent;")
         self.lbl_limit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_limit.setWordWrap(True)
         self.main_lay.addWidget(self.lbl_limit)
@@ -2484,9 +2704,9 @@ class CustomSetWindow(_DraggableWindow):
         btn_add.setStyleSheet("""
             QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
                 border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(60,180,100,220);
+                border-left:3px solid rgba(120,135,190,150);
                 border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(20,50,35,180); color:white; }
+            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
         """)
         btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_add.clicked.connect(self._add_row)
@@ -2497,7 +2717,7 @@ class CustomSetWindow(_DraggableWindow):
         self.lbl_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.main_lay.addWidget(self.lbl_error)
 
-        self.btn_save = QPushButton("💾  Zapisz zestaw")
+        self.btn_save = QPushButton("Zapisz zestaw")
         self.btn_save.setMinimumHeight(36)
         self.btn_save.setStyleSheet(BTN_PRIMARY)
         self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -2505,6 +2725,7 @@ class CustomSetWindow(_DraggableWindow):
         self.main_lay.addWidget(self.btn_save)
 
         self.main_lay.addWidget(_back_btn("← Wróć", self._go_back))
+        self.main_lay.addWidget(_close_btn(self))
 
     def _add_row(self):
         limit = 9999 if self._is_premium else MAX_CARDS
@@ -2581,14 +2802,14 @@ class CustomSetWindow(_DraggableWindow):
 
     def _on_saved(self, name, cards):
         self.btn_save.setEnabled(True)
-        self.btn_save.setText("💾  Stwórz zestaw")
+        self.btn_save.setText("Stwórz zestaw")
         self.hide()
         self.set_created.emit(name, cards)
 
     def _on_error(self, msg):
         self.lbl_error.setText(f"Błąd zapisu: {msg}")
         self.btn_save.setEnabled(True)
-        self.btn_save.setText("💾  Stwórz zestaw")
+        self.btn_save.setText("Stwórz zestaw")
 
     def _go_back(self):
         self.hide()
@@ -2615,7 +2836,7 @@ class MySetsPicker(_DraggableWindow):
         self.sets      = []
         self._is_premium = False
         _styled_window(self)
-        self.setFixedSize(340, 460)
+        self.setFixedSize(360, 460)
         self._build()
         _right_third_pos(self)
 
@@ -2630,7 +2851,7 @@ class MySetsPicker(_DraggableWindow):
         # Pasek drag
         hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("📂  Moje zestawy")
+        t = QLabel("Moje zestawy")
         t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         t.setStyleSheet("color:white;background:transparent;")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2652,7 +2873,7 @@ class MySetsPicker(_DraggableWindow):
         self.lay.addWidget(self.lbl_limit)
 
         sep = QWidget(); sep.setFixedHeight(1)
-        sep.setStyleSheet("background:rgba(100,110,180,60);")
+        sep.setStyleSheet("background:rgba(210,220,255,18);")
         self.lay.addWidget(sep)
 
         self.lbl_status = QLabel("Ładowanie...")
@@ -2668,13 +2889,13 @@ class MySetsPicker(_DraggableWindow):
         self.lay.addStretch()
 
         # Przycisk nowego zestawu
-        self.btn_new = QPushButton("✏️  Stwórz nowy zestaw")
+        self.btn_new = QPushButton("Stwórz nowy zestaw")
         self.btn_new.setStyleSheet("""
             QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
                 border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(130,80,220,220);
+                border-left:3px solid rgba(120,135,190,150);
                 border-radius:10px; padding:9px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(40,20,60,180); color:white; }
+            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
             QPushButton:disabled { color:rgba(120,125,145,120);
                 border-left:3px solid rgba(80,80,100,60); }
         """)
@@ -2683,20 +2904,20 @@ class MySetsPicker(_DraggableWindow):
         self.lay.addWidget(self.btn_new)
 
         # Premium info (ukryty domyślnie)
-        self.lbl_premium = QLabel("⭐ Subskrypcja odblokuje nieograniczone zestawy")
+        self.lbl_premium = QLabel("Subskrypcja odblokuje nieograniczone zestawy")
         self.lbl_premium.setFont(QFont("Segoe UI", 9))
-        self.lbl_premium.setStyleSheet("color:rgba(210,175,0,200);background:transparent;")
+        self.lbl_premium.setStyleSheet("color:rgba(150,120,230,200);background:transparent;")
         self.lbl_premium.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_premium.setWordWrap(True)
         self.lbl_premium.hide()
         self.lay.addWidget(self.lbl_premium)
 
         # Przycisk lokalnego przeglądania zestawów w programie
-        btn_browse_local = QPushButton("🔍  Przeglądaj zestawy w programie")
+        btn_browse_local = QPushButton("Przeglądaj zestawy w programie")
         btn_browse_local.setStyleSheet("""
             QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
                 border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(80,140,230,220);
+                border-left:3px solid rgba(120,135,190,150);
                 border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
             QPushButton:hover { background:rgba(30,50,90,180); color:white; }
         """)
@@ -2705,13 +2926,13 @@ class MySetsPicker(_DraggableWindow):
         self.lay.addWidget(btn_browse_local)
 
         # Przycisk przeglądania na stronie www
-        btn_browse_www = QPushButton("🌐  Materiały na stronie eyelingo")
+        btn_browse_www = QPushButton("Materiały na stronie eyelingo")
         btn_browse_www.setStyleSheet("""
             QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
                 border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(210,175,0,220);
+                border-left:3px solid rgba(90,100,140,180);
                 border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(50,42,20,180); color:white; }
+            QPushButton:hover { background:rgba(40,44,72,180); color:white; }
         """)
         btn_browse_www.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_browse_www.clicked.connect(lambda: webbrowser.open("https://fabianadrianw.github.io/eyelingo/?page=community"))
@@ -2740,23 +2961,23 @@ class MySetsPicker(_DraggableWindow):
             if not self._is_premium:
                 self.lbl_limit.setText(f"Możesz stworzyć 1 darmowy zestaw ({self.FREE_CARD_LIMIT} fiszek)")
             else:
-                self.lbl_limit.setText("Nieograniczone zestawy ⭐")
+                self.lbl_limit.setText("Nieograniczone zestawy ")
         else:
             self.lbl_status.setText(f"Twoje zestawy ({count}):")
             if not self._is_premium:
                 self.lbl_limit.setText(f"Plan darmowy: {count}/{self.FREE_SET_LIMIT} zestaw")
             else:
-                self.lbl_limit.setText(f"Plan Premium: {count} zestaw(ów) ⭐")
+                self.lbl_limit.setText(f"Plan Premium: {count} zestaw(ów) ")
 
         for s in sets:
             row = QWidget(); row.setStyleSheet("background:transparent;")
             rl = QHBoxLayout(row); rl.setContentsMargins(0,0,0,0); rl.setSpacing(6)
 
-            btn = QPushButton(f"📖  {s['name']}")
+            btn = QPushButton(f"{s['name']}")
             btn.setStyleSheet("""
                 QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
                     border:1px solid rgba(80,85,120,80);
-                    border-left:3px solid rgba(80,140,230,220);
+                    border-left:3px solid rgba(120,135,190,150);
                     border-radius:10px; padding:9px 16px; font-size:12px; text-align:left; }
                 QPushButton:hover { background:rgba(30,50,90,180); color:white; }
             """)
@@ -2765,7 +2986,7 @@ class MySetsPicker(_DraggableWindow):
 
             # Przełącznik publiczny/prywatny
             is_public = s.get("is_public", False)
-            btn_pub = QPushButton("🌐" if is_public else "🔒")
+            btn_pub = QPushButton("Publiczny" if is_public else "Prywatny")
             btn_pub.setFixedSize(34, 34)
             btn_pub.setToolTip("Publiczny" if is_public else "Prywatny")
             btn_pub.setStyleSheet(f"""
@@ -2783,18 +3004,18 @@ class MySetsPicker(_DraggableWindow):
 
         if at_limit:
             self.btn_new.setEnabled(False)
-            self.btn_new.setText("✏️  Stwórz nowy zestaw  ·  limit osiągnięty")
+            self.btn_new.setText("Stwórz nowy zestaw  ·  limit osiągnięty")
             self.lbl_premium.show()
         else:
             self.btn_new.setEnabled(True)
-            self.btn_new.setText("✏️  Stwórz nowy zestaw")
+            self.btn_new.setText("Stwórz nowy zestaw")
             self.lbl_premium.setVisible(not self._is_premium)
 
     def _toggle_public(self, set_id, currently_public, btn):
         new_public = not currently_public
         try:
             supabase.from_("user_sets").update({"is_public": new_public}).eq("id", set_id).execute()
-            btn.setText("🌐" if new_public else "🔒")
+            btn.setText("Publiczny" if new_public else "Prywatny")
             btn.setToolTip("Publiczny" if new_public else "Prywatny")
             btn.setStyleSheet(f"""
                 QPushButton {{ background:{'rgba(30,100,50,160)' if new_public else 'rgba(60,40,40,160)'};
@@ -2844,13 +3065,13 @@ class MySetsPicker(_DraggableWindow):
             return
         self.lbl_status.setText(f"Masz {len(sets)} zestaw(ów):")
         for s in sets:
-            btn = QPushButton(f"📖  {s['name']}")
+            btn = QPushButton(f"{s['name']}")
             btn.setStyleSheet("""
-                QPushButton { background:rgba(50,70,150,180); color:white;
-                    border:1px solid rgba(100,130,220,120);
+                QPushButton { background:rgba(36,120,84,180); color:white;
+                    border:1px solid rgba(70,170,120,120);
                     border-radius:10px; padding:9px; font-size:12px;
                     text-align:left; }
-                QPushButton:hover { background:rgba(70,100,190,220); }
+                QPushButton:hover { background:rgba(42,150,100,220); }
             """)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda _, sid=s["id"], sname=s.get("name","Zestaw"): self._pick_set(sid, sname))
@@ -2877,67 +3098,6 @@ class MySetsPicker(_DraggableWindow):
 
 
 # ──────────────────────────────────────────────────────
-# WORKER – kupowanie poziomu za złoto
-# ──────────────────────────────────────────────────────
-class BuyLevelWorker(QThread):
-    done  = pyqtSignal(bool, str, int)
-
-    def __init__(self, lang_code, level_code):
-        super().__init__()
-        self.finished.connect(self.deleteLater)
-        self.lang_code  = lang_code
-        self.level_code = level_code
-
-    def run(self):
-        try:
-            uid = current_uid()
-            key = f"{self.lang_code}_{self.level_code}"
-            # Pobierz złoto z learning_stats
-            stats = supabase.from_("learning_stats").select("gold").eq("user_id", uid).single().execute()
-            gold = stats.data.get("gold", 0) if stats.data else 0
-            cost = 7500
-            if gold < cost:
-                self.done.emit(False, f"Potrzebujesz {cost} złota. Masz tylko {gold}.", gold)
-                return
-            # Pobierz levels_bought z profiles
-            profile = supabase.from_("profiles").select("levels_bought").eq("user_id", uid).single().execute()
-            current = profile.data.get("levels_bought") or []
-            if isinstance(current, str):
-                import json as _j; current = _j.loads(current)
-            if not isinstance(current, list):
-                current = []
-            if key in current:
-                self.done.emit(False, "Ten poziom już posiadasz.", gold)
-                return
-            current.append(key)
-            new_gold = gold - cost
-            # Zapisz
-            supabase.from_("learning_stats").update({"gold": new_gold}).eq("user_id", uid).execute()
-            supabase.from_("profiles").update({"levels_bought": current, "updated_at": "now()"}).eq("user_id", uid).execute()
-            self.done.emit(True, f"Poziom {self.level_code} odblokowany! Zostało Ci {new_gold} złota.", new_gold)
-        except Exception as e:
-            self.done.emit(False, str(e), 0)
-
-
-# ──────────────────────────────────────────────────────
-# WORKER – aktualizacja streaka
-# ──────────────────────────────────────────────────────
-class StreakWorker(QThread):
-    done = pyqtSignal(int)
-
-    def __init__(self):
-        super().__init__()
-        self.finished.connect(self.deleteLater)
-
-    def run(self):
-        try:
-            resp = supabase.rpc("update_streak").execute()
-            self.done.emit(resp.data or 0)
-        except Exception as e:
-            print(f"[STREAK] {e}")
-
-
-# ──────────────────────────────────────────────────────
 # WORKER – pełny profil gracza
 # ──────────────────────────────────────────────────────
 class ProfileWorker(QThread):
@@ -2950,8 +3110,20 @@ class ProfileWorker(QThread):
 
     def run(self):
         try:
+            uid = current_uid()   # waliduje sesję + synchronizuje token postgrest PRZED zapytaniami
             resp = supabase.rpc("get_player_profile").execute()
-            self.done.emit(resp.data or {})
+            data = dict(resp.data or {})
+            # Premium autorytatywnie wprost z profiles — RPC bywa niekompletny
+            try:
+                prof = supabase.from_("profiles").select(
+                    "is_premium,premium_until,levels_bought"
+                ).eq("user_id", uid).single().execute()
+                if prof.data:
+                    for k in ("is_premium", "premium_until", "levels_bought"):
+                        data[k] = prof.data.get(k)
+            except Exception as e2:
+                print(f"[PROFILE] premium fallback: {e2}")
+            self.done.emit(data)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -2989,7 +3161,7 @@ class StatsWindow(_DraggableWindow):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(380, 520)
+        self.setFixedSize(360, 520)
         self._build()
         _right_third_pos(self)
 
@@ -3001,7 +3173,7 @@ class StatsWindow(_DraggableWindow):
         # Pasek
         hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("📊  Twoje statystyki")
+        t = QLabel("Twoje statystyki")
         t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         t.setStyleSheet("color:white;background:transparent;")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -3031,16 +3203,18 @@ class StatsWindow(_DraggableWindow):
                 border-radius:10px; }
         """)
         rl = QHBoxLayout(row); rl.setContentsMargins(14, 10, 14, 10); rl.setSpacing(10)
-        li = QLabel(icon); li.setFont(QFont("Segoe UI Emoji", 18))
-        li.setStyleSheet("background:transparent;"); li.setFixedWidth(28)
-        li.setAlignment(Qt.AlignmentFlag.AlignCenter)
         txt = QVBoxLayout(); txt.setSpacing(1)
         ll = QLabel(label); ll.setFont(QFont("Segoe UI", 9))
         ll.setStyleSheet("color:rgba(160,175,210,180);background:transparent;")
         lv = QLabel(str(value)); lv.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
         lv.setStyleSheet(f"color:{color};background:transparent;")
         txt.addWidget(ll); txt.addWidget(lv)
-        rl.addWidget(li); rl.addLayout(txt, 1)
+        if icon:
+            li = QLabel(icon); li.setFont(QFont("Segoe UI Emoji", 18))
+            li.setStyleSheet("background:transparent;"); li.setFixedWidth(28)
+            li.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            rl.addWidget(li)
+        rl.addLayout(txt, 1)
         return row
 
     def load(self):
@@ -3063,14 +3237,14 @@ class StatsWindow(_DraggableWindow):
         streak = data.get("streak_days", 0)
         sets_count = data.get("sets_count", 0)
         total_likes = data.get("total_likes", 0)
-        is_premium = data.get("is_premium", False)
+        is_premium = _premium_active(data)
         premium_until = data.get("premium_until")
         username = data.get("username", "—")
 
         # Username
         un_row = QWidget(); un_row.setStyleSheet("background:rgba(201,106,42,30);border:1px solid rgba(201,106,42,100);border-radius:10px;")
         unl = QHBoxLayout(un_row); unl.setContentsMargins(14,10,14,10)
-        unl_lbl = QLabel(f"👤  {username}")
+        unl_lbl = QLabel(f"{username}")
         unl_lbl.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
         unl_lbl.setStyleSheet("color:rgba(220,180,100,220);background:transparent;")
         unl.addWidget(unl_lbl)
@@ -3082,25 +3256,25 @@ class StatsWindow(_DraggableWindow):
             try:
                 until = datetime.fromisoformat(premium_until.replace("Z", "+00:00"))
                 days_left = (until - datetime.now(until.tzinfo)).days
-                prem_text = f"⭐ Premium · {days_left} dni"
+                prem_text = f"Premium · {days_left} dni"
                 prem_color = "rgba(100,220,150,220)"
             except Exception:
-                prem_text = "⭐ Premium"
+                prem_text = "Premium"
                 prem_color = "rgba(100,220,150,220)"
         else:
-            prem_text = "🔒 Plan darmowy"
+            prem_text = "Plan darmowy"
             prem_color = "rgba(160,175,210,180)"
-        self.stats_lay.addWidget(self._stat_row("🏆", "Status konta", prem_text, prem_color))
+        self.stats_lay.addWidget(self._stat_row("", "Status konta", prem_text, prem_color))
 
         # Statystyki
-        self.stats_lay.addWidget(self._stat_row("📚", "Poznane słowa", f"{cards:,}".replace(",", " ")))
+        self.stats_lay.addWidget(self._stat_row("", "Poznane słowa", f"{cards:,}".replace(",", " ")))
 
         hours = minutes // 60
         mins = minutes % 60
         time_str = f"{hours}h {mins}min" if hours else f"{mins} min"
-        self.stats_lay.addWidget(self._stat_row("⏱️", "Czas nauki", time_str))
-        self.stats_lay.addWidget(self._stat_row("📂", "Twoje zestawy", f"{sets_count}"))
-        self.stats_lay.addWidget(self._stat_row("❤️", "Łączne lajki", f"{total_likes}", "rgba(255,100,120,220)"))
+        self.stats_lay.addWidget(self._stat_row("", "Czas nauki", time_str))
+        self.stats_lay.addWidget(self._stat_row("", "Twoje zestawy", f"{sets_count}"))
+        self.stats_lay.addWidget(self._stat_row("", "Łączne lajki", f"{total_likes}", "rgba(255,100,120,220)"))
 
         self.stats_lay.addStretch()
         self.stats_widget.show()
@@ -3109,47 +3283,7 @@ class StatsWindow(_DraggableWindow):
         _paint_bg(self, e)
 
 
-class SettingsWindow(_DraggableWindow):
-    done  = pyqtSignal(int, bool)  # gold, is_premium
-    error = pyqtSignal(str)
-
-    def __init__(self):
-        super().__init__()
-        self.finished.connect(self.deleteLater)
-
-    def run(self):
-        try:
-            uid  = current_uid()
-            resp = supabase.table("learning_stats").select("gold").eq("user_id", uid).execute()
-            gold = resp.data[0]["gold"] if resp.data else 0
-            resp2 = supabase.table("profiles").select("is_premium").eq("user_id", uid).execute()
-            is_premium = resp2.data[0]["is_premium"] if resp2.data else False
-            self.done.emit(gold, is_premium)
-        except Exception as e:
-            self.error.emit(str(e))
-
-
-# ──────────────────────────────────────────────────────
-# WORKER – dodawanie złota
-# ──────────────────────────────────────────────────────
-class AddGoldWorker(QThread):
-    done = pyqtSignal(int)  # nowe łączne złoto
-
-    def __init__(self, gold_cards, gold_minutes):
-        super().__init__()
-        self.finished.connect(self.deleteLater)
-        self.gold_cards   = gold_cards
-        self.gold_minutes = gold_minutes
-
-    def run(self):
-        try:
-            resp = supabase.rpc("add_gold", {
-                "p_gold_cards":   self.gold_cards,
-                "p_gold_minutes": self.gold_minutes,
-            }).execute()
-            self.done.emit(resp.data or 0)
-        except Exception as e:
-            print(f"[GOLD] błąd: {e}")
+# (usunięto martwą, zacienioną klasę SettingsWindow — była błędnie nazwanym workerem złota/premium; aktywna klasa jest niżej)
 
 
 # ──────────────────────────────────────────────────────
@@ -3180,7 +3314,7 @@ class PremiumCodeWindow(_DraggableWindow):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(320, 280)
+        self.setFixedSize(360, 280)
         self._build()
         _right_third_pos(self)
 
@@ -3189,7 +3323,7 @@ class PremiumCodeWindow(_DraggableWindow):
         lay.setContentsMargins(28, 28, 28, 28)
         lay.setSpacing(12)
 
-        title = QLabel("🏆  Aktywuj Premium")
+        title = QLabel("Aktywuj Premium")
         title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         title.setStyleSheet("color: white;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -3241,12 +3375,12 @@ class PremiumCodeWindow(_DraggableWindow):
     def _on_done(self, success, message):
         if success:
             self.lbl_msg.setStyleSheet("color: rgba(100,255,100,220); font-size:9px;")
-            self.lbl_msg.setText("✅ " + message)
+            self.lbl_msg.setText("" + message)
             QTimer.singleShot(1500, self.hide)
             self.activated.emit()
         else:
             self.lbl_msg.setStyleSheet("color: rgba(255,100,100,220); font-size:9px;")
-            self.lbl_msg.setText("❌ " + message)
+            self.lbl_msg.setText("" + message)
         self.btn.setEnabled(True)
         self.btn.setText("Aktywuj")
 
@@ -3277,7 +3411,7 @@ class CheckoutWorker(QThread):
 
 
 class PurchaseWindow(_DraggableWindow):
-    """Okno wyboru metody zakupu: złoto / jednorazowo / subskrypcja."""
+    """Okno wyboru metody zakupu: jednorazowo / subskrypcja."""
     purchased = pyqtSignal()
 
     def __init__(self):
@@ -3286,7 +3420,6 @@ class PurchaseWindow(_DraggableWindow):
         self.setFixedSize(360, 460)
         self._price_key  = ""
         self._user_email = ""
-        self._gold       = 0
         self._build()
         _right_third_pos(self)
 
@@ -3298,7 +3431,7 @@ class PurchaseWindow(_DraggableWindow):
         # Nagłówek
         hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("🔒  Odblokuj poziom")
+        t = QLabel("Odblokuj poziom")
         t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         t.setStyleSheet("color:white;background:transparent;")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -3315,7 +3448,7 @@ class PurchaseWindow(_DraggableWindow):
         il.addWidget(self.lbl_info)
 
         sep = QWidget(); sep.setFixedHeight(1)
-        sep.setStyleSheet("background:rgba(100,110,180,60);")
+        sep.setStyleSheet("background:rgba(210,220,255,18);")
         il.addWidget(sep)
         il.addSpacing(4)
 
@@ -3339,15 +3472,15 @@ class PurchaseWindow(_DraggableWindow):
                 }}
             """
 
-        self.btn_once = QPushButton("💳  Kup jednorazowo  ·  19,99 zł")
-        self.btn_once.setStyleSheet(_sty("rgba(80,140,230,220)", "rgba(30,50,90,180)"))
+        self.btn_once = QPushButton("Subskrypcja roczna  ·  329 zł/rok")
+        self.btn_once.setStyleSheet(_sty("rgba(201,106,42,235)", "rgba(150,78,30,200)"))
         self.btn_once.setFont(QFont("Segoe UI", 12))
         self.btn_once.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_once.clicked.connect(self._pay_once)
         il.addWidget(self.btn_once)
 
-        self.btn_sub = QPushButton("⭐  Subskrypcja  ·  14,99 zł/mies")
-        self.btn_sub.setStyleSheet(_sty("rgba(160,80,220,220)", "rgba(40,20,60,180)"))
+        self.btn_sub = QPushButton("Subskrypcja miesięczna  ·  39 zł/mies")
+        self.btn_sub.setStyleSheet(_sty("rgba(120,135,190,210)", "rgba(60,70,120,190)"))
         self.btn_sub.setFont(QFont("Segoe UI", 12))
         self.btn_sub.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_sub.clicked.connect(self._pay_sub)
@@ -3364,55 +3497,24 @@ class PurchaseWindow(_DraggableWindow):
         il.addWidget(_close_btn(self))
         lay.addWidget(inner, 1)
 
-    def show_for(self, price_key, level_label, lang_label, gold, user_email):
+    def show_for(self, price_key, level_label, lang_label, user_email):
         self._price_key  = price_key
         self._user_email = user_email
-        self._gold       = gold
         parts = price_key.split("_")
         self._lang_code  = parts[0] if len(parts) >= 2 else ""
         self._lvl_code   = parts[1] if len(parts) >= 2 else ""
-        self.lbl_info.setText(f"{lang_label}  ·  Poziom {level_label}")
+        _is_prem = str(price_key).startswith("premium")
+        self.btn_once.setVisible(True)
+        if _is_prem:
+            self.lbl_info.setText("PRO odblokowuje wszystkie poziomy i funkcje")
+        else:
+            self.lbl_info.setText(f"{lang_label}  ·  Poziom {level_label}")
         self.lbl_msg.setText("")
         self.lbl_msg.setStyleSheet("color:rgba(255,100,100,220);background:transparent;")
         self.show(); self.raise_(); self.activateWindow()
 
-    def _pay_gold(self):
-        if self._gold < 7500:
-            self.lbl_msg.setText("Niewystarczająca ilość złota.")
-            return
-        try:
-            uid = current_uid()
-            # Pobierz levels_bought z profiles
-            profile = supabase.from_("profiles").select("levels_bought").eq("user_id", uid).single().execute()
-            current = profile.data.get("levels_bought") or []
-            if isinstance(current, str):
-                import json as _j; current = _j.loads(current)
-            if not isinstance(current, list):
-                current = []
-            key = f"{self._lang_code}_{self._lvl_code}"
-            if key not in current:
-                current.append(key)
-            new_gold = self._gold - 7500
-            # Zapisz złoto do learning_stats
-            supabase.from_("learning_stats").update({
-                "gold": new_gold
-            }).eq("user_id", uid).execute()
-            # Zapisz levels_bought do profiles
-            supabase.from_("profiles").update({
-                "levels_bought": current,
-                "updated_at": "now()"
-            }).eq("user_id", uid).execute()
-            self._gold = new_gold
-            self.lbl_msg.setText(f"✅ Poziom {self._lvl_code} odblokowany!")
-            self.lbl_msg.setStyleSheet("color:rgba(100,255,150,220);background:transparent;")
-            self.purchased.emit()
-            QTimer.singleShot(1200, self.hide)
-        except Exception as e:
-            self.lbl_msg.setText(f"Błąd: {e}")
-            print(f"[PAY_GOLD] {e}")
-
     def _pay_once(self):
-        self._start_checkout(self._price_key)
+        self._start_checkout("premium_yearly")
 
     def _pay_sub(self):
         self._start_checkout("premium_monthly")
@@ -3435,265 +3537,6 @@ class PurchaseWindow(_DraggableWindow):
         _paint_bg(self, e)
 
 
-class ShopWindow(_DraggableWindow):
-    level_bought = pyqtSignal(str, int)
-    go_back      = pyqtSignal()
-
-    LEVELS = [
-        ("A1", "Poziom A1", "Początkujący",        7500,  "🌱"),
-        ("A2", "Poziom A2", "Podstawowy",           7500,  "🌿"),
-        ("B1", "Poziom B1", "Średniozaawansowany",  7500,  "🌳"),
-        ("B2", "Poziom B2", "Wyższy średni",        7500,  "🌲"),
-        ("C1", "Poziom C1", "Zaawansowany",         7500,  "🏆"),
-        ("C2", "Poziom C2", "Biegły",               7500,  "💎"),
-    ]
-
-    def __init__(self):
-        super().__init__()
-        _styled_window(self)
-        self.setFixedSize(400, 580)
-        self._gold         = 0
-        self._is_premium   = False
-        self._levels_bought= []
-        self._cur_lang     = "en"  # domyślnie angielski
-        self._build()
-        _right_third_pos(self)
-
-    def _build(self):
-        from PyQt6.QtWidgets import QScrollArea, QComboBox
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        # ── Nagłówek ──────────────────────────────────
-        hdr = QWidget(); hdr.setFixedHeight(32)
-        hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        lbl_title = QLabel("🏺  Sklep")
-        lbl_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        lbl_title.setStyleSheet("color:white;background:transparent;")
-        lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_gold = QLabel("🏺 0 złota")
-        self.lbl_gold.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        self.lbl_gold.setStyleSheet("color:rgba(255,215,0,255);background:transparent;")
-        hl.addWidget(lbl_title, 1); hl.addWidget(self.lbl_gold)
-        root.addWidget(hdr)
-
-        # ── Wybór języka (dropdown) ────────────────────
-        lang_w = QWidget(); lang_w.setStyleSheet("background:transparent;")
-        lang_l = QVBoxLayout(lang_w); lang_l.setContentsMargins(16, 8, 16, 4); lang_l.setSpacing(6)
-
-        lbl_choose = QLabel("Wybierz język:")
-        lbl_choose.setFont(QFont("Segoe UI", 10))
-        lbl_choose.setStyleSheet("color:rgba(180,200,255,200);background:transparent;")
-        lang_l.addWidget(lbl_choose)
-
-        self._lang_combo = QComboBox()
-        self._lang_combo.setFont(QFont("Segoe UI", 11))
-        self._lang_combo.setFixedHeight(36)
-        self._lang_combo.setStyleSheet("""
-            QComboBox {
-                background: rgba(40,45,90,200);
-                color: white;
-                border: 1px solid rgba(100,110,200,150);
-                border-radius: 10px;
-                padding: 4px 12px;
-            }
-            QComboBox:hover { background: rgba(55,60,110,220); border-color: rgba(130,145,240,200); }
-            QComboBox::drop-down { border: none; width: 24px; }
-            QComboBox::down-arrow { image: none; }
-            QComboBox QAbstractItemView {
-                background: rgba(25,28,65,245);
-                color: white;
-                border: 1px solid rgba(100,110,200,150);
-                border-radius: 8px;
-                selection-background-color: rgba(80,100,200,200);
-                padding: 4px;
-            }
-        """)
-        for lang in LANGUAGES:
-            if lang.get("available", True):
-                self._lang_combo.addItem(f"{lang['flag']}  {lang['label']}", lang["code"])
-            else:
-                self._lang_combo.addItem(f"{lang['flag']}  {lang['label']}  🔜", lang["code"])
-                idx = self._lang_combo.count() - 1
-                self._lang_combo.model().item(idx).setEnabled(False)
-                self._lang_combo.model().item(idx).setForeground(
-                    __import__('PyQt6.QtGui', fromlist=['QColor']).QColor(120, 125, 145, 140)
-                )
-        self._lang_combo.currentIndexChanged.connect(self._on_combo_changed)
-        # Domyślnie angielski
-        for i in range(self._lang_combo.count()):
-            if self._lang_combo.itemData(i) == "en":
-                self._lang_combo.setCurrentIndex(i)
-                break
-        lang_l.addWidget(self._lang_combo)
-        root.addWidget(lang_w)
-
-        # Separator
-        sep = QWidget(); sep.setFixedHeight(1)
-        sep.setStyleSheet("background:rgba(100,110,180,60);")
-        root.addWidget(sep)
-
-        # ── Komunikat ─────────────────────────────────
-        self.lbl_msg = QLabel("")
-        self.lbl_msg.setFont(QFont("Segoe UI", 10))
-        self.lbl_msg.setStyleSheet("color:rgba(200,220,255,200);margin:4px 16px;background:transparent;")
-        self.lbl_msg.setWordWrap(True)
-        root.addWidget(self.lbl_msg)
-
-        # ── Scrollowalne poziomy ───────────────────────
-        sa = QScrollArea(); sa.setWidgetResizable(True)
-        sa.setStyleSheet("""
-            QScrollArea{background:transparent;border:none;}
-            QScrollBar:vertical{background:rgba(255,255,255,.04);width:5px;border-radius:2px;}
-            QScrollBar::handle:vertical{background:rgba(255,255,255,.22);border-radius:2px;min-height:16px;}
-            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}
-        """)
-        self._levels_w = QWidget(); self._levels_w.setStyleSheet("background:transparent;")
-        sa.setWidget(self._levels_w)
-        root.addWidget(sa, 1)
-
-        # Dolne przyciski
-        bot = QWidget(); bot.setStyleSheet("background:transparent;")
-        bl  = QHBoxLayout(bot); bl.setContentsMargins(12, 6, 12, 10); bl.setSpacing(8)
-        btn_back = QPushButton("← Cofnij")
-        btn_back.setFont(QFont("Segoe UI", 11))
-        btn_back.setFixedHeight(34)
-        btn_back.setStyleSheet(
-            "QPushButton{background:rgba(60,60,90,200);color:white;"
-            "border:1px solid rgba(100,110,180,100);border-radius:8px;padding:4px 14px;}"
-            "QPushButton:hover{background:rgba(80,80,120,230);}")
-        btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_back.clicked.connect(lambda: (self.hide(), self.go_back.emit()))
-        bl.addWidget(btn_back)
-        bl.addWidget(_close_btn(self))
-        root.addWidget(bot)
-
-        self._refresh_levels()
-
-    def _on_combo_changed(self, idx):
-        lang_code = self._lang_combo.itemData(idx)
-        self._cur_lang = lang_code
-        self._refresh_levels()
-
-    def _update_lang_btns(self):
-        pass  # nie używane przy combo
-
-    def _refresh_levels(self):
-        # Usuń stare widgety
-        old_lay = self._levels_w.layout()
-        if old_lay:
-            while old_lay.count():
-                item = old_lay.takeAt(0)
-                if item.widget(): item.widget().deleteLater()
-            QWidget().setLayout(old_lay)
-        lay = QVBoxLayout(self._levels_w)
-        lay.setContentsMargins(12, 8, 12, 12); lay.setSpacing(8)
-
-        if not self._cur_lang:
-            lbl = QLabel("← Wybierz język powyżej")
-            lbl.setFont(QFont("Segoe UI", 11))
-            lbl.setStyleSheet("color:rgba(180,200,255,160);")
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lay.addStretch(); lay.addWidget(lbl); lay.addStretch()
-            return
-
-        lang_label_str = next((l["label"] for l in LANGUAGES if l["code"] == self._cur_lang), self._cur_lang)
-
-        for code, name, desc, price, icon in self.LEVELS:
-            key = f"{self._cur_lang}_{code}"
-            bought = self._is_premium or key in self._levels_bought
-            card = QWidget()
-            card.setFixedHeight(76)
-            card.setStyleSheet(
-                "QWidget{background:rgba(30,100,50,160);border:1px solid rgba(80,200,120,100);"
-                "border-radius:12px;}" if bought else
-                "QWidget{background:rgba(30,35,70,180);border:1px solid rgba(80,90,150,80);"
-                "border-radius:12px;}"
-                "QWidget:hover{background:rgba(40,45,90,200);border-color:rgba(100,120,200,120);}"
-            )
-            cl = QHBoxLayout(card); cl.setContentsMargins(14, 8, 14, 8); cl.setSpacing(10)
-
-            lbl_icon = QLabel(icon)
-            lbl_icon.setFont(QFont("Segoe UI Emoji", 24))
-            lbl_icon.setStyleSheet("background:transparent;")
-            lbl_icon.setFixedWidth(40)
-            lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            info = QVBoxLayout(); info.setSpacing(2)
-            lbl_name = QLabel(f"{name}  ·  {lang_label_str}")
-            lbl_name.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-            lbl_name.setStyleSheet("color:white;background:transparent;")
-            lbl_desc = QLabel(desc)
-            lbl_desc.setFont(QFont("Segoe UI", 9))
-            lbl_desc.setStyleSheet("color:rgba(180,200,255,180);background:transparent;")
-            info.addWidget(lbl_name); info.addWidget(lbl_desc)
-
-            if bought:
-                lbl_status = QLabel("✅  Zakupiony")
-                lbl_status.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-                lbl_status.setStyleSheet("color:rgba(100,255,150,230);background:transparent;")
-                cl.addWidget(lbl_icon); cl.addLayout(info, 1); cl.addWidget(lbl_status)
-            elif price == 0:
-                lbl_free = QLabel("🆓  Bezpłatny")
-                lbl_free.setFont(QFont("Segoe UI", 10))
-                lbl_free.setStyleSheet("color:rgba(255,215,0,200);background:transparent;")
-                cl.addWidget(lbl_icon); cl.addLayout(info, 1); cl.addWidget(lbl_free)
-            else:
-                can_buy = self._gold >= price
-                price_str = f"🏺 {price:,}".replace(",", " ")
-                btn = QPushButton(price_str)
-                btn.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-                btn.setFixedSize(110, 34)
-                btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                if can_buy:
-                    btn.setStyleSheet("QPushButton{background:rgba(50,130,200,220);color:white;"
-                                      "border:1px solid rgba(100,180,255,150);border-radius:8px;}"
-                                      "QPushButton:hover{background:rgba(70,160,230,240);}")
-                else:
-                    btn.setEnabled(False)
-                    btn.setStyleSheet("QPushButton{background:rgba(50,50,70,150);color:rgba(180,180,200,120);"
-                                      "border:1px solid rgba(80,80,100,80);border-radius:8px;}")
-                btn.clicked.connect(lambda _, c=code: self._buy(c))
-                cl.addWidget(lbl_icon); cl.addLayout(info, 1); cl.addWidget(btn)
-
-            lay.addWidget(card)
-        lay.addStretch()
-
-    def _buy(self, level_code):
-        price = next((p for c,_,_,p,_ in self.LEVELS if c == level_code), 0)
-        if self._gold < price: return
-        lang = self._cur_lang or "en"
-        self._worker = BuyLevelWorker(lang, level_code)
-        self._worker.done.connect(lambda ok, msg, gl: self._on_bought(ok, msg, gl, level_code))
-        self._worker.start()
-
-    def _on_bought(self, success, message, gold_left, level_code):
-        self.lbl_msg.setStyleSheet(
-            "color:rgba(100,255,150,220);margin:4px 16px;" if success
-            else "color:rgba(255,100,100,220);margin:4px 16px;")
-        self.lbl_msg.setText(message)
-        if success:
-            self._gold = gold_left
-            self.lbl_gold.setText(f"🏺 {gold_left:,}".replace(",", " ") + " złota")
-            key = f"{self._cur_lang}_{level_code}"
-            if key not in self._levels_bought:
-                self._levels_bought.append(key)
-            self.level_bought.emit(self._cur_lang or "", gold_left)
-            self._refresh_levels()
-
-    def update_profile(self, gold, is_premium, levels_bought):
-        self._gold          = gold
-        self._is_premium    = is_premium
-        self._levels_bought = levels_bought if isinstance(levels_bought, list) else []
-        self.lbl_gold.setText(f"🏺 {gold:,}".replace(",", " ") + " złota")
-        self._refresh_levels()
-
-    def paintEvent(self, e):
-        _paint_bg(self, e)
-
-
 class SettingsWindow(_DraggableWindow):
     settings_changed = pyqtSignal(dict)
     go_back          = pyqtSignal()
@@ -3701,7 +3544,7 @@ class SettingsWindow(_DraggableWindow):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(400, 560)
+        self.setFixedSize(440, 560)
         self._recording   = None
         self._record_hook = None
         self._saved_state = {}
@@ -3717,7 +3560,7 @@ class SettingsWindow(_DraggableWindow):
         root.setSpacing(0)
 
         # Pasek tytułu (= strefa drag)
-        hdr = QLabel("⚙️  Ustawienia")
+        hdr = QLabel("Ustawienia")
         hdr.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hdr.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         hdr.setStyleSheet("color:white; background:transparent; padding: 6px 0 2px 0;")
@@ -3747,54 +3590,35 @@ class SettingsWindow(_DraggableWindow):
             lay.addWidget(l)
 
         # Wygląd
-        sec("🎨  Wygląd")
+        sec("Wygląd")
         self.sl_op,  _ = self._mk_slider(lay,"Przezroczystość:", 30,100, int(APP_SETTINGS["opacity"]*100), "%")
         self.sl_txt, _ = self._mk_slider(lay,"Jasność tekstu:",  30,100, int(APP_SETTINGS["text_alpha"]/255*100), "%")
 
         # Czas
-        sec("⏱️  Czas wyświetlania fiszki")
+        sec("Czas wyświetlania fiszki")
         self.sl_time,_ = self._mk_slider(lay,"Sekund:", 5,15, max(5,min(15,APP_SETTINGS.get("display_time",8))), "s")
 
         # Efekty
-        sec("✨  Efekt wizualny")
+        sec("Efekt wizualny")
         FX = [
-            ("none",       "🚫  Brak"),
-            ("flash_gold", "✨  Złoty błysk"),
-            ("flash_red",  "🔴  Czerwony błysk"),
-            ("flash_cyan", "🩵  Cyjanowy błysk"),
-            ("flash_pink", "💗  Różowy błysk"),
-            ("flash_lime", "💚  Limonkowy"),
-            ("flash_blue", "🔵  Niebieski błysk"),
-            ("glow_white", "⚪  Biały blask"),
-            ("glow_orange","🟠  Pomarańcz"),
-            ("glow_purple","🟣  Fiolet"),
-            ("neon_green", "🟢  Neon zielony"),
-            ("neon_blue",  "💙  Neon niebieski"),
-            ("pulse",      "💓  Pulsowanie"),
-            ("shake",      "💫  Drżenie"),
-            ("rainbow",    "🌈  Tęcza"),
-            ("zoom_in",    "🔍  Powiększenie"),
-            ("zoom_out",   "🔎  Pomniejszenie"),
-            ("typewriter", "⌨️   Maszyna"),
-            ("bounce",     "🏀  Odbicie"),
-            ("spin_color", "🎡  Obrót kolorów"),
-            ("fire_text",  "🔥  Ognisty tekst"),
+            ("none",       "Brak"),
+            ("glow_white", "Delikatne wyróżnienie nowego słowa"),
         ]
         self._fx_ids = [f[0] for f in FX]
         self._fx_cb  = QComboBox()
         self._fx_cb.setFont(QFont("Segoe UI",11))
         self._fx_cb.setFixedHeight(30)
         self._fx_cb.setStyleSheet("""
-            QComboBox{background:rgba(40,50,110,200);color:white;
-                border:1px solid rgba(100,130,220,150);border-radius:7px;padding:3px 10px;}
-            QComboBox:hover{background:rgba(60,70,140,220);}
+            QComboBox{background:rgba(26,36,54,190);color:white;
+                border:1px solid rgba(70,130,105,150);border-radius:7px;padding:3px 10px;}
+            QComboBox:hover{background:rgba(40,52,70,220);}
             QComboBox::drop-down{border:none;width:22px;}
             QComboBox::down-arrow{width:0;height:0;
                 border-left:5px solid transparent;border-right:5px solid transparent;
                 border-top:6px solid rgba(200,210,255,200);}
-            QComboBox QAbstractItemView{background:rgba(25,28,65,245);color:white;
-                selection-background-color:rgba(91,110,245,200);
-                border:1px solid rgba(100,130,220,150);border-radius:6px;
+            QComboBox QAbstractItemView{background:rgba(20,28,44,245);color:white;
+                selection-background-color:rgba(48,168,110,200);
+                border:1px solid rgba(70,130,105,150);border-radius:6px;
                 padding:2px;outline:none;}
         """)
         cur = APP_SETTINGS.get("card_effect","none")
@@ -3802,18 +3626,20 @@ class SettingsWindow(_DraggableWindow):
             self._fx_cb.addItem(flbl, fid)
         if cur in self._fx_ids:
             self._fx_cb.setCurrentIndex(self._fx_ids.index(cur))
+        else:
+            APP_SETTINGS["card_effect"] = "none"
         self._fx_cb.currentIndexChanged.connect(
             lambda i: self._on_fx(i))
         lay.addWidget(self._fx_cb)
 
         # Audio
-        sec("🔊  Audio (TTS)")
+        sec("Audio (TTS)")
         self.chk_audio = QCheckBox("Czytaj słówka głosem  (ALT+R)")
         self.chk_audio.setFont(QFont("Segoe UI",11))
         self.chk_audio.setStyleSheet("""
             QCheckBox{color:white;background:transparent;spacing:8px;}
             QCheckBox::indicator{width:18px;height:18px;border-radius:9px;
-                border:2px solid rgba(100,120,220,200);background:rgba(40,40,80,180);}
+                border:2px solid rgba(70,150,110,200);background:rgba(26,36,54,190);}
             QCheckBox::indicator:checked{
                 background:rgba(30,150,70,230);
                 border-color:rgba(80,220,120,255);
@@ -3826,7 +3652,7 @@ class SettingsWindow(_DraggableWindow):
         lay.addWidget(self.chk_audio)
 
         # Skróty
-        sec("⌨️  Skróty klawiszowe")
+        sec("Skróty klawiszowe")
         hint = QLabel("Kliknij przycisk → naciśnij kombinację.  ✖ = wyłącz")
         hint.setStyleSheet("color:rgba(160,185,255,160);font-size:10px;")
         hint.setWordWrap(True)
@@ -3860,7 +3686,7 @@ class SettingsWindow(_DraggableWindow):
         bar = QWidget()
         bar.setFixedHeight(52)
         bar.setStyleSheet("background:rgba(12,15,45,230);"
-                          "border-top:1px solid rgba(100,110,180,70);")
+                          "border-top:1px solid rgba(210,220,255,20);")
         bl = QHBoxLayout(bar); bl.setContentsMargins(14,8,14,8); bl.setSpacing(6)
 
         def mkb(text, bg, hover, slot, bold=False):
@@ -3874,15 +3700,21 @@ class SettingsWindow(_DraggableWindow):
             b.clicked.connect(slot)
             return b
 
-        # Zapis=zielony, Cofnij=szary, Zamknij=czerwony, Domyślne=biały tekst
-        btn_save  = mkb("💾  Zapisz",  "rgba(30,140,65,220)", "rgba(40,170,80,240)",  self._save,  True)
-        btn_rev   = mkb("↩  Cofnij",   "rgba(70,72,85,210)",  "rgba(95,98,115,235)",  self._revert)
-        btn_close = mkb("✕  Zamknij",  "rgba(175,38,38,220)", "rgba(215,52,52,240)",  self.hide)
-        btn_def   = mkb("↺  Domyślne","rgba(48,52,78,210)",  "rgba(68,72,105,235)",  self._reset)
+        # Wróć=granat, Zapis=zielony, Zamknij=szary, Domyślne=tekst
+        btn_back  = mkb("\u2190 Wr\u00F3\u0107", "rgba(60,66,92,210)", "rgba(82,90,120,235)", self._revert)
+        btn_save  = mkb("Zapisz",  "rgba(42,158,102,220)", "rgba(56,182,120,240)", self._save, True)
+        btn_close = mkb("Zamknij", "rgba(60,66,92,210)",   "rgba(82,90,120,235)",  self.hide)
+        btn_def   = QPushButton("Przywróć domyślne")
+        btn_def.setFont(QFont("Segoe UI", 9))
+        btn_def.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_def.setStyleSheet("QPushButton{background:transparent;color:rgba(160,175,210,160);border:none;}"
+                              "QPushButton:hover{color:rgba(120,215,160,225);}")
+        btn_def.clicked.connect(self._reset)
 
+        bl.addWidget(btn_back)
         bl.addWidget(btn_save)
-        bl.addWidget(btn_rev)
         bl.addWidget(btn_close)
+        bl.addStretch()
         bl.addWidget(btn_def)
         root.addWidget(bar)
 
@@ -3896,14 +3728,14 @@ class SettingsWindow(_DraggableWindow):
         sl.setMinimum(mn); sl.setMaximum(mx); sl.setValue(val)
         sl.setFixedHeight(22)
         sl.setStyleSheet("""
-            QSlider::groove:horizontal{height:4px;background:rgba(100,120,220,100);border-radius:2px;}
+            QSlider::groove:horizontal{height:4px;background:rgba(70,130,105,120);border-radius:2px;}
             QSlider::handle:horizontal{width:13px;height:13px;margin:-5px 0;
-                background:rgb(91,110,245);border-radius:6px;}
-            QSlider::sub-page:horizontal{background:rgba(91,110,245,200);border-radius:2px;}
+                background:rgb(46,160,105);border-radius:6px;}
+            QSlider::sub-page:horizontal{background:rgba(48,168,110,200);border-radius:2px;}
         """)
         vl = QLabel(f"{val}{suffix}")
         vl.setFont(QFont("Segoe UI",11,QFont.Weight.Bold))
-        vl.setStyleSheet("color:rgba(255,215,0,255);"); vl.setFixedWidth(34)
+        vl.setStyleSheet("color:rgba(120,215,160,235);"); vl.setFixedWidth(34)
         sl.valueChanged.connect(lambda v,l=vl,s=suffix: l.setText(f"{v}{s}"))
         row.addWidget(lb); row.addWidget(sl); row.addWidget(vl)
         lay.addLayout(row)
@@ -3911,9 +3743,9 @@ class SettingsWindow(_DraggableWindow):
 
     def _hk_style(self, active):
         if active:
-            return ("QPushButton{background:rgba(50,70,150,180);color:white;"
-                    "border:1px solid rgba(100,130,220,120);border-radius:7px;padding:3px;font-size:10px;}"
-                    "QPushButton:hover{background:rgba(70,100,190,220);}")
+            return ("QPushButton{background:rgba(36,120,84,180);color:white;"
+                    "border:1px solid rgba(70,170,120,120);border-radius:7px;padding:3px;font-size:10px;}"
+                    "QPushButton:hover{background:rgba(42,150,100,220);}")
         return ("QPushButton{background:rgba(38,38,58,140);color:rgba(255,255,255,70);"
                 "border:1px solid rgba(80,80,120,80);border-radius:7px;padding:3px;font-size:10px;}"
                 "QPushButton:hover{background:rgba(58,58,88,180);}")
@@ -3932,7 +3764,7 @@ class SettingsWindow(_DraggableWindow):
         self._recording = key
         btn = self._hk_btns[key]
         btn.setText("[ naciśnij kombinację… ]")
-        btn.setStyleSheet("QPushButton{background:rgba(91,110,245,200);color:white;"
+        btn.setStyleSheet("QPushButton{background:rgba(48,168,110,200);color:white;"
                           "border:2px solid rgba(140,160,255,255);border-radius:7px;"
                           "padding:3px;font-size:10px;}")
         # Ustaw focus na okno i zainstaluj event filter
@@ -3985,12 +3817,13 @@ class SettingsWindow(_DraggableWindow):
         APP_SETTINGS["text_alpha"]    = int(self.sl_txt.value() / 100 * 255)
         APP_SETTINGS["display_time"]  = self.sl_time.value()
         APP_SETTINGS["audio_enabled"] = self.chk_audio.isChecked()
+        APP_SETTINGS["card_effect"]   = self._fx_ids[self._fx_cb.currentIndex()]
         save_settings(APP_SETTINGS)
         self.settings_changed.emit(APP_SETTINGS)
         # NIE zamyka okna
 
     def _revert(self):
-        """Cofnij = wróć do okna wyboru języka."""
+        """Wróć do panelu (hub) bez zapisywania zmian UI sesji."""
         self.hide()
         self.go_back.emit()
 
@@ -4032,6 +3865,40 @@ def _similarity(a: str, b: str) -> float:
     return min(1.0, (matches + common) / (longer + 1))
 
 
+class SegmentBar(QWidget):
+    """D5 — segmentowy pasek postępu: zaliczone / bieżące / pozostałe."""
+    def __init__(self):
+        super().__init__()
+        self.total = 1
+        self.current = 0
+        self.setFixedHeight(6)
+
+    def set_state(self, total, current):
+        self.total = max(int(total), 1)
+        self.current = max(0, min(int(current), self.total))
+        self.update()
+
+    def paintEvent(self, e):
+        from PyQt6.QtCore import QRectF
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        n = self.total
+        gap = 3.0
+        w = (self.width() - gap * (n - 1)) / n if n > 0 else self.width()
+        if w < 1:
+            w = 1
+        for idx in range(n):
+            if idx < self.current:
+                c = QColor(90, 210, 140, 220)     # zaliczone
+            elif idx == self.current:
+                c = QColor(235, 175, 90, 235)      # bieżące
+            else:
+                c = QColor(120, 128, 160, 90)       # pozostałe
+            p.setBrush(c)
+            p.drawRoundedRect(QRectF(idx * (w + gap), 0.0, w, float(self.height())), 2, 2)
+
+
 class TestWindow(_DraggableWindow):
     test_done = pyqtSignal(list)
 
@@ -4041,36 +3908,50 @@ class TestWindow(_DraggableWindow):
         self.index    = 0
         self.results  = []
         self.answered = False
+        self.progress_key = ""
+        self.save_progress = None
         _styled_window(self)
-        self.setFixedSize(440, 400)
+        self.setFixedSize(440, 452)
         self._build()
         sc = QApplication.primaryScreen().availableGeometry()
-        self.move(sc.center().x() - 220, sc.center().y() - 200)
+        self.move(sc.center().x() - 220, sc.center().y() - 226)
 
     def _build(self):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        # Pasek drag z tytułem i postępem
+        # Pasek: tytuł + „X z Y"
         hdr_w = QWidget(); hdr_w.setFixedHeight(32); hdr_w.setStyleSheet("background:transparent;")
         hl = QHBoxLayout(hdr_w); hl.setContentsMargins(16, 0, 16, 0)
-        self.lbl_title = QLabel("📝  Test")
+        self.lbl_title = QLabel("Tryb nauki")
         self.lbl_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         self.lbl_title.setStyleSheet("color:white;background:transparent;")
         self.lbl_progress = QLabel("")
         self.lbl_progress.setFont(QFont("Segoe UI", 10))
         self.lbl_progress.setStyleSheet("color:rgba(200,210,255,180);background:transparent;")
         self.lbl_progress.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        hl.addWidget(self.lbl_title)
-        hl.addWidget(self.lbl_progress)
+        hl.addWidget(self.lbl_title); hl.addWidget(self.lbl_progress)
         lay.addWidget(hdr_w)
+
+        # Segmentowy pasek postępu
+        seg_wrap = QWidget(); seg_wrap.setStyleSheet("background:transparent;")
+        sw = QVBoxLayout(seg_wrap); sw.setContentsMargins(16, 0, 16, 6)
+        self.seg_bar = SegmentBar()
+        sw.addWidget(self.seg_bar)
+        lay.addWidget(seg_wrap)
 
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
         inner_lay = QVBoxLayout(inner)
-        inner_lay.setContentsMargins(28, 16, 28, 24)
-        inner_lay.setSpacing(14)
+        inner_lay.setContentsMargins(28, 12, 28, 20)
+        inner_lay.setSpacing(12)
         lay.addWidget(inner, 1)
+
+        self.lbl_prompt = QLabel("PRZET\u0141UMACZ")
+        self.lbl_prompt.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self.lbl_prompt.setStyleSheet("color:rgba(150,165,205,170);background:transparent;letter-spacing:1px;")
+        self.lbl_prompt.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        inner_lay.addWidget(self.lbl_prompt)
 
         self.lbl_question = QLabel("")
         self.lbl_question.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
@@ -4079,14 +3960,14 @@ class TestWindow(_DraggableWindow):
         self.lbl_question.setWordWrap(True)
         inner_lay.addWidget(self.lbl_question)
 
-        self.lbl_hint = QLabel("Wpisz tłumaczenie:")
+        self.lbl_hint = QLabel("Najpierw przypomnij sobie \u2014 potem wpisz:")
         self.lbl_hint.setFont(QFont("Segoe UI", 9))
         self.lbl_hint.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
         self.lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         inner_lay.addWidget(self.lbl_hint)
 
         self.inp = QLineEdit()
-        self.inp.setPlaceholderText("wpisz słówko...")
+        self.inp.setPlaceholderText("wpisz s\u0142\u00F3wko...")
         self.inp.setStyleSheet(INPUT_STYLE)
         self.inp.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.inp.returnPressed.connect(self._check)
@@ -4099,38 +3980,40 @@ class TestWindow(_DraggableWindow):
         self.lbl_feedback.setStyleSheet("background:transparent;")
         inner_lay.addWidget(self.lbl_feedback)
 
-        self.conf_widget = QWidget()
-        self.conf_widget.setStyleSheet("background:transparent;")
-        conf_lay = QHBoxLayout(self.conf_widget)
-        conf_lay.setContentsMargins(0,0,0,0)
-        conf_lay.setSpacing(8)
-        self.btn_hard    = self._conf_btn("😓 Trudne",   "rgba(180,80,80,180)",  2)
-        self.btn_ok      = self._conf_btn("🙂 Okej",     "rgba(180,140,40,180)", 3)
-        self.btn_easy    = self._conf_btn("😊 Łatwe",    "rgba(50,140,80,180)",  4)
-        self.btn_perfect = self._conf_btn("🌟 Idealnie", "rgba(40,100,180,180)", 5)
-        for b in [self.btn_hard, self.btn_ok, self.btn_easy, self.btn_perfect]:
-            conf_lay.addWidget(b)
-        self.conf_widget.hide()
-        inner_lay.addWidget(self.conf_widget)
+        self.lbl_sched = QLabel("")
+        self.lbl_sched.setFont(QFont("Segoe UI", 9))
+        self.lbl_sched.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_sched.setWordWrap(True)
+        self.lbl_sched.setStyleSheet("color:rgba(170,185,225,180);background:transparent;")
+        inner_lay.addWidget(self.lbl_sched)
 
-        self.btn_check = QPushButton("Sprawdź →")
+        inner_lay.addStretch(1)
+
+        self.btn_check = QPushButton("Sprawd\u017A \u2192")
         self.btn_check.setStyleSheet(BTN_PRIMARY)
         self.btn_check.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_check.clicked.connect(self._check)
         inner_lay.addWidget(self.btn_check)
-        inner_lay.addWidget(_close_btn(self))
 
-    def _conf_btn(self, text, bg, quality):
-        btn = QPushButton(text)
-        btn.setStyleSheet(f"QPushButton {{ background:{bg}; color:white; border:none; border-radius:8px; padding:8px; font-size:12px; }} QPushButton:hover {{ opacity:0.85; }}")
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.clicked.connect(lambda _, q=quality: self._rate(q))
-        return btn
+        self.btn_end = QPushButton("Zako\u0144cz sesj\u0119")
+        self.btn_end.setStyleSheet(
+            "QPushButton{background:transparent;color:rgba(170,180,215,170);"
+            "border:none;font-size:10px;} QPushButton:hover{color:rgba(220,228,255,220);}")
+        self.btn_end.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_end.clicked.connect(self._end_session)
+        inner_lay.addWidget(self.btn_end)
+
+    def _set_prompt(self):
+        lng = ""
+        try:
+            if self.cards:
+                lng = lang_label(self.cards[self.index].get("lang", "") or "")
+        except Exception:
+            lng = ""
+        self.lbl_prompt.setText("PRZET\u0141UMACZ" + (" NA: " + lng.upper() if lng else ""))
 
     def start_test(self, cards, n_review_from_other=0):
-        # Deduplikacja
-        seen = set()
-        unique = []
+        seen = set(); unique = []
         for c in cards:
             key = c.get("word", "")
             if key not in seen:
@@ -4140,40 +4023,39 @@ class TestWindow(_DraggableWindow):
         self.results = []
         self.progress_key = ""
         self.save_progress = None
-        self.inp.show()
-        self.lbl_hint.show()
-        self.btn_check.show()
+        self.inp.show(); self.lbl_hint.show(); self.btn_check.show(); self.btn_end.show()
         try: self.btn_check.clicked.disconnect()
         except: pass
         self.btn_check.clicked.connect(self._check)
         self._show_question()
         if n_review_from_other > 0:
             self.lbl_feedback.setStyleSheet("color:rgba(255,200,80,220);")
-            self.lbl_feedback.setText(f"ℹ️  Test zawiera {n_review_from_other} słów z poprzednich kategorii.")
-            QTimer.singleShot(7000, lambda: self.lbl_feedback.setText("") if self.lbl_feedback.text().startswith("ℹ️") else None)
+            self.lbl_feedback.setText("Test zawiera %d s\u0142\u00F3w z wcze\u015Bniejszych kategorii." % n_review_from_other)
+            QTimer.singleShot(7000, lambda: self.lbl_feedback.setText("") if "wcze\u015Bniejszych" in self.lbl_feedback.text() else None)
         self.show(); self.raise_(); self.activateWindow()
 
     def resume_test(self, saved):
         self.index = saved.get("index", 0)
         self.results = saved.get("results", [])
-        self.inp.show(); self.lbl_hint.show(); self.btn_check.show()
+        self.inp.show(); self.lbl_hint.show(); self.btn_check.show(); self.btn_end.show()
         try: self.btn_check.clicked.disconnect()
         except: pass
         self.btn_check.clicked.connect(self._check)
         self.lbl_feedback.setStyleSheet("color:rgba(100,200,255,220);")
-        self.lbl_feedback.setText("▶️  Wznawiasz poprzedni test...")
+        self.lbl_feedback.setText("Wznawiasz poprzedni test...")
         QTimer.singleShot(2000, lambda: self.lbl_feedback.setText(""))
         self._show_question()
         self.show(); self.raise_(); self.activateWindow()
 
     def show_all_known(self):
-        self.lbl_title.setText("🌟  Świetnie!")
+        self.lbl_title.setText("Wszystko powt\u00F3rzone")
         self.lbl_progress.setText("")
-        self.lbl_question.setText("Wszystkie słowa znane!")
-        self.lbl_hint.setText("Brak słów do powtórki.")
-        self.lbl_feedback.setStyleSheet("color:rgba(100,255,150,220);")
-        self.lbl_feedback.setText("System SRS nie znalazł słów wymagających powtórki.")
-        self.inp.hide(); self.conf_widget.hide()
+        self.seg_bar.set_state(1, 1)
+        self.lbl_prompt.setText("")
+        self.lbl_question.setText("Brak s\u0142\u00F3w do powt\u00F3rki")
+        self.lbl_hint.setText("SRS nie znalaz\u0142 teraz s\u0142\u00F3w wymagaj\u0105cych powt\u00F3rki.")
+        self.lbl_feedback.setText(""); self.lbl_sched.setText("")
+        self.inp.hide(); self.btn_end.hide()
         self.btn_check.setText("Zamknij")
         try: self.btn_check.clicked.disconnect()
         except: pass
@@ -4183,14 +4065,15 @@ class TestWindow(_DraggableWindow):
     def _show_question(self):
         self.answered = False
         self.inp.clear(); self.inp.setEnabled(True)
-        self.lbl_feedback.setText("")
-        self.conf_widget.hide()
-        self.btn_check.show()
-        self.btn_check.setText("Sprawdź →")
+        self.lbl_feedback.setText(""); self.lbl_sched.setText("")
+        self.btn_check.show(); self.btn_check.setText("Sprawd\u017A \u2192")
+        self.btn_end.show()
         card = self.cards[self.index]
-        self.lbl_title.setText("📝  Test")
+        self.lbl_title.setText("Tryb nauki")
+        self._set_prompt()
         self.lbl_question.setText(card["translation"])
-        self.lbl_progress.setText(f"{self.index + 1} / {len(self.cards)}")
+        self.lbl_progress.setText("%d z %d" % (self.index + 1, len(self.cards)))
+        self.seg_bar.set_state(len(self.cards), self.index)
         self.inp.setFocus()
 
     def _check(self):
@@ -4199,48 +4082,32 @@ class TestWindow(_DraggableWindow):
         if not answer: return
         self.answered = True
         self.inp.setEnabled(False)
-        card    = self.cards[self.index]
+        card = self.cards[self.index]
         correct = card["word"]
-        # Obsługa wariantów (flat / apartment, flat (apartment))
         import re as _re
         variants = [v.strip() for v in _re.split(r'[/|]', correct)]
         variants += [_re.sub(r'[().]', '', v).strip() for v in variants]
         variants = [v for v in variants if v]
-        best_sim = max(_similarity(answer, v) for v in variants)
-        sim = best_sim
+        sim = max(_similarity(answer, v) for v in variants)
         if sim >= 0.85:
             self.lbl_feedback.setStyleSheet("color:rgba(100,255,150,230);")
-            self.lbl_feedback.setText(f"✅  Dobrze!  ({correct})")
-            self._auto_rate(4)
-            QTimer.singleShot(400, self._next)
-            return
+            self.lbl_feedback.setText("Zaliczone   (%s)" % correct)
+            self.lbl_sched.setText("Odtworzone z pami\u0119ci \u2014 interwa\u0142 si\u0119 wyd\u0142u\u017Ca.")
+            self._auto_rate(4); QTimer.singleShot(700, self._next); return
         elif sim >= 0.6:
             self.lbl_feedback.setStyleSheet("color:rgba(255,200,50,230);")
-            self.lbl_feedback.setText(f"〰️  Prawie!  Poprawnie: {correct}")
-            self._auto_rate(3)
-            QTimer.singleShot(1200, self._next)
+            self.lbl_feedback.setText("Prawie   Poprawnie: %s" % correct)
+            self.lbl_sched.setText("Blisko \u2014 wr\u00F3ci szybciej, \u017Ceby si\u0119 utrwali\u0142o.")
+            self._auto_rate(3); QTimer.singleShot(1400, self._next)
         else:
             self.lbl_feedback.setStyleSheet("color:rgba(255,100,100,230);")
-            self.lbl_feedback.setText(f"❌  Błąd.  Poprawnie: {correct}")
-            self._auto_rate(1)
-            QTimer.singleShot(1500, self._next)
+            self.lbl_feedback.setText("Do powt\u00F3rki   Poprawnie: %s" % correct)
+            self.lbl_sched.setText("Wr\u00F3ci nied\u0142ugo \u2014 bez presji, tak dzia\u0142a nauka.")
+            self._auto_rate(1); QTimer.singleShot(1700, self._next)
 
     def _auto_rate(self, quality):
         self.results.append((self.cards[self.index].get("flashcard_id", 0), quality))
-        self.btn_check.setText("Dalej →")
-        try: self.btn_check.clicked.disconnect()
-        except: pass
-        self.btn_check.clicked.connect(self._next)
-
-    def _show_rating(self):
-        self.conf_widget.show()
-        self.btn_check.hide()
-
-    def _rate(self, quality):
-        self.results.append((self.cards[self.index].get("flashcard_id", 0), quality))
-        self.conf_widget.hide()
-        self.btn_check.show()
-        self.btn_check.setText("Dalej →")
+        self.btn_check.setText("Dalej \u2192")
         try: self.btn_check.clicked.disconnect()
         except: pass
         self.btn_check.clicked.connect(self._next)
@@ -4257,23 +4124,27 @@ class TestWindow(_DraggableWindow):
         else:
             self._show_question()
 
+    def _end_session(self):
+        # Zako\u0144cz w ka\u017Cdej chwili \u2014 bez presji. Zapisujemy to, co zaliczone.
+        if self.results:
+            self._show_results()
+        else:
+            self.hide()
+
     def _show_results(self):
         correct = sum(1 for _, q in self.results if q >= 3)
         total   = len(self.results)
         pct     = int(correct / total * 100) if total else 0
-        emoji   = "🌟" if pct >= 90 else "😊" if pct >= 70 else "🙂" if pct >= 50 else "💪"
-        self.lbl_title.setText("Wyniki testu")
+        self.lbl_title.setText("Podsumowanie")
         self.lbl_progress.setText("")
-        self.lbl_question.setText(f"{emoji}  {correct} / {total}")
-        self.lbl_hint.setText(f"{pct}% poprawnych odpowiedzi")
+        self.seg_bar.set_state(1, 1)
+        self.lbl_prompt.setText("")
+        self.lbl_question.setText("%d z %d" % (correct, total))
+        self.lbl_hint.setText("%d%% odtworzone z pami\u0119ci" % pct)
         self.lbl_feedback.setStyleSheet("color:rgba(200,210,255,180);")
-        self.lbl_feedback.setText(
-            "Perfekcyjnie!" if pct == 100 else
-            "Świetnie! Trudne słowa pojawią się częściej." if pct >= 70 else
-            "Nie przejmuj się! SRS zadba o powtórki."
-        )
-        self.inp.hide()
-        self.conf_widget.hide()
+        self.lbl_feedback.setText("Trudniejsze s\u0142owa wr\u00F3c\u0105 cz\u0119\u015Bciej \u2014 SRS to rozplanuje.")
+        self.lbl_sched.setText("")
+        self.inp.hide(); self.btn_end.hide()
         self.btn_check.setText("Zamknij")
         try: self.btn_check.clicked.disconnect()
         except: pass
@@ -4291,7 +4162,7 @@ class TestOfferWindow(QWidget):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(340, 210)
+        self.setFixedSize(360, 210)
         self._cat_name = ""
         self._build()
         _right_third_pos(self)
@@ -4306,7 +4177,7 @@ class TestOfferWindow(QWidget):
         lay.setContentsMargins(24, 24, 24, 24)
         lay.setSpacing(12)
 
-        title = QLabel("📝  Czas na test!")
+        title = QLabel("Czas na test!")
         title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         title.setStyleSheet("color:white;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -4319,13 +4190,13 @@ class TestOfferWindow(QWidget):
         lay.addWidget(self.lbl_sub)
 
         btns = QHBoxLayout()
-        btn_tak = QPushButton("✅  Tak!")
+        btn_tak = QPushButton("Tak!")
         btn_tak.setStyleSheet(BTN_PRIMARY)
         btn_tak.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_tak.clicked.connect(lambda: (self.hide(), self.accepted.emit()))
 
         btn_nie = QPushButton("Może później")
-        btn_nie.setStyleSheet("QPushButton { background:rgba(60,60,100,160); color:rgba(200,210,255,200); border:1px solid rgba(100,110,180,100); border-radius:10px; padding:8px; } QPushButton:hover { background:rgba(80,80,130,200); }")
+        btn_nie.setStyleSheet("QPushButton { background:rgba(60,60,100,160); color:rgba(200,210,255,200); border:1px solid rgba(70,150,110,100); border-radius:10px; padding:8px; } QPushButton:hover { background:rgba(56,140,104,200); }")
         btn_nie.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_nie.clicked.connect(lambda: (self.hide(), self.rejected.emit()))
 
@@ -4347,7 +4218,7 @@ class SRSOfferWindow(_DraggableWindow):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(320, 290)
+        self.setFixedSize(360, 290)
         self._build()
         _right_third_pos(self)
 
@@ -4355,7 +4226,7 @@ class SRSOfferWindow(_DraggableWindow):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(24, 24, 24, 24)
         lay.setSpacing(10)
-        title = QLabel("💡  Wskazówka SRS")
+        title = QLabel("Wskazówka SRS")
         title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         title.setStyleSheet("color: white;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -4367,23 +4238,23 @@ class SRSOfferWindow(_DraggableWindow):
         msg.setWordWrap(True)
         lay.addWidget(msg)
         lay.addStretch()
-        btn_test = QPushButton("📝  Zrób test teraz")
+        btn_test = QPushButton("Zrób test teraz")
         btn_test.setStyleSheet(BTN_PRIMARY)
         btn_test.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         btn_test.setFixedHeight(44)
         btn_test.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_test.clicked.connect(lambda: (self.hide(), self.accepted.emit()))
         lay.addWidget(btn_test)
-        btn_known = QPushButton("✅  Znam wszystkie słowa")
+        btn_known = QPushButton("Znam wszystkie słowa")
         btn_known.setFont(QFont("Segoe UI", 11))
         btn_known.setStyleSheet("QPushButton { background: rgba(40,120,60,180); color: white; border: 1px solid rgba(80,180,100,120); border-radius: 10px; padding: 8px; } QPushButton:hover { background: rgba(50,150,70,220); }")
         btn_known.setFixedHeight(40)
         btn_known.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_known.clicked.connect(lambda: (self.hide(), self.all_known.emit()))
         lay.addWidget(btn_known)
-        btn_skip = QPushButton("➡️  Zmień bez testu")
+        btn_skip = QPushButton("Zmień bez testu")
         btn_skip.setFont(QFont("Segoe UI", 11))
-        btn_skip.setStyleSheet("QPushButton { background: rgba(40,40,80,160); color: rgba(200,210,255,160); border: 1px solid rgba(100,110,180,80); border-radius: 10px; padding: 6px; } QPushButton:hover { background: rgba(60,60,110,200); }")
+        btn_skip.setStyleSheet("QPushButton { background: rgba(40,40,80,160); color: rgba(200,210,255,160); border: 1px solid rgba(70,150,110,80); border-radius: 10px; padding: 6px; } QPushButton:hover { background: rgba(44,110,84,200); }")
         btn_skip.setFixedHeight(36)
         btn_skip.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_skip.clicked.connect(lambda: (self.hide(), self.rejected.emit()))
@@ -4410,7 +4281,7 @@ class ResumeTestWindow(_DraggableWindow):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(320, 280)
+        self.setFixedSize(360, 280)
         self._build()
         _right_third_pos(self)
 
@@ -4418,7 +4289,7 @@ class ResumeTestWindow(_DraggableWindow):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(24, 24, 24, 24)
         lay.setSpacing(12)
-        title = QLabel("📝  Niedokończony test")
+        title = QLabel("Niedokończony test")
         title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         title.setStyleSheet("color: white;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -4430,23 +4301,23 @@ class ResumeTestWindow(_DraggableWindow):
         msg.setWordWrap(True)
         lay.addWidget(msg)
         lay.addStretch()
-        btn_resume = QPushButton("▶️  Dokończ test")
+        btn_resume = QPushButton("Dokończ test")
         btn_resume.setStyleSheet(BTN_PRIMARY)
         btn_resume.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         btn_resume.setFixedHeight(44)
         btn_resume.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_resume.clicked.connect(lambda: (self.hide(), self.resume.emit()))
         lay.addWidget(btn_resume)
-        btn_known = QPushButton("✅  Znam wszystkie słowa")
+        btn_known = QPushButton("Znam wszystkie słowa")
         btn_known.setFont(QFont("Segoe UI", 11))
         btn_known.setStyleSheet("QPushButton { background: rgba(40,120,60,180); color: white; border: 1px solid rgba(80,180,100,120); border-radius: 10px; padding: 8px; } QPushButton:hover { background: rgba(50,150,70,220); }")
         btn_known.setFixedHeight(40)
         btn_known.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_known.clicked.connect(lambda: (self.hide(), self.all_known.emit()))
         lay.addWidget(btn_known)
-        btn_skip = QPushButton("➡️  Pomiń")
+        btn_skip = QPushButton("Pomiń")
         btn_skip.setFont(QFont("Segoe UI", 11))
-        btn_skip.setStyleSheet("QPushButton { background: rgba(40,40,80,160); color: rgba(200,210,255,160); border: 1px solid rgba(100,110,180,80); border-radius: 10px; padding: 6px; } QPushButton:hover { background: rgba(60,60,110,200); }")
+        btn_skip.setStyleSheet("QPushButton { background: rgba(40,40,80,160); color: rgba(200,210,255,160); border: 1px solid rgba(70,150,110,80); border-radius: 10px; padding: 6px; } QPushButton:hover { background: rgba(44,110,84,200); }")
         btn_skip.setFixedHeight(36)
         btn_skip.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_skip.clicked.connect(lambda: (self.hide(), self.skip.emit()))
@@ -4460,8 +4331,253 @@ class ResumeTestWindow(_DraggableWindow):
         _paint_bg(self, e)
 
 
+_TRAY_ICON_B64 = (
+    "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"
+)
+
+
 def make_tray_icon() -> QIcon:
-    """Tworzy ikonę tray z literą F na granatowym tle."""
+    """Ikona tray = logo Eyelingo (ludzik), wbudowane base64.
+    Fallback: rysowana litera F, gdyby dekodowanie zawiodło."""
+    try:
+        import base64 as _b64
+        px = QPixmap()
+        if px.loadFromData(_b64.b64decode(_TRAY_ICON_B64), "PNG") and not px.isNull():
+            return QIcon(px)
+    except Exception:
+        pass
     px = QPixmap(64, 64)
     px.fill(Qt.GlobalColor.transparent)
     from PyQt6.QtGui import QPainter as _P, QColor as _C, QFont as _F, QBrush as _B
@@ -4477,23 +4593,378 @@ def make_tray_icon() -> QIcon:
     return QIcon(px)
 
 
+# ──────────────────────────────────────────────────────
+# D3 — TRAY WINDOW (HUB)
+# ──────────────────────────────────────────────────────
+class DueCountWorker(QThread):
+    """Zlicza karty dojrzałe do powtórki (PULL) — realna liczba, nie streak."""
+    done = pyqtSignal(int)
+    def __init__(self, lang):
+        super().__init__()
+        self.lang = lang
+        self.finished.connect(self.deleteLater)
+    def run(self):
+        try:
+            resp = supabase.rpc("get_due_cards_all",
+                                {"p_lang": self.lang, "p_limit": 500}).execute()
+            self.done.emit(len(resp.data or []))
+        except Exception as e:
+            print(f"[DUE] {e}"); self.done.emit(0)
+
+
+_HUB_OUTLINE = """
+    QPushButton { background:rgba(60,65,110,90); color:rgba(210,222,255,220);
+        border:1px solid rgba(120,135,190,90); border-radius:10px;
+        padding:9px; font-size:12px; }
+    QPushButton:hover { background:rgba(80,90,150,150); }
+"""
+
+
+class HubWindow(_DraggableWindow):
+    """D3 — trwałe okno traya. Lewy klik na ikonę traya otwiera/zamyka je.
+    Menu kontekstowe (prawy klik) zostaje jako szybki dostęp."""
+
+    _PRESET_ON = ("QPushButton{background:rgba(56,182,120,210);color:white;border:none;"
+                  "border-radius:8px;padding:7px;font-size:11px;}")
+    _PRESET_OFF = ("QPushButton{background:rgba(55,60,100,140);color:rgba(200,212,245,200);"
+                   "border:1px solid rgba(90,100,160,90);border-radius:8px;padding:7px;font-size:11px;}"
+                   "QPushButton:hover{background:rgba(70,80,140,180);}")
+
+    def __init__(self, app_ref):
+        super().__init__()
+        self.app_ref = app_ref
+        _styled_window(self)
+        self.setFixedSize(360, 520)
+        self._build()
+        self._mirror_timer = QTimer(self)
+        self._mirror_timer.timeout.connect(self._tick)
+
+    # ── pozycja: dolny-prawy róg (flyout traya) ──
+    def _position(self):
+        sc = QApplication.primaryScreen().availableGeometry()
+        x = sc.right() - self.width() - 16
+        y = sc.bottom() - self.height() - 16
+        self.move(max(sc.left() + 8, x), max(sc.top() + 8, y))
+
+    # ── budowa ──
+    def _build(self):
+        lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0)
+
+        # 1. PASEK STATUSU (strefa drag)
+        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
+        hl = QHBoxLayout(hdr); hl.setContentsMargins(14, 0, 10, 0); hl.setSpacing(6)
+        self.lbl_status = QLabel("\u25CF  Aktywne")
+        self.lbl_status.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        self.lbl_status.setStyleSheet("color:rgba(120,225,160,230);background:transparent;")
+        hl.addWidget(self.lbl_status); hl.addStretch(1)
+        self.btn_audio = self._icon_btn("\u266A", "D\u017Awi\u0119k"); self.btn_audio.clicked.connect(self._toggle_audio)
+        self.btn_pause = self._icon_btn("\u23F8", "Wstrzymaj");       self.btn_pause.clicked.connect(self._toggle_pause)
+        self.btn_x     = self._icon_btn("\u2715", "Zamknij");         self.btn_x.clicked.connect(self.hide)
+        for b in (self.btn_audio, self.btn_pause, self.btn_x): hl.addWidget(b)
+        lay.addWidget(hdr)
+
+        inner = QWidget(); inner.setStyleSheet("background:transparent;")
+        il = QVBoxLayout(inner); il.setContentsMargins(16, 8, 16, 16); il.setSpacing(12)
+        lay.addWidget(inner, 1)
+
+        # 2. UCZYSZ SIĘ
+        il.addWidget(self._eyebrow("UCZYSZ SI\u0118"))
+        self.lbl_learn = QLabel("\u2014")
+        self.lbl_learn.setFont(QFont("Segoe UI", 11))
+        self.lbl_learn.setStyleSheet("color:rgba(225,235,255,220);background:transparent;")
+        self.lbl_learn.setWordWrap(True)
+        il.addWidget(self.lbl_learn)
+        self.btn_change = QPushButton("Zmie\u0144 nauk\u0119 \u2192")
+        self.btn_change.setStyleSheet(_HUB_OUTLINE); self.btn_change.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_change.clicked.connect(lambda: (self.hide(), self.app_ref._show_lang()))
+        il.addWidget(self.btn_change)
+
+        # 3. TERAZ NA EKRANIE (mirror — bez ocen, świadomie)
+        il.addWidget(self._eyebrow("TERAZ NA EKRANIE"))
+        mir = QWidget(); mir.setStyleSheet(
+            "QWidget{background:rgba(30,32,60,140);border:1px solid rgba(80,85,120,80);border-radius:10px;}")
+        ml = QVBoxLayout(mir); ml.setContentsMargins(14, 12, 14, 12); ml.setSpacing(2)
+        self.mir_word = QLabel("\u2014"); self.mir_word.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        self.mir_word.setStyleSheet("color:rgba(255,255,255,240);background:transparent;")
+        self.mir_word.setAlignment(Qt.AlignmentFlag.AlignCenter); self.mir_word.setWordWrap(True)
+        self.mir_tr = QLabel(""); self.mir_tr.setFont(QFont("Segoe UI", 10))
+        self.mir_tr.setStyleSheet("color:rgba(200,220,255,200);background:transparent;")
+        self.mir_tr.setAlignment(Qt.AlignmentFlag.AlignCenter); self.mir_tr.setWordWrap(True)
+        self.mir_note = QLabel("Podgl\u0105d \u2014 oceniasz w trybie testu")
+        self.mir_note.setFont(QFont("Segoe UI", 8))
+        self.mir_note.setStyleSheet("color:rgba(150,160,200,150);background:transparent;")
+        self.mir_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ml.addWidget(self.mir_word); ml.addWidget(self.mir_tr); ml.addWidget(self.mir_note)
+        il.addWidget(mir)
+
+        # 4. STATYSTYKI (3 komórki — realne liczby, zero streaka)
+        stats = QWidget(); stats.setStyleSheet("background:transparent;")
+        sl = QHBoxLayout(stats); sl.setContentsMargins(0, 0, 0, 0); sl.setSpacing(8)
+        self.cell_known, w1 = self._stat_cell("Poznane")
+        self.cell_due,   w2 = self._stat_cell("Dojrza\u0142o do powt\u00F3rki")
+        self.cell_sess,  w3 = self._stat_cell("W tej sesji")
+        for w in (w1, w2, w3): sl.addWidget(w, 1)
+        il.addWidget(stats)
+
+        il.addStretch(1)
+
+        # 5. AKCJE
+        self.btn_test = QPushButton("Zr\u00F3b test"); self.btn_test.setStyleSheet(BTN_PRIMARY)
+        self.btn_test.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_test.clicked.connect(lambda: (self.hide(), self.app_ref._start_test()))
+        il.addWidget(self.btn_test)
+        row = QWidget(); row.setStyleSheet("background:transparent;")
+        rl = QHBoxLayout(row); rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(8)
+        self.btn_lib = QPushButton("Biblioteka fiszek"); self.btn_lib.setStyleSheet(_HUB_OUTLINE)
+        self.btn_lib.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_lib.clicked.connect(lambda: (self.hide(), self.app_ref._show_my_sets()))
+        self.btn_set = QPushButton("Ustawienia"); self.btn_set.setStyleSheet(_HUB_OUTLINE)
+        self.btn_set.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_set.clicked.connect(lambda: (self.hide(), self.app_ref.win_settings.show(), self.app_ref.win_settings.raise_()))
+        rl.addWidget(self.btn_lib, 1); rl.addWidget(self.btn_set, 1)
+        il.addWidget(row)
+
+        # 6. FOOTER
+        self.lbl_footer = QPushButton("")
+        self.lbl_footer.setFont(QFont("Segoe UI", 9))
+        self.lbl_footer.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.lbl_footer.setStyleSheet(
+            "QPushButton{background:transparent;color:rgba(160,175,210,180);border:none;}"
+            "QPushButton:hover{color:rgba(120,215,160,235);}")
+        self.lbl_footer.clicked.connect(self._footer_click)
+        il.addWidget(self.lbl_footer)
+
+        # ── D4: PANEL PAUZY (nakładka na treść aktywną) ──
+        self._active_content = inner
+        self.pause_panel = QWidget(); self.pause_panel.setStyleSheet("background:transparent;")
+        pl = QVBoxLayout(self.pause_panel); pl.setContentsMargins(24, 20, 24, 20); pl.setSpacing(8)
+        pl.addStretch(1)
+        gl = QLabel("\u23F8"); gl.setFont(QFont("Segoe UI", 40))
+        gl.setStyleSheet("color:rgba(235,190,110,220);background:transparent;")
+        gl.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addWidget(gl)
+        tt = QLabel("Fiszki wstrzymane"); tt.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        tt.setStyleSheet("color:rgba(255,255,255,235);background:transparent;")
+        tt.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addWidget(tt)
+        self.lbl_countdown = QLabel(""); self.lbl_countdown.setFont(QFont("Segoe UI", 10))
+        self.lbl_countdown.setStyleSheet("color:rgba(200,215,255,190);background:transparent;")
+        self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addWidget(self.lbl_countdown)
+        pl.addSpacing(6)
+        btn_resume = QPushButton("Wzn\u00F3w teraz"); btn_resume.setStyleSheet(BTN_PRIMARY)
+        btn_resume.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_resume.clicked.connect(self._resume); pl.addWidget(btn_resume)
+        prc = QLabel("Wr\u00F3ci automatycznie za:"); prc.setFont(QFont("Segoe UI", 8))
+        prc.setStyleSheet("color:rgba(150,165,205,170);background:transparent;")
+        prc.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addSpacing(4); pl.addWidget(prc)
+        prow = QWidget(); prow.setStyleSheet("background:transparent;")
+        prl = QHBoxLayout(prow); prl.setContentsMargins(0, 0, 0, 0); prl.setSpacing(6)
+        self._preset_btns = {}
+        for key, label, mins in (("5", "5 min", 5), ("30", "30 min", 30),
+                                 ("60", "1 godz", 60), ("d", "Do jutra", None)):
+            b = QPushButton(label); b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setStyleSheet(self._PRESET_OFF)
+            b.clicked.connect(lambda _, m=mins, k=key: self._set_preset(k, m))
+            self._preset_btns[key] = b; prl.addWidget(b, 1)
+        pl.addWidget(prow)
+        hint = QLabel("Snooze, nie zamykaj \u2014 wr\u00F3c\u0105 same."); hint.setFont(QFont("Segoe UI", 8))
+        hint.setStyleSheet("color:rgba(140,150,190,150);background:transparent;")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addSpacing(4); pl.addWidget(hint)
+        pl.addStretch(1)
+        self.pause_panel.hide(); lay.addWidget(self.pause_panel, 1)
+
+    # ── helpery UI ──
+    def _eyebrow(self, text):
+        l = QLabel(text); l.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        l.setStyleSheet("color:rgba(140,155,200,170);background:transparent;letter-spacing:1px;")
+        return l
+
+    def _icon_btn(self, glyph, tip):
+        b = QPushButton(glyph); b.setToolTip(tip); b.setFixedSize(26, 22)
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setStyleSheet(
+            "QPushButton{background:rgba(60,65,110,120);color:rgba(220,230,255,210);"
+            "border:none;border-radius:6px;font-size:12px;}"
+            "QPushButton:hover{background:rgba(80,90,150,180);}")
+        return b
+
+    def _stat_cell(self, label):
+        w = QWidget(); w.setStyleSheet(
+            "QWidget{background:rgba(30,32,60,140);border:1px solid rgba(80,85,120,80);border-radius:10px;}")
+        cl = QVBoxLayout(w); cl.setContentsMargins(8, 10, 8, 10); cl.setSpacing(2)
+        val = QLabel("\u2013"); val.setFont(QFont("Segoe UI", 17, QFont.Weight.Bold))
+        val.setStyleSheet("color:rgba(220,235,255,235);background:transparent;")
+        val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lab = QLabel(label); lab.setFont(QFont("Segoe UI", 8)); lab.setWordWrap(True)
+        lab.setStyleSheet("color:rgba(160,175,210,180);background:transparent;")
+        lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cl.addWidget(val); cl.addWidget(lab)
+        return val, w
+
+    # ── otwarcie / odświeżanie ──
+    def open(self):
+        self._position()
+        self._refresh_all()
+        if getattr(self.app_ref, "_pause_until", None):
+            self._active_content.hide(); self.pause_panel.show()
+        else:
+            self.pause_panel.hide(); self._active_content.show()
+        self.show(); self.raise_(); self.activateWindow()
+        self._mirror_timer.start(1000)
+
+    def hideEvent(self, e):
+        self._mirror_timer.stop()
+        super().hideEvent(e)
+
+    def _refresh_all(self):
+        self._refresh_status()
+        self._refresh_learn()
+        self._refresh_live()
+        self._refresh_footer()
+        self._refresh_stats()
+
+    def _refresh_status(self):
+        active = getattr(self.app_ref, "visible", True)
+        if active:
+            self.lbl_status.setText("\u25CF  Aktywne")
+            self.lbl_status.setStyleSheet("color:rgba(120,225,160,230);background:transparent;")
+            self.btn_pause.setText("\u23F8"); self.btn_pause.setToolTip("Wstrzymaj")
+        else:
+            self.lbl_status.setText("\u25CF  Wstrzymane")
+            self.lbl_status.setStyleSheet("color:rgba(235,190,110,230);background:transparent;")
+            self.btn_pause.setText("\u25B6"); self.btn_pause.setToolTip("Wzn\u00F3w")
+        aud = bool(APP_SETTINGS.get("audio_enabled", False))
+        col = "rgba(220,230,255,210)" if aud else "rgba(120,128,160,150)"
+        self.btn_audio.setStyleSheet(
+            "QPushButton{background:rgba(60,65,110,120);color:%s;"
+            "border:none;border-radius:6px;font-size:12px;}"
+            "QPushButton:hover{background:rgba(80,90,150,180);}" % col)
+        self.btn_audio.setToolTip("D\u017Awi\u0119k: " + ("w\u0142." if aud else "wy\u0142."))
+
+    def _refresh_learn(self):
+        ov = self.app_ref.overlay
+        if getattr(ov, "_is_custom", False):
+            self.lbl_learn.setText("W\u0142asny zestaw \u00B7 " + (ov.cat or "\u2014"))
+        elif ov.cat:
+            self.lbl_learn.setText("%s \u00B7 %s \u00B7 %s" % (lang_label(ov.lang), ov.level, ov.cat))
+        else:
+            self.lbl_learn.setText("Nie wybrano \u2014 kliknij \u201EZmie\u0144 nauk\u0119\u201D")
+
+    def _refresh_live(self):
+        ov = self.app_ref.overlay
+        if ov.cards and 0 <= ov.index < len(ov.cards):
+            c = ov.cards[ov.index]
+            self.mir_word.setText(c.get("word", ""))
+            self.mir_tr.setText(c.get("translation", ""))
+        else:
+            self.mir_word.setText("\u2014"); self.mir_tr.setText("")
+
+    def _refresh_footer(self):
+        if getattr(self.app_ref, "_is_premium", False):
+            self.lbl_footer.setText("Plan: PRO")
+            self.lbl_footer.setCursor(Qt.CursorShape.ArrowCursor)
+            self._footer_upgradable = False
+        else:
+            self.lbl_footer.setText("Plan: FREE  \u00B7  Ulepsz do PRO")
+            self.lbl_footer.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._footer_upgradable = True
+
+    def _footer_click(self):
+        if getattr(self, "_footer_upgradable", False):
+            self.hide()
+            self.app_ref._show_premium()
+
+    def _refresh_stats(self):
+        ov = self.app_ref.overlay
+        self.cell_sess.setText(str(getattr(ov, "_cards_shown", 0)))
+        if ov.lang and ov.cat and not getattr(ov, "_is_custom", False):
+            self._kw = KnownWordsWorker(ov.lang, ov.level, ov.cat)
+            self._kw.done.connect(lambda n: self.cell_known.setText(str(n)))
+            self._kw.start()
+        else:
+            self.cell_known.setText("\u2013")
+        if ov.lang:
+            self._dw = DueCountWorker(ov.lang)
+            self._dw.done.connect(lambda n: self.cell_due.setText(str(n)))
+            self._dw.start()
+        else:
+            self.cell_due.setText("\u2013")
+
+    # ── akcje paska statusu ──
+    def _toggle_pause(self):
+        paused = getattr(self.app_ref, "_pause_until", None) is not None
+        hidden = not getattr(self.app_ref, "visible", True)
+        if paused or hidden:
+            self.app_ref.resume_now()
+        else:
+            self._enter_pause()
+
+    def _toggle_audio(self):
+        APP_SETTINGS["audio_enabled"] = not bool(APP_SETTINGS.get("audio_enabled", False))
+        try: save_settings(APP_SETTINGS)
+        except Exception: pass
+        self._refresh_status()
+
+    def _tick(self):
+        if self.pause_panel.isVisible():
+            self._update_countdown()
+        else:
+            self._refresh_live()
+
+    def _enter_pause(self):
+        self._set_preset("30", 30)   # domyślnie 30 min
+
+    def _set_preset(self, key, mins):
+        self.app_ref.pause_for(mins)
+        self._active_content.hide(); self.pause_panel.show()
+        for k, b in self._preset_btns.items():
+            b.setStyleSheet(self._PRESET_ON if k == key else self._PRESET_OFF)
+        self._refresh_status(); self._update_countdown()
+
+    def exit_pause_view(self):
+        self.pause_panel.hide(); self._active_content.show()
+        if self.isVisible():
+            self._refresh_status(); self._refresh_stats()
+
+    def _resume(self):
+        self.app_ref.resume_now()   # wywoła exit_pause_view()
+
+    def _update_countdown(self):
+        until = getattr(self.app_ref, "_pause_until", None)
+        if not until:
+            self.lbl_countdown.setText(""); return
+        import time as _t
+        rem = int(until - _t.time())
+        if rem <= 0:
+            self.exit_pause_view(); return
+        from datetime import datetime, timedelta
+        back = (datetime.now() + timedelta(seconds=rem)).strftime("%H:%M")
+        mins = rem // 60
+        if mins >= 60:
+            txt = "Wr\u00F3c\u0105 o %s \u00B7 za %dh %dmin" % (back, mins // 60, mins % 60)
+        elif mins >= 1:
+            txt = "Wr\u00F3c\u0105 o %s \u00B7 za %d min" % (back, mins)
+        else:
+            txt = "Wr\u00F3c\u0105 o %s \u00B7 za %d s" % (back, rem % 60)
+        self.lbl_countdown.setText(txt)
+
+    def paintEvent(self, e):
+        _paint_bg(self, e)
+
+
 class TrayApp:
     def __init__(self, app, overlay, login_window):
         self.app          = app
         self.overlay      = overlay
         self.login_window = login_window
         self.visible      = True
+        self._pause_until = None
         self._lang        = "en"
         self._lvl         = "A1"
 
         self.win_premium = PremiumCodeWindow()
         self.win_premium.activated.connect(self._on_premium_activated)
-        self.win_shop    = ShopWindow()
-        self.win_shop.level_bought.connect(self._on_level_bought)
-        self.win_shop.go_back.connect(self._show_lang)
         self.win_settings = SettingsWindow()
         self.win_settings.settings_changed.connect(self._on_settings_changed)
-        self.win_settings.go_back.connect(self._show_lang)
+        self.win_settings.go_back.connect(self._settings_back_to_hub)
         self.win_stats = StatsWindow()
         self.win_test    = TestWindow()
         self.win_test.test_done.connect(self._on_test_done)
@@ -4529,27 +5000,30 @@ class TrayApp:
         self.win_custom.set_created.connect(self._on_custom_set_created)
         self.win_my_sets.set_picked.connect(self._on_custom_set_picked)
 
+        self.win_hub = HubWindow(self)
+
         self.tray = QSystemTrayIcon(make_tray_icon())
         self.tray.setToolTip("Fiszki w tle")
 
         menu = QMenu()
-        menu.addAction("🌍  Zmień język / poziom / kategorię").triggered.connect(self._show_lang)
-        menu.addAction("🏆  Aktywuj Premium").triggered.connect(self._show_premium)
-        menu.addAction("📊  Statystyki").triggered.connect(self._show_stats)
-        menu.addAction("📝  Zrób test").triggered.connect(self._start_test)
-        menu.addAction("⚙️  Ustawienia").triggered.connect(lambda: (self.win_settings.show(), self.win_settings.raise_()))
-        menu.addSeparator()
         self.act_toggle = menu.addAction("⏸  Ukryj fiszki")
         self.act_toggle.triggered.connect(self._toggle)
+        menu.addAction("Otwórz panel").triggered.connect(self._toggle_hub)  # awaryjne wejście
         menu.addSeparator()
-        menu.addAction("🚪  Wyloguj").triggered.connect(self._logout)
+        menu.addAction("Wyloguj").triggered.connect(self._logout)
         menu.addAction("✖  Zamknij").triggered.connect(self._quit)
 
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(
-            lambda r: self._show_lang() if r == QSystemTrayIcon.ActivationReason.Trigger else None
+            lambda r: self._toggle_hub() if r == QSystemTrayIcon.ActivationReason.Trigger else None
         )
         self.tray.show()
+
+    def _toggle_hub(self):
+        if self.win_hub.isVisible():
+            self.win_hub.hide()
+        else:
+            self.win_hub.open()
 
     def _show_lang(self):
         self.win_cat.hide(); self.win_lvl.hide()
@@ -4559,9 +5033,9 @@ class TrayApp:
         """Pokaż okno informujące o wymogu subskrypcji."""
         msg = QMessageBox()
         msg.setWindowTitle("Funkcja Premium")
-        msg.setText("✏️  Własne zestawy fiszek\n\nTa funkcja dostępna jest tylko w subskrypcji Premium.\n\n14,99 zł/mies · wszystkie poziomy + własne fiszki")
+        msg.setText("Własne zestawy fiszek\n\nTa funkcja dostępna jest tylko w subskrypcji Premium.\n\n39 zł/mies lub 329 zł/rok · wszystkie poziomy + własne fiszki")
         msg.setIcon(QMessageBox.Icon.Information)
-        btn_sub = msg.addButton("⭐ Kup subskrypcję", QMessageBox.ButtonRole.AcceptRole)
+        btn_sub = msg.addButton("Kup subskrypcję", QMessageBox.ButtonRole.AcceptRole)
         msg.addButton("Zamknij", QMessageBox.ButtonRole.RejectRole)
         msg.exec()
         if msg.clickedButton() == btn_sub:
@@ -4573,8 +5047,7 @@ class TrayApp:
             user_email = current_email()
         except Exception:
             user_email = ""
-        gold = getattr(self, '_gold', 0)
-        self.win_purchase.show_for("premium_monthly", "Premium", "Subskrypcja", gold, user_email)
+        self.win_purchase.show_for("premium_monthly", "Premium", "Subskrypcja", user_email)
 
     def _on_lang(self, lang):
         if lang == "test":
@@ -4591,9 +5064,7 @@ class TrayApp:
             return
         if lang == "shop":
             self.win_lang.hide()
-            self.win_shop.show()
-            self.win_shop.raise_()
-            self.win_shop.activateWindow()
+            self._show_purchase_subscription()
             return
         if lang == "my_sets":
             self.win_lang.hide()
@@ -4719,9 +5190,7 @@ class TrayApp:
         self.win_premium.activateWindow()
 
     def _show_shop(self):
-        self.win_shop.show()
-        self.win_shop.raise_()
-        self.win_shop.activateWindow()
+        self._show_purchase_subscription()
 
     def _show_stats(self):
         self.win_stats.load()
@@ -4729,14 +5198,18 @@ class TrayApp:
         self.win_stats.raise_()
         self.win_stats.activateWindow()
 
-    def _on_level_bought(self, level_code, gold_left):
-        # Odśwież profil po chwili
-        QTimer.singleShot(1500, self.load_user_stats)
-
     def _on_premium_activated(self):
         """Po aktywacji kodu — odśwież pełny profil z bazy."""
         self._load_profile()
 
+
+    def _settings_back_to_hub(self):
+        """Powrót z Ustawień do panelu (hub)."""
+        self.win_settings.hide()
+        try:
+            self.win_hub.open()
+        except Exception:
+            self._toggle_hub()
 
     def load_user_stats(self):
         """Wczytaj pełny profil gracza."""
@@ -4745,8 +5218,7 @@ class TrayApp:
         self._profile_worker.start()
 
     def _on_profile_loaded(self, profile):
-        gold          = profile.get("gold", 0)
-        is_premium    = profile.get("is_premium", False)
+        is_premium    = _premium_active(profile)
         levels_bought = profile.get("levels_bought", []) or []
         # Upewnij się że to lista
         if isinstance(levels_bought, str):
@@ -4756,10 +5228,18 @@ class TrayApp:
                 levels_bought = []
         if not isinstance(levels_bought, list):
             levels_bought = []
-        streak        = profile.get("streak_days", 0)
-        self._gold          = gold
         self._is_premium    = is_premium
         self._levels_bought = levels_bought
+        # DIAGNOSTYKA: dokładnie co dociera do bramy dostępu
+        print(f"[PREMIUM] is_premium={is_premium!r}  raw={profile.get('is_premium')!r}  "
+              f"premium_until={profile.get('premium_until')!r}  levels_bought={levels_bought}")
+        # Premium ustawiamy PIERWSZE — żeby nic (workery/wyjątki) go nie wyprzedziło
+        try:
+            self.win_lvl.set_premium(is_premium)
+            self.win_lvl.set_bought_levels(levels_bought)
+            self.win_cat.set_premium(is_premium, levels_bought)
+        except Exception as e:
+            print(f"[PREMIUM] propagacja: {e}")
         lang  = self.overlay.lang or "en"
         level = self.overlay.level or "A1"
         cat   = self.overlay.cat or None
@@ -4767,10 +5247,6 @@ class TrayApp:
         self._known_worker.done.connect(self.overlay.set_known_words)
         self._known_worker.start()
         self._load_completed_cats(self.overlay.lang or "en")
-        self.win_lvl.set_premium(is_premium)
-        self.win_lvl.set_bought_levels(levels_bought)
-        self.win_cat.set_premium(is_premium, levels_bought)
-        self.win_shop.update_profile(gold, is_premium, levels_bought)
 
     def _load_profile(self):
         """Odśwież profil użytkownika po zakupie."""
@@ -4779,36 +5255,23 @@ class TrayApp:
         self._profile_worker.start()
 
     def _show_shop_from_cat(self):
-        """Otwórz sklep gdy użytkownik klika zablokowaną kategorię."""
+        """Zablokowana kategoria → oferta subskrypcji Premium."""
         self.win_cat.hide()
-        self.win_shop.show()
-        self.win_shop.raise_()
-        self.win_shop.activateWindow()
+        self._show_purchase_subscription()
 
     def _show_purchase(self, price_key: str):
-        """Otwórz okno zakupu dla konkretnego poziomu."""
-        lang_code = self.win_lvl.current_lang
-        lvl_code  = price_key.split("_")[1] if "_" in price_key else price_key
-        lang_label_str = next((l["label"] for l in LANGUAGES if l["code"] == lang_code), lang_code)
-        gold = self._gold if hasattr(self, "_gold") else 0
-        try:
-            user_email = current_email()
-        except Exception:
-            user_email = ""
-        self.win_purchase.show_for(price_key, lvl_code, lang_label_str, gold, user_email)
+        """Zablokowany poziom → oferta subskrypcji Premium (odblokowuje wszystko)."""
+        self._show_purchase_subscription()
 
     def _on_purchase_done(self):
-        """Po zakupie złotem — odśwież profil i poziomy."""
+        """Po zakupie — odśwież profil i poziomy."""
         def _refresh_after_load(profile):
-            gold          = profile.get("gold", 0)
-            is_premium    = profile.get("is_premium", False)
+            is_premium    = _premium_active(profile)
             levels_bought = profile.get("levels_bought", []) or []
-            self._gold          = gold
             self._is_premium    = is_premium
             self._levels_bought = levels_bought
             self.win_lvl.set_premium(is_premium)
             self.win_lvl.set_bought_levels(levels_bought)
-            self.win_shop.update_profile(gold, is_premium, levels_bought)
 
         self._refresh_worker = ProfileWorker()
         self._refresh_worker.done.connect(_refresh_after_load)
@@ -4855,10 +5318,11 @@ class TrayApp:
         self.overlay.lbl_tr.setStyleSheet(f"color:rgba(200,220,255,{int(alpha*0.87)});")
         self.overlay.lbl_info.setStyleSheet(f"color:rgba(180,200,255,{int(alpha*0.75)});")
         # przeładuj skróty - unhook_all + setup na nowo
-        try:
-            keyboard.unhook_all()
-        except Exception:
-            pass
+        if _keyboard_available:
+            try:
+                keyboard.unhook_all()
+            except Exception:
+                pass
         setup_hotkeys(self.app, self)
         self._restart_timer()
 
@@ -4920,12 +5384,54 @@ class TrayApp:
             _session.slides_stopped()
             _session.track("slides_hidden")
         else:
+            self._pause_until = None
+            if hasattr(self, "_pause_timer"): self._pause_timer.stop()
             self.overlay.show()
             self.act_toggle.setText("⏸  Ukryj fiszki")
             if self.overlay.cat:
                 _session.slides_started(self.overlay.lang, self.overlay.level, self.overlay.cat)
             _session.track("slides_shown")
         self.visible = not self.visible
+
+    def pause_for(self, minutes):
+        """D4 — czasowe wstrzymanie fiszek z auto-wznowieniem.
+        minutes=None → do jutra (09:00)."""
+        import time as _t
+        if minutes is None:
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            target = (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+            secs = max(60, int((target - now).total_seconds()))
+        else:
+            secs = int(minutes) * 60
+        self._pause_until = _t.time() + secs
+        if self.visible:
+            self.overlay.hide()
+            self.visible = False
+            self.act_toggle.setText("▶  Pokaż fiszki")
+            _session.slides_stopped()
+            _session.track("slides_paused", {"minutes": minutes if minutes else "till_tomorrow"})
+        if not hasattr(self, "_pause_timer"):
+            self._pause_timer = QTimer()
+            self._pause_timer.setSingleShot(True)
+            self._pause_timer.timeout.connect(self.resume_now)
+        self._pause_timer.stop()
+        self._pause_timer.start(int(secs * 1000))
+
+    def resume_now(self):
+        """D4 — wznów fiszki (auto lub „Wznów teraz”)."""
+        self._pause_until = None
+        if hasattr(self, "_pause_timer"):
+            self._pause_timer.stop()
+        if not self.visible:
+            self.overlay.show()
+            self.visible = True
+            self.act_toggle.setText("⏸  Ukryj fiszki")
+            if self.overlay.cat:
+                _session.slides_started(self.overlay.lang, self.overlay.level, self.overlay.cat)
+            _session.track("slides_resumed")
+        if hasattr(self, "win_hub"):
+            self.win_hub.exit_pause_view()
 
     def next_card_now(self):
         """ALT+N – następna fiszka od razu."""
@@ -5065,7 +5571,7 @@ class TrayApp:
         if hasattr(self.win_settings, 'chk_audio'):
             self.win_settings.chk_audio.setChecked(enabled)
         if enabled:
-            self.overlay.lbl_info.setText("🔊  Audio włączone")
+            self.overlay.lbl_info.setText("Audio włączone")
             if self.overlay.cards:
                 card = self.overlay.cards[self.overlay.index]
                 word = card.get("word", "")
@@ -5074,7 +5580,7 @@ class TrayApp:
                     word = word.split("(")[0].strip()
                 speak_word(word, lang)
         else:
-            self.overlay.lbl_info.setText("🔇  Audio wyłączone")
+            self.overlay.lbl_info.setText("Audio wyłączone")
         QTimer.singleShot(2000, lambda: self.overlay._update())
 
     def _reload_cat_without_known(self, lang, level, cat, known_ids):
@@ -5123,7 +5629,7 @@ class TrayApp:
         self.overlay.hide()
         # Ukryj wszystkie okna
         for w in [self.win_lang, self.win_lvl, self.win_cat,
-                  self.win_settings, self.win_shop, self.win_custom]:
+                  self.win_settings, self.win_custom]:
             try:
                 w.hide()
             except Exception:
@@ -5145,7 +5651,15 @@ class TrayApp:
 # ──────────────────────────────────────────────────────
 # GLOBALNE SKRÓTY KLAWISZOWE (biblioteka keyboard)
 # ──────────────────────────────────────────────────────
-import keyboard
+try:
+    import keyboard
+    _keyboard_available = True
+except Exception as _kb_err:
+    keyboard = None
+    _keyboard_available = False
+    print(f"[HOTKEY] Globalne skróty niedostępne (biblioteka 'keyboard': {_kb_err}). "
+          f"Na macOS/Linux mogą wymagać uprawnień administratora, a Wayland je blokuje. "
+          f"Aplikacja działa dalej.")
 from PyQt6.QtCore import pyqtSignal, QObject
 
 class HotkeySignals(QObject):
@@ -5163,6 +5677,8 @@ _hotkey_signals = HotkeySignals()
 
 def setup_hotkeys(app_ref, tray_ref):
     """Rejestruje globalne skróty – działają zawsze, nawet w innym oknie."""
+    if not _keyboard_available:
+        return
     s = _hotkey_signals
     # Rozłącz stare połączenia żeby nie nakładały się przy przeładowaniu
     for sig in [s.next_cat, s.prev_cat,
@@ -5201,9 +5717,41 @@ def setup_hotkeys(app_ref, tray_ref):
 # ──────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────
+def _apply_macos_accessory():
+    """macOS: aplikacja żyje w pasku menu (tray), bez ikony w Docku — polityka accessory."""
+    import platform as _pf
+    if _pf.system() != "Darwin":
+        return
+    try:
+        from AppKit import NSApp
+        # NSApplicationActivationPolicyAccessory = 1 (bez ikony w Docku, bez wymuszania aktywacji)
+        NSApp().setActivationPolicy_(1)
+    except Exception as e:
+        print(f"[macOS] Nie ustawiono polityki 'accessory' (brak pyobjc?): {e}")
+
+
+def _warn_if_no_tray():
+    """Linux/GNOME często nie ma natywnego zasobnika (wymaga rozszerzenia AppIndicator/StatusNotifier)."""
+    try:
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            return
+    except Exception:
+        return
+    try:
+        QMessageBox.information(
+            None, "Eyelingo — brak zasobnika systemowego",
+            "Nie wykryto zasobnika systemowego (tray).\n\n"
+            "Na GNOME/Wayland wymaga on rozszerzenia typu AppIndicator / StatusNotifier.\n\n"
+            "Aplikacja działa dalej, ale ikona i menu w zasobniku mogą być niewidoczne."
+        )
+    except Exception:
+        print("[TRAY] Brak zasobnika — na GNOME wymagane rozszerzenie AppIndicator/StatusNotifier.")
+
+
 def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    _apply_macos_accessory()
 
     overlay      = FlashcardOverlay()
     overlay.hide()
@@ -5229,6 +5777,7 @@ def main():
 
     login_window.logged_in.connect(on_logged_in)
     tray = TrayApp(app, overlay, login_window)
+    _warn_if_no_tray()
     setup_hotkeys(overlay, tray)
 
     def show_login():
