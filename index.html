@@ -7233,13 +7233,16 @@ async function loadTrybStats(){
 async function startSession(mode){
   showTrybView('session');
   _trybSessionStats={correct:0,total:0,xpGained:0,startTime:Date.now()}; window._trybStruggling=[];
+  window._trybKnowBefore={}; window._trybSessionActive=true;
   _trybIdx=0;_trybPerfectStreak=0;_trybSessionXPToday=0;
   _trybChallengeMode=document.getElementById('tryb-challenge-toggle')&&document.getElementById('tryb-challenge-toggle').checked;
   var hdr=document.getElementById('tryb-session-header');
   if(hdr)hdr.textContent=_trybChallengeMode?'Tryb Wyzwania aktywny':'Sesja nauki';
   if(mode==='set_external'&&_trybExternalCards){
     _trybSetCards=_trybExternalCards.slice();
-    _trybCards=shuffleArr(_trybExternalCards.slice()).map(function(c){return{word:c.word||c.front||'',translation:c.translation||c.back||'',emoji:'',example:'',etymology:'',image_url:c.image_url||'',image_attr:c.image_attr||'',ease_factor:2.5,repetitions:0,interval_days:1,id:(c.flashcard_id!=null?c.flashcard_id:null)};});
+    var _seedUid=(typeof _usrsUid==='function')?await _usrsUid():null;
+    var _seedStore=(_seedUid&&typeof _usrsLoad==='function')?(_usrsLoad(_seedUid)||{}):{};
+    _trybCards=shuffleArr(_trybExternalCards.slice()).map(function(c){var _w=c.word||c.front||'',_tr=c.translation||c.back||'';var _p=(typeof _usrsCK==='function')?_seedStore[_usrsCK(_w,_tr)]:null;return{word:_w,translation:_tr,emoji:'',example:'',etymology:'',image_url:c.image_url||'',image_attr:c.image_attr||'',ease_factor:(_p&&_p.ef!=null?_p.ef:2.5),repetitions:(_p&&_p.reps!=null?_p.reps:0),interval_days:(_p&&_p.interval!=null?_p.interval:1),id:(c.flashcard_id!=null?c.flashcard_id:null)};});
     if(hdr)hdr.textContent=(typeof stripEmoji==='function'?stripEmoji(_trybExternalName||'Zestaw'):(_trybExternalName||'Zestaw'))+(_trybChallengeMode?' · Wyzwanie':'');
   }else{
     _trybCards=await loadDueCardsForTryb();_trybSetCards=_trybCards.slice();
@@ -7272,6 +7275,7 @@ async function usrsRecord(card,newSRS){
     var fc=(card.id!=null?card.id:null);
     // 1) Cache lokalny (offline + szybkie rekomendacje)
     var store=_usrsLoad(uid);
+    try{ if(window._trybSessionActive && window._trybKnowBefore && !(key in window._trybKnowBefore)){ var _pv=store[key]||{}; window._trybKnowBefore[key]={ef:_pv.ef,reps:_pv.reps,interval:_pv.interval,word:w,translation:tr}; } }catch(e){}
     store[key]={ef:newSRS.ease_factor,interval:newSRS.interval_days,reps:newSRS.repetitions,due:newSRS.next_review,word:w,translation:tr,fc:fc,lang:lang,ts:Date.now()};
     _usrsSaveAll(uid,store);
     // 2) Zapis do chmury (wspólne web↔desktop) — nie blokuje UI
@@ -8239,8 +8243,59 @@ function endSession(){
   showTrybView('lobby');
 }
 
+async function renderTrybMastery(){
+  var host=document.getElementById('tryb-mastery'); if(!host) return;
+  host.innerHTML='';
+  var before=window._trybKnowBefore||{};
+  var keys=Object.keys(before); if(!keys.length) return;
+  var uid=(typeof _usrsUid==='function')?await _usrsUid():null;
+  var store=(uid&&typeof _usrsLoad==='function')?(_usrsLoad(uid)||{}):{};
+  var rows=keys.map(function(k){
+    var b=before[k]||{}, a=store[k]||{};
+    var bp=lexKnowPct({ef:b.ef,reps:b.reps,interval:b.interval});
+    var ap=lexKnowPct({ef:a.ef,reps:a.reps,interval:a.interval});
+    return {word:(b.word||String(k).split('|')[0]), tr:(b.translation||''), before:bp, after:ap, delta:ap-bp};
+  }).filter(function(r){ return r.word; }).sort(function(x,y){ return y.delta-x.delta; });
+  if(!rows.length) return;
+  var up=rows.filter(function(r){return r.delta>0;}).length;
+  var avgB=Math.round(rows.reduce(function(s,r){return s+r.before;},0)/rows.length);
+  var avgA=Math.round(rows.reduce(function(s,r){return s+r.after;},0)/rows.length);
+  var pl=(typeof plWord==='function')?plWord(rows.length,'słowem','słowami','słowami'):'słowami';
+  function rowH(r){
+    var lo=Math.min(r.before,r.after), hi=Math.max(r.before,r.after);
+    var col=r.delta>0?'#2e7d52':(r.delta<0?'#c0532a':'#9a8c70');
+    return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="width:118px;flex-shrink:0;text-align:left;overflow:hidden">'
+        +'<div style="font-size:13.5px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.word)+'</div>'
+        +(r.tr?'<div style="font-size:11px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.tr)+'</div>':'')
+      +'</div>'
+      +'<div style="flex:1;position:relative;height:22px">'
+        +'<div style="position:absolute;top:10px;left:0;right:0;height:2px;background:var(--border)"></div>'
+        +'<div style="position:absolute;top:10px;height:2px;background:'+col+';left:'+lo+'%;width:'+(hi-lo)+'%"></div>'
+        +'<div style="position:absolute;top:5px;left:'+r.before+'%;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #9a8c70;transform:translateX(-50%)"></div>'
+        +'<div style="position:absolute;top:4px;left:'+r.after+'%;width:14px;height:14px;border-radius:50%;background:'+col+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transform:translateX(-50%)"></div>'
+      +'</div>'
+      +'<div style="width:44px;flex-shrink:0;text-align:right;font-size:12px;font-weight:600;color:'+col+'">'+(r.delta>0?'+':'')+r.delta+'%</div>'
+    +'</div>';
+  }
+  var vis=rows.slice(0,16);
+  host.innerHTML='<div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:6px">Co zmieniło się w tej sesji</div>'
+    +'<div style="font-size:13px;color:var(--dim2);margin-bottom:14px;line-height:1.5">Pracowałeś z <b style="color:var(--navy)">'+rows.length+'</b> '+pl+'. Średnia znajomość: <b>'+avgB+'%</b> → <b style="color:var(--orange)">'+avgA+'%</b>'+(up?(' · '+up+' w górę'):'')+'.</div>'
+    +'<div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px 20px;text-align:left">'
+      +'<div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;font-size:10.5px;color:var(--dim2);letter-spacing:.04em">'
+        +'<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid #9a8c70"></span>przed</span>'
+        +'<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#2e7d52"></span>po sesji</span>'
+        +'<span style="margin-left:auto">znajomość 0–100%</span>'
+      +'</div>'
+      + vis.map(rowH).join('')
+      + (rows.length>vis.length?('<div style="text-align:center;font-size:11.5px;color:var(--dim2);padding-top:10px">…i jeszcze '+(rows.length-vis.length)+'</div>'):'')
+    +'</div>';
+}
+
 async function showTrybSessionSummary(){
   showTrybView('summary');
+  window._trybSessionActive=false;
+  try{ renderTrybMastery(); }catch(e){}
   var stats=_trybSessionStats;
   var timeS=Math.round((Date.now()-stats.startTime)/1000);
   var pct=stats.total>0?Math.round(stats.correct/stats.total*100):0;
@@ -9032,6 +9087,7 @@ function injectTrybPage(){
     +'<div class="dstat"><div class="dstat-l">Trafność</div><div class="dstat-v green" id="sum-pct">0%</div></div>'
     +'<div class="dstat"><div class="dstat-l">Czas</div><div class="dstat-v" id="sum-time">0:00</div></div>'
     +'</div>'
+    +'<div id="tryb-mastery" style="text-align:left;margin-bottom:22px"></div>'
     +'<div id="tryb-bridge4" style="display:none;text-align:left;background:linear-gradient(180deg,#fffaf5,#fff);border:1.5px solid rgba(201,106,42,.35);border-radius:16px;padding:18px 20px;margin-bottom:20px">'
     +'<div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:8px">Wzmocnij ekspozycją</div>'
     +'<div style="font-size:14px;color:var(--navy);line-height:1.55;margin-bottom:14px" id="tryb-bridge4-text"></div>'

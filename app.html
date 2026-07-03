@@ -285,7 +285,7 @@
   .eyl-cat .lb{font-size:14px;font-weight:600;color:var(--navy);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .eyl-cat .mt{font-size:11px;color:var(--dim2)}
   .lex-adjust-link{display:block;width:100%;text-align:left;margin-top:12px;padding:13px 14px;border:1px dashed var(--line);border-radius:var(--r);background:transparent;color:var(--dim);font-size:13px;font-weight:500;font-family:inherit;cursor:pointer}
-  .pw-grades{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:6px 22px calc(var(--safe-bot) + 16px)}
+  .pw-grades{display:grid;grid-template-columns:1fr;gap:9px;padding:6px 22px calc(var(--safe-bot) + 16px)}
   .pw-g{border:none;border-radius:13px;padding:14px 10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;color:#fff;display:flex;flex-direction:column;align-items:center;gap:2px;transition:.12s}
   .pw-g:active{transform:scale(.97)}
   .pw-g .ph{font-size:10.5px;font-weight:500;opacity:.85}
@@ -2224,6 +2224,7 @@ async function openPowt(){
   document.getElementById('pw-hint').textContent='';
   if(stage) stage.innerHTML=eyelingoLoader('Sprawdzam, co dojrzało do powtórki…');
   _pwQueue=await _pwFetchDue(100);
+  window._pwStartStr={}; try{ _pwQueue.forEach(function(r){ if(r&&r.card_key) window._pwStartStr[r.card_key]=srsStrength(r.repetitions,r.interval_days); }); }catch(e){}
   _pwIdx=0; _pwDone=0; _pwTotal=_pwQueue.length; _pwFlipped=false;
   if(!_pwQueue.length){ pwRenderEmpty(); return; }
   pwRenderCard();
@@ -2276,7 +2277,6 @@ function pwReveal(){
   g.style.display='grid';
   g.innerHTML=''
     +'<button class="pw-g q1" onclick="pwGrade(1)">Nie wiedziałem<span class="ph">znów wkrótce</span></button>'
-    +'<button class="pw-g q2" onclick="pwGrade(2)">Prawie<span class="ph">jutro</span></button>'
     +'<button class="pw-g q3" onclick="pwGrade(3)">Wiedziałem<span class="ph">za kilka dni</span></button>'
     +'<button class="pw-g q4" onclick="pwGrade(4)">Łatwe<span class="ph">dłuższa przerwa</span></button>';
 }
@@ -2297,16 +2297,51 @@ async function pwGrade(q){
   if(_pwIdx>=_pwQueue.length){ pwRenderDone(); }
   else { pwRenderCard(); }
 }
-function pwRenderDone(){
+async function pwRenderDone(){
   try{speechSynthesis.cancel();}catch(e){}
   document.getElementById('pw-title').textContent='Powtórki';
   document.getElementById('pw-grades').style.display='none';
   document.getElementById('pw-hint').textContent='';
   var stage=document.getElementById('pw-stage');
-  if(stage) stage.innerHTML='<div class="empty" style="margin:auto"><div style="font-size:10.5px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2);margin-bottom:12px">Sesja zakończona</div>'
-    +'<div class="h2">Powtórzone: '+_pwDone+' '+plural(_pwDone,'słowo','słowa','słów')+'</div>'
-    +'<div class="sub" style="max-width:260px;margin:6px auto 18px">Postęp zapisany do Twojego konta — zobaczysz go też na stronie i na desktopie.</div>'
-    +'<button class="btn btn-orange" style="width:auto;padding:13px 22px" onclick="closePowt()">Gotowe</button></div>';
+  if(stage) stage.innerHTML=eyelingoLoader('Podsumowuję postęp…');
+  var moved=[];
+  try{
+    var start=window._pwStartStr||{};
+    var keys=Object.keys(start);
+    var nowStr={};
+    if(typeof UID!=='undefined' && UID && keys.length){
+      for(var off=0; off<keys.length; off+=200){
+        var chunk=keys.slice(off,off+200);
+        var r=await db.from('srs_progress').select('card_key,word,translation,repetitions,interval_days').eq('user_id',UID).in('card_key',chunk);
+        ((r&&r.data)||[]).forEach(function(x){ if(x.card_key) nowStr[x.card_key]={s:srsStrength(x.repetitions,x.interval_days),word:x.word||'',translation:x.translation||''}; });
+      }
+    }
+    keys.forEach(function(ck){
+      var before=(start[ck]!=null)?start[ck]:0;
+      var a=nowStr[ck]; if(!a) return;
+      if(a.s>before) moved.push({word:a.word,translation:a.translation,before:before,after:a.s,tier:strengthTier(a.s)});
+    });
+    moved.sort(function(x,y){ return (y.after-y.before)-(x.after-x.before); });
+  }catch(e){}
+  var head='<div style="padding:16px 4px 4px"><div style="font-size:10.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim2);text-align:center;margin-bottom:8px">Sesja zakończona</div>'
+    +'<div class="h2" style="text-align:center;margin-bottom:4px">Powtórzone: '+_pwDone+' '+plural(_pwDone,'słowo','słowa','słów')+'</div></div>';
+  var listHtml='';
+  if(moved.length){
+    var rows=moved.slice(0,40).map(function(mv){
+      var col=mv.tier==='done'?'#3b7d3b':(mv.tier==='near'?'#c6781f':'var(--orange)');
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#fff;border:1px solid var(--border2,#eee);border-radius:12px;margin-bottom:7px">'
+        +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(mv.word)+'</div>'
+        +(mv.translation?('<div style="font-size:11.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(mv.translation)+'</div>'):'')+'</div>'
+        +'<div style="text-align:right;flex-shrink:0"><div style="font-size:13px;font-weight:700;color:'+col+'">'+mv.before+'% → '+mv.after+'%</div>'
+        +'<div style="font-size:10px;color:var(--dim2)">'+tierLabel(mv.tier)+'</div></div></div>';
+    }).join('');
+    listHtml='<div style="margin-top:6px"><div style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:9px">Co poszło do przodu ('+moved.length+')</div>'+rows+'</div>';
+  } else {
+    listHtml='<div style="margin-top:8px;text-align:center;font-size:13px;color:var(--dim2);padding:0 10px">Te słowa już były mocne — odświeżyłeś je i utrzymują poziom.</div>';
+  }
+  var note='<div class="sub" style="max-width:280px;margin:14px auto 16px;text-align:center">Postęp zapisany do Twojego konta — zobaczysz go też na stronie i na desktopie.</div>';
+  var btn='<button class="btn btn-orange" style="width:auto;padding:13px 22px;display:block;margin:0 auto" onclick="closePowt()">Gotowe</button>';
+  if(stage) stage.innerHTML='<div style="width:100%;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px 2px 10px">'+head+listHtml+note+btn+'</div>';
   refreshDueBadge();
 }
 
