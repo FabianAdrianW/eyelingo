@@ -978,7 +978,7 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
   .nav-tab  { padding: 9px 10px; font-size: 11px; white-space: nowrap; }
 
   /* All pages - reduce side padding */
-  #page-community,#page-tutors,#page-ranking,#page-tofix,
+  #page-community,#page-tutors,#page-tofix,
   #page-strefa,#page-odkryj,#page-daily,#page-teacher,#page-lyrics {
     padding-left: 14px !important;
     padding-right: 14px !important;
@@ -1043,7 +1043,7 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
   .nav-tab { padding: 8px 8px !important; font-size: 10px !important; }
 
   /* All pages - minimal padding */
-  #page-community,#page-tutors,#page-ranking,#page-tofix,
+  #page-community,#page-tutors,#page-tofix,
   #page-strefa,#page-odkryj,#page-daily,#page-teacher,#page-lyrics,
   #page-home,#page-dash,#page-auth { 
     padding-left: 12px !important;
@@ -2305,7 +2305,7 @@ window.switchMatTab = function(tab){
     <h2>Polityka Prywatności</h2>
     <p><strong>1. Administrator danych</strong><br>Administratorem Twoich danych jest Eyelingo, kontakt: eyelingo.app@gmail.com</p>
     <p><strong>2. Zbierane dane</strong><br>Zbieramy: adres e-mail, pseudonim, statystyki nauki (liczba obejrzanych słów, czas aktywności, konsystencja), informacje o zakupionych poziomach.</p>
-    <p><strong>3. Cel przetwarzania</strong><br>Dane służą do świadczenia usługi nauki języków, obsługi konta użytkownika, wyświetlania rankingu oraz realizacji płatności.</p>
+    <p><strong>3. Cel przetwarzania</strong><br>Dane służą do świadczenia usługi nauki języków, obsługi konta użytkownika oraz realizacji płatności.</p>
     <p><strong>4. Przechowywanie</strong><br>Dane są przechowywane na serwerach Supabase (UE) do momentu usunięcia konta.</p>
     <p><strong>5. Prawa użytkownika</strong><br>Masz prawo do dostępu, poprawy i usunięcia swoich danych. Napisz do nas na adres e-mail powyżej.</p>
     <p><strong>6. Płatności</strong><br>Płatności są obsługiwane przez Stripe. Nie przechowujemy danych kart płatniczych.</p>
@@ -2953,10 +2953,6 @@ function showPage(name){
     if(typeof refreshNavDueBadge==='function'){ try{ refreshNavDueBadge(); }catch(e){} }
   }
   if(name==='messages'){ if(typeof loadTcpConvList==='function') loadTcpConvList(); if(typeof tcpRenderMyIdentity==='function') tcpRenderMyIdentity(); }
-  if(name==='ranking'){
-    if(typeof loadRanking==='function') loadRanking();
-    else setTimeout(function(){ if(typeof loadRanking==='function') loadRanking(); },300);
-  }
   if(name==='tofix') initToFixPage();
   if(name==='odkryj'){ initOdkryj(); odkryjShowTab('articles'); }
   if(name==='teacher'){ setTimeout(function(){ teacherShowTab('teacher'); }, 50); }
@@ -3919,49 +3915,6 @@ window.matSetLangApply=async function(setId, code){
 </div>
 </div>
 
-<div id="page-ranking" class="page" style="min-height:100vh;padding:92px 20px 80px">
-  <div style="max-width:960px;margin:0 auto">
-    <h2 style="font-family:DM Sans,sans-serif;font-size:38px;font-weight:500;color:var(--navy);margin-bottom:6px">Ranking</h2>
-    <p style="color:var(--dim2);margin-bottom:32px">Najlepsi uczący się w społeczności Eyelingo</p>
-
-    <h3 style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:16px">⭐ Wyróżnieni tego miesiąca</h3>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:40px">
-      <div class="featured-card"><div class="featured-icon">🏆</div><div>
-        <div class="featured-label">Twórca miesiąca</div>
-        <div class="featured-name" id="feat-creator">—</div>
-        <div class="featured-meta" id="feat-creator-meta"></div>
-        <div class="featured-badge">+10 000 🏺 złota</div>
-      </div></div>
-      <div class="featured-card"><div class="featured-icon">🔥</div><div>
-        <div class="featured-label">Najbardziej aktywny</div>
-        <div class="featured-name" id="feat-streak">—</div>
-        <div class="featured-meta" id="feat-streak-meta"></div>
-        <div class="featured-badge">+5 000 🏺 złota</div>
-      </div></div>
-      <div class="featured-card"><div class="featured-icon">📖</div><div>
-        <div class="featured-label">Najlepszy zestaw</div>
-        <div class="featured-name" id="feat-set">—</div>
-        <div class="featured-meta" id="feat-set-meta"></div>
-        <div class="featured-badge">+10 000 🏺 złota</div>
-      </div></div>
-    </div>
-
-    <h3 style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:16px">📊 Tabele rankingu</h3>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:40px">
-      <div class="rank-section"><h3 class="rank-title">🏺 Złoto — Globalny</h3><div id="rank-all-gold"></div></div>
-      <div class="rank-section"><h3 class="rank-title">🏺 Złoto — Tygodniowy</h3><div id="rank-weekly-gold"></div></div>
-      <div class="rank-section"><h3 class="rank-title">🔥 Streak — Globalny</h3><div id="rank-all-streak"></div></div>
-      <div class="rank-section"><h3 class="rank-title">🔥 Streak — Tygodniowy</h3><div id="rank-weekly-streak"></div></div>
-      <div class="rank-section"><h3 class="rank-title">📚 Słowa — Globalny</h3><div id="rank-all-words"></div></div>
-      <div class="rank-section"><h3 class="rank-title">📚 Słowa — Tygodniowy</h3><div id="rank-weekly-words"></div></div>
-    </div>
-
-    <h3 style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:16px">❤️ Najpopularniejsze zestawy</h3>
-    <div id="rank-top-sets" style="display:flex;flex-direction:column;gap:8px"></div>
-  </div>
-</div>
-
-<!-- ═══ TO FIX PAGE ═══ -->
 <div id="page-tofix" class="page" style="min-height:100vh;padding:92px 20px 80px">
   <div style="max-width:600px;margin:0 auto">
     <div class="page-head">
@@ -3999,11 +3952,6 @@ window.matSetLangApply=async function(setId, code){
 .scb-label{font-size:12px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
 .scb-value{font-family:DM Sans,sans-serif;font-size:36px;font-weight:500;color:var(--navy);line-height:1}
 .scb-sub{font-size:12px;color:var(--dim2);margin-top:4px}
-.streak-flame{font-size:36px;line-height:1}
-.streak-bar-wrap{margin-top:16px}
-.streak-bar-label{font-size:12px;color:var(--dim2);margin-bottom:6px}
-.streak-bar-track{background:rgba(26,35,64,.08);border-radius:20px;height:8px;overflow:hidden}
-.streak-bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#f5c842,#c96a2a);transition:width .6s ease}
 .lang-row{display:flex;align-items:center;gap:10px;margin-bottom:4px}
 .lang-row-label{font-size:13px;font-weight:500;color:var(--navy);width:90px;flex-shrink:0}
 .lang-row-track{flex:1;background:rgba(26,35,64,.08);border-radius:20px;height:6px;overflow:hidden}
@@ -4105,23 +4053,6 @@ window.matSetLangApply=async function(setId, code){
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast.toast-success{background:#16a34a}
 .toast.toast-error{background:#c33}
-/* Ranking */
-.rank-section{background:rgba(26,35,64,.04);border:1px solid rgba(26,35,64,.1);border-radius:16px;padding:20px}
-.rank-title{font-size:14px;font-weight:500;color:var(--navy);margin-bottom:12px}
-.rank-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;margin-bottom:4px;transition:.15s}
-.rank-row:hover{background:rgba(26,35,64,.06)}
-.rank-1{background:rgba(255,215,0,.12)!important}
-.rank-2{background:rgba(192,192,192,.12)!important}
-.rank-3{background:rgba(205,127,50,.12)!important}
-.rank-pos{font-size:18px;width:28px;text-align:center}
-.rank-name{flex:1;font-weight:500;color:var(--navy)}
-.rank-score{font-weight:500;color:var(--orange)}
-.featured-card{background:#fff;border:1px solid rgba(26,35,64,.1);border-radius:16px;padding:20px;display:flex;align-items:flex-start;gap:14px}
-.featured-icon{font-size:28px;margin-top:2px}
-.featured-label{font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-.featured-name{font-weight:500;color:var(--navy);font-size:16px}
-.featured-meta{font-size:12px;color:var(--dim2);margin-top:2px}
-.featured-badge{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:rgba(245,200,66,.2);color:#8a6d00;margin-top:6px;display:inline-block}
 /* To Fix */
 .fix-label{font-size:12px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.5px}
 .fix-category{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:8px}
@@ -7347,35 +7278,6 @@ function renderTutors(tutors){
 // ═══════════════════════════════════════════════════════
 // BRAKUJĄCE FUNKCJE — dodane ponownie
 // ═══════════════════════════════════════════════════════
-
-// ── loadChallengeRanking ──
-async function loadChallengeRanking(){
-  var el=document.getElementById('ch-ranking');
-  if(!el) return;
-  try{
-    var {data}=await db.from('learning_stats')
-      .select('user_id,cards_seen')
-      .order('cards_seen',{ascending:false})
-      .limit(10);
-    if(!data||!data.length){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Brak danych</div>';return;}
-    // Fetch usernames separately
-    var uids=data.map(function(r){return r.user_id;});
-    var lbNameMap={};
-    try{
-      var {data:lbProfs}=await db.from('profiles').select('user_id,username').in('user_id',uids);
-      (lbProfs||[]).forEach(function(p){if(p.username)lbNameMap[p.user_id]=p.username;});
-    }catch(e){}
-    el.innerHTML=data.map(function(r,i){
-      var name=lbNameMap[r.user_id]||'Użytkownik';
-      var medals=['🥇','🥈','🥉'];
-      return'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
-        +'<span style="font-size:16px;width:24px">'+(medals[i]||i+1)+'</span>'
-        +'<span style="flex:1;font-size:13px;font-weight:500;color:var(--navy)">'+name+'</span>'
-        +'<span style="font-size:13px;color:var(--orange);font-weight:500">'+(r.cards_seen||0)+' słów</span>'
-        +'</div>';
-    }).join('');
-  }catch(e){el.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:10px">Błąd ładowania rankingu</div>';}
-}
 
 // ── TRYB NAUKI — pełny moduł ──
 var RewardSystem={
@@ -15096,7 +14998,7 @@ async function lexInit(){
         if(typeof loadDashboard==='function'){
           loadDashboard().then(function(){
             var hash=window.location.hash.replace('#','');
-            var valid=['dash','community','strefa','odkryj','teacher','ranking'];
+            var valid=['dash','community','strefa','odkryj','teacher'];
             showPage(valid.indexOf(hash)>=0?hash:'dash');
           });
         }
