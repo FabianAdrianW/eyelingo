@@ -166,7 +166,19 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     print("[BLAD] Brak SUPABASE_URL lub SUPABASE_KEY w pliku .env")
     sys.exit(1)
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+try:
+    from supabase.lib.client_options import ClientOptions as _ClientOptions
+    # Bibliteczny auto-refresh odpala się w tle i rywalizuje z naszym
+    # (try_restore_session / timer JWT / current_user) o JEDNORAZOWY rotujący
+    # refresh_token -> przy starcie z przywróconej sesji jeden wątek unieważnia
+    # sesję ('Sesja wygasła', premium=FREE, zestawy nie ładują się do re-logowania).
+    # Wyłączamy go i zostawiamy wyłącznie nasze, zserializowane odświeżanie.
+    supabase: Client = create_client(
+        SUPABASE_URL, SUPABASE_KEY,
+        options=_ClientOptions(auto_refresh_token=False),
+    )
+except Exception:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def _sync_postgrest_token(token=None):
@@ -594,7 +606,7 @@ def lang_label(code):
 # HELPERS UI
 # ──────────────────────────────────────────────────────
 DARK_BG = QColor(16, 22, 40, 214)
-BORDER  = QColor(60, 150, 110, 110)
+BORDER  = QColor(96, 110, 150, 110)
 
 class _DraggableWindow(QWidget):
     """Mixin: przeciąganie przez pasek tytułu (górne 32px) + ESC zamyka."""
@@ -697,9 +709,9 @@ def _back_btn(text, cb):
     btn.setStyleSheet("""
         QPushButton { background:rgba(60,60,100,160);
             color:rgba(200,210,255,200);
-            border:1px solid rgba(70,150,110,100);
+            border:1px solid rgba(96,110,150,120);
             border-radius:10px; padding:8px; font-size:12px; }
-        QPushButton:hover { background:rgba(56,140,104,200); }
+        QPushButton:hover { background:rgba(72,82,128,200); border-color:rgba(201,106,42,235); }
     """)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.clicked.connect(cb)
@@ -1079,21 +1091,22 @@ class TestCardsWorker(QThread):
 # ──────────────────────────────────────────────────────
 INPUT_STYLE = """
     QLineEdit {
-        background: rgba(26,36,54,190); color: white;
-        border: 1px solid rgba(70,130,105,150);
+        background: rgba(26,36,60,190); color: white;
+        border: 1px solid rgba(110,125,165,140);
         border-radius: 8px; padding: 8px 12px; font-size: 13px;
     }
-    QLineEdit:focus { border: 1px solid rgba(80,190,130,230); }
+    QLineEdit:hover { border: 1px solid rgba(201,106,42,140); }
+    QLineEdit:focus { border: 1px solid rgba(201,106,42,210); }
 """
 BTN_PRIMARY = """
     QPushButton {
-        background: rgba(42,158,102,215); color: white;
-        border: none; border-radius: 10px;
-        padding: 10px; font-size: 13px; font-weight: bold;
+        background: rgba(28,38,66,205); color: white;
+        border: 1.5px solid rgba(201,106,42,235); border-radius: 10px;
+        padding: 9px; font-size: 13px; font-weight: bold;
     }
-    QPushButton:hover   { background: rgba(56,182,120,235); }
-    QPushButton:pressed { background: rgba(30,120,78,255); }
-    QPushButton:disabled{ background: rgba(52,70,64,120); color: rgba(255,255,255,80); }
+    QPushButton:hover   { background: rgba(38,50,84,225); border-color: rgba(224,120,48,255); }
+    QPushButton:pressed { background: rgba(22,30,54,235); border-color: rgba(168,86,32,255); }
+    QPushButton:disabled{ background: rgba(40,46,74,120); color: rgba(255,255,255,80); border-color: rgba(90,100,140,90); }
 """
 
 ONBOARDING_KEY = "onboarding_done_v2"
@@ -1919,7 +1932,7 @@ class CategoryWindow(_DraggableWindow):
                 name_lbl = labels[0]
                 if not name_lbl.text().startswith("✓"):
                     name_lbl.setText("✓  " + name_lbl.text())
-            btn.setStyleSheet("QPushButton { background:rgba(30,100,50,180); border:1px solid rgba(80,200,120,150); border-radius:12px; } QPushButton:hover { background:rgba(40,130,70,220); }")
+            btn.setStyleSheet("QPushButton { background:rgba(28,38,66,190); border:1px solid rgba(90,190,140,150); border-radius:12px; } QPushButton:hover { background:rgba(38,50,84,220); border-color:rgba(201,106,42,235); }")
 
     def _rebuild_grid(self):
         if not hasattr(self, '_done_cats'):
@@ -1949,7 +1962,7 @@ class CategoryWindow(_DraggableWindow):
             QPushButton { background:rgba(30,34,58,190);
                 border:1px solid rgba(80,92,130,110); border-radius:12px; }
             QPushButton:hover  { background:rgba(44,52,86,225);
-                border:1px solid rgba(70,170,120,150); }
+                border:1px solid rgba(201,106,42,235); }
             QPushButton:pressed{ background:rgba(26,30,50,255); }
         """)
         inner = QVBoxLayout(btn)
@@ -2061,10 +2074,10 @@ class LevelWindow(_DraggableWindow):
         unlocked = level["free"] or self._is_premium
         if unlocked:
             btn.setStyleSheet("""
-                QPushButton { background:rgba(40,130,80,180);
-                    border:1px solid rgba(80,200,120,150); border-radius:12px; }
-                QPushButton:hover  { background:rgba(50,160,100,220); }
-                QPushButton:pressed{ background:rgba(30,100,60,255); }
+                QPushButton { background:rgba(30,40,68,185);
+                    border:1px solid rgba(96,110,150,120); border-radius:12px; }
+                QPushButton:hover  { background:rgba(42,54,90,220); border-color:rgba(201,106,42,235); }
+                QPushButton:pressed{ background:rgba(22,30,54,255); }
             """)
             btn.clicked.connect(lambda _, c=level["code"]: self._pick(c))
         else:
@@ -2182,12 +2195,12 @@ class LanguageWindow(_DraggableWindow):
         lang_l = QVBoxLayout(lang_w); lang_l.setContentsMargins(8, 8, 8, 8); lang_l.setSpacing(5)
 
         STY_LANG = """
-            QPushButton { background:rgba(44,120,84,180); color:white;
-                border:1px solid rgba(70,170,120,120);
+            QPushButton { background:rgba(30,40,68,185); color:white;
+                border:1px solid rgba(96,110,150,120);
                 border-radius:10px; padding:10px 16px;
                 font-size:14px; text-align:left; }
-            QPushButton:hover  { background:rgba(56,175,116,220); }
-            QPushButton:pressed{ background:rgba(40,60,130,255); }
+            QPushButton:hover  { background:rgba(42,54,90,220); border-color:rgba(201,106,42,235); }
+            QPushButton:pressed{ background:rgba(30,44,88,255); }
         """
         STY_GREY = """
             QPushButton { background:rgba(40,40,60,120); color:rgba(150,160,180,140);
@@ -2233,19 +2246,20 @@ class LanguageWindow(_DraggableWindow):
                     text-align: left;
                 }}
                 QPushButton:hover {{
-                    background: {hover_color};
+                    background: rgba(44,54,90,200);
                     color: white;
+                    border-color: rgba(201,106,42,235);
                 }}
                 QPushButton:pressed {{
                     background: rgba(20,22,50,200);
                 }}
             """
 
-        STY_PURPLE = _sty("rgba(130,100,230,220)", "rgba(50,40,90,180)")
-        STY_BLUE   = _sty("rgba(56,182,120,220)",  "rgba(30,50,90,180)")
-        STY_GREY   = _sty("rgba(140,145,165,180)",  "rgba(40,40,65,180)")
-        STY_GOLD   = _sty("rgba(210,175,0,220)",    "rgba(50,42,20,180)")
-        STY_GREEN  = _sty("rgba(60,180,100,220)",   "rgba(20,50,35,180)")
+        STY_PURPLE = _sty("rgba(120,135,190,150)")
+        STY_BLUE   = _sty("rgba(120,135,190,150)")
+        STY_GREY   = _sty("rgba(120,135,190,150)")
+        STY_GOLD   = _sty("rgba(120,135,190,150)")
+        STY_GREEN  = _sty("rgba(120,135,190,150)")
 
         btn_my = QPushButton("Moje własne zestawy")
         btn_my.setStyleSheet(STY_PURPLE)
@@ -2255,7 +2269,7 @@ class LanguageWindow(_DraggableWindow):
         inner_l.addWidget(btn_my)
 
         btn_custom = QPushButton("Stwórz własne fiszki  ·  Premium")
-        btn_custom.setStyleSheet(_sty("rgba(130,80,220,220)", "rgba(40,20,60,180)"))
+        btn_custom.setStyleSheet(_sty("rgba(120,135,190,150)"))
         btn_custom.setFont(QFont("Segoe UI", 12))
         btn_custom.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_custom.clicked.connect(lambda: self.on_selected("create"))
@@ -2882,11 +2896,20 @@ class MySetsPicker(_DraggableWindow):
         self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lay.addWidget(self.lbl_status)
 
-        self.sets_lay = QVBoxLayout()
+        _sa = QScrollArea(); _sa.setWidgetResizable(True)
+        _sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        _sa.setStyleSheet(
+            "QScrollArea { background: rgba(20,20,50,120); border: 1px solid rgba(120,135,190,70); border-radius: 10px; }"
+            "QScrollBar:vertical { background: rgba(255,255,255,0.05); width: 6px; border-radius: 3px; }"
+            "QScrollBar::handle:vertical { background: rgba(255,255,255,0.25); border-radius: 3px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
+        _sets_w = QWidget(); _sets_w.setStyleSheet("background:transparent;")
+        self.sets_lay = QVBoxLayout(_sets_w)
+        self.sets_lay.setContentsMargins(8, 8, 8, 8)
         self.sets_lay.setSpacing(6)
-        self.lay.addLayout(self.sets_lay)
-
-        self.lay.addStretch()
+        self.sets_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+        _sa.setWidget(_sets_w)
+        self.lay.addWidget(_sa, 1)
 
         # Przycisk nowego zestawu
         self.btn_new = QPushButton("Stwórz nowy zestaw")
@@ -3067,11 +3090,11 @@ class MySetsPicker(_DraggableWindow):
         for s in sets:
             btn = QPushButton(f"{s['name']}")
             btn.setStyleSheet("""
-                QPushButton { background:rgba(36,120,84,180); color:white;
-                    border:1px solid rgba(70,170,120,120);
+                QPushButton { background:rgba(30,40,68,190); color:white;
+                    border:1px solid rgba(96,110,150,120);
                     border-radius:10px; padding:9px; font-size:12px;
                     text-align:left; }
-                QPushButton:hover { background:rgba(42,150,100,220); }
+                QPushButton:hover { background:rgba(42,54,90,220); border-color:rgba(201,106,42,235); }
             """)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda _, sid=s["id"], sname=s.get("name","Zestaw"): self._pick_set(sid, sname))
@@ -3617,8 +3640,8 @@ class SettingsWindow(_DraggableWindow):
                 border-left:5px solid transparent;border-right:5px solid transparent;
                 border-top:6px solid rgba(200,210,255,200);}
             QComboBox QAbstractItemView{background:rgba(20,28,44,245);color:white;
-                selection-background-color:rgba(48,168,110,200);
-                border:1px solid rgba(70,130,105,150);border-radius:6px;
+                selection-background-color:rgba(120,140,215,205);
+                border:1px solid rgba(96,110,150,140);border-radius:6px;
                 padding:2px;outline:none;}
         """)
         cur = APP_SETTINGS.get("card_effect","none")
@@ -3639,10 +3662,10 @@ class SettingsWindow(_DraggableWindow):
         self.chk_audio.setStyleSheet("""
             QCheckBox{color:white;background:transparent;spacing:8px;}
             QCheckBox::indicator{width:18px;height:18px;border-radius:9px;
-                border:2px solid rgba(70,150,110,200);background:rgba(26,36,54,190);}
+                border:2px solid rgba(96,110,150,190);background:rgba(26,36,54,190);}
             QCheckBox::indicator:checked{
-                background:rgba(30,150,70,230);
-                border-color:rgba(80,220,120,255);
+                background:rgba(120,140,215,235);
+                border-color:rgba(150,168,240,255);
                 image:url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMiAxMiI+PHBhdGggZD0iTTIgNkw1IDlMMTAgMyIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz4=);}
         """)
         self.chk_audio.setChecked(APP_SETTINGS.get("audio_enabled",False))
@@ -3689,26 +3712,26 @@ class SettingsWindow(_DraggableWindow):
                           "border-top:1px solid rgba(210,220,255,20);")
         bl = QHBoxLayout(bar); bl.setContentsMargins(14,8,14,8); bl.setSpacing(6)
 
-        def mkb(text, bg, hover, slot, bold=False):
+        def mkb(text, bg, hover, slot, bold=False, border="rgba(255,255,255,30)"):
             b = QPushButton(text)
             b.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold if bold else QFont.Weight.Normal))
             b.setFixedHeight(34)
             b.setStyleSheet(f"QPushButton{{background:{bg};color:white;"
-                            f"border:1px solid rgba(255,255,255,30);border-radius:8px;padding:4px 8px;}}"
-                            f"QPushButton:hover{{background:{hover};}}")
+                            f"border:1px solid {border};border-radius:8px;padding:4px 8px;}}"
+                            f"QPushButton:hover{{background:{hover};border-color:rgba(201,106,42,235);}}")
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(slot)
             return b
 
         # Wróć=granat, Zapis=zielony, Zamknij=szary, Domyślne=tekst
         btn_back  = mkb("\u2190 Wr\u00F3\u0107", "rgba(60,66,92,210)", "rgba(82,90,120,235)", self._revert)
-        btn_save  = mkb("Zapisz",  "rgba(42,158,102,220)", "rgba(56,182,120,240)", self._save, True)
+        btn_save  = mkb("Zapisz",  "rgba(28,38,66,205)", "rgba(38,50,84,225)", self._save, True, "rgba(201,106,42,235)")
         btn_close = mkb("Zamknij", "rgba(60,66,92,210)",   "rgba(82,90,120,235)",  self.hide)
         btn_def   = QPushButton("Przywróć domyślne")
         btn_def.setFont(QFont("Segoe UI", 9))
         btn_def.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_def.setStyleSheet("QPushButton{background:transparent;color:rgba(160,175,210,160);border:none;}"
-                              "QPushButton:hover{color:rgba(120,215,160,225);}")
+                              "QPushButton:hover{color:rgba(170,190,235,225);}")
         btn_def.clicked.connect(self._reset)
 
         bl.addWidget(btn_back)
@@ -3728,14 +3751,14 @@ class SettingsWindow(_DraggableWindow):
         sl.setMinimum(mn); sl.setMaximum(mx); sl.setValue(val)
         sl.setFixedHeight(22)
         sl.setStyleSheet("""
-            QSlider::groove:horizontal{height:4px;background:rgba(70,130,105,120);border-radius:2px;}
+            QSlider::groove:horizontal{height:4px;background:rgba(70,80,120,120);border-radius:2px;}
             QSlider::handle:horizontal{width:13px;height:13px;margin:-5px 0;
-                background:rgb(46,160,105);border-radius:6px;}
-            QSlider::sub-page:horizontal{background:rgba(48,168,110,200);border-radius:2px;}
+                background:rgb(120,140,215);border-radius:6px;}
+            QSlider::sub-page:horizontal{background:rgba(120,140,215,205);border-radius:2px;}
         """)
         vl = QLabel(f"{val}{suffix}")
         vl.setFont(QFont("Segoe UI",11,QFont.Weight.Bold))
-        vl.setStyleSheet("color:rgba(120,215,160,235);"); vl.setFixedWidth(34)
+        vl.setStyleSheet("color:rgba(150,168,240,235);"); vl.setFixedWidth(34)
         sl.valueChanged.connect(lambda v,l=vl,s=suffix: l.setText(f"{v}{s}"))
         row.addWidget(lb); row.addWidget(sl); row.addWidget(vl)
         lay.addLayout(row)
@@ -3743,9 +3766,9 @@ class SettingsWindow(_DraggableWindow):
 
     def _hk_style(self, active):
         if active:
-            return ("QPushButton{background:rgba(36,120,84,180);color:white;"
-                    "border:1px solid rgba(70,170,120,120);border-radius:7px;padding:3px;font-size:10px;}"
-                    "QPushButton:hover{background:rgba(42,150,100,220);}")
+            return ("QPushButton{background:rgba(52,66,120,185);color:white;"
+                    "border:1px solid rgba(120,140,215,150);border-radius:7px;padding:3px;font-size:10px;}"
+                    "QPushButton:hover{background:rgba(66,82,150,220);}")
         return ("QPushButton{background:rgba(38,38,58,140);color:rgba(255,255,255,70);"
                 "border:1px solid rgba(80,80,120,80);border-radius:7px;padding:3px;font-size:10px;}"
                 "QPushButton:hover{background:rgba(58,58,88,180);}")
@@ -3764,7 +3787,7 @@ class SettingsWindow(_DraggableWindow):
         self._recording = key
         btn = self._hk_btns[key]
         btn.setText("[ naciśnij kombinację… ]")
-        btn.setStyleSheet("QPushButton{background:rgba(48,168,110,200);color:white;"
+        btn.setStyleSheet("QPushButton{background:rgba(66,82,150,205);color:white;"
                           "border:2px solid rgba(140,160,255,255);border-radius:7px;"
                           "padding:3px;font-size:10px;}")
         # Ustaw focus na okno i zainstaluj event filter
@@ -4196,7 +4219,7 @@ class TestOfferWindow(QWidget):
         btn_tak.clicked.connect(lambda: (self.hide(), self.accepted.emit()))
 
         btn_nie = QPushButton("Może później")
-        btn_nie.setStyleSheet("QPushButton { background:rgba(60,60,100,160); color:rgba(200,210,255,200); border:1px solid rgba(70,150,110,100); border-radius:10px; padding:8px; } QPushButton:hover { background:rgba(56,140,104,200); }")
+        btn_nie.setStyleSheet("QPushButton { background:rgba(60,60,100,160); color:rgba(200,210,255,200); border:1px solid rgba(96,110,150,120); border-radius:10px; padding:8px; } QPushButton:hover { background:rgba(72,82,128,200); border-color:rgba(201,106,42,235); }")
         btn_nie.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_nie.clicked.connect(lambda: (self.hide(), self.rejected.emit()))
 
@@ -4247,14 +4270,14 @@ class SRSOfferWindow(_DraggableWindow):
         lay.addWidget(btn_test)
         btn_known = QPushButton("Znam wszystkie słowa")
         btn_known.setFont(QFont("Segoe UI", 11))
-        btn_known.setStyleSheet("QPushButton { background: rgba(40,120,60,180); color: white; border: 1px solid rgba(80,180,100,120); border-radius: 10px; padding: 8px; } QPushButton:hover { background: rgba(50,150,70,220); }")
+        btn_known.setStyleSheet("QPushButton { background: rgba(28,38,66,200); color: white; border: 1px solid rgba(90,190,140,150); border-radius: 10px; padding: 8px; } QPushButton:hover { background: rgba(38,50,84,220); }")
         btn_known.setFixedHeight(40)
         btn_known.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_known.clicked.connect(lambda: (self.hide(), self.all_known.emit()))
         lay.addWidget(btn_known)
         btn_skip = QPushButton("Zmień bez testu")
         btn_skip.setFont(QFont("Segoe UI", 11))
-        btn_skip.setStyleSheet("QPushButton { background: rgba(40,40,80,160); color: rgba(200,210,255,160); border: 1px solid rgba(70,150,110,80); border-radius: 10px; padding: 6px; } QPushButton:hover { background: rgba(44,110,84,200); }")
+        btn_skip.setStyleSheet("QPushButton { background: rgba(40,40,80,160); color: rgba(200,210,255,160); border: 1px solid rgba(96,110,150,90); border-radius: 10px; padding: 6px; } QPushButton:hover { background: rgba(58,66,104,200); }")
         btn_skip.setFixedHeight(36)
         btn_skip.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_skip.clicked.connect(lambda: (self.hide(), self.rejected.emit()))
@@ -4310,14 +4333,14 @@ class ResumeTestWindow(_DraggableWindow):
         lay.addWidget(btn_resume)
         btn_known = QPushButton("Znam wszystkie słowa")
         btn_known.setFont(QFont("Segoe UI", 11))
-        btn_known.setStyleSheet("QPushButton { background: rgba(40,120,60,180); color: white; border: 1px solid rgba(80,180,100,120); border-radius: 10px; padding: 8px; } QPushButton:hover { background: rgba(50,150,70,220); }")
+        btn_known.setStyleSheet("QPushButton { background: rgba(28,38,66,200); color: white; border: 1px solid rgba(90,190,140,150); border-radius: 10px; padding: 8px; } QPushButton:hover { background: rgba(38,50,84,220); }")
         btn_known.setFixedHeight(40)
         btn_known.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_known.clicked.connect(lambda: (self.hide(), self.all_known.emit()))
         lay.addWidget(btn_known)
         btn_skip = QPushButton("Pomiń")
         btn_skip.setFont(QFont("Segoe UI", 11))
-        btn_skip.setStyleSheet("QPushButton { background: rgba(40,40,80,160); color: rgba(200,210,255,160); border: 1px solid rgba(70,150,110,80); border-radius: 10px; padding: 6px; } QPushButton:hover { background: rgba(44,110,84,200); }")
+        btn_skip.setStyleSheet("QPushButton { background: rgba(40,40,80,160); color: rgba(200,210,255,160); border: 1px solid rgba(96,110,150,90); border-radius: 10px; padding: 6px; } QPushButton:hover { background: rgba(58,66,104,200); }")
         btn_skip.setFixedHeight(36)
         btn_skip.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_skip.clicked.connect(lambda: (self.hide(), self.skip.emit()))
@@ -4614,9 +4637,9 @@ class DueCountWorker(QThread):
 
 _HUB_OUTLINE = """
     QPushButton { background:rgba(60,65,110,90); color:rgba(210,222,255,220);
-        border:1px solid rgba(120,135,190,90); border-radius:10px;
+        border:1px solid rgba(120,135,190,150); border-radius:10px;
         padding:9px; font-size:12px; }
-    QPushButton:hover { background:rgba(80,90,150,150); }
+    QPushButton:hover { background:rgba(80,90,150,150); border-color:rgba(201,106,42,235); }
 """
 
 
@@ -4624,11 +4647,11 @@ class HubWindow(_DraggableWindow):
     """D3 — trwałe okno traya. Lewy klik na ikonę traya otwiera/zamyka je.
     Menu kontekstowe (prawy klik) zostaje jako szybki dostęp."""
 
-    _PRESET_ON = ("QPushButton{background:rgba(56,182,120,210);color:white;border:none;"
+    _PRESET_ON = ("QPushButton{background:rgba(120,140,215,215);color:white;border:none;"
                   "border-radius:8px;padding:7px;font-size:11px;}")
     _PRESET_OFF = ("QPushButton{background:rgba(55,60,100,140);color:rgba(200,212,245,200);"
                    "border:1px solid rgba(90,100,160,90);border-radius:8px;padding:7px;font-size:11px;}"
-                   "QPushButton:hover{background:rgba(70,80,140,180);}")
+                   "QPushButton:hover{background:rgba(70,80,140,180);border-color:rgba(201,106,42,235);}")
 
     def __init__(self, app_ref):
         super().__init__()
@@ -4730,7 +4753,7 @@ class HubWindow(_DraggableWindow):
         self.lbl_footer.setCursor(Qt.CursorShape.PointingHandCursor)
         self.lbl_footer.setStyleSheet(
             "QPushButton{background:transparent;color:rgba(160,175,210,180);border:none;}"
-            "QPushButton:hover{color:rgba(120,215,160,235);}")
+            "QPushButton:hover{color:rgba(170,190,235,235);}")
         self.lbl_footer.clicked.connect(self._footer_click)
         il.addWidget(self.lbl_footer)
 
@@ -4782,8 +4805,8 @@ class HubWindow(_DraggableWindow):
         b.setCursor(Qt.CursorShape.PointingHandCursor)
         b.setStyleSheet(
             "QPushButton{background:rgba(60,65,110,120);color:rgba(220,230,255,210);"
-            "border:none;border-radius:6px;font-size:12px;}"
-            "QPushButton:hover{background:rgba(80,90,150,180);}")
+            "border:1px solid rgba(120,135,190,120);border-radius:6px;font-size:12px;}"
+            "QPushButton:hover{background:rgba(80,90,150,180);border-color:rgba(201,106,42,235);}")
         return b
 
     def _stat_cell(self, label):
