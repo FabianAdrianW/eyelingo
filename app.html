@@ -2188,6 +2188,39 @@ async function eylOpenCat(lang,lvl,catId,catName){
    ═══════════════════════════════════════════════════════════════════════════ */
 var _pwQueue=[], _pwIdx=0, _pwDir='foreign', _pwFlipped=false, _pwDone=0, _pwTotal=0;
 
+/* Odsiew „duchów”: karty custom (flashcard_id==null) pochodzące z zestawów użytkownika,
+   których słowa nie ma już w żadnym aktualnym user_set_cards (materiał usunięty na webie/desktopie),
+   nie mogą wracać do Powtórek. Karty katalogowe (flashcard_id != null) są zawsze ważne. */
+async function _pwLiveCustomKeys(){
+  if(!UID) return null;
+  try{
+    var sr=await db.from('user_sets').select('id').eq('user_id',UID);
+    if(sr&&sr.error) return null;                 // błąd → null → nie filtrujemy (bezpieczny fallback)
+    var ids=((sr&&sr.data)||[]).map(function(s){ return s.id; });
+    var keys={};
+    for(var i=0;i<ids.length;i+=200){
+      var cr=await db.from('user_set_cards').select('word,translation').in('set_id',ids.slice(i,i+200));
+      if(cr&&cr.error) return null;               // błąd cząstkowy → przerwij, nie gub kart
+      ((cr&&cr.data)||[]).forEach(function(c){ if(c.word||c.translation) keys[_usrsCK(c.word||'',c.translation||'')]=1; });
+    }
+    return keys;                                  // {} przy zerze kart = poprawnie odsiewa custom-duchy
+  }catch(e){ return null; }
+}
+async function _pwFilterOrphans(rows){
+  try{
+    if(!rows||!rows.length) return rows||[];
+    var hasCustom=rows.some(function(r){ return r.flashcard_id==null; });
+    if(!hasCustom) return rows;                   // sama katalogówka → nic do sprawdzania
+    var live=await _pwLiveCustomKeys();
+    if(!live) return rows;                        // nie udało się ustalić → nie filtrujemy
+    return rows.filter(function(r){
+      if(r.flashcard_id!=null) return true;       // karta katalogowa — zawsze OK
+      var ck=r.card_key||_usrsCK(r.word||'',r.translation||'');
+      return !!live[ck];                          // custom: tylko jeśli nadal w jakimś zestawie
+    });
+  }catch(e){ return rows; }
+}
+
 async function _pwFetchDue(limit){
   if(!UID) return [];
   var today=_usrsTodayLocal();
@@ -2196,6 +2229,7 @@ async function _pwFetchDue(limit){
       .select('card_key,word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review')
       .eq('user_id',UID).lte('next_review',today).order('next_review',{ascending:true}).limit(limit||100);
     var rows=(data||[]).filter(function(r){ return r.word||r.translation; });
+    rows=await _pwFilterOrphans(rows);   // usuń karty z usuniętych materiałów/zestawów
     try{ var ids=[]; rows.forEach(function(r){ if(r.flashcard_id!=null) ids.push(r.flashcard_id); });
       if(ids.length){ var fr=await db.from('flashcards').select('id,romaji').in('id',ids); var rm={}; ((fr&&fr.data)||[]).forEach(function(x){ rm[x.id]=x.romaji||''; }); rows.forEach(function(r){ if(r.flashcard_id!=null && rm[r.flashcard_id]) r.romaji=rm[r.flashcard_id]; }); }
     }catch(e){}
