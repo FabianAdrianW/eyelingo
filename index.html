@@ -3422,6 +3422,7 @@ async function purgeDeletedSetReviews(delCards){
   if(!keys.length) return;
   try{ await db.from('srs_progress').delete().eq('user_id',uid).is('flashcard_id',null).in('card_key',keys); }catch(e){}
   try{ var store=_usrsLoad(uid); keys.forEach(function(k){ delete store[k]; }); _usrsSaveAll(uid,store); }catch(e){}
+  try{ _usrsLiveKeysCache={uid:null,keys:null,ts:0}; }catch(e){}
 }
 // Usuwa zestaw z logów „ostatnio przeglądane" we wszystkich językach.
 function purgeRecentSet(kind, id){
@@ -7327,7 +7328,7 @@ function _trybRenderTransition(card, reRender){
     +'</div>';
   var pos=host.style.position; if(!pos||pos==='static') host.style.position='relative';
   host.appendChild(ov);
-  var b=document.getElementById('tryb-lang-cont'); if(b) b.onclick=function(){ ov.remove(); if(reRender) reRender(); };
+  ov.style.cursor='pointer'; ov.onclick=function(){ ov.remove(); if(reRender) reRender(); };
 }
 function _trybBlockGate(reRender){
   if(!window._trybBlocksMulti) return false;
@@ -7437,6 +7438,40 @@ function usrsRecommend(uid, lang, n){
     return pool.slice(0,n||7).map(function(r){ return {word:r.word,translation:r.translation||''}; });
   }catch(e){ return []; }
 }
+// ── Filtr sierot (parytet z app.html _pwFilterOrphans): karta katalogowa zawsze zostaje;
+//    karta custom (flashcard_id null: własny zestaw / lekcja Lexa / lyrics) trafia do powtórek
+//    TYLKO jeśli jej klucz nadal jest w JAKIMŚ żywym zestawie. Usunięcie zestawu ⇒ słowa nie wracają. ──
+var _usrsLiveKeysCache={uid:null,keys:null,ts:0};
+async function _usrsLiveCustomKeys(uid){
+  try{
+    if(_usrsLiveKeysCache.uid===uid && _usrsLiveKeysCache.keys && (Date.now()-_usrsLiveKeysCache.ts)<20000) return _usrsLiveKeysCache.keys;
+    var sr=await db.from('user_sets').select('id').eq('user_id',uid);
+    if(sr&&sr.error) return null;
+    var ids=((sr&&sr.data)||[]).map(function(s){return s.id;});
+    var keys={};
+    for(var i=0;i<ids.length;i+=200){
+      var cr=await db.from('user_set_cards').select('word,translation').in('set_id',ids.slice(i,i+200));
+      if(cr&&cr.error) return null;
+      ((cr&&cr.data)||[]).forEach(function(c){ if(c.word||c.translation) keys[_usrsCK(c.word||'',c.translation||'')]=1; });
+    }
+    _usrsLiveKeysCache={uid:uid,keys:keys,ts:Date.now()};
+    return keys;
+  }catch(e){ return null; }
+}
+async function _usrsFilterOrphans(uid, rows){
+  try{
+    if(!rows||!rows.length) return rows||[];
+    var hasCustom=rows.some(function(r){ return (r.flashcard_id==null); });
+    if(!hasCustom) return rows;
+    var live=await _usrsLiveCustomKeys(uid);
+    if(!live) return rows;                              // nie udało się ustalić → nie filtrujemy (bezpiecznie)
+    return rows.filter(function(r){
+      if(r.flashcard_id!=null) return true;             // katalog (browse/eyelingo) — zawsze zostaje
+      var ck=r.card_key||_usrsCK(r.word||'',r.translation||'');
+      return !!live[ck];                                // custom: tylko jeśli nadal w żywym zestawie
+    });
+  }catch(e){ return rows; }
+}
 async function usrsDueList(limit){
   var uid=await _usrsUid(); if(!uid) return [];
   var _d=new Date(); var today=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
@@ -7454,6 +7489,7 @@ async function usrsDueList(limit){
     rows=Object.keys(store).map(function(k){var r=store[k];return {word:r.word,translation:r.translation,flashcard_id:r.fc,ease_factor:r.ef,repetitions:r.reps,interval_days:r.interval,next_review:r.due,lang:r.lang};})
       .filter(function(r){return r.next_review&&r.next_review<=today;});
   }
+  rows=await _usrsFilterOrphans(uid, rows);
   if(!rows.length) return [];
   // PEŁNY CARRYOVER: powtórki obejmują WSZYSTKIE zaległe karty z srs_progress — także słowa
   // ćwiczone w lekcjach Lexa, których nie zapisano jako fiszki ("lekcja zbiera"). Wcześniejszy
