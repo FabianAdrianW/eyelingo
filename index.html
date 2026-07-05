@@ -7248,6 +7248,41 @@ async function loadTrybStats(){
 
 // ── Blokowanie powtórek per język (spójne z app.html): dominujący język pierwszy,
 //    interleaving zostaje WEWNĄTRZ bloku; między blokami spokojna karta przejścia. ──
+// ── Rekoncyliacja języka wg PISMA (fix: japońska fiszka w sesji angielskiej) ──
+// Stare wiersze srs_progress potrafią mieć zły/pusty `lang` (np. japońska karta z
+// dawnych materiałów zapisana jako 'en'). Powtórki grupują i filtrują po języku, więc
+// taka karta „wpadała" do bloku angielskiego. Zasada twarda: karta w piśmie NIEŁACIŃSKIM
+// nigdy nie może uchodzić za język łaciński. Pismo łacińskie zostawiamy zapisowi
+// (en/de/fr itd. nie da się odróżnić po samym piśmie).
+var _EYL_JA_HINT=/[\u95a2\u5bfe\u7d4c\u56f3\u58f2\u8aad\u767a\u8ee2\u82b8\u5f01\u685c\u6b69\u5e30\u770c\u9a13\u56e3\u4fa1\u55b6\u5e83\u5fb3\u6226\u9244\u9ed2\u4e9c\u5186\u5150\u5b9f\u53f7\u72ec\u4f1a\u5b66\u9a5b\u9a5c]/;
+function _eylScriptFam(x){
+  x=String(x||'');
+  if(/[\u3040-\u30FF\u31F0-\u31FF]/.test(x)) return 'kana';
+  if(/[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F]/.test(x)) return 'hangul';
+  if(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(x)) return 'arabic';
+  if(/[\u0400-\u052F]/.test(x)) return 'cyrillic';
+  if(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF]/.test(x)) return 'han';
+  return 'latin';
+}
+function _eylTrueLang(card){
+  var stored=String((card&&card.lang)||'').toLowerCase().split('-')[0];
+  var txt=(card&&(card.word||card.front))||'';
+  var fam=_eylScriptFam(txt);
+  if(fam==='latin') return stored;                 // łacińskie → ufamy zapisowi
+  var ok=false;                                     // czy zapisany język pasuje do pisma?
+  if(fam==='kana') ok=(stored==='ja');
+  else if(fam==='hangul') ok=(stored==='ko');
+  else if(fam==='arabic') ok=(stored==='ar');
+  else if(fam==='cyrillic') ok=(stored==='ru'||stored==='uk');
+  else if(fam==='han') ok=(stored==='zh'||stored==='ja');
+  if(ok) return stored;
+  if(fam==='kana') return 'ja';                     // konflikt lub pusty → z pisma
+  if(fam==='hangul') return 'ko';
+  if(fam==='arabic') return 'ar';
+  if(fam==='cyrillic') return 'ru';
+  if(fam==='han') return _EYL_JA_HINT.test(txt) ? 'ja' : 'zh';
+  return stored;
+}
 function _eylSeqByLang(items){
   var g={}, order=[]; (items||[]).forEach(function(it){ var l=(it&&it.lang||'').toLowerCase()||'_'; if(!g[l]){g[l]=[];order.push(l);} g[l].push(it); });
   order.sort(function(a,b){ return g[b].length-g[a].length || (a<b?-1:(a>b?1:0)); });
@@ -7477,7 +7512,7 @@ async function usrsDueList(limit){
   // ćwiczone w lekcjach Lexa, których nie zapisano jako fiszki ("lekcja zbiera"). Wcześniejszy
   // filtr wymagał obecności w aktualnym zestawie i gubił zaległości (75 due → pokazywał ~9).
   rows.sort(function(a,b){ return a.next_review<b.next_review?-1:(a.next_review>b.next_review?1:0); });
-  return rows.slice(0,_cap).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1,lang:(r.lang||'')}; });
+  return rows.slice(0,_cap).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1,lang:_eylTrueLang(r)}; });
 }
 async function usrsDueCount(){ try{ var l=await usrsDueList(5000); return l.length; }catch(e){ return 0; } }
 
@@ -7864,7 +7899,7 @@ function trybFlipReveal(backText){
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
     var _qm={1:0,2:2,3:4,4:5};
-    [{q:1,l:'Nie wiedziałem',bg:'#fcebeb',c:'#a32d2d'},{q:2,l:'Prawie',bg:'#fef3c7',c:'#92400e'},{q:3,l:'Wiedziałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Łatwe',bg:'#e0f2fe',c:'#0369a1'}].forEach(function(opt,oi){
+    [{q:1,l:'Nie wiedziałem',bg:'#fcebeb',c:'#a32d2d'},{q:3,l:'Wiedziałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Łatwe',bg:'#e0f2fe',c:'#0369a1'}].forEach(function(opt,oi){
       var b = document.createElement('button');
       b.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 14px;border-radius:12px;border:1px solid transparent;background:'+opt.bg+';color:'+opt.c+';cursor:pointer;font-family:DM Sans,sans-serif;transition:transform .1s,box-shadow .1s;min-width:98px';
       b.onmousedown = function(){ this.style.transform='scale(.95)'; };
@@ -7914,10 +7949,11 @@ function trybFlipReveal(backText){
     if(e.code === 'ArrowRight' && _trybFlipRevealed){ if(_trybIdx >= _trybCards.length-1) showTrybSessionSummary(); else { _trybIdx++; loadTrybFlipCard(); } }
     if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard('prev'); }
     // Ocena klawiszami 1-4 (tylko po odsłonięciu)
-    if(_trybFlipRevealed && /^Digit[1-4]$/.test(e.code)){
+    if(_trybFlipRevealed && /^Digit[1-3]$/.test(e.code)){
       e.preventDefault();
       var n2=document.getElementById('tryb-flip-nav'); if(n2) n2.remove();
-      rateCard(parseInt(e.code.slice(5),10), true);
+      var _qk=({1:1,2:3,3:4})[parseInt(e.code.slice(5),10)]||3;
+      rateCard(_qk, true);
     }
   };
 }
