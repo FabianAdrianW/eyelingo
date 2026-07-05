@@ -2197,11 +2197,13 @@ function _eylSeqByLang(items){
 }
 function _eylLangMeta(code){ code=String(code||'').toLowerCase(); var nm=(typeof eylLangLabel==='function')?eylLangLabel(code):code.toUpperCase(); var fl=(typeof eylLangFlag==='function')?eylLangFlag(code):''; return {name:nm||code.toUpperCase(), flag:fl||''}; }
 function _pwBlockGate(){
-  if(!window._pwMultiLang) return false;
-  if(_pwIdx<=0 || _pwIdx>=_pwQueue.length) return false;
-  var cur=_pwQueue[_pwIdx], prev=_pwQueue[_pwIdx-1]; if(!cur||!prev) return false;
-  var lc=String(cur.lang||'').toLowerCase(), lp=String(prev.lang||'').toLowerCase();
-  if(!lc||lc===lp) return false;
+  if(_pwIdx>=_pwQueue.length) return false;
+  var cur=_pwQueue[_pwIdx]; if(!cur) return false;
+  var lc=String(cur.lang||'').toLowerCase(); if(!lc) return false;
+  var atStart=(_pwIdx===0);                 // przekładka „na starcie powtórek"
+  var langChanged=false;
+  if(_pwIdx>0){ var prev=_pwQueue[_pwIdx-1]; var lp=prev?String(prev.lang||'').toLowerCase():''; langChanged=(!!lc && lc!==lp); }
+  if(!atStart && !langChanged) return false;
   if(!window._pwBlockShown) window._pwBlockShown={};
   var key=_pwIdx+'|'+lc; if(window._pwBlockShown[key]) return false;
   window._pwBlockShown[key]=true;
@@ -2261,11 +2263,20 @@ async function _pwFilterOrphans(rows){
 async function _pwFetchDue(limit){
   if(!UID) return [];
   var today=_usrsTodayLocal();
+  var cap=limit||5000;                     // pełny carryover — parytet z index.html (te same karty, ta sama liczba)
   try{
-    var {data}=await db.from('srs_progress')
-      .select('card_key,word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review')
-      .eq('user_id',UID).lte('next_review',today).order('next_review',{ascending:true}).limit(limit||100);
-    var rows=(data||[]).filter(function(r){ return r.word||r.translation; });
+    var rows=[];
+    for(var _from=0; _from<cap; _from+=1000){
+      var _to=Math.min(_from+999, cap-1);
+      var {data,error}=await db.from('srs_progress')
+        .select('card_key,word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review')
+        .eq('user_id',UID).lte('next_review',today).order('next_review',{ascending:true}).range(_from,_to);
+      if(error) break;
+      var _chunk=data||[];
+      rows=rows.concat(_chunk);
+      if(_chunk.length<(_to-_from+1)) break;   // ostatnia strona (PostgREST ~1000/stronę)
+    }
+    rows=rows.filter(function(r){ return r.word||r.translation; });
     rows=await _pwFilterOrphans(rows);   // usuń karty z usuniętych materiałów/zestawów
     try{ var ids=[]; rows.forEach(function(r){ if(r.flashcard_id!=null) ids.push(r.flashcard_id); });
       if(ids.length){ var fr=await db.from('flashcards').select('id,romaji').in('id',ids); var rm={}; ((fr&&fr.data)||[]).forEach(function(x){ rm[x.id]=x.romaji||''; }); rows.forEach(function(r){ if(r.flashcard_id!=null && rm[r.flashcard_id]) r.romaji=rm[r.flashcard_id]; }); }
@@ -2275,7 +2286,7 @@ async function _pwFetchDue(limit){
 }
 async function refreshDueBadge(){
   try{
-    var rows=await _pwFetchDue(999);
+    var rows=await _pwFetchDue(5000);
     var n=rows.length;
     var p1=document.getElementById('ucz-due-pill'), p2=document.getElementById('tab-due-pill');
     [p1,p2].forEach(function(p){ if(!p) return; if(n>0){ p.style.display='inline-block'; p.textContent=String(n>99?'99+':n); } else { p.style.display='none'; } });
@@ -2294,7 +2305,7 @@ async function openPowt(){
   document.getElementById('pw-grades').style.display='none';
   document.getElementById('pw-hint').textContent='';
   if(stage) stage.innerHTML=eyelingoLoader('Sprawdzam, co dojrzało do powtórki…');
-  _pwQueue=await _pwFetchDue(100);
+  _pwQueue=await _pwFetchDue(5000);
   try{ var _sq=_eylSeqByLang(_pwQueue); _pwQueue=_sq.items; window._pwMultiLang=_sq.multiLang; }catch(e){ window._pwMultiLang=false; }
   window._pwBlockShown={};
   window._pwStartStr={}; try{ _pwQueue.forEach(function(r){ if(r&&r.card_key) window._pwStartStr[r.card_key]=srsStrength(r.repetitions,r.interval_days); }); }catch(e){}

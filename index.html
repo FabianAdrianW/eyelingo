@@ -4907,7 +4907,7 @@ async function powtorkiEnter(){
   host.appendChild(gate);
   try{ if(typeof usrsSync==='function') await usrsSync(); }catch(e){}
   var due=[];
-  try{ if(typeof usrsDueList==='function') due=await usrsDueList(200); }catch(e){ due=[]; }
+  try{ if(typeof usrsDueList==='function') due=await usrsDueList(5000); }catch(e){ due=[]; }
   var g=document.getElementById('tryb-powtorki-gate'); if(g) g.remove();
   if(!due || !due.length){
     var empty=document.createElement('div');
@@ -4937,7 +4937,7 @@ async function strefaStartPowtorki(){
   if(center) center.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--dim2)"><div style="font-size:14px">Sprawdzam, co jest dzis do powtorki...</div></div>';
   try{ if(typeof usrsSync==='function') await usrsSync(); }catch(e){}
   var due=[];
-  try{ if(typeof usrsDueList==='function') due=await usrsDueList(200); }catch(e){ due=[]; }
+  try{ if(typeof usrsDueList==='function') due=await usrsDueList(5000); }catch(e){ due=[]; }
   if(!due || !due.length){
     if(center) center.innerHTML='<div style="text-align:center;padding:72px 24px">'
       +'<div style="width:48px;height:48px;border-radius:12px;background:var(--green-bg,#E1F5EE);color:var(--green-dark,#0F6E56);display:flex;align-items:center;justify-content:center;margin:0 auto 16px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>'
@@ -7331,11 +7331,14 @@ function _trybRenderTransition(card, reRender){
   ov.style.cursor='pointer'; ov.onclick=function(){ ov.remove(); if(reRender) reRender(); };
 }
 function _trybBlockGate(reRender){
-  if(!window._trybBlocksMulti) return false;
-  if(_trybIdx<=0 || _trybIdx>=_trybCards.length) return false;
-  var cur=_trybCards[_trybIdx], prev=_trybCards[_trybIdx-1]; if(!cur||!prev) return false;
-  var lc=String(cur.lang||'').toLowerCase(), lp=String(prev.lang||'').toLowerCase();
-  if(!lc||lc===lp) return false;
+  if(_trybIdx>=_trybCards.length) return false;
+  var cur=_trybCards[_trybIdx]; if(!cur) return false;
+  var lc=String(cur.lang||'').toLowerCase(); if(!lc) return false;
+  var isPowt=(typeof _trybExternalName!=='undefined' && _trybExternalName==='Powtórki na dziś');
+  var atStart=(_trybIdx===0 && isPowt);     // przekładka „na starcie powtórek" (tylko Powtórki, nie zwykła nauka zestawu)
+  var langChanged=false;
+  if(_trybIdx>0){ var prev=_trybCards[_trybIdx-1]; var lp=prev?String(prev.lang||'').toLowerCase():''; langChanged=(!!lc && lc!==lp); }
+  if(!atStart && !langChanged) return false;
   if(!window._trybBlockShown) window._trybBlockShown={};
   var key=_trybIdx+'|'+lc; if(window._trybBlockShown[key]) return false;
   window._trybBlockShown[key]=true;
@@ -7476,12 +7479,20 @@ async function usrsDueList(limit){
   var uid=await _usrsUid(); if(!uid) return [];
   var _d=new Date(); var today=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
   var rows=null;
-  // 1) Chmura — autorytatywne (wspólne web↔desktop)
+  var _cap=limit||5000;                   // pełny carryover — parytet z app.html (te same karty, ta sama liczba)
+  // 1) Chmura — autorytatywne (wspólne web↔desktop), stronicowane (PostgREST ~1000/stronę)
   try{
-    var {data}=await db.from('srs_progress')
-      .select('word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review')
-      .eq('user_id',uid).lte('next_review',today).limit(limit||50);
-    rows=data||[];
+    rows=[];
+    for(var _from=0; _from<_cap; _from+=1000){
+      var _to=Math.min(_from+999, _cap-1);
+      var _res=await db.from('srs_progress')
+        .select('word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review')
+        .eq('user_id',uid).lte('next_review',today).order('next_review',{ascending:true}).range(_from,_to);
+      if(_res&&_res.error){ if(_from===0) rows=null; break; }
+      var _chunk=(_res&&_res.data)||[];
+      rows=rows.concat(_chunk);
+      if(_chunk.length<(_to-_from+1)) break;   // ostatnia strona
+    }
   }catch(e){ rows=null; }
   // 2) Offline → cache lokalny
   if(rows===null){
@@ -7495,9 +7506,9 @@ async function usrsDueList(limit){
   // ćwiczone w lekcjach Lexa, których nie zapisano jako fiszki ("lekcja zbiera"). Wcześniejszy
   // filtr wymagał obecności w aktualnym zestawie i gubił zaległości (75 due → pokazywał ~9).
   rows.sort(function(a,b){ return a.next_review<b.next_review?-1:(a.next_review>b.next_review?1:0); });
-  return rows.slice(0,limit||50).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1,lang:(r.lang||'')}; });
+  return rows.slice(0,_cap).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1,lang:(r.lang||'')}; });
 }
-async function usrsDueCount(){ try{ var l=await usrsDueList(9999); return l.length; }catch(e){ return 0; } }
+async function usrsDueCount(){ try{ var l=await usrsDueList(5000); return l.length; }catch(e){ return 0; } }
 
 async function loadDueCardsForTryb(){
   try{
