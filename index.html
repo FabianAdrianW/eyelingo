@@ -7404,17 +7404,45 @@ async function _usrsLiveCustomKeys(uid){
     return keys;
   }catch(e){ return null; }
 }
+// Żywotność katalogu: karta katalogowa (flashcard_id != null) jest ważna, gdy jej id
+// nadal istnieje w `flashcards` LUB (gdy katalog przebudowano z nowymi id) jej słowo+
+// tłumaczenie nadal jest w katalogu. Zwraca {ids,keys} lub null (błąd → fail-open).
+async function _usrsLiveCatalog(rows){
+  try{
+    var catRows=rows.filter(function(r){ return r.flashcard_id!=null; });
+    if(!catRows.length) return {ids:{},keys:{}};
+    var ids={}, idList=[], seen={};
+    catRows.forEach(function(r){ var id=r.flashcard_id; if(id!=null && !seen[id]){ seen[id]=1; idList.push(id); } });
+    for(var i=0;i<idList.length;i+=500){                       // 1) które flashcard_id nadal żyją
+      var q=await db.from('flashcards').select('id').in('id',idList.slice(i,i+500));
+      if(q&&q.error) return null;                             // błąd → fail-open (nie filtrujemy katalogu)
+      ((q&&q.data)||[]).forEach(function(x){ ids[x.id]=1; });
+    }
+    var keys={}, suspectWords=[], sw={};                       // 2) dla martwych id sprawdź, czy SŁOWO nadal jest w katalogu
+    catRows.forEach(function(r){ if(!ids[r.flashcard_id]){ var w=r.word||''; if(w && !sw[w]){ sw[w]=1; suspectWords.push(w); } } });
+    for(var j=0;j<suspectWords.length;j+=200){
+      var q2=await db.from('flashcards').select('word,translation').in('word',suspectWords.slice(j,j+200));
+      if(q2&&q2.error) return null;                           // błąd → fail-open
+      ((q2&&q2.data)||[]).forEach(function(c){ if(c.word||c.translation) keys[_usrsCK(c.word||'',c.translation||'')]=1; });
+    }
+    return {ids:ids,keys:keys};
+  }catch(e){ return null; }
+}
 async function _usrsFilterOrphans(uid, rows){
   try{
     if(!rows||!rows.length) return rows||[];
     var hasCustom=rows.some(function(r){ return (r.flashcard_id==null); });
-    if(!hasCustom) return rows;
-    var live=await _usrsLiveCustomKeys(uid);
-    if(!live) return rows;                              // nie udało się ustalić → nie filtrujemy (bezpiecznie)
+    var hasCatalog=rows.some(function(r){ return (r.flashcard_id!=null); });
+    var live = hasCustom  ? await _usrsLiveCustomKeys(uid) : null;   // custom (własne zestawy / lekcje Lexa / lyrics)
+    var cat  = hasCatalog ? await _usrsLiveCatalog(rows)   : null;   // katalog Eyelingo
     return rows.filter(function(r){
-      if(r.flashcard_id!=null) return true;             // katalog (browse/eyelingo) — zawsze zostaje
       var ck=r.card_key||_usrsCK(r.word||'',r.translation||'');
-      return !!live[ck];                                // custom: tylko jeśli nadal w żywym zestawie
+      if(r.flashcard_id!=null){
+        if(!cat) return true;                                 // katalogu nie ustalono → zostaw (bezpiecznie)
+        return !!cat.ids[r.flashcard_id] || !!cat.keys[ck];   // żywe id LUB żywe słowo → zostaw; inaczej: zestaw usunięty → odsiej
+      }
+      if(!live) return true;                                  // custom nie ustalono → zostaw
+      return !!live[ck];                                      // custom: tylko jeśli nadal w żywym zestawie
     });
   }catch(e){ return rows; }
 }
