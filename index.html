@@ -2387,18 +2387,15 @@ window.switchMatTab = function(tab){
       <div class="dash-hero-side">
         <div class="dhs-item"><div class="dhs-v" id="dash-stat-seen">0</div><div class="dhs-l">słów widzianych łącznie</div></div>
         <div class="dhs-item"><div class="dhs-v" id="dash-stat-mastered">0</div><div class="dhs-l">opanowanych</div></div>
-        <div class="dhs-item"><div class="dhs-v" id="dash-stat-consistency">0</div><div class="dhs-l">dni konsystencji</div></div>
+        <div class="dhs-item"><div class="dhs-v" id="dash-stat-due">0</div><div class="dhs-l">dojrzało do powtórki</div></div>
       </div>
     </div>
 
     <!-- Przełącznik języka utrwalania -->
-    <div id="dash-bridge-langrow" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-      <span style="font-size:13px;color:var(--dim2,#666);font-weight:500">Język do utrwalenia:</span>
+    <div id="dash-bridge-langrow" style="display:none;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--dim2,#666);font-weight:500">Pokaż dla języka:</span>
       <select id="dash-bridge-lang" onchange="dashSetBridgeLang(this.value)" style="padding:6px 12px;border-radius:100px;border:1.5px solid var(--border);font-size:13px;background:var(--white,#fff);color:var(--navy);font-family:inherit;cursor:pointer">
-        <option value="en">🇬🇧 Angielski</option>
-        <option value="es">🇪🇸 Hiszpański</option>
-        <option value="nl">🇳🇱 Holenderski</option>
-        <option value="jp">🇯🇵 Japoński</option>
+        <option value="all">Wszystkie języki</option>
       </select>
     </div>
 
@@ -2653,9 +2650,8 @@ async function loadDashboard(){
     s={cards_seen:0,minutes_active:0,streak_days:0};
   }
   const seenTotal=s.cards_seen||0;
-  const consistency=s.streak_days||0;
   setText('dash-stat-seen', seenTotal.toLocaleString('pl-PL'));
-  setText('dash-stat-consistency', consistency);
+  // „dni konsystencji" usunięte (Design Bible: żadnych liczników serii). Kafelek → PULL „dojrzało do powtórki" (ustawiany w loadSrsQueue).
 
   // ── Pseudonim + status premium (profiles) ──
   const{data:p}=await db.from('profiles').select('is_premium,premium_until,username').eq('user_id',user.id).maybeSingle();
@@ -2675,8 +2671,11 @@ async function loadDashboard(){
   var _bl=document.getElementById('dash-bridge-lang'); if(_bl) _bl.value=_dashBridgeLang;
   loadBridge1(user.id, _dashBridgeLang);
 
-  // ── Kolejka SRS: słowa due dziś (word_progress: next_review <= dziś) ──
+  // ── Kolejka SRS: słowa due dziś (kanoniczne srs_progress przez usrs) ──
   loadSrsQueue(user.id);
+  // ── Opanowane (cross-surface) + filtr języka z realnych języków użytkownika ──
+  loadDashboardMastered(user.id);
+  dashPopulateLangFilter(user.id);
 }
 
 function setText(id,val){const e=document.getElementById(id);if(e)e.textContent=val;}
@@ -2713,9 +2712,7 @@ async function loadDesktopStats(uid, seenTotal){
     }
   }
 
-  // Opanowane łącznie (suma mastered z dostępnych dni; brak → 0)
-  let masteredSum=0; (rows||[]).forEach(r=>masteredSum+=(r.flashcards_mastered_today||0));
-  setText('dash-stat-mastered', hasData ? masteredSum.toLocaleString('pl-PL') : '0');
+  // Opanowane liczone kanonicznie z srs_progress (cross-surface) w loadDashboardMastered() — nie z desktop_daily_stats.
 
   // Wykres 7 dni
   renderD7Chart(days, byDate, hasData);
@@ -2743,7 +2740,7 @@ function renderD7Chart(days, byDate, hasData){
 }
 
 // Most #1 — słowa znane ale nieopanowane, najtrudniejsze pierwsze
-var _dashBridgeLang = (function(){ try{ return localStorage.getItem('dashBridgeLang')||'en'; }catch(e){ return 'en'; } })();
+var _dashBridgeLang = (function(){ try{ return localStorage.getItem('dashBridgeLang')||'all'; }catch(e){ return 'all'; } })();
 function dashSetBridgeLang(code){
   _dashBridgeLang = code;
   try{ localStorage.setItem('dashBridgeLang', code); }catch(e){}
@@ -2751,7 +2748,7 @@ function dashSetBridgeLang(code){
 }
 
 async function loadBridge1(uid, lang){
-  lang = lang || _dashBridgeLang || 'en';
+  lang = lang || _dashBridgeLang || 'all';
   // 1) Rekomendacje z faktycznej praktyki (uniwersalny SRS): ostatnio ćwiczone, nieopanowane
   let words = usrsRecommend(uid, lang, 7);
   // 2) Fallback: word_progress (gdy brak lokalnej praktyki)
@@ -2765,7 +2762,7 @@ async function loadBridge1(uid, lang){
         .order('ease_factor',{ascending:true})
         .limit(40);
       words=(data||[])
-        .filter(r=>r.flashcards&&r.flashcards.word&&r.flashcards.languages&&r.flashcards.languages.code===lang)
+        .filter(r=>r.flashcards&&r.flashcards.word&&(lang==='all'||(r.flashcards.languages&&r.flashcards.languages.code===lang)))
         .slice(0,7)
         .map(r=>({word:r.flashcards.word,translation:r.flashcards.translation||''}));
     }catch(e){ words=[]; }
@@ -2803,16 +2800,52 @@ async function loadBridge1(uid, lang){
 async function loadSrsQueue(uid){
   let cnt=0;
   try{
-    const today=new Date().toISOString().slice(0,10);
-    const{count}=await db.from('word_progress').select('*',{count:'exact',head:true}).eq('user_id',uid).lte('next_review',today);
-    cnt=count||0;
+    // Kanoniczne źródło = srs_progress (wspólne web+app+desktop), przez uniwersalny SRS.
+    if(typeof usrsDueCount==='function'){ cnt=await usrsDueCount(); }
+    else { const today=new Date().toISOString().slice(0,10);
+      const{count}=await db.from('srs_progress').select('card_key',{count:'exact',head:true}).eq('user_id',uid).lte('next_review',today);
+      cnt=count||0; }
   }catch(e){ cnt=0; }
   const card=document.getElementById('bridge2-card');
   setText('bridge2-count', cnt);
+  setText('dash-stat-due', cnt);   // PULL w trójce statystyk (zastąpił „dni konsystencji")
   if(card) card.style.display = cnt>0 ? '' : 'none';
   toggleBridgeEmpty();
 }
 
+// Opanowane (cross-surface) z srs_progress. „Opanowane" = siła słowa ≥85 (MASTER_STR),
+// identycznie jak kafelki kategorii (_strength). Warunek wyrażony jako OR na (reps,iv).
+function _dashStrength(reps,iv){ reps=+reps||0; iv=+iv||0; if(reps<=0) return 0; var base=reps>=5?92:reps>=4?85:reps>=3?70:reps>=2?50:30; var mat=Math.max(0,Math.min(1,(iv-1)/20)); return Math.round(Math.max(0,Math.min(100,base+(100-base)*mat))); }
+async function loadDashboardMastered(uid){
+  var cnt=0;
+  try{
+    var r=await db.from('srs_progress').select('card_key',{count:'exact',head:true}).eq('user_id',uid)
+      .or('repetitions.gte.4,and(repetitions.eq.3,interval_days.gte.11),and(repetitions.eq.2,interval_days.gte.15),and(repetitions.eq.1,interval_days.gte.17)');
+    cnt=r.count||0;
+  }catch(e){
+    try{ var store=(typeof _usrsLoad==='function')?_usrsLoad(uid):{}; Object.keys(store).forEach(function(k){ var st=store[k]; if(st&&_dashStrength(st.reps,st.interval)>=85) cnt++; }); }catch(_e){}
+  }
+  setText('dash-stat-mastered', cnt.toLocaleString('pl-PL'));
+}
+// Filtr języka = realne języki użytkownika (z jego srs_progress store). Wiersz pokazany tylko przy ≥2 językach.
+function dashPopulateLangFilter(uid){
+  try{
+    var store=(typeof _usrsLoad==='function')?_usrsLoad(uid):{};
+    var counts={};
+    Object.keys(store).forEach(function(k){ var r=store[k]; if(!r) return; var l=String(r.lang||'').toLowerCase(); if(!l) return; counts[l]=(counts[l]||0)+1; });
+    var langs=Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; });
+    var sel=document.getElementById('dash-bridge-lang'); var row=document.getElementById('dash-bridge-langrow');
+    if(!sel||!row) return;
+    if(langs.length<2){ row.style.display='none'; return; }
+    var cur=(window._dashBridgeLang||'all');
+    var html='<option value="all">Wszystkie języki</option>';
+    langs.forEach(function(l){ var m=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[l])?LEX_LANG_MAP[l]:null; var nm=m?m.label:l.toUpperCase(); var fl=m?m.flag:''; html+='<option value="'+l+'">'+fl+' '+nm+'</option>'; });
+    sel.innerHTML=html;
+    if(cur!=='all' && langs.indexOf(cur)<0) cur='all';
+    sel.value=cur; window._dashBridgeLang=cur;
+    row.style.display='flex';
+  }catch(e){}
+}
 function toggleBridgeEmpty(){
   const b1=document.getElementById('bridge1-card');
   const b2=document.getElementById('bridge2-card');
@@ -4886,7 +4919,11 @@ async function powtorkiEnter(){
     host.appendChild(empty);
     return;
   }
-  _trybExternalCards=due.map(function(c){ return {word:c.word||'', translation:c.translation||'', flashcard_id:(c.id!=null?c.id:null)}; });
+  var _dueF=due;
+  try{ var _fl=(window._dashBridgeLang||'all'); if(_fl&&_fl!=='all') _dueF=due.filter(function(c){ return String(c.lang||'').toLowerCase()===_fl; }); }catch(e){}
+  var _seq=(typeof _eylSeqByLang==='function')?_eylSeqByLang(_dueF):{items:_dueF};
+  window._trybPreordered=true;
+  _trybExternalCards=(_seq.items||_dueF).map(function(c){ return {word:c.word||'', translation:c.translation||'', lang:(c.lang||''), flashcard_id:(c.id!=null?c.id:null)}; });
   window._trybStudyLang=''; _trybExternalName='Powtórki na dziś'; window._trybSource='strefa';
   if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
   if(typeof startSession==='function') startSession('set_external');
@@ -4909,7 +4946,11 @@ async function strefaStartPowtorki(){
     return;
   }
   // Sa slowa do powtorki → ekran wyboru trybu nauki z DOKLADNIE tymi slowami.
-  _trybExternalCards=due.map(function(c){ return {word:c.word||'', translation:c.translation||'', flashcard_id:(c.id!=null?c.id:null)}; });
+  var _dueF=due;
+  try{ var _fl=(window._dashBridgeLang||'all'); if(_fl&&_fl!=='all') _dueF=due.filter(function(c){ return String(c.lang||'').toLowerCase()===_fl; }); }catch(e){}
+  var _seq=(typeof _eylSeqByLang==='function')?_eylSeqByLang(_dueF):{items:_dueF};
+  window._trybPreordered=true;
+  _trybExternalCards=(_seq.items||_dueF).map(function(c){ return {word:c.word||'', translation:c.translation||'', lang:(c.lang||''), flashcard_id:(c.id!=null?c.id:null)}; });
   window._trybStudyLang=''; _trybExternalName='Powtórki na dziś';
   window._trybSource='strefa';
   if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
@@ -7261,11 +7302,51 @@ async function loadTrybStats(){
   }catch(e){}
 }
 
+// ── Blokowanie powtórek per język (spójne z app.html): dominujący język pierwszy,
+//    interleaving zostaje WEWNĄTRZ bloku; między blokami spokojna karta przejścia. ──
+function _eylSeqByLang(items){
+  var g={}, order=[]; (items||[]).forEach(function(it){ var l=(it&&it.lang||'').toLowerCase()||'_'; if(!g[l]){g[l]=[];order.push(l);} g[l].push(it); });
+  order.sort(function(a,b){ return g[b].length-g[a].length || (a<b?-1:(a>b?1:0)); });
+  var out=[]; order.forEach(function(l){ g[l].forEach(function(x){ out.push(x); }); });
+  return {items:out, langs:order, multiLang:order.length>1};
+}
+function _trybLangMeta(code){ code=String(code||'').toLowerCase(); var m=(typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP[code]:null; return m?{name:(m.label||code.toUpperCase()),flag:(m.flag||'')}:{name:code.toUpperCase(),flag:''}; }
+function _trybRenderTransition(card, reRender){
+  var host=document.getElementById('tryb-session')||document.getElementById('page-tryb'); if(!host){ if(reRender) reRender(); return; }
+  var lang=String(card.lang||'').toLowerCase(), cnt=0;
+  for(var i=_trybIdx;i<_trybCards.length && String(_trybCards[i].lang||'').toLowerCase()===lang;i++) cnt++;
+  var meta=_trybLangMeta(lang);
+  var ov=document.createElement('div'); ov.id='tryb-lang-transition';
+  ov.style.cssText='position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:var(--paper,#f8f7f4);animation:lexFadeIn .2s ease';
+  ov.innerHTML='<div style="text-align:center;padding:40px 24px;max-width:420px">'
+    +'<div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:600;margin-bottom:14px">Teraz</div>'
+    +(meta.flag?'<div style="font-size:34px;margin-bottom:10px">'+meta.flag+'</div>':'')
+    +'<div style="font-size:26px;font-weight:600;color:var(--navy);margin-bottom:6px">'+meta.name+'</div>'
+    +'<div style="font-size:14px;color:var(--dim2);margin-bottom:26px">'+cnt+' '+plWord(cnt,'fiszka','fiszki','fiszek')+' do powtórki</div>'
+    +'<button id="tryb-lang-cont" style="border:none;border-radius:100px;padding:13px 30px;font-size:14px;font-weight:600;cursor:pointer;background:var(--orange);color:#fff;font-family:DM Sans,sans-serif">Kontynuuj</button>'
+    +'</div>';
+  var pos=host.style.position; if(!pos||pos==='static') host.style.position='relative';
+  host.appendChild(ov);
+  var b=document.getElementById('tryb-lang-cont'); if(b) b.onclick=function(){ ov.remove(); if(reRender) reRender(); };
+}
+function _trybBlockGate(reRender){
+  if(!window._trybBlocksMulti) return false;
+  if(_trybIdx<=0 || _trybIdx>=_trybCards.length) return false;
+  var cur=_trybCards[_trybIdx], prev=_trybCards[_trybIdx-1]; if(!cur||!prev) return false;
+  var lc=String(cur.lang||'').toLowerCase(), lp=String(prev.lang||'').toLowerCase();
+  if(!lc||lc===lp) return false;
+  if(!window._trybBlockShown) window._trybBlockShown={};
+  var key=_trybIdx+'|'+lc; if(window._trybBlockShown[key]) return false;
+  window._trybBlockShown[key]=true;
+  _trybRenderTransition(cur, reRender);
+  return true;
+}
 async function startSession(mode){
   showTrybView('session');
   _trybSessionStats={correct:0,total:0,xpGained:0,startTime:Date.now()}; window._trybStruggling=[];
   window._trybKnowBefore={}; window._trybSessionActive=true;
   _trybIdx=0;_trybPerfectStreak=0;_trybSessionXPToday=0;
+  var _preordered=!!window._trybPreordered; window._trybPreordered=false; window._trybBlockShown={};
   _trybChallengeMode=document.getElementById('tryb-challenge-toggle')&&document.getElementById('tryb-challenge-toggle').checked;
   var hdr=document.getElementById('tryb-session-header');
   if(hdr)hdr.textContent=_trybChallengeMode?'Tryb Wyzwania aktywny':'Sesja nauki';
@@ -7273,13 +7354,15 @@ async function startSession(mode){
     _trybSetCards=_trybExternalCards.slice();
     var _seedUid=(typeof _usrsUid==='function')?await _usrsUid():null;
     var _seedStore=(_seedUid&&typeof _usrsLoad==='function')?(_usrsLoad(_seedUid)||{}):{};
-    _trybCards=shuffleArr(_trybExternalCards.slice()).map(function(c){var _w=c.word||c.front||'',_tr=c.translation||c.back||'';var _p=(typeof _usrsCK==='function')?_seedStore[_usrsCK(_w,_tr)]:null;return{word:_w,translation:_tr,emoji:'',example:'',etymology:'',image_url:c.image_url||'',image_attr:c.image_attr||'',ease_factor:(_p&&_p.ef!=null?_p.ef:2.5),repetitions:(_p&&_p.reps!=null?_p.reps:0),interval_days:(_p&&_p.interval!=null?_p.interval:1),id:(c.flashcard_id!=null?c.flashcard_id:null)};});
+    var _base=_trybExternalCards.slice(); if(!_preordered) _base=shuffleArr(_base);
+    _trybCards=_base.map(function(c){var _w=c.word||c.front||'',_tr=c.translation||c.back||'';var _p=(typeof _usrsCK==='function')?_seedStore[_usrsCK(_w,_tr)]:null;return{word:_w,translation:_tr,lang:(c.lang||''),emoji:'',example:'',etymology:'',image_url:c.image_url||'',image_attr:c.image_attr||'',ease_factor:(_p&&_p.ef!=null?_p.ef:2.5),repetitions:(_p&&_p.reps!=null?_p.reps:0),interval_days:(_p&&_p.interval!=null?_p.interval:1),id:(c.flashcard_id!=null?c.flashcard_id:null)};});
     if(hdr)hdr.textContent=(typeof stripEmoji==='function'?stripEmoji(_trybExternalName||'Zestaw'):(_trybExternalName||'Zestaw'))+(_trybChallengeMode?' · Wyzwanie':'');
   }else{
     _trybCards=await loadDueCardsForTryb();_trybSetCards=_trybCards.slice();
   }
-  if(_trybChallengeMode){var hard=_trybCards.filter(function(c){return(c.ease_factor||2.5)<1.8;});_trybCards=shuffleArr(_trybCards.concat(hard));}
+  if(_trybChallengeMode && !_preordered){var hard=_trybCards.filter(function(c){return(c.ease_factor||2.5)<1.8;});_trybCards=shuffleArr(_trybCards.concat(hard));}
   if(!_trybCards.length){showTrybView('lobby');if(typeof showToast==='function')showToast('Brak słów do nauki — wybierz zestaw!','success');return;}
+  window._trybBlocksMulti = _preordered && (function(){ var s={}; for(var _i=0;_i<_trybCards.length;_i++){ var _l=String(_trybCards[_i].lang||'').toLowerCase(); if(_l) s[_l]=1; } return Object.keys(s).length>1; })();
   var tot=document.getElementById('tryb-card-total');if(tot)tot.textContent=_trybCards.length;
   // Show mode picker
   showTrybModePicker();
@@ -7343,9 +7426,10 @@ function usrsRecommend(uid, lang, n){
     var store=_usrsLoad(uid);
     var all=Object.keys(store).map(function(k){return store[k];})
       .filter(function(r){ return r && (r.word||r.translation) && (r.reps==null || r.reps<5); }); // jeszcze nieopanowane
-    var matched=all.filter(function(r){ return r.lang===lang; });
-    var unknown=all.filter(function(r){ return !r.lang; });
-    var pool=(matched.length>=3)?matched:matched.concat(unknown);
+    var _allLang=(!lang||lang==='all');
+    var matched=_allLang?all.slice():all.filter(function(r){ return r.lang===lang; });
+    var unknown=_allLang?[]:all.filter(function(r){ return !r.lang; });
+    var pool=(matched.length>=3||_allLang)?matched:matched.concat(unknown);
     pool.sort(function(a,b){
       var dt=(b.ts||0)-(a.ts||0); if(dt!==0) return dt;       // najpierw ostatnio ćwiczone
       return (a.ef||2.5)-(b.ef||2.5);                          // potem najtrudniejsze
@@ -7360,14 +7444,14 @@ async function usrsDueList(limit){
   // 1) Chmura — autorytatywne (wspólne web↔desktop)
   try{
     var {data}=await db.from('srs_progress')
-      .select('word,translation,flashcard_id,ease_factor,repetitions,interval_days,next_review')
+      .select('word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review')
       .eq('user_id',uid).lte('next_review',today).limit(limit||50);
     rows=data||[];
   }catch(e){ rows=null; }
   // 2) Offline → cache lokalny
   if(rows===null){
     var store=_usrsLoad(uid);
-    rows=Object.keys(store).map(function(k){var r=store[k];return {word:r.word,translation:r.translation,flashcard_id:r.fc,ease_factor:r.ef,repetitions:r.reps,interval_days:r.interval,next_review:r.due};})
+    rows=Object.keys(store).map(function(k){var r=store[k];return {word:r.word,translation:r.translation,flashcard_id:r.fc,ease_factor:r.ef,repetitions:r.reps,interval_days:r.interval,next_review:r.due,lang:r.lang};})
       .filter(function(r){return r.next_review&&r.next_review<=today;});
   }
   if(!rows.length) return [];
@@ -7375,7 +7459,7 @@ async function usrsDueList(limit){
   // ćwiczone w lekcjach Lexa, których nie zapisano jako fiszki ("lekcja zbiera"). Wcześniejszy
   // filtr wymagał obecności w aktualnym zestawie i gubił zaległości (75 due → pokazywał ~9).
   rows.sort(function(a,b){ return a.next_review<b.next_review?-1:(a.next_review>b.next_review?1:0); });
-  return rows.slice(0,limit||50).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1}; });
+  return rows.slice(0,limit||50).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1,lang:(r.lang||'')}; });
 }
 async function usrsDueCount(){ try{ var l=await usrsDueList(9999); return l.length; }catch(e){ return 0; } }
 
@@ -7650,6 +7734,7 @@ function _trybResetExtras(){
 }
 
 function loadTrybFlipCard(direction){
+  if(direction!=='prev' && typeof _trybBlockGate==='function' && _trybBlockGate(function(){loadTrybFlipCard(direction);})) return;
   _trybResetExtras();
   var card = _trybCards[_trybIdx];
   if(!card){ showTrybSessionSummary(); return; }
@@ -7823,6 +7908,7 @@ function trybFlipReveal(backText){
 
 // ── TRYB: MULTIWYBÓR ─────────────────────────────────
 function loadTrybMCCard(){
+  if(typeof _trybBlockGate==='function' && _trybBlockGate(function(){loadTrybMCCard();})) return;
   _trybResetExtras();
   var card = _trybCards[_trybIdx];
   if(!card){ showTrybSessionSummary(); return; }
@@ -7882,7 +7968,9 @@ function loadTrybMCCard(){
           btn.style.background='#fcebeb'; btn.style.color='#a32d2d'; btn.style.borderColor='#e24b4a';
           // Re-queue błędnej karty za 3 pozycje (powtórka w tej samej sesji)
           var wrongCard = _trybCards[_trybIdx];
-          _trybCards.splice(Math.min(_trybIdx+3, _trybCards.length), 0, wrongCard);
+          var _ins=Math.min(_trybIdx+3, _trybCards.length);
+          if(window._trybBlocksMulti){ var _wl=String(wrongCard.lang||'').toLowerCase(),_wj=_trybIdx+1; while(_wj<_trybCards.length && String(_trybCards[_wj].lang||'').toLowerCase()===_wl) _wj++; _ins=_wj; }
+          _trybCards.splice(_ins, 0, wrongCard);
         } else {
           _trybSessionStats.correct++;
           _trybSessionStats.xpGained += 7;
@@ -8012,6 +8100,7 @@ function loadTrybMemorizeWritePhase(card, correctAnswer){
 
 
 function loadTrybCard(){
+  if(typeof _trybBlockGate==='function' && _trybBlockGate(function(){loadTrybCard();})) return;
   var card=_trybCards[_trybIdx];
   if(!card){showTrybSessionSummary();return;}
   _trybResetExtras();

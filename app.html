@@ -2187,6 +2187,43 @@ async function eylOpenCat(lang,lvl,catId,catName){
    Czyta next_review <= dziś (data lokalna), zapisuje wg kanonicznego schematu.
    ═══════════════════════════════════════════════════════════════════════════ */
 var _pwQueue=[], _pwIdx=0, _pwDir='foreign', _pwFlipped=false, _pwDone=0, _pwTotal=0;
+/* ── Blokowanie powtórek per język (parytet z index.html): dominujący pierwszy,
+   interleaving zostaje w bloku, między blokami spokojna karta przejścia. ── */
+function _eylSeqByLang(items){
+  var g={}, order=[]; (items||[]).forEach(function(it){ var l=(it&&it.lang||'').toLowerCase()||'_'; if(!g[l]){g[l]=[];order.push(l);} g[l].push(it); });
+  order.sort(function(a,b){ return g[b].length-g[a].length || (a<b?-1:(a>b?1:0)); });
+  var out=[]; order.forEach(function(l){ g[l].forEach(function(x){ out.push(x); }); });
+  return {items:out, langs:order, multiLang:order.length>1};
+}
+function _eylLangMeta(code){ code=String(code||'').toLowerCase(); var nm=(typeof eylLangLabel==='function')?eylLangLabel(code):code.toUpperCase(); var fl=(typeof eylLangFlag==='function')?eylLangFlag(code):''; return {name:nm||code.toUpperCase(), flag:fl||''}; }
+function _pwBlockGate(){
+  if(!window._pwMultiLang) return false;
+  if(_pwIdx<=0 || _pwIdx>=_pwQueue.length) return false;
+  var cur=_pwQueue[_pwIdx], prev=_pwQueue[_pwIdx-1]; if(!cur||!prev) return false;
+  var lc=String(cur.lang||'').toLowerCase(), lp=String(prev.lang||'').toLowerCase();
+  if(!lc||lc===lp) return false;
+  if(!window._pwBlockShown) window._pwBlockShown={};
+  var key=_pwIdx+'|'+lc; if(window._pwBlockShown[key]) return false;
+  window._pwBlockShown[key]=true;
+  _pwRenderTransition(cur); return true;
+}
+function _pwRenderTransition(card){
+  var lang=String(card.lang||'').toLowerCase(), cnt=0;
+  for(var i=_pwIdx;i<_pwQueue.length && String(_pwQueue[i].lang||'').toLowerCase()===lang;i++) cnt++;
+  var meta=_eylLangMeta(lang);
+  var gr=document.getElementById('pw-grades'); if(gr) gr.style.display='none';
+  var hn=document.getElementById('pw-hint'); if(hn) hn.textContent='';
+  var tt=document.getElementById('pw-title'); if(tt) tt.textContent='Powtórki';
+  var stage=document.getElementById('pw-stage'); if(!stage){ pwRenderCard(); return; }
+  stage.innerHTML='<div style="margin:auto;text-align:center;padding:36px 20px">'
+    +'<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:700;margin-bottom:12px">Teraz</div>'
+    +(meta.flag?'<div style="font-size:34px;margin-bottom:10px">'+meta.flag+'</div>':'')
+    +'<div class="h2" style="margin-bottom:4px">'+esc(meta.name)+'</div>'
+    +'<div class="sub" style="margin-bottom:22px">'+cnt+' '+plural(cnt,'fiszka','fiszki','fiszek')+' do powtórki</div>'
+    +'<button class="btn btn-orange" style="width:auto;padding:12px 26px;display:block;margin:0 auto" onclick="_pwContinue()">Kontynuuj</button></div>';
+}
+function _pwContinue(){ pwRenderCard(); }
+
 
 /* Odsiew „duchów”: karty custom (flashcard_id==null) pochodzące z zestawów użytkownika,
    których słowa nie ma już w żadnym aktualnym user_set_cards (materiał usunięty na webie/desktopie),
@@ -2258,6 +2295,8 @@ async function openPowt(){
   document.getElementById('pw-hint').textContent='';
   if(stage) stage.innerHTML=eyelingoLoader('Sprawdzam, co dojrzało do powtórki…');
   _pwQueue=await _pwFetchDue(100);
+  try{ var _sq=_eylSeqByLang(_pwQueue); _pwQueue=_sq.items; window._pwMultiLang=_sq.multiLang; }catch(e){ window._pwMultiLang=false; }
+  window._pwBlockShown={};
   window._pwStartStr={}; try{ _pwQueue.forEach(function(r){ if(r&&r.card_key) window._pwStartStr[r.card_key]=srsStrength(r.repetitions,r.interval_days); }); }catch(e){}
   _pwIdx=0; _pwDone=0; _pwTotal=_pwQueue.length; _pwFlipped=false;
   if(!_pwQueue.length){ pwRenderEmpty(); return; }
@@ -2278,6 +2317,7 @@ function pwRenderEmpty(){
   if(stage) stage.innerHTML='<div class="empty" style="margin:auto"><div style="width:54px;height:54px;border-radius:15px;background:#eef5e6;display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3b7d3b" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg></div><div class="h2">Na dziś nic do powtórki</div><div class="sub" style="max-width:260px;margin:6px auto 0">Wszystko opanowane na teraz. Wróć później albo poucz się z Ailexem — nowe słowa trafią tu automatycznie.</div></div>';
 }
 function pwRenderCard(){
+  if(typeof _pwBlockGate==='function' && _pwBlockGate()) return;
   var r=_pwQueue[_pwIdx]; if(!r){ pwRenderDone(); return; }
   _pwFlipped=false;
   document.getElementById('pw-title').textContent='Powtórki · '+(_pwIdx+1)+' / '+_pwTotal;
