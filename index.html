@@ -2915,21 +2915,19 @@ function navPowtorki(btn){
   if(typeof powtorkiEnter==='function'){ powtorkiEnter(); }
   else if(typeof startSrsSession==='function'){ startSrsSession(); }
 }
-// Badge liczby należnych powtórek w navbarze — PULL (ile realnie dojrzało wg SM-2), nie licznik dni.
+// Badge liczby należnych powtórek w navbarze — PULL kanoniczny z srs_progress.
+// Źródło i filtr sierot IDENTYCZNE jak sesja Powtórek (powtorkiEnter → usrsSync → usrsDueList),
+// więc badge == liczba, którą użytkownik zobaczy po wejściu. Bez fallbacku na word_progress
+// (legacy desktop-only) — to on zawyżał licznik (np. 91 zamiast realnych 19).
 async function refreshNavDueBadge(){
   var badge=document.getElementById('nav-due-badge');
   if(!badge) return;
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){ badge.style.display='none'; return; }
+    try{ if(typeof usrsSync==='function') await usrsSync(); }catch(e){}   // rozgrzej auth+store: filtr sierot rozstrzyga się tak samo jak w sesji
     var cnt=0;
-    try{ if(typeof usrsDueCount==='function') cnt=await usrsDueCount(); }catch(e){}
-    if(!cnt){
-      try{ var today=new Date().toISOString().split('T')[0];
-        var q=await db.from('word_progress').select('*',{count:'exact',head:true}).eq('user_id',sess.user.id).lte('next_review',today);
-        cnt=q.count||0;
-      }catch(e){}
-    }
+    try{ if(typeof usrsDueCount==='function') cnt=await usrsDueCount(); }catch(e){ cnt=0; }
     if(cnt>0){ badge.style.display='inline-block'; badge.textContent=String(cnt>99?'99+':cnt); }
     else { badge.style.display='none'; }
   }catch(e){}
@@ -8349,6 +8347,7 @@ function trybReturnToSource(){
   return false;
 }
 function endSession(){
+  try{ if(typeof refreshNavDueBadge==='function') refreshNavDueBadge(); }catch(e){}   // po sesji badge Powtórek == realna liczba (parytet z app.html closePowt)
   if(_trybSessionStats.total>0){ showTrybSessionSummary(); return; }
   // Brak postępu — wróć tam, skąd przyszedłeś (Strefa/Materiały), nie na landing Tryb Nauki
   if(trybReturnToSource()) return;
