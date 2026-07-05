@@ -2984,7 +2984,6 @@ function showPage(name){
       var _ls0=document.getElementById('mat-learn-surface'); if(_ls0) _ls0.style.display='none';
       if(typeof setMatSegment==='function') setMatSegment(window._matSeg||'eyl'); else switchMatTab('mine');
     }
-    if(typeof updatePowtorkiTile==='function'){ try{ updatePowtorkiTile(); }catch(e){} }
     if(typeof refreshNavDueBadge==='function'){ try{ refreshNavDueBadge(); }catch(e){} }
   }
   if(name==='messages'){ if(typeof loadTcpConvList==='function') loadTcpConvList(); if(typeof tcpRenderMyIdentity==='function') tcpRenderMyIdentity(); }
@@ -3401,7 +3400,6 @@ window.deleteSet = async function deleteSet(id){
     typeof showToast!=='undefined'&&showToast('Zestaw usunięty','success');
     if(window.loadMySets) loadMySets();
     if(typeof loadCollections==='function') loadCollections();
-    if(typeof updatePowtorkiTile==='function') updatePowtorkiTile();
     if(typeof refreshNavDueBadge==='function') refreshNavDueBadge();
   }catch(e){typeof showToast!=='undefined'&&showToast('Błąd: '+(e.message||e),'');}
 };
@@ -3775,18 +3773,7 @@ window.matSetLangApply=async function(setId, code){
     <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
     <div id="mat-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
       <div id="mat-sidebar-inner" style="padding:88px 0 64px 16px;min-width:200px;position:relative">
-      <!-- Powtórki SM-2 (styl Eyelingo) -->
-      <div id="sb-powtorki-tile" onclick="powtorkiEnter()" style="position:relative;display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:12px;cursor:pointer;border:.5px solid var(--border);background:var(--white);transition:border-color .2s, box-shadow .2s, transform .2s;margin-bottom:14px;margin-right:16px;overflow:hidden" onmouseover="this.style.borderColor='var(--orange)';this.style.boxShadow='0 4px 14px rgba(26,35,64,.07)';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor=(this.dataset.due==='1'?'rgba(201,106,42,.35)':'var(--border)');this.style.boxShadow='none';this.style.transform='none'">
-        <span id="sb-powtorki-accent" style="position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--orange);border-radius:3px 0 0 3px;opacity:0;transition:opacity .2s"></span>
-        <div id="sb-powtorki-icon" style="width:27px;height:27px;border-radius:9px;background:rgba(26,35,64,.06);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-family:DM Sans,sans-serif;font-size:12.5px;font-weight:500;color:var(--navy);line-height:1.2" id="sb-powtorki-label">Powtórki SM-2</div>
-          <div style="font-size:10.5px;color:var(--dim2);margin-top:1px" id="sb-powtorki-sub">System powtórek SM-2</div>
-        </div>
-        <div id="sb-due-count" style="font-family:DM Sans,sans-serif;font-size:12px;font-weight:600;color:#fff;background:var(--orange);border-radius:7px;min-width:20px;text-align:center;padding:2px 7px;display:none;flex-shrink:0">0</div>
-      </div>
+      <!-- Powtórki SM-2 przeniesione w całości do navbara (ntab-powtorki). Kafelek sidebar-owy usunięty jako duplikat. -->
       <!-- Katalogi (zwijane) -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-right:16px">
         <div onclick="matToggleCatalogs()" style="display:flex;align-items:center;gap:7px;cursor:pointer;flex:1;min-width:0;user-select:none">
@@ -4837,48 +4824,6 @@ function toggleStrefaSidebar(){
 }
 
 
-async function updatePowtorkiTile(){
-  var tile=document.getElementById('sb-powtorki-tile');
-  var countEl=document.getElementById('sb-due-count');
-  var subEl=document.getElementById('sb-powtorki-sub');
-  if(!tile) return;
-  try{
-    var sess=(await db.auth.getSession()).data.session;
-    if(!sess) return;
-    var today=new Date().toISOString().split('T')[0];
-    // Liczba powtórek z uniwersalnego store (własne + eyelingo)
-    var cnt=await usrsDueCount();
-    if(!cnt){
-      try{
-        var {count}=await db.from('word_progress').select('*',{count:'exact',head:true}).eq('user_id',sess.user.id).lte('next_review',today);
-        cnt=count||0;
-      }catch(e){}
-    }
-    if(cnt>0){
-      tile.dataset.due='1';
-      tile.style.background='var(--white)';
-      tile.style.borderColor='rgba(201,106,42,.35)';
-      tile.style.opacity='1';
-      var acc=document.getElementById('sb-powtorki-accent'); if(acc) acc.style.opacity='1';
-      var ico=document.getElementById('sb-powtorki-icon'); if(ico){ ico.style.background='rgba(201,106,42,.12)'; ico.style.color='var(--orange)'; }
-      if(countEl){countEl.style.display='block';countEl.textContent=cnt;}
-      if(subEl){subEl.textContent=(cnt===1?'1 słowo do powtórki':cnt+' słów do powtórki');subEl.style.color='var(--orange)';}
-      var label=document.getElementById('sb-powtorki-label');
-      if(label){label.style.color='var(--navy)';}
-    } else {
-      tile.dataset.due='0';
-      tile.style.background='var(--white)';
-      tile.style.borderColor='var(--border)';
-      tile.style.opacity='.7';
-      var acc2=document.getElementById('sb-powtorki-accent'); if(acc2) acc2.style.opacity='0';
-      var ico2=document.getElementById('sb-powtorki-icon'); if(ico2){ ico2.style.background='rgba(26,35,64,.06)'; ico2.style.color='var(--navy)'; }
-      if(countEl) countEl.style.display='none';
-      if(subEl){subEl.textContent='Wszystko na bieżąco';subEl.style.color='var(--dim2)';}
-      var label2=document.getElementById('sb-powtorki-label');
-      if(label2){label2.style.color='var(--navy)';}
-    }
-  }catch(e){}
-}
 
 // Wejście w Powtórki (navbar / kafelek) — bezpośrednio na stronę Trybu, jeden
 // ekran ładowania w miejscu docelowym. Bez migania powierzchni „Zestawy/Nauka"
