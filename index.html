@@ -2305,12 +2305,18 @@ window.switchMatTab = function(tab){
   <div class="modal-box">
     <button class="modal-close" onclick="closeModal('privacy')">✕</button>
     <h2>Polityka Prywatności</h2>
-    <p><strong>1. Administrator danych</strong><br>Administratorem Twoich danych jest Eyelingo, kontakt: eyelingo.app@gmail.com</p>
-    <p><strong>2. Zbierane dane</strong><br>Zbieramy: adres e-mail, pseudonim, statystyki nauki (liczba obejrzanych słów, czas aktywności, konsystencja), informacje o zakupionych poziomach.</p>
-    <p><strong>3. Cel przetwarzania</strong><br>Dane służą do świadczenia usługi nauki języków, obsługi konta użytkownika oraz realizacji płatności.</p>
-    <p><strong>4. Przechowywanie</strong><br>Dane są przechowywane na serwerach Supabase (UE) do momentu usunięcia konta.</p>
-    <p><strong>5. Prawa użytkownika</strong><br>Masz prawo do dostępu, poprawy i usunięcia swoich danych. Napisz do nas na adres e-mail powyżej.</p>
-    <p><strong>6. Płatności</strong><br>Płatności są obsługiwane przez Stripe. Nie przechowujemy danych kart płatniczych.</p>
+    <p style="font-size:12px;color:var(--dim2)">Ostatnia aktualizacja: [UZUPEŁNIĆ: DD.MM.RRRR]</p>
+    <p><strong>1. Administrator danych</strong><br>Administratorem Twoich danych osobowych jest [UZUPEŁNIĆ: firma / imię i nazwisko, adres, NIP], prowadzący serwis Eyelingo. Kontakt w sprawach danych: eyelingo.app@gmail.com</p>
+    <p><strong>2. Jakie dane przetwarzamy</strong><br>Dane konta (e-mail, pseudonim, hasło w postaci zabezpieczonej); dane nauki (postępy powtórek SRS, aktywność, tworzone przez Ciebie zestawy i notatki); treść zapytań i rozmów z asystentami AI; treści, które udostępniasz innym użytkownikom lub lektorom; dane dotyczące płatności (status subskrypcji, identyfikatory transakcji — bez danych karty); dane techniczne (logi, adres IP, informacje o urządzeniu).</p>
+    <p><strong>3. Cele i podstawy prawne (art. 6 RODO)</strong><br>Świadczenie usługi, prowadzenie konta, funkcje AI i płatności — art. 6 ust. 1 lit. b (wykonanie umowy). Bezpieczeństwo, zapobieganie nadużyciom, limity i rozwój produktu — art. 6 ust. 1 lit. f (uzasadniony interes). Dokumentacja rozliczeniowa — art. 6 ust. 1 lit. c (obowiązek prawny). Analityka aplikacji desktopowej — art. 6 ust. 1 lit. a (zgoda).</p>
+    <p><strong>4. Odbiorcy danych</strong><br>Korzystamy z zaufanych dostawców przetwarzających dane w naszym imieniu: Supabase (hosting i baza danych, region UE); OpenRouter oraz dostawcy modeli AI, m.in. Anthropic (generowanie odpowiedzi AI); ElevenLabs (lektor głosowy); Pexels (obrazy do fiszek); Stripe (płatności); PostHog (analityka — wyłącznie aplikacja desktopowa).</p>
+    <p><strong>5. Przekazywanie poza EOG</strong><br>Część dostawców (m.in. dostawcy modeli AI, ElevenLabs, Pexels, Stripe) może przetwarzać dane poza EOG, w tym w USA. Transfer odbywa się na podstawie standardowych klauzul umownych (SCC) lub programu Data Privacy Framework.</p>
+    <p><strong>6. Okres przechowywania</strong><br>Dane konta i nauki — do usunięcia konta. Dokumentacja rozliczeniowa — przez okres wymagany prawem podatkowym (co do zasady 5 lat). Logi bezpieczeństwa — [UZUPEŁNIĆ: np. 12 miesięcy].</p>
+    <p><strong>7. Twoje prawa</strong><br>Masz prawo dostępu, sprostowania, usunięcia, ograniczenia, przenoszenia i sprzeciwu, a także wycofania zgody. Przysługuje Ci prawo skargi do Prezesa Urzędu Ochrony Danych Osobowych (ul. Stawki 2, 00-193 Warszawa). Konto z danymi możesz usunąć samodzielnie w ustawieniach lub pisząc na adres powyżej.</p>
+    <p><strong>8. Funkcje AI a Twoje dane</strong><br>Treści wpisywane w rozmowach i lekcjach z AI są przekazywane dostawcom modeli. Prosimy nie umieszczać w nich danych wrażliwych ani poufnych.</p>
+    <p><strong>9. Pliki cookie i pamięć lokalna</strong><br>W wersji web/PWA używamy wyłącznie mechanizmów niezbędnych do działania i utrzymania sesji logowania — nie stosujemy analityki śledzącej. Aplikacja desktopowa korzysta z analityki PostHog (zgoda / opt-out).</p>
+    <p><strong>10. Płatności</strong><br>Płatności obsługuje Stripe. Nie przechowujemy danych kart płatniczych.</p>
+    <p><strong>11. Zmiany Polityki</strong><br>O istotnych zmianach poinformujemy w Serwisie lub na adres e-mail.</p>
   </div>
 </div>
 
@@ -2464,6 +2470,11 @@ const AI_PROXY_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/supe
 const PEXELS_PROXY_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/pexels-search';
 console.log('%c✅ EYELINGO BUILD v-FABIAN-NAPRAWY załadowany','color:#c96a2a;font-size:16px;font-weight:bold');
 const APIKEY_CONST = 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
+/* ── Eyelingo analytics (first-party, region UE) ── */
+var EYL_AN={base:SUPABASE_URL,anon:APIKEY_CONST,surface:'web',ver:(window.EYL_APP_VERSION||null),sid:((self.crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now())),buf:[]};
+function track(ev,props){try{EYL_AN.buf.push({event:ev,props:props||{},session:EYL_AN.sid,surface:EYL_AN.surface,version:EYL_AN.ver,ts:new Date().toISOString()});if(EYL_AN.buf.length>=15)eylFlush();}catch(_e){}}
+function eylFlush(){try{if(!EYL_AN.buf.length)return;var b=EYL_AN.buf;EYL_AN.buf=[];var tok=window._eylTok||EYL_AN.anon;fetch(EYL_AN.base+'/rest/v1/rpc/track_events',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','apikey':EYL_AN.anon,'Authorization':'Bearer '+tok},body:JSON.stringify({p_batch:b})}).catch(function(){});}catch(_e){}}
+try{document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')eylFlush();});window.addEventListener('pagehide',function(){eylFlush();});}catch(_e){}
 const GENERATE_ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
 const TRANSLATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-sentence';
 // Uniwersalna ekstrakcja tekstu z odpowiedzi AI — obsługuje Gemini (candidates),
@@ -2537,7 +2548,7 @@ function reloadUserScopedState(){
         killLegacyLeakKeys();
         reloadUserScopedState();
       });
-      db.auth.onAuthStateChange(function(event, session){
+      db.auth.onAuthStateChange(function(event, session){ try{window._eylTok=session&&session.access_token;}catch(_e){}
         var _prev = window._uid;
         var _new = session ? session.user.id : null;
         window._uid = _new;
@@ -2621,6 +2632,7 @@ async function submitAuth(){
         // Zapisz pseudonim - upsert żeby nie było błędu jeśli trigger już stworzył wiersz
         if(username&&res.data.user){
           await db.from('profiles').upsert({user_id:res.data.user.id,username},{onConflict:'user_id'}).select();
+          try{track('user_signup',{surface:'web'});}catch(_e){}
         }
         showPage('dash');
       }
@@ -2643,6 +2655,7 @@ async function loadDashboard(){
   document.getElementById('dash-name').textContent=name;
   updateNav(true,name);
 
+  try{track('session_start',{surface:'web'});}catch(_e){}
   // ── Konsystencja + łączne statystyki (learning_stats, kumulatywne) ──
   let{data:s}=await db.from('learning_stats').select('cards_seen,minutes_active,streak_days').eq('user_id',user.id).maybeSingle();
   if(!s){
@@ -3137,6 +3150,7 @@ async function eylCanCreateSet(){
   return (await eylSetCount()) < 5;
 }
 function eylUpgradeModal(title,msg){
+  try{track('pro_recommended',{surface:'web'});}catch(_e){}
   var old=document.getElementById('eyl-upgrade-ov'); if(old) old.remove();
   var ov=document.createElement('div');
   ov.id='eyl-upgrade-ov';
@@ -5529,6 +5543,7 @@ async function chatSend(){
   if(!text)return;
   if(getChatUsageToday()>=CHAT_DAILY_LIMIT){
     appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO. 🌟');
+    try{track('rozmowa_limit_reached',{surface:'web'});}catch(_e){}
     return;
   }
   var btn=document.getElementById('chat-send-btn');
@@ -5536,6 +5551,7 @@ async function chatSend(){
 
   appendChatMsg('user',text);
   _chatHistory.push({role:'user',content:text});
+  try{track('rozmowa_message',{surface:'web',chars:text.length});}catch(_e){}
 
   // Most #3: user pyta o znaczenie słowa z fiszek → boost na desktopie
   try{
@@ -6087,6 +6103,7 @@ function srsRate(quality){
 function srsNext(){ _srsIdx++; showSrsCard(); }
 
 function showSrsDone(){
+  try{track('review_session_completed',{surface:'web',cards:(window._srsCards?_srsCards.length:null)});}catch(_e){}
   var cardView=document.getElementById('strefa-card-view');
   if(cardView){
     var inner=cardView.querySelector('.strefa-card');
@@ -7372,6 +7389,7 @@ async function usrsRecord(card,newSRS){
     // 1) Cache lokalny (offline + szybkie rekomendacje)
     var store=_usrsLoad(uid);
     try{ if(window._trybSessionActive && window._trybKnowBefore && !(key in window._trybKnowBefore)){ var _pv=store[key]||{}; window._trybKnowBefore[key]={ef:_pv.ef,reps:_pv.reps,interval:_pv.interval,word:w,translation:tr}; } }catch(e){}
+    try{var _old=store[key];var _wm=_old&&_old.reps>=3&&_old.interval>=21;var _nm=newSRS.repetitions>=3&&newSRS.interval_days>=21;if(!_wm&&_nm)track('card_mastered',{surface:'web',lang:lang});}catch(_e){}
     store[key]={ef:newSRS.ease_factor,interval:newSRS.interval_days,reps:newSRS.repetitions,due:newSRS.next_review,word:w,translation:tr,fc:fc,lang:lang,ts:Date.now()};
     _usrsSaveAll(uid,store);
     // 2) Zapis do chmury (wspólne web↔desktop) — nie blokuje UI

@@ -631,6 +631,11 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 /* ===== Supabase (klucze publiczne, te same co index.html) ===== */
 const SUPABASE_URL='https://sntlgkhktscezxpxrchl.supabase.co';
 const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
+/* ── Eyelingo analytics (first-party, region UE) ── */
+var EYL_AN={base:SUPABASE_URL,anon:SUPABASE_KEY,surface:'mobile',ver:(window.EYL_APP_VERSION||null),sid:((self.crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now())),buf:[]};
+function track(ev,props){try{EYL_AN.buf.push({event:ev,props:props||{},session:EYL_AN.sid,surface:EYL_AN.surface,version:EYL_AN.ver,ts:new Date().toISOString()});if(EYL_AN.buf.length>=15)eylFlush();}catch(_e){}}
+function eylFlush(){try{if(!EYL_AN.buf.length)return;var b=EYL_AN.buf;EYL_AN.buf=[];var tok=window._eylTok||EYL_AN.anon;fetch(EYL_AN.base+'/rest/v1/rpc/track_events',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','apikey':EYL_AN.anon,'Authorization':'Bearer '+tok},body:JSON.stringify({p_batch:b})}).catch(function(){});}catch(_e){}}
+try{document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')eylFlush();});window.addEventListener('pagehide',function(){eylFlush();});}catch(_e){}
 let db=null;
 try{ var _c=(window.supabase&&(supabase.createClient||(supabase.default&&supabase.default.createClient))); if(_c) db=_c(SUPABASE_URL,SUPABASE_KEY); }catch(e){}
 
@@ -649,6 +654,8 @@ window.addEventListener('load', async function(){
 
 function showLogin(){ document.getElementById('s-login').style.display='flex'; document.getElementById('app-main').classList.add('hide'); }
 function onAuthed(session){
+  try{window._eylTok=session&&session.access_token;}catch(_e){}
+  try{track('session_start',{surface:'mobile'});}catch(_e){}
   UID=session.user.id; USER_EMAIL=session.user.email||'';
   document.getElementById('s-login').style.display='none';
   document.getElementById('app-main').classList.remove('hide');
@@ -682,6 +689,7 @@ async function doAuth(){
     if(res.error){ showLoginErr(translateAuthErr(res.error.message)); btn.disabled=false; btn.textContent=authMode==='login'?'Zaloguj się':'Załóż konto'; return; }
     var session=res.data && res.data.session;
     if(!session){ showLoginErr('Sprawdź skrzynkę — potwierdź e-mail, potem zaloguj się.'); btn.disabled=false; btn.textContent='Zaloguj się'; return; }
+    try{ if(authMode==='signup') track('user_signup',{surface:'mobile'}); }catch(_e){}
     onAuthed(session);
   }catch(e){ showLoginErr('Coś poszło nie tak. Spróbuj ponownie.'); btn.disabled=false; btn.textContent='Zaloguj się'; }
 }
@@ -2696,9 +2704,10 @@ function alexEndSession(){
 function alexIsStall(t){var s=String(t||'').trim().toLowerCase();if(s.length>0&&s.length<12)return true;return /nie wiem|wszystko jedno|cokolwiek|ty wybierz|ty zdecyduj|obojętn|bez różnicy|nudn|whatever|dunno|no idea|you (choose|decide|pick)/.test(s);}
 async function alexSend(){
   var input=document.getElementById('alex-input'); var text=(input.value||'').trim(); if(!text) return;
-  if(_alexUsageToday>=ALEX_DAILY_LIMIT){ alexAppend('ai','Osiągnąłeś dzienny limit '+ALEX_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO.'); return; }
+  if(_alexUsageToday>=ALEX_DAILY_LIMIT){ try{track('rozmowa_limit_reached',{surface:'mobile'});}catch(_e){} alexAppend('ai','Osiągnąłeś dzienny limit '+ALEX_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO.'); return; }
   var btn=document.getElementById('alex-send'); btn.disabled=true; input.value='';
   alexAppend('user',text); _alexHistory.push({role:'user',content:text});
+  try{track('rozmowa_message',{surface:'mobile',chars:text.length});}catch(_e){}
 
   var msgs=document.getElementById('alex-msgs');
   var typing=document.createElement('div'); typing.style.cssText='align-self:flex-start;color:var(--dim2);font-size:13px;padding:4px'; typing.textContent='pisze...'; msgs.appendChild(typing); msgs.scrollTop=99999;
