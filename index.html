@@ -2472,7 +2472,7 @@ console.log('%c✅ EYELINGO BUILD v-FABIAN-NAPRAWY załadowany','color:#c96a2a;f
 const APIKEY_CONST = 'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
 /* ── Eyelingo analytics (first-party, region UE) ── */
 var EYL_AN={base:SUPABASE_URL,anon:APIKEY_CONST,surface:'web',ver:(window.EYL_APP_VERSION||null),sid:((self.crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now())),buf:[]};
-function track(ev,props){try{EYL_AN.buf.push({event:ev,props:props||{},session:EYL_AN.sid,surface:EYL_AN.surface,version:EYL_AN.ver,ts:new Date().toISOString()});if(EYL_AN.buf.length>=15)eylFlush();}catch(_e){}}
+function track(ev,props){try{EYL_AN.buf.push({event:ev,props:props||{},session:EYL_AN.sid,surface:EYL_AN.surface,version:EYL_AN.ver,ts:new Date().toISOString()});if(EYL_AN.buf.length>=10)eylFlush();else{try{clearTimeout(EYL_AN._t);}catch(_e){}EYL_AN._t=setTimeout(eylFlush,1500);}}catch(_e){}}
 function eylFlush(){try{if(!EYL_AN.buf.length)return;var b=EYL_AN.buf;EYL_AN.buf=[];var tok=window._eylTok||EYL_AN.anon;fetch(EYL_AN.base+'/rest/v1/rpc/track_events',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','apikey':EYL_AN.anon,'Authorization':'Bearer '+tok},body:JSON.stringify({p_batch:b})}).catch(function(){});}catch(_e){}}
 try{document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')eylFlush();});window.addEventListener('pagehide',function(){eylFlush();});}catch(_e){}
 const GENERATE_ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
