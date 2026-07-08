@@ -5979,6 +5979,7 @@ async function startSrsMode(setId, setName, cards){
   // Przetasuj
   for(var i=due.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=due[i];due[i]=due[j];due[j]=t;}
   _srsCards=due; _srsIdx=0;
+  try{ await _hydrateTranslit(_srsCards); }catch(e){}
   showSrsCard();
 }
 
@@ -6010,6 +6011,7 @@ function showSrsCard(){
   var sentTrEl=document.getElementById('sc-sentence-tr');
   if(wordEl) wordEl.textContent=c.word;
   if(trEl) trEl.textContent='';  // ukryj tłumaczenie
+  _attachTranslit(wordEl, (c&&c.romaji)?c.romaji:'', 'sc-word-romaji');
   if(sentEl) sentEl.innerHTML='<div style="color:var(--dim2);font-size:14px;font-style:italic">Czy pamiętasz to słowo?</div>';
   if(sentTrEl) sentTrEl.textContent='';
 
@@ -7221,6 +7223,33 @@ function sm2Local(card,quality){
 }
 
 var _trybCards=[],_trybIdx=0,_trybHintLevel=0,_trybHintPenalty=0;
+// ── Transliteracja (romaji) na fiszkach — parytet z app.html (Flashcard Bible §dual-coding) ──
+// romaji ZAWSZE pod slowem natywnym, nigdy pod polskim tlumaczeniem. 14px, wyciszony, bez akcentu.
+async function _hydrateTranslit(cards){
+  try{
+    if(!cards||!cards.length||typeof db==='undefined') return;
+    var ids=[];
+    cards.forEach(function(c){ if(!c||c.romaji) return; var fid=(c.flashcard_id!=null?c.flashcard_id:(c.id!=null?c.id:null)); if(fid!=null && ids.indexOf(fid)<0) ids.push(fid); });
+    if(!ids.length) return;
+    var rm={};
+    for(var i=0;i<ids.length;i+=800){
+      var chunk=ids.slice(i,i+800);
+      var fr=await db.from('flashcards').select('id,romaji').in('id',chunk);
+      ((fr&&fr.data)||[]).forEach(function(x){ if(x&&x.romaji) rm[x.id]=x.romaji; });
+    }
+    cards.forEach(function(c){ if(!c||c.romaji) return; var fid=(c.flashcard_id!=null?c.flashcard_id:(c.id!=null?c.id:null)); if(fid!=null && rm[fid]) c.romaji=rm[fid]; });
+  }catch(e){}
+}
+function _attachTranslit(el, text, subId){
+  try{
+    if(!el||!el.parentNode) return;
+    var r=document.getElementById(subId);
+    if(text){
+      if(!r){ r=document.createElement('div'); r.id=subId; r.className='eyl-rmj'; r.style.cssText='font-size:14px;color:var(--dim2);margin-top:4px;font-weight:400;letter-spacing:.01em;line-height:1.35'; el.parentNode.insertBefore(r, el.nextSibling); }
+      r.textContent=text; r.style.display='block';
+    } else if(r){ r.textContent=''; r.style.display='none'; }
+  }catch(e){}
+}
 var _trybMode = 'write'; // write | flip | mc | memorize
 var _trybFlipRevealed = false;
 var _trybMcOptions = [];
@@ -7360,6 +7389,7 @@ async function startSession(mode){
     _trybCards=await loadDueCardsForTryb();_trybSetCards=_trybCards.slice();
   }
   if(_trybChallengeMode && !_preordered){var hard=_trybCards.filter(function(c){return(c.ease_factor||2.5)<1.8;});_trybCards=shuffleArr(_trybCards.concat(hard));}
+  try{ await _hydrateTranslit(_trybCards); }catch(e){}
   if(!_trybCards.length){showTrybView('lobby');if(typeof showToast==='function')showToast('Brak słów do nauki — wybierz zestaw!','success');return;}
   window._trybBlocksMulti = _preordered && (function(){ var s={}; for(var _i=0;_i<_trybCards.length;_i++){ var _l=String(_trybCards[_i].lang||'').toLowerCase(); if(_l) s[_l]=1; } return Object.keys(s).length>1; })();
   var tot=document.getElementById('tryb-card-total');if(tot)tot.textContent=_trybCards.length;
@@ -7851,6 +7881,7 @@ function loadTrybFlipCard(direction){
   var ex = document.getElementById('tryb-card-example');
   if(word) word.textContent = frontText;
   if(ex) ex.textContent = '';
+  _attachTranslit(word, (_trybCardDirection==='foreign'&&card&&card.romaji)?card.romaji:'', 'tryb-card-romaji');
 
   // Store backText
   var ansData = document.getElementById('tryb-card-answer-data');
@@ -7886,6 +7917,8 @@ function trybFlipReveal(backText){
   var userWrote = document.getElementById('tryb-user-wrote');
   if(wordAns) wordAns.textContent = frontText;
   if(cardAns) cardAns.textContent = backText || (card&&(_trybCardDirection==='foreign'?card.translation:card.word)||'');
+  _attachTranslit(wordAns, (_trybCardDirection==='foreign'&&card&&card.romaji)?card.romaji:'', 'tryb-ans-romaji-top');
+  _attachTranslit(cardAns, (_trybCardDirection!=='foreign'&&card&&card.romaji)?card.romaji:'', 'tryb-ans-romaji-bot');
   if(resIcon) resIcon.textContent = '';
   if(userWrote) userWrote.textContent = '';
   try{ if(window.elTrybShowImage) window.elTrybShowImage(card); }catch(e){}
@@ -8006,6 +8039,7 @@ function loadTrybMCCard(){
   var ex = document.getElementById('tryb-card-example');
   if(word) word.textContent = frontText;
   if(ex) ex.textContent = '';
+  _attachTranslit(word, (_trybCardDirection==='foreign'&&card&&card.romaji)?card.romaji:'', 'tryb-card-romaji');
 
   // Generate 3 wrong options
   var others = _trybCards.filter(function(c,idx){ return idx !== _trybIdx; });
@@ -8109,6 +8143,7 @@ function loadTrybMemorizeMCPhase(){
 
   var word = document.getElementById('tryb-card-word');
   if(word) word.textContent = frontText;
+  _attachTranslit(word, (_trybCardDirection==='foreign'&&card&&card.romaji)?card.romaji:'', 'tryb-card-romaji');
 
   // Build MC options grid and inject into q-side (front face)
   var qside = document.getElementById('tryb-q-side');
@@ -8424,8 +8459,10 @@ async function showTrybMiniStory(){
 
 function trybReturnToSource(){
   var src = window._trybSource;
-  if(src==='strefa'){ showPage('strefa'); return true; }
-  if(src==='community'){ showPage('community'); return true; }
+  // Powrot do biblioteki zrodlowej (wlasciwy segment) — NIE na hub Trybu Nauki i bez re-wejscia w sesje.
+  if(src==='eyelingo'){ window._matSeg='eyl'; window._matPendingLearn=false; showPage('community'); return true; }
+  if(src==='strefa'){ window._matSeg='mine'; window._matPendingLearn=false; showPage('community'); return true; }
+  if(src==='community'){ window._matPendingLearn=false; showPage('community'); return true; }
   return false;
 }
 function endSession(){
@@ -11506,6 +11543,28 @@ var _lexLang = 'en';
 var _lexLangName = 'angielski';
 var _lexLangNative = 'English';
 var _lexVocab = [];
+// ── Opcja pisma w lekcjach Ailexa (transliteracja) — wszystkie pisma nielatinskie ──
+// Preferencja wspolna z mobile przez profiles.jp_script ('native'|'romaji').
+// Addytywnie: gdy brak reading/intro_say albo tryb 'native' => render natywny (jak dotad).
+var _lexScript='native';
+function _lexIsTranslitLang(code){ return {jp:1,zh:1,ko:1,ru:1,uk:1,ar:1}[String(code||'').toLowerCase()]===1; }
+function _lexTranslitNames(code){
+  var M={ jp:{t:'romaji (Hepburn)',n:'kana/kanji'}, zh:{t:'pinyin z zaznaczonymi tonami',n:'znaki hanzi'}, ko:{t:'Revised Romanization',n:'hangul'}, ru:{t:'transliteracja łacińska',n:'cyrylica'}, uk:{t:'transliteracja łacińska',n:'cyrylica'}, ar:{t:'transliteracja łacińska (DIN/ALA-LC)',n:'pismo arabskie'} };
+  return M[String(code||'').toLowerCase()]||{t:'transliteracja łacińska',n:'pismo oryginalne'};
+}
+async function loadScriptPref(){
+  try{ var _s=(await db.auth.getSession()).data.session; if(_s){ var r=await db.from('profiles').select('jp_script').eq('user_id',_s.user.id).maybeSingle(); if(r&&r.data&&r.data.jp_script) return (r.data.jp_script==='romaji'?'romaji':'native'); } }catch(e){}
+  return 'native';
+}
+async function saveScriptPref(v){
+  v=(v==='romaji'?'romaji':'native'); _lexScript=v;
+  try{ var _s=(await db.auth.getSession()).data.session; if(_s) await db.from('profiles').update({jp_script:v}).eq('user_id',_s.user.id); }catch(e){}
+}
+function _lexTranslitInstr(){
+  if(_lexScript!=='romaji') return '';
+  var n=_lexTranslitNames(window._lexLang||'');
+  return 'TRYB TRANSLITERACJI: uczeń nie zna pisma oryginalnego ('+n.n+'). WSZYSTKIE ciągi w języku docelowym (intro, słowa-cele, zdania w ćwiczeniach cue/cloze/contrast/sculpt/produce, opcje, luki, cele, podpowiedzi) zapisuj w '+n.t+'. Markery **…** wokół słów-celów ZOSTAW. W "items" pole "word" ZOSTAW w piśmie oryginalnym ('+n.n+'), a transliterację ('+n.t+') podaj w polu "reading". W "intro" dodaj pole "intro_say" = to samo intro w piśmie oryginalnym ('+n.n+') z **markerami** (używane do wymowy/audio). ';
+}
 var _lexGaps = [];
 var _lexBoard = [];
 var _lexResumeData = null;
@@ -13034,6 +13093,7 @@ async function lexStartLesson(){
   _lexLessonFocus = window._lexNextTopic || null; window._lexNextTopic = null;
   window._lexPortionFocuses = [];
   try{ if(window._lexLang) localStorage.setItem(uk('lex_last_lang'), window._lexLang); }catch(e){}
+  try{ _lexScript = _lexIsTranslitLang(window._lexLang||'') ? await loadScriptPref() : 'native'; }catch(e){ _lexScript='native'; }
   // Scaffolding: jeśli uczeń wybrał zestawy fiszek — to one są materiałem lekcji.
   // Poziom przykładów Lexa = poziom zestawów Eyelingo (np. A2→słowa A2), inaczej poziom ucznia.
   window._lexSourceWords=[]; window._lexLessonLevel=null;
@@ -15349,6 +15409,7 @@ async function lexInit(){
         enrichGap:(window._lexEnrichGap||null),
         portionNum:(window._lexxPortionNum||0),
         portionTarget:(window._lexxPortionTarget||5),
+        script:(_lexScript||'native'),
         currentData:(window._lexxData||null),
         step:(window._lexxStep||0),
         done:(window._lexxDone||null),
@@ -15375,6 +15436,7 @@ async function lexInit(){
     window._lexxPortionNum=Math.max(0,(st.portionNum||1)-1); // generate++ przeskoczy na bieżącą
     window._lexVocab=st.vocab||[]; window._lexBoard=st.board||[]; window._lexGaps=st.gaps||[];
     window._lexSession=st.session||null;
+    _lexScript=(st.script==='romaji'?'romaji':'native');
     window._lexxSweepPool=[]; window._lexxSweepDone=false; window._lexxReflectionDone=false;
     if(typeof lexShowScreen==='function') lexShowScreen('lex-card-engine');
     var ct0=document.getElementById('lex-card-text'); if(ct0) ct0.innerHTML='';
@@ -15420,11 +15482,11 @@ async function lexInit(){
     try{
       var _ctS=(typeof _lexAudioLang!=='undefined' && _lexAudioLang===lang());
       var L=_ctS ? lexxAdv(lang()) : 'polsku';
-      var prompt='Jesteś Ailexem — trenerem języka '+langName()+'. Poziom ucznia: '+lvl+'. Wyjaśnienia po '+L+'. '
+      var prompt='Jesteś Ailexem — trenerem języka '+langName()+'. Poziom ucznia: '+lvl+'. Wyjaśnienia po '+L+'. '+_lexTranslitInstr()
         +(focus?('Temat: "'+focus+'". '):'')+(dueWords||'')
         +'Zbuduj jedną krótką porcję na 3-4 słowach. Zwróć WYŁĄCZNIE poprawny, KOMPLETNY JSON (bez backticków):\n'
         +'{"focus":"temat po '+L+'","intro":"1 zdanie po '+L+'; słowa w '+langName()+' w **gwiazdki**",'
-        +'"items":[{"word":"słowo w '+langName()+'","translation":"po '+L+'"}],'
+        +'"items":[{"word":"słowo w '+langName()+'","translation":"po '+L+'"'+(_lexScript==='romaji'?',"reading":"transliteracja słowa"':'')+'}],'
         +'"exercises":['
         +'{"type":"cue","context":"zdanie w '+langName()+'","context_pl":"tłumaczenie zdania na polski","source":"W rozmowie","question":"pytanie po '+L+'","options":["a","b"],"answer":0,"key":"reguła po '+L+'"},'
         +'{"type":"cloze","sentence":"zdanie w '+langName()+' z ___","sentence_pl":"tłumaczenie zdania na polski; w miejscu luki zostaw ___","answers":["słowo"],"hint":"podpowiedź po '+L+'","explain":"po '+L+'"},'
@@ -15571,7 +15633,7 @@ async function lexInit(){
       : _teLvlInstr;
     var prompt =
       'Jesteś Ailexem — metodycznym trenerem języka '+langName()+'. Uczeń jest na poziomie '+lvl+'. '+lvlGuard+' '+exLevelInstr+' '
-      +kmCtx+'Język wyjaśnień: POLSKI. '
+      +_lexTranslitInstr()+kmCtx+'Język wyjaśnień: POLSKI. '
       +(focus? ('Temat lekcji: "'+focus+'". '):'Dobierz praktyczny, przydatny temat porcji. ')
       +(recentGaps? ('Uwzględnij braki ucznia: '+recentGaps+'. '):'')
       +dueWords
@@ -15587,7 +15649,7 @@ async function lexInit(){
       +'{'
       +'"focus":"krótki temat porcji po '+L+'",'
       +'"intro":"1-2 zdania po '+L+' wprowadzające; słowa docelowe w języku '+langName()+' ujmij w **gwiazdki**",'
-      +'"items":[{"word":"słowo w '+langName()+'","translation":"po '+L+'"}],'
+      +'"items":[{"word":"słowo w '+langName()+'","translation":"po '+L+'"'+(_lexScript==='romaji'?',"reading":"transliteracja słowa"':'')+'}],'
       +'"grammar":null,'
       +'"exercises":['+_shape.map(function(_t){return lexxSpecFor(_t,L);}).join(',')+']}';
     try{
@@ -15648,7 +15710,7 @@ async function lexInit(){
       var h='<div class="lexx-ex-head"><span class="lexx-badge">Słowa porcji</span><span style="font-size:13px;color:var(--dim2)">'+esc(data.focus||'')+'</span></div>';
       var chips='<div class="lexx-items">'+(data.items||[]).map(function(it){
         var isDue=(window._lexxDue||[]).some(function(w){ return lexxNormEx(w.word)===lexxNormEx(it.word||''); });
-        return '<span class="lexx-chip">'+(isDue?'<span style="font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:rgba(201,106,42,.12);color:var(--orange);padding:2px 7px;border-radius:100px">fiszki</span>':'')+'<span class="tl lexx-fw" data-tl-lang="'+lang()+'">'+(typeof window.tlBuildHTML==='function'?window.tlBuildHTML(String(it.word||''),lang()):esc(it.word))+'</span></span>';
+        return '<span class="lexx-chip">'+(isDue?'<span style="font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:rgba(201,106,42,.12);color:var(--orange);padding:2px 7px;border-radius:100px">fiszki</span>':'')+'<span class="tl lexx-fw" data-tl-lang="'+lang()+'">'+(typeof window.tlBuildHTML==='function'?window.tlBuildHTML(String((_lexScript==='romaji'&&it.reading)?it.reading:(it.word||'')),lang()):esc(it.word))+'</span></span>';
       }).join('')+'</div>';
       box.innerHTML=h+chips+'<div style="font-size:12px;color:var(--dim2);margin-top:10px;line-height:1.5">Tapnij słowo — tłumaczenie i wymowa na żądanie. Potem '+((data.exercises||[]).length||4)+' krótkie ćwiczenia, jedno na raz — kończysz produkcją.</div>';
       stage0.appendChild(box);
@@ -15690,7 +15752,7 @@ async function lexInit(){
     try{
       var speechOn=(typeof _lexSpeechEnabled==='undefined')?true:_lexSpeechEnabled;
       if(speechOn && data.intro && typeof lexVoiceSpeak==='function'){
-        var spoken=String(data.intro).replace(/\*\*/g,'').replace(/<[^>]*>/g,'');
+        var spoken=String((_lexScript==='romaji'&&data.intro_say)?data.intro_say:data.intro).replace(/\*\*/g,'').replace(/<[^>]*>/g,'');
         setTimeout(function(){ lexVoiceSpeak(spoken); }, 250);
       }
     }catch(e){}
@@ -15975,7 +16037,7 @@ async function lexInit(){
     var items=(window._lexxData&&window._lexxData.items)||[];
     if(!items.length||!ex) return [];
     var byWord={};
-    items.forEach(function(it){ if(it&&it.word){ byWord[lexxBeatNorm(it.word)]=it; } });
+    items.forEach(function(it){ if(it&&it.word){ byWord[lexxBeatNorm(it.word)]=it; if(it.reading) byWord[lexxBeatNorm(it.reading)]=it; } });
     var srcTr={};
     try{ (window._lexSourceWords||[]).forEach(function(s){ if(s&&s.word){ srcTr[lexxBeatNorm(s.word)]=s.translation||''; } }); }catch(e){}
     var hits=[], seen={};

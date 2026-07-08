@@ -518,10 +518,10 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
           <div class="opt" data-v="target" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot" id="lex-conduct-target-ot">Angielski</div><div class="od" id="lex-conduct-target-od">Lex prowadzi po angielsku</div></div>
         </div></div>
       <div class="field" id="lex-script-field" style="display:none"><div class="lab">Pismo lekcji</div>
-        <div class="sub" style="font-size:12px;margin-bottom:10px">Jak Lex ma zapisywać japoński. Zapamiętujemy Twój wybór — zmienisz, kiedy chcesz.</div>
+        <div class="sub" style="font-size:12px;margin-bottom:10px">W jakim piśmie Lex ma prowadzić lekcję. Zapamiętujemy Twój wybór — zmienisz, kiedy chcesz.</div>
         <div class="opt2" id="lex-script">
-          <div class="opt sel" data-v="native" onclick="lexSel(this,'#lex-script .opt')"><div class="ot">Pismo japońskie</div><div class="od">Kanji / kana</div></div>
-          <div class="opt" data-v="romaji" onclick="lexSel(this,'#lex-script .opt')"><div class="ot">Romaji</div><div class="od">Zapis łaciński</div></div>
+          <div class="opt sel" data-v="native" onclick="lexSel(this,'#lex-script .opt')"><div class="ot">Pismo oryginalne</div><div class="od">pismo oryginalne</div></div>
+          <div class="opt" data-v="romaji" onclick="lexSel(this,'#lex-script .opt')"><div class="ot">Transliteracja</div><div class="od">Zapis łaciński</div></div>
         </div></div>
     </div>
     <div class="thumb"><button class="btn btn-orange" onclick="lexStart()">Zaczynamy →</button></div>
@@ -1150,6 +1150,17 @@ const LEX_PROXY='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/super-end
 const esc=escapeHtml;
 let lexConductLang='pl', lexExLevel='intermediate', lexLevel='B1';
 let _lexScript='native', _lexScriptPref=null;   // pismo lekcji jp: 'native'(kana/kanji) | 'romaji'
+// ── Transliteracja w lekcjach Ailexa — wszystkie pisma nielatinskie (parytet z web) ──
+function _isTranslitLang(code){ return {jp:1,zh:1,ko:1,ru:1,uk:1,ar:1}[String(code||'').toLowerCase()]===1; }
+function _translitNames(code){
+  var M={ jp:{t:'romaji (Hepburn)',n:'kana/kanji'}, zh:{t:'pinyin z zaznaczonymi tonami',n:'znaki hanzi'}, ko:{t:'Revised Romanization',n:'hangul'}, ru:{t:'transliteracja łacińska',n:'cyrylica'}, uk:{t:'transliteracja łacińska',n:'cyrylica'}, ar:{t:'transliteracja łacińska (DIN/ALA-LC)',n:'pismo arabskie'} };
+  return M[String(code||'').toLowerCase()]||{t:'transliteracja łacińska',n:'pismo oryginalne'};
+}
+function _lexScriptLabels(code){
+  try{ var n=_translitNames(code).n;
+    var no=document.querySelector('#lex-script .opt[data-v="native"] .od'); if(no) no.textContent=n;
+  }catch(e){}
+}
 async function loadJpScriptPref(){
   if(_lexScriptPref!=null) return _lexScriptPref;
   var v=null;
@@ -1199,7 +1210,7 @@ function openLexSetup(){
   (async function(){
     var sf=document.getElementById('lex-script-field');
     if(sf){
-      if((curSetLang||'')==='jp'){ sf.style.display='block';
+      if(_isTranslitLang(curSetLang||'')){ sf.style.display='block'; _lexScriptLabels(curSetLang||'');
         var pref=await loadJpScriptPref();
         document.querySelectorAll('#lex-script .opt').forEach(function(o){ o.classList.toggle('sel', (o.dataset.v||'native')===pref); });
       } else { sf.style.display='none'; }
@@ -1285,13 +1296,13 @@ function lexSpecFor(type, L){
 async function lexGenSimple(focus, dueWords){
   try{
     var L=lexConductLang==='target'?langAdv():'polsku';
-    var _isR=(((_lexLang||curSetLang||'')==='jp')&&_lexScript==='romaji');
+    var _isR=(_isTranslitLang(_lexLang||curSetLang||'')&&_lexScript==='romaji'); var _TN=_translitNames(_lexLang||curSetLang||'');
     var prompt='Jesteś Ailexem — trenerem języka '+langGen()+'. Poziom ucznia: '+lexLevel+'. Wyjaśnienia po '+L+'. '
-      +(_isR?'TRYB ROMAJI: wszystkie japońskie ciągi pisz w romaji (Hepburn). W "items" "word" zostaw w kana/kanji, romaji daj w polu "reading". ':'')
+      +(_isR?('TRYB TRANSLITERACJI: wszystkie ciągi w '+langLoc()+' pisz w '+_TN.t+'. W "items" pole "word" zostaw w piśmie oryginalnym ('+_TN.n+'), a transliterację daj w polu "reading". '):'')
       +(focus?('Temat: "'+focus+'". '):'')+(dueWords||'')
       +'Zbuduj jedną krótką porcję na 3-4 słowach. Zwróć WYŁĄCZNIE poprawny, KOMPLETNY JSON (bez backticków):\n'
       +'{"focus":"temat po '+L+'","intro":"1 zdanie po '+L+'; słowa w '+langLoc()+' w **gwiazdki**",'
-      +'"items":[{"word":"słowo w '+langLoc()+(_isR?' (kana/kanji)':'')+'","translation":"po '+L+'"'+(_isR?',"reading":"romaji"':'')+'}],'
+      +'"items":[{"word":"słowo w '+langLoc()+(_isR?(' ('+_TN.n+')'):'')+'","translation":"po '+L+'"'+(_isR?',"reading":"transliteracja"':'')+'}],'
       +'"exercises":['
       +'{"type":"cue","context":"zdanie w '+langLoc()+'","context_pl":"tłumaczenie na polski","source":"W rozmowie","question":"pytanie po '+L+'","options":["a","b"],"answer":0,"key":"reguła po '+L+'"},'
       +'{"type":"cloze","sentence":"zdanie w '+langLoc()+' z ___","sentence_pl":"tłumaczenie na polski, w miejscu luki ___","answers":["słowo"],"hint":"podpowiedź po '+L+'","explain":"po '+L+'"},'
@@ -1312,7 +1323,7 @@ async function lexGeneratePortion(){
   _lexPortionNum++;
   var pn=_lexPortionNum;
   var focus=null;
-  var _isRomaji=(((_lexLang||curSetLang||'')==='jp') && _lexScript==='romaji');
+  var _isRomaji=(_isTranslitLang(_lexLang||curSetLang||'') && _lexScript==='romaji'); var _TN2=_translitNames(_lexLang||curSetLang||'');
   var L=lexConductLang==='target'?langAdv():'polski';
   var dueWords='';
   try{
@@ -1331,7 +1342,7 @@ async function lexGeneratePortion(){
     : lexExLevel==='advanced'
     ? 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze mogą być zaawansowane — poziom C1–C2, złożone struktury, kolokacje, idiomy, naturalny rejestr. '
     : 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze trzymaj na poziomie '+lexLevel+' lub niżej — nie wprowadzaj słownictwa trudniejszego niż '+lexLevel+'. ';
-  var romajiInstr=_isRomaji?('TRYB ROMAJI (japoński): WSZYSTKIE japońskie ciągi (słowa-cele, zdania, luki, odpowiedzi, kafelki, opcje, podpowiedzi, scenariusze) zapisuj WYŁĄCZNIE w romaji (Hepburn) — uczeń nie zna kana/kanji i czyta ORAZ pisze w romaji. Markery **…** wokół słów-celów ZOSTAW. DODATKOWO do wymowy podaj zapis natywny (kana/kanji): w "items" pole "word" zostaw w kana/kanji a romaji daj w polu "reading"; w "intro" dodaj "intro_say" = to samo intro w kana/kanji z **markerami**; w KAŻDYM ćwiczeniu zawierającym japońskie zdanie dodaj pole "say" = to zdanie w kana/kanji. '):''; 
+  var romajiInstr=_isRomaji?('TRYB TRANSLITERACJI: WSZYSTKIE ciągi w języku docelowym (słowa-cele, zdania, luki, odpowiedzi, kafelki, opcje, podpowiedzi, scenariusze) zapisuj WYŁĄCZNIE w '+_TN2.t+' — uczeń nie zna pisma oryginalnego ('+_TN2.n+') i czyta ORAZ pisze w transliteracji. Markery **…** wokół słów-celów ZOSTAW. DODATKOWO do wymowy podaj zapis w piśmie oryginalnym ('+_TN2.n+'): w "items" pole "word" zostaw w piśmie oryginalnym a transliterację daj w polu "reading"; w "intro" dodaj "intro_say" = to samo intro w piśmie oryginalnym z **markerami**; w KAŻDYM ćwiczeniu zawierającym zdanie w języku docelowym dodaj pole "say" = to zdanie w piśmie oryginalnym. '):''; 
   var prompt='Jesteś Ailexem — metodycznym trenerem języka '+langGen()+'. Uczeń jest na poziomie '+lexLevel+'. '+lvlGuard+' '+exLevelInstr+' '+romajiInstr+' '
     +'Język wyjaśnień: '+(lexConductLang==='target'?'ANGIELSKI':'POLSKI')+'. '
     +(focus?('Temat lekcji: "'+focus+'". '):'Dobierz praktyczny, przydatny temat porcji. ')
@@ -1346,7 +1357,7 @@ async function lexGeneratePortion(){
     +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
     +'{"focus":"krótki temat porcji po '+L+'",'
     +'"intro":"1-2 zdania po '+L+' wprowadzające; słowa docelowe w języku '+langLoc()+' ujmij w **gwiazdki**",'+(_isRomaji?'"intro_say":"to samo intro w kana/kanji, słowa-cele w **gwiazdkach**",':'')
-    +'"items":[{"word":"słowo w '+langLoc()+(_isRomaji?' (kana/kanji)':'')+'","translation":"po '+L+'"'+(_isRomaji?',"reading":"to słowo w romaji"':'')+'}],'
+    +'"items":[{"word":"słowo w '+langLoc()+(_isRomaji?(' ('+_TN2.n+')'):'')+'","translation":"po '+L+'"'+(_isRomaji?',"reading":"to słowo w transliteracji"':'')+'}],'
     +'"exercises":['+_shape.map(function(_t){return lexSpecFor(_t,L);}).join(',')+']}';
   try{
     var data=lexParseJSON(await lexProxy(prompt,3000));
@@ -1368,7 +1379,7 @@ async function lexStart(){
   var ecd=document.querySelector('#lex-conduct .opt.sel'); lexConductLang=(ecd&&ecd.dataset.v)||'pl';
   _lexLang=curSetLang||'en';
   _lexScript='native';
-  if((curSetLang||'')==='jp'){ var _es=document.querySelector('#lex-script .opt.sel'); _lexScript=(_es&&_es.dataset.v)||'native'; try{ saveJpScriptPref(_lexScript); }catch(e){} }
+  if(_isTranslitLang(curSetLang||'')){ var _es=document.querySelector('#lex-script .opt.sel'); _lexScript=(_es&&_es.dataset.v)||'native'; try{ saveJpScriptPref(_lexScript); }catch(e){} }
   closeImm('imm-lexsetup'); document.getElementById('imm-lex').classList.add('active');
   lexLoading('Lex przygotowuje lekcję z Twojego zestawu…');
   try{
@@ -1475,7 +1486,7 @@ async function resumeLesson(snap){
   curSetLang=snap.lang||'en'; _lexLang=curSetLang;
   lexLevel=snap.level||'B1'; lexExLevel=snap.exLevel||'intermediate'; lexConductLang=snap.conductLang||'pl';
   _lexScript=(snap.script==='romaji'?'romaji':'native');
-  try{ if((curSetLang||'')==='jp' && !snap.script){ _lexScript=await loadJpScriptPref(); } }catch(e){}
+  try{ if(_isTranslitLang(curSetLang||'') && !snap.script){ _lexScript=await loadJpScriptPref(); } }catch(e){}
   var src=document.getElementById('lex-src'); if(src) src.textContent=curSetName||'Zestaw';
   document.getElementById('imm-lex').classList.add('active');
   lexLoading('Wracam do Twojej lekcji…');
