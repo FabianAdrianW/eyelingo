@@ -1271,12 +1271,12 @@ function lexComposeShape(pn){
 /* ── spec JSON per typ (port lexxSpecFor) ── */
 function lexSpecFor(type, L){
   L=L||'polski';
-  if(type==='cue') return '{"type":"cue","context":"1-2 zdania scenki w '+langLoc()+' z naturalnym użyciem słowa-celu","context_pl":"pełne tłumaczenie pola context na polski","source":"skąd pochodzi scenka, po '+L+', np. Slack / Mail / W rozmowie","question":"pytanie po '+L+' sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po '+L+'; formę docelową w '+langLoc()+' ujmij w **gwiazdki**"}';
-  if(type==='cloze') return '{"type":"cloze","sentence":"zdanie w '+langLoc()+' z ___ w miejscu luki (słowo-cel, którego jeszcze NIE ćwiczono w tej porcji); zdanie MUSI jednoznacznie wymuszać dokładnie jedno słowo-cel, kontekst rozstrzyga","sentence_pl":"tłumaczenie zdania na polski; w miejscu luki zostaw ___ (NIE tłumacz słowa-celu)","answers":["słowo do luki; jeśli zdanie dopuszcza wiele poprawnych słów, wypisz WSZYSTKIE"],"hint":"podpowiedź po '+L+'","explain":"wyjaśnienie po '+L+'"}';
+  if(type==='cue') return '{"type":"cue","context":"1-2 zdania scenki w '+langLoc()+' z naturalnym użyciem słowa-celu","source":"skąd pochodzi scenka, po '+L+', np. Slack / Mail / W rozmowie","question":"pytanie po '+L+' sprawdzające zrozumienie z kontekstu","options":["opcja a","opcja b"],"answer":0,"key":"reguła do zapamiętania po '+L+'; formę docelową w '+langLoc()+' ujmij w **gwiazdki**"}';
+  if(type==='cloze') return '{"type":"cloze","sentence":"zdanie w '+langLoc()+' z ___ w miejscu luki (słowo-cel, którego jeszcze NIE ćwiczono w tej porcji)","answers":["słowo do luki"],"hint":"podpowiedź po '+L+'","explain":"wyjaśnienie po '+L+'"}';
   if(type==='contrast') return '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po '+L+': które jest native, dlaczego, i jaka polska kalka zdradza nie-native"}';
   if(type==='sculpt') return '{"type":"sculpt","intent":"intencja po '+L+', np. grzecznie przesuń termin na czwartek","answer":"POPRAWNE gramatycznie zdanie w '+langLoc()+' realizujące intencję","tiles":["DOKŁADNIE słowa z answer w losowej kolejności","tyle samo kafelków co słów w answer","te same formy, bez odmiany"]}';
   if(type==='produce') return '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langLoc()+'","hint":"po '+L+' co ma zawierać"}';
-  if(type==='warmfire') return '{"type":"warmfire","cue":"KONKRETNE polskie słowo lub znaczenie MOCNEGO słowa porcji, które uczeń ma wyprodukować, np. ładny","prompt":"Jak powiesz po '+langAdv()+': (wstaw to samo co cue)?","answer":"słowo-cel w '+langLoc()+'","explain":"1 krótka nuta po '+L+'"}';
+  if(type==='warmfire') return '{"type":"warmfire","prompt":"krótkie, szybkie wezwanie po '+L+' do wydobycia MOCNEGO słowa porcji (np. Szybko: jak powiesz X?)","answer":"słowo-cel w '+langLoc()+'","explain":"1 krótka nuta po '+L+'"}';
   if(type==='scenario') return '{"type":"scenario","role":"krótka etykieta sceny po '+L+' (np. W kawiarni)","situation":"2-3 zdania sytuacji/roli po '+L+', w której uczeń ma zareagować","must_use":["2-3 słowa-cele porcji w '+langLoc()+' do wplecenia"],"skeleton":"szkielet zdania po '+langLoc()+' z ___ jako fallback","answer":"wzorcowa naturalna realizacja po '+langLoc()+'"}';
   return '';
 }
@@ -1293,8 +1293,8 @@ async function lexGenSimple(focus, dueWords){
       +'{"focus":"temat po '+L+'","intro":"1 zdanie po '+L+'; słowa w '+langLoc()+' w **gwiazdki**",'
       +'"items":[{"word":"słowo w '+langLoc()+(_isR?' (kana/kanji)':'')+'","translation":"po '+L+'"'+(_isR?',"reading":"romaji"':'')+'}],'
       +'"exercises":['
-      +'{"type":"cue","context":"zdanie w '+langLoc()+'","context_pl":"tłumaczenie na polski","source":"W rozmowie","question":"pytanie po '+L+'","options":["a","b"],"answer":0,"key":"reguła po '+L+'"},'
-      +'{"type":"cloze","sentence":"zdanie w '+langLoc()+' z ___","sentence_pl":"tłumaczenie na polski, w miejscu luki ___","answers":["słowo"],"hint":"podpowiedź po '+L+'","explain":"po '+L+'"},'
+      +'{"type":"cue","context":"zdanie w '+langLoc()+'","source":"W rozmowie","question":"pytanie po '+L+'","options":["a","b"],"answer":0,"key":"reguła po '+L+'"},'
+      +'{"type":"cloze","sentence":"zdanie w '+langLoc()+' z ___","answers":["słowo"],"hint":"podpowiedź po '+L+'","explain":"po '+L+'"},'
       +'{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo w '+langLoc()+'","hint":"po '+L+'"}'
       +']}';
     return lexParseJSON(await lexProxy(prompt,2000));
@@ -1340,8 +1340,6 @@ async function lexGeneratePortion(){
     +'Wygeneruj ćwiczenia DOKŁADNIE w tej kolejności i tych typach (nie zmieniaj kolejności, nie dodawaj ani nie usuwaj ćwiczeń): '+_shape.join(', ')+'. '
     +'Role typów: cue = odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem; cloze = wydobycie z pamięci bez podpowiedzi (każdy kolejny cloze dotyczy INNEGO słowa porcji); contrast = para zdań native vs polska kalka (przyimki, false friends, szyk); sculpt = produkcja z intencji przez ułożenie kafelków słów; produce = własne zdanie ucznia z docelowym słowem; warmfire = szybkie wydobycie słowa; scenario = reakcja w sytuacji z wplecionymi słowami. '
     +'Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. Zwykle 1 luka na cloze; jeśli dasz 2 luki ___, dodaj 2 pozycje w "answers". '
-    +'JEDNOZNACZNOŚĆ: każde zdanie cloze musi wymuszać DOKŁADNIE jedno słowo-cel (kontekst rozstrzyga). Jeśli zdanie dopuszcza wiele poprawnych słów (np. "He is ___" przy kilku przymiotnikach), albo dopisz kontekst zawężający do jednego, albo wypisz WSZYSTKIE akceptowalne w "answers". Otwarte polecenia typu "dokończ zdanie" realizuj jako typ produce (ocena AI akceptuje każdą poprawną realizację), NIGDY jako cloze z jednym kluczem. '
-    +'DLA POCZĄTKUJĄCYCH: w ćwiczeniu cue wypełnij "context_pl", a w cloze "sentence_pl" wiernym tłumaczeniem na polski (w sentence_pl zostaw ___ w miejscu słowa-celu). '
     +'GRAMATYKA: jeśli porcja dotyczy gramatyki, w polu "intro" podaj NAJPIERW zwięzły, KOMPLETNY model jako worked example, dopiero potem ćwiczenia. '
     +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
     +'{"focus":"krótki temat porcji po '+L+'",'
@@ -1518,23 +1516,14 @@ function exEyebrow(t){ var m={cue:'Odkrycie',mc:'Rozpoznanie',cloze:'Wydobycie z
 function exObjective(ex){
   if(ex.objective) return esc(ex.objective);
   var m={cue:'Co to znaczy w tym kontekście?',mc:'Wybierz właściwą odpowiedź',cloze:'Uzupełnij — z pamięci, bez podpowiedzi',contrast:'Które zdanie powie native?',translate:'Przetłumacz na '+langName(),produce:'Ułóż własne zdanie',sculpt:'Ułóż zdanie z intencji',transform:'Przekształć zdanie',warmfire:'Szybko — z pamięci',scenario:'Zareaguj w tej sytuacji'};
-  if(ex.type==='warmfire') return esc(m.warmfire);
   return esc(ex.prompt||m[ex.type]||'');
 }
 function lexGapAnswers(ex){ if(ex&&Array.isArray(ex.answers)&&ex.answers.length) return ex.answers.map(function(a){return String(a==null?'':a);}); if(ex&&ex.answer!=null) return [String(ex.answer)]; return []; }
 function lexGapInputHtml(i,g,ans){ var id=(g===0)?('lexx-in-'+i):('lexx-in-'+i+'-'+g); return '<input class="lexx-gap" id="'+id+'" data-gap="'+g+'" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="?" style="width:'+Math.max(7,(String(ans||'').length+2))+'ch">'; }
-// Poziom poczatkujacy: na A1/A2 tlumaczenie zdania-rusztowania jest domyslnie widoczne (comprehension),
-// wyzej - dostepne na tap (pull). Nigdy nie dotyczy slowa-celu w cloze (tam zostaje ___).
-function lexBeginnerLvl(){ return (lexLevel==='A1'||lexLevel==='A2'); }
-function lexGlossHtml(pl){
-  pl=String(pl==null?'':pl).trim(); if(!pl) return '';
-  if(lexBeginnerLvl()) return '<div class="lexx-gloss" style="margin-top:6px;font-size:13px;color:var(--dim2);line-height:1.5">'+esc(pl)+'</div>';
-  return '<div class="lexx-glosswrap" style="margin-top:6px"><button type="button" class="lexx-glossbtn" style="background:none;border:0;padding:0;font:inherit;font-size:12px;color:var(--dim2);text-decoration:underline;cursor:pointer" onclick="var g=this.nextSibling;g.style.display=\'block\';this.style.display=\'none\'">Pokaż tłumaczenie</button><div class="lexx-gloss" style="display:none;font-size:13px;color:var(--dim2);line-height:1.5">'+esc(pl)+'</div></div>';
-}
-function exScene(src,txt,withAudio,sayTxt,glossPl){
+function exScene(src,txt,withAudio,sayTxt){
   var _say=(sayTxt!=null&&sayTxt!=='')?sayTxt:txt;
   var audio=withAudio?'<button type="button" class="lexx-sceneaudio" onclick="lexSceneSpeak(this.getAttribute(\'data-say\'))" data-say="'+esc(String(_say||''))+'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>':'';
-  return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><div class="lexx-scene-line"><p class="lexx-scene-txt">'+esc(txt)+'</p>'+audio+'</div>'+lexGlossHtml(glossPl)+'</div>';
+  return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><div class="lexx-scene-line"><p class="lexx-scene-txt">'+esc(txt)+'</p>'+audio+'</div></div>';
 }
 // ── Dwujęzyczne TTS: narracja po polsku, słowa-cele (**…**) w języku uczonym ──
 var _lexSpkToken=0;
@@ -1632,7 +1621,7 @@ function lexRenderExercise(ex,i){
   var head='<div class="lexx-ex-head"><span class="lexx-eyebrow">'+exEyebrow(ex.type)+'</span></div><div class="lexx-obj">'+exObjective(ex)+'</div>';
   var body='', inputHtml='', needCheck=true;
   if(ex.type==='cue'){
-    body+=exScene(ex.source||'Kontekst', ex.context||'', true, ex.say, ex.context_pl);
+    body+=exScene(ex.source||'Kontekst', ex.context||'', true, ex.say);
     if(ex.question) body+='<div class="lexx-q">'+esc(ex.question)+'</div>';
     inputHtml='<div class="lexx-opts">'+(ex.options||[]).map(function(o,k){ return '<button type="button" class="lexx-opt" data-k="'+k+'" onclick="lexxCueAnswer('+i+','+k+')">'+esc(o)+'</button>'; }).join('')+'</div>';
     needCheck=false;
@@ -1660,19 +1649,18 @@ function lexRenderExercise(ex,i){
     if(re.test(sentRaw)){ re.lastIndex=0; while((mm=re.exec(sentRaw))!==null){ html+=esc(sentRaw.slice(last,mm.index)); html+=lexGapInputHtml(i,gi,answers[gi]||''); gi++; last=mm.index+mm[0].length; } html+=esc(sentRaw.slice(last)); }
     else { html=esc(sentRaw)+' '+lexGapInputHtml(i,0,answers[0]||''); gi=1; }
     _lexGapN[i]=gi||1;
-    body+='<p class="lexx-q lexx-cloze">'+html+'</p>'+lexGlossHtml(ex.sentence_pl)+'<div class="lexx-hint" id="lexx-hint-'+i+'" style="display:none;margin-top:10px"></div>';
+    body+='<p class="lexx-q lexx-cloze">'+html+'</p><div class="lexx-hint" id="lexx-hint-'+i+'" style="display:none;margin-top:10px"></div>';
     inputHtml='';
   } else if(ex.type==='translate'){
     body+=exScene('Po polsku', ex.source||'', false);
     inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoje tłumaczenie po '+langAdv()+'…">';
   } else if(ex.type==='transform'){
-    body+=exScene('Zdanie wyjściowe', ex.source||'', true, ex.say, ex.source_pl);
+    body+=exScene('Zdanie wyjściowe', ex.source||'', true, ex.say);
     if(ex.instruction) body+='<div class="lexx-prompt">'+esc(ex.instruction)+'</div>';
     inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoja wersja…">';
   } else if(ex.type==='warmfire'){
-    var _wfCue=String(ex.prompt||'').trim() || (String(ex.cue||'').trim()?('Jak powiesz po '+langAdv()+': '+String(ex.cue).trim()+'?'):'');
-    body+='<div class="lexx-prompt">'+(_wfCue?esc(_wfCue):('Szybko — wpisz to słowo po '+langAdv()+'.'))+'</div>';
-    inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="wpisz po '+langAdv()+'…" autocomplete="off">';
+    if(ex.prompt) body+='<div class="lexx-prompt">'+esc(ex.prompt)+'</div>';
+    inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Szybko — po '+langAdv()+'…" autocomplete="off">';
   } else if(ex.type==='scenario'){
     body+=exScene(ex.role||'Sytuacja', ex.situation||ex.prompt||'', false);
     var _mu=[].concat(ex.must_use||ex.target||[]).filter(Boolean);
@@ -1800,7 +1788,6 @@ async function lexxAIEval(ex, answer){
       : ('Zadanie: ułóż poprawne zdanie w '+langLoc()+' używając "'+(ex.target||'')+'". Temat porcji: "'+(focus||'codzienna komunikacja')+'". Odpowiedź ucznia: "'+answer+'".');
     var prompt='Jesteś trenerem języka '+langGen()+', uczącym Polaków. '+task+'\n'
       +'Oceń odpowiedź ucznia. Bądź wyrozumiały dla drobnych literówek i alternatywnych poprawnych form. Komentarz pisz naturalnie po '+CL+'. '
-      +'Jeśli zadanie dopuszcza wiele poprawnych słów lub realizacji, zaakceptuj KAŻDĄ poprawną gramatycznie i sensowną — nie wymagaj akurat wzorcowego słowa. '
       +'Trzymaj się tematu porcji; jeśli zdanie jest poprawne ale poza tematem, zaakceptuj i zaproponuj wersję w temacie. '
       +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po '+CL+': co dobrze, co poprawić","gap":""}';
     var raw=await lexProxy(prompt,500); var a=raw.indexOf('{'), b=raw.lastIndexOf('}');
