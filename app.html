@@ -1202,6 +1202,14 @@ function langName(){ return lexLangInfo().name; }            // mianownik
 function langGen(){ return lexLangInfo().gen; }              // dopełniacz: języka ~
 function langLoc(){ return lexLangInfo().loc; }              // miejscownik: w ~
 function langAdv(){ return lexLangInfo().adv; }              // po ~
+// E2/WARMFIRE — niezmiennik cue: ekran produkcji MUSI mieć niepusty cue związany z JEDNĄ odpowiedzią.
+function lexWfCue(ex, items){
+  var p=String((ex&&ex.prompt)||'').trim(); if(p) return p;
+  var c=String((ex&&ex.cue)||'').trim(); if(c) return 'Jak powiesz po '+langAdv()+': '+c+'?';
+  var ans=String((ex&&ex.answer)||'').trim();
+  if(ans){ try{ var arr=items||[]; for(var _k=0;_k<arr.length;_k++){ var it=arr[_k]; if(it && lexNormEx(String(it.word||''))===lexNormEx(ans) && String(it.translation||'').trim()){ return 'Jak powiesz po '+langAdv()+': '+String(it.translation).trim()+'?'; } } }catch(e){} }
+  return '';
+}
 function lexTtsCode(code){ return lexLangInfo(code).tts; }   // BCP-47 dla Web Speech
 function lexLangFlag(code){ return lexLangInfo(code).flag; }
 function lang(){ return _lexLang; }
@@ -1427,6 +1435,7 @@ function lexCheckpointSnap(){
     set_id:_setIdNum(curSetId), set_name:curSetName, set_count:curSetCount, lang:(_lexLang||curSetLang||'en'),
     level:lexLevel, exLevel:lexExLevel, conductLang:lexConductLang, script:_lexScript,
     portionNum:_lexPortionNum, portionTarget:_lexPortionTarget,
+    data:(_lexData?JSON.parse(JSON.stringify(_lexData)):null), step:_lexStep, done:JSON.parse(JSON.stringify(_lexDone||[])),
     vocab:JSON.parse(JSON.stringify(_lexVocab||[])),
     sweepPool:JSON.parse(JSON.stringify(_lexSweepPool||[])),
     shapeS:JSON.parse(JSON.stringify(_lexShapeS||{lastShape:null,recog:0,total:0})),
@@ -1524,12 +1533,25 @@ async function resumeLesson(snap){
   _lexSweepDone=!!snap.sweepDone; _lexReflectionDone=!!snap.reflectionDone;
   _lexStartStr={}; try{ lexSourceWords.forEach(function(pw){ var ck=_usrsCK(pw.word||'',pw.translation||''); var p=PROG[ck]; _lexStartStr[ck]=p?srsStrength(p.r,p.iv):0; }); }catch(e){}
   try{ lexBoardReset(); lexBoardFabShow(true); lexBoardRender(); }catch(e){}
-  await lexGeneratePortion();
+  // Prawdziwe wznowienie: mamy migawkę ŻYWEJ porcji → odtwórz ją DOKŁADNIE i wróć do przerwanego kroku (NIE regeneruj przez LLM).
+  if(snap.data && snap.data.exercises && snap.data.exercises.length){
+    _lexData=snap.data; _lexSculpt={}; _lexGapN={};
+    lexRenderPortion(snap.data);
+    if(Array.isArray(snap.done)) _lexDone=snap.done.slice();
+    var _fi=_lexDone.indexOf(false);
+    if(_lexDone.length && _fi<0){ lexNext(); return; }   // porcja już ukończona → następna
+    var _st=(typeof snap.step==='number')?snap.step:0;
+    if(_st>=0 && _fi>=0) _st=_fi;                         // wróć do pierwszego nieukończonego ćwiczenia
+    lexShowStep(_st);
+    return;
+  }
+  await lexGeneratePortion();   // brak migawki porcji (starsze/pierwsze wejście) → wygeneruj
 }
 
 /* ── render porcji + stepper (port lexxRenderPortion/ShowStep) ── */
 function lexProgressBar(){ var el=document.getElementById('lex-portionfill'); if(el) el.style.width=Math.min(100,Math.round((_lexPortionNum-1)/_lexPortionTarget*100))+'%'; }
 function lexRenderPortion(data){
+  try{ if(data && Array.isArray(data.exercises)){ data.exercises=data.exercises.filter(function(ex){ if(ex && ex.type==='warmfire'){ var _cue=lexWfCue(ex,(data.items||[])); var _hasAns=String(ex.answer||'').trim().length>0; if(!_cue||!_hasAns) return false; ex.prompt=_cue; } return true; }); } }catch(e){}
   _lexDone=(data.exercises||[]).map(function(){return false;});
   lexProgressBar();
   lexShowStep(-1);
@@ -1624,7 +1646,9 @@ function lexSegHtml(){ var total=((_lexData&&_lexData.exercises)||[]).length, ou
 function lexStageHtml(html){ var s=document.getElementById('lex-stage'); if(s) s.innerHTML='<div class="lexx-stage">'+html+'</div>'; }
 
 function lexShowStep(s){
-  _lexStep=s; var w=document.getElementById('lex-stage'); if(!w) return; var data=_lexData||{}; w.innerHTML='';
+  _lexStep=s;
+  try{ if(_lexData && _lexData.exercises && !_lexReflectionDone) lexSaveCheckpoint(lexCheckpointSnap()); }catch(e){}
+  var w=document.getElementById('lex-stage'); if(!w) return; var data=_lexData||{}; w.innerHTML='';
   var stage=document.createElement('div'); stage.className='lexx-stage';
   if(s<0){
     var box=document.createElement('div'); box.className='lexx-ex lexx-introcard';
@@ -1691,8 +1715,8 @@ function lexRenderExercise(ex,i){
     if(ex.instruction) body+='<div class="lexx-prompt">'+esc(ex.instruction)+'</div>';
     inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoja wersja…">';
   } else if(ex.type==='warmfire'){
-    var _wfCue=String(ex.prompt||'').trim() || (String(ex.cue||'').trim()?('Jak powiesz po '+langAdv()+': '+String(ex.cue).trim()+'?'):'');
-    body+='<div class="lexx-prompt">'+(_wfCue?esc(_wfCue):('Szybko — wpisz to słowo po '+langAdv()+'.'))+'</div>';
+    var _wfCue=lexWfCue(ex,(_lexData&&_lexData.items)||[]);
+    body+='<div class="lexx-prompt">'+(_wfCue?esc(_wfCue):('Poproś o nową porcję — to ćwiczenie było niekompletne.'))+'</div>';
     inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="wpisz po '+langAdv()+'…" autocomplete="off">';
   } else if(ex.type==='scenario'){
     body+=exScene(ex.role||'Sytuacja', ex.situation||ex.prompt||'', false);

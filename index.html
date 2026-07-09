@@ -4519,7 +4519,7 @@ async function initToFixPage(){
           <button id="lex-audiolang-btn" onclick="lexToggleAudioLang()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Lekcja: PL</button>
           <span id="lex-script-wrap" style="position:relative;display:inline-flex"><button id="lex-script-btn" onclick="lexToggleScript()" style="display:none;font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif" title="Przełącz pismo lekcji: transliteracja ↔ oryginalne">Pismo: transliteracja</button></span>
           <button onclick="lexAskOpen()" style="font-size:11px;padding:4px 12px;background:var(--orange);border:1px solid var(--orange);border-radius:100px;color:#fff;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Zadaj pytanie Ailexowi — głosem lub tekstem"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 11a7 7 0 0 1-14 0M12 18v4"></path></svg>Zapytaj</button>
-          <button onclick="lexBookOpen(9999)" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Twoje słowa z lekcji"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"></path><path d="M8 4v16M11 9h5M11 13h5"></path></svg>Zeszyt</button>
+          <button id="lex-zeszyt-btn" onclick="lexBookOpen(9999)" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Twoje słowa z lekcji"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"></path><path d="M8 4v16M11 9h5M11 13h5"></path></svg>Zeszyt</button>
           <button onclick="lexToggleBoard()" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"></path><path d="M8 21h8M12 17v4"></path></svg>Tablica</button>
           <button onclick="lexEndLesson()" style="font-size:11px;padding:5px 14px;background:var(--navy);border:1px solid var(--navy);border-radius:100px;color:#fff;cursor:pointer;font-family:DM Sans,sans-serif;font-weight:500">Zakończ</button>
         </div>
@@ -11583,8 +11583,15 @@ window.lexToggleScript=function(){
   _lexScript=(_lexScript==='romaji'?'native':'romaji');
   try{ saveScriptPref(_lexScript); }catch(e){}
   try{ lexUpdateScriptBtn(); }catch(e){}
-  try{ if(window._lexxData && typeof window.lexxRenderPortion==='function') window.lexxRenderPortion(window._lexxData); }catch(e){}
-  try{ if(typeof showToast==='function') showToast((_lexScript==='romaji')?'Pismo: transliteracja — pełny efekt od następnej porcji':'Pismo: oryginalne — pełny efekt od następnej porcji',''); }catch(e){}
+  // Zmiana pisma = twardy refresh: regeneruj bieżącą porcję w nowym piśmie i unieważnij zapisany resume (stara migawka jest w innym piśmie).
+  if(window._lexxData && (window._lexxPortionNum||0)>0 && typeof window.lexxGeneratePortion==='function'){
+    try{ if(typeof window.lexxClearResume==='function') window.lexxClearResume(); }catch(e){}
+    window._lexxPortionNum=Math.max(0,(window._lexxPortionNum||1)-1);
+    try{ if(typeof showToast==='function') showToast((_lexScript==='romaji')?'Pismo: transliteracja — odświeżam porcję':'Pismo: oryginalne — odświeżam porcję',''); }catch(e){}
+    window.lexxGeneratePortion();
+  } else {
+    try{ if(window._lexxData && typeof window.lexxRenderPortion==='function') window.lexxRenderPortion(window._lexxData); }catch(e){}
+  }
 };
 // ── Delikatny, jednorazowy dymek o mozliwosci zmiany pisma (raz na jezyk) ──
 function _lexScriptHintText(){
@@ -13856,6 +13863,14 @@ function lexToggleAudioLang(){
   _lexAudioLang = (_lexAudioLang==='pl') ? (_lexLang||'en') : 'pl';
   try{ localStorage.setItem(uk('lex_audio_lang'), _lexAudioLang); }catch(e){}
   lexUpdateAudioLangBtn();
+  // Zmiana języka prowadzenia = twardy refresh: regeneruj bieżącą porcję w nowym języku i unieważnij zapisany resume.
+  if(window._lexxData && (window._lexxPortionNum||0)>0 && typeof window.lexxGeneratePortion==='function'){
+    try{ if(typeof window.lexxClearResume==='function') window.lexxClearResume(); }catch(e){}
+    window._lexxPortionNum=Math.max(0,(window._lexxPortionNum||1)-1);
+    try{ if(typeof showToast==='function') showToast('Zmieniam język prowadzenia — odświeżam porcję',''); }catch(e){}
+    window.lexxGeneratePortion();
+    return;
+  }
   if(_lexLastSpokenText) lexSpeak(_lexLastSpokenText);
 }
 
@@ -14498,8 +14513,16 @@ function lexStartLessonOnGapTopic(topic){
   lexGoToSetup();
 }
 
+// ── ZESZYT: chwilowo wyłączony na życzenie (kod zachowany; wróć, przełączając flagę na true) ──
+var LEX_ZESZYT_ON=false;
+function lexZeszytApplyState(){
+  try{ if(!LEX_ZESZYT_ON){ var z=document.getElementById('lex-zeszyt-btn'); if(z) z.style.display='none'; var nb=document.getElementById('lex-sb-notebook'); if(nb) nb.style.display='none'; } }catch(e){}
+}
+try{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', lexZeszytApplyState); } else { lexZeszytApplyState(); } }catch(e){}
+
 // #3 Zeszyt — przewijane kartki lekcji
 function lexRenderNotebook(){
+  if(!LEX_ZESZYT_ON){ var _nb=document.getElementById('lex-sb-notebook'); if(_nb) _nb.style.display='none'; return; }
   var box=document.getElementById('lex-sb-notebook'); if(!box) return;
   var gram=(typeof lexGrammarSidebarHTML==='function')?lexGrammarSidebarHTML():'';
   if(!_lexLessonsCache.length){
@@ -14600,6 +14623,7 @@ function lexBookSwitchLang(code){
   lexBookRender();
 }
 function lexBookOpen(i){
+  if(typeof LEX_ZESZYT_ON!=='undefined' && !LEX_ZESZYT_ON) return; // Zeszyt wyłączony
   var m=document.getElementById('lex-book-modal'); if(!m) return;
   // Domyślny język: aktywny język nauki; jeśli brak w nim lekcji — język z największą liczbą lekcji
   var want=(window._lexLang||'en');
@@ -15386,6 +15410,15 @@ async function lexInit(){
   }
   function lang(){ return window._lexLang||'en'; }
   function langName(){ return LN[lang()]||'English'; }
+  // E2/WARMFIRE — niezmiennik cue: ekran produkcji MUSI mieć niepusty cue związany z JEDNĄ odpowiedzią.
+  // Zwraca cue (prompt → cue → odtworzony z tłumaczenia słowa w items). Pusty = ekranu nie wolno pokazać.
+  function lexxWfCue(ex, items){
+    var p=String((ex&&ex.prompt)||'').trim(); if(p) return p;
+    var c=String((ex&&ex.cue)||'').trim(); if(c) return 'Jak powiesz po '+langName()+': '+c+'?';
+    var ans=String((ex&&ex.answer)||'').trim();
+    if(ans){ try{ var arr=items||[]; for(var _k=0;_k<arr.length;_k++){ var it=arr[_k]; if(it && lexxNormEx(String(it.word||''))===lexxNormEx(ans) && String(it.translation||'').trim()){ return 'Jak powiesz po '+langName()+': '+String(it.translation).trim()+'?'; } } }catch(e){} }
+    return '';
+  }
 
   // Due-set z fiszek (word_progress): najsłabsze ease w aktywnym języku → materiał lekcji.
   // Desktop wchodzi automatycznie, o ile pisze do tych samych tabel Supabase.
@@ -15793,6 +15826,8 @@ async function lexInit(){
 
   window.lexxRenderPortion=function(_d){return lexxRenderPortion(_d);};
   function lexxRenderPortion(data){
+    // WARMFIRE guard: usuń ćwiczenia produkcji bez odtwarzalnego cue — nigdy nie pokazuj pustego ekranu (cue niepusty, związany z odpowiedzią).
+    try{ if(data && Array.isArray(data.exercises)){ data.exercises=data.exercises.filter(function(ex){ if(ex && ex.type==='warmfire'){ var _cue=lexxWfCue(ex,(data.items||[])); var _hasAns=String(ex.answer||'').trim().length>0; if(!_cue||!_hasAns) return false; ex.prompt=_cue; } return true; }); } }catch(e){}
     window._lexxDone=(data.exercises||[]).map(function(){return false;});
     try{ if(typeof lexBoardFabShow==='function') lexBoardFabShow(true); }catch(e){}
     try{ lexxSaveResume(); }catch(e){}
@@ -15959,8 +15994,8 @@ async function lexInit(){
       inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoja wersja…">';
     } else if(ex.type==='warmfire'){
       // E2 WARM FIRE: szybkie wydobycie słowa mocnego (tempo + baseline latencji)
-      var _wfCue=String(ex.prompt||'').trim() || (String(ex.cue||'').trim()?('Jak powiesz po '+langName()+': '+String(ex.cue).trim()+'?'):'');
-      body+='<div class="lexx-prompt" style="margin-bottom:14px">'+(_wfCue?esc(_wfCue):('Szybko — wpisz to słowo po '+langName()+'.'))+'</div>';
+      var _wfCue=lexxWfCue(ex,(window._lexxData&&window._lexxData.items)||[]);
+      body+='<div class="lexx-prompt" style="margin-bottom:14px">'+(_wfCue?esc(_wfCue):('Poproś o nową porcję — to ćwiczenie było niekompletne.'))+'</div>';
       inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="wpisz po '+langName()+'…" autocomplete="off">';
     } else if(ex.type==='scenario'){
       // E7 THE SCENARIO: role-play, szczyt — integracja kilku słów-celów
