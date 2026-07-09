@@ -1149,6 +1149,7 @@ function lexBoardToggle(){ var s=document.getElementById('lex-board-sheet'); if(
 const LEX_PROXY='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/super-endpoint';
 const esc=escapeHtml;
 let lexConductLang='pl', lexExLevel='intermediate', lexLevel='B1';
+function lexSetLevel(){ return (curSetKind==='eyelingo') ? (window._eylCurLevel||null) : null; }
 let _lexScript='native', _lexScriptPref=null;   // pismo lekcji jp: 'native'(kana/kanji) | 'romaji'
 // ── Transliteracja w lekcjach Ailexa — wszystkie pisma nielatinskie (parytet z web) ──
 function _isTranslitLang(code){ return {jp:1,zh:1,ko:1,ru:1,uk:1,ar:1}[String(code||'').toLowerCase()]===1; }
@@ -1156,17 +1157,22 @@ function _translitNames(code){
   var M={ jp:{t:'romaji (Hepburn)',n:'kana/kanji'}, zh:{t:'pinyin z zaznaczonymi tonami',n:'znaki hanzi'}, ko:{t:'Revised Romanization',n:'hangul'}, ru:{t:'transliteracja łacińska',n:'cyrylica'}, uk:{t:'transliteracja łacińska',n:'cyrylica'}, ar:{t:'transliteracja łacińska (DIN/ALA-LC)',n:'pismo arabskie'} };
   return M[String(code||'').toLowerCase()]||{t:'transliteracja łacińska',n:'pismo oryginalne'};
 }
+function _lexDefaultScriptForLevel(level){
+  // A1/A2/B1 → transliteracja; B2/C1/C2 → pismo oryginalne. Fallback: transliteracja.
+  var lv=String(level||'').toUpperCase();
+  return (lv==='B2'||lv==='C1'||lv==='C2') ? 'native' : 'romaji';
+}
 function _lexScriptLabels(code){
   try{ var n=_translitNames(code).n;
     var no=document.querySelector('#lex-script .opt[data-v="native"] .od'); if(no) no.textContent=n;
   }catch(e){}
 }
 async function loadJpScriptPref(){
-  if(_lexScriptPref!=null) return _lexScriptPref;
+  if(_lexScriptPref==='native'||_lexScriptPref==='romaji') return _lexScriptPref;
   var v=null;
   try{ if(UID){ var r=await db.from('profiles').select('jp_script').eq('user_id',UID).maybeSingle(); if(r&&r.data&&r.data.jp_script) v=r.data.jp_script; } }catch(e){}
   if(!v){ try{ v=localStorage.getItem('eyl_jpscript_'+(UID||'anon')); }catch(e){} }
-  _lexScriptPref=(v==='native'?'native':'romaji'); return _lexScriptPref;
+  _lexScriptPref=(v==='native'?'native':(v==='romaji'?'romaji':null)); return _lexScriptPref;
 }
 async function saveJpScriptPref(v){
   v=(v==='romaji'?'romaji':'native'); _lexScriptPref=v;
@@ -1211,9 +1217,11 @@ function openLexSetup(){
     var sf=document.getElementById('lex-script-field');
     if(sf){
       if(_isTranslitLang(curSetLang||'')){ sf.style.display='block'; _lexScriptLabels(curSetLang||'');
-        var pref=await loadJpScriptPref();
-        document.querySelectorAll('#lex-script .opt').forEach(function(o){ o.classList.toggle('sel', (o.dataset.v||'native')===pref); });
-      } else { sf.style.display='none'; }
+        var _sp=await loadJpScriptPref();
+        var _def=_sp || _lexDefaultScriptForLevel(lexSetLevel());
+        window._lexScriptShown=_def;
+        document.querySelectorAll('#lex-script .opt').forEach(function(o){ o.classList.toggle('sel', (o.dataset.v||'native')===_def); });
+      } else { sf.style.display='none'; window._lexScriptShown=null; }
     }
   })();
   document.getElementById('imm-lexsetup').classList.add('active');
@@ -1378,8 +1386,10 @@ async function lexStart(){
   var elx=document.querySelector('#lex-exlvl .opt.sel'); lexExLevel=(elx&&elx.dataset.v)||'intermediate';
   var ecd=document.querySelector('#lex-conduct .opt.sel'); lexConductLang=(ecd&&ecd.dataset.v)||'pl';
   _lexLang=curSetLang||'en';
+  lexLevel=lexSetLevel()||'B1';
   _lexScript='native';
-  if(_isTranslitLang(curSetLang||'')){ var _es=document.querySelector('#lex-script .opt.sel'); _lexScript=(_es&&_es.dataset.v)||'native'; try{ saveJpScriptPref(_lexScript); }catch(e){} }
+  if(_isTranslitLang(curSetLang||'')){ var _es=document.querySelector('#lex-script .opt.sel'); _lexScript=(_es&&_es.dataset.v)||_lexDefaultScriptForLevel(lexSetLevel());
+    try{ if(_lexScript!==window._lexScriptShown) saveJpScriptPref(_lexScript); }catch(e){} }
   closeImm('imm-lexsetup'); document.getElementById('imm-lex').classList.add('active');
   lexLoading('Lex przygotowuje lekcję z Twojego zestawu…');
   try{
@@ -1486,7 +1496,7 @@ async function resumeLesson(snap){
   curSetLang=snap.lang||'en'; _lexLang=curSetLang;
   lexLevel=snap.level||'B1'; lexExLevel=snap.exLevel||'intermediate'; lexConductLang=snap.conductLang||'pl';
   _lexScript=(snap.script==='romaji'?'romaji':'native');
-  try{ if(_isTranslitLang(curSetLang||'') && !snap.script){ _lexScript=await loadJpScriptPref(); } }catch(e){}
+  try{ if(_isTranslitLang(curSetLang||'') && !snap.script){ _lexScript=(await loadJpScriptPref())||_lexDefaultScriptForLevel(snap.level||lexSetLevel()); } }catch(e){}
   var src=document.getElementById('lex-src'); if(src) src.textContent=curSetName||'Zestaw';
   document.getElementById('imm-lex').classList.add('active');
   lexLoading('Wracam do Twojej lekcji…');
@@ -2204,6 +2214,7 @@ async function eylOpenCat(lang,lvl,catId,catName){
     cards=(cards||[]).filter(function(c){return c.word||c.translation;});
     if(!cards.length){ if(b) b.innerHTML=prev; alert('Ta kategoria nie ma jeszcze fiszek dla tego języka.'); return; }
     _eylCards=cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',romaji:(c.romaji||''),flashcard_id:(c.id!=null?c.id:null)}; });
+    window._eylCurLevel=(lvl||null);
     curSetKind='eyelingo'; curSetId='eyl:'+lang+':'+catId; curSetName=catName; curSetCount=_eylCards.length; curSetLang=lang;
     var bl=document.getElementById('set-back-label'); if(bl) bl.textContent='Zestawy Eyelingo';
     document.getElementById('set-name').textContent=catName;
