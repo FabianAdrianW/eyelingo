@@ -1380,7 +1380,7 @@ async function lexGeneratePortion(){
     if(!data||!data.exercises||!data.exercises.length){ data=await lexGenSimple(focus, dueWords); }
     if(!data||!data.exercises||!data.exercises.length) throw new Error('Pusta porcja');
     _lexData=data; _lexSculpt={}; _lexGapN={};
-    try{ (data.exercises||[]).forEach(function(ex){ if(ex&&ex.type==='cloze'&&ex.sentence){ var ga=lexGapAnswers(ex); if(ga.length) _lexSweepPool.push({sentence:ex.sentence,answer:ga[0],answers:ga,wrong:false,portion:pn}); } }); }catch(e){}
+    try{ (data.exercises||[]).forEach(function(ex){ if(ex&&ex.type==='cloze'&&ex.sentence){ var ga=lexGapAnswers(ex); if(ga.length) _lexSweepPool.push({sentence:ex.sentence,answer:ga[0],answers:ga,wrong:false,portion:pn,pl:(ex.sentence_pl||'')}); } }); }catch(e){}
     try{ if(data.items) data.items.forEach(function(it){ if(it&&it.word&&it.translation) _lexVocab.push({word:it.word,translation:it.translation,reading:(it.reading||'')}); }); }catch(e){}
     try{ lexBoardRender(); }catch(e){}
     lexRenderPortion(data);
@@ -1577,7 +1577,7 @@ function lexGlossHtml(pl){
 function exScene(src,txt,withAudio,sayTxt,glossPl){
   var _say=(sayTxt!=null&&sayTxt!=='')?sayTxt:txt;
   var audio=withAudio?'<button type="button" class="lexx-sceneaudio" onclick="lexSceneSpeak(this.getAttribute(\'data-say\'))" data-say="'+esc(String(_say||''))+'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>':'';
-  return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><div class="lexx-scene-line"><p class="lexx-scene-txt">'+esc(txt)+'</p>'+audio+'</div>'+lexGlossHtml(glossPl)+'</div>';
+  return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><div class="lexx-scene-line"><p class="lexx-scene-txt">'+lexBoldKey(esc(txt))+'</p>'+audio+'</div>'+lexGlossHtml(glossPl)+'</div>';
 }
 // ── Dwujęzyczne TTS: narracja po polsku, słowa-cele (**…**) w języku uczonym ──
 var _lexSpkToken=0;
@@ -1925,7 +1925,10 @@ window.lexxCheck=async function(i){
 /* ── przejście porcji / sweep / refleksja / koniec (port lexxNext/Sweep/Finish) ── */
 let _lexSweepDone=false, _lexReflectionDone=false, _lexSweepItems=[], _lexSweepIdx=0;
 window.lexMarkSweepWrong=function(ex){ (_lexSweepPool||[]).forEach(function(p){ if(p.sentence===ex.sentence) p.wrong=true; }); };
-function lexSweepItemsList(){ var pool=(_lexSweepPool||[]).slice(); var seen={}, out=[]; pool.sort(function(a,b){ return (b.wrong?1:0)-(a.wrong?1:0) || (a.portion-b.portion); }); pool.forEach(function(p){ var k=lexNormEx(p.answer); if(!seen[k]){ seen[k]=1; out.push(p); } }); return out.slice(0,4); }
+function _lexHasGap(s){ return /_{2,}|\[\.\.\.\]|…|\.\.\./.test(String(s||'')); }
+function _lexIsDialogueLike(s){ s=String(s||''); return (s.match(/[A-Za-zÀ-ÿ][\wÀ-ÿ]*\s*:/g)||[]).length>=2 || (s.match(/[.!?。！？]/g)||[]).length>2; }
+function _lexSweepOk(p,beg){ var s=String((p&&p.sentence)||''); if(!s||!_lexHasGap(s)||_lexIsDialogueLike(s)||s.length>110) return false; if(beg && (s.length>70 || s.split(/\s+/).length>10)) return false; return true; }
+function lexSweepItemsList(){ var beg=lexBeginnerLvl(); var pool=(_lexSweepPool||[]).filter(function(p){return _lexSweepOk(p,beg);}); var seen={}, out=[]; pool.sort(function(a,b){ return (b.wrong?1:0)-(a.wrong?1:0) || (a.portion-b.portion); }); pool.forEach(function(p){ var k=lexNormEx(p.answer); if(!seen[k]){ seen[k]=1; out.push(p); } }); return out.slice(0,4); }
 function lexCurStage(){ return Math.floor((_lexPortionNum-1)/LEX_STAGE_PORTIONS)+1; }
 function lexStagesTotal(){ return Math.max(1, Math.ceil(_lexPortionTarget/LEX_STAGE_PORTIONS)); }
 function lexNext(){
@@ -1967,10 +1970,10 @@ function lexSweepStep(){
   var w=document.getElementById('lex-stage'); if(!w) return; var items=_lexSweepItems||[], idx=_lexSweepIdx||0; var it=items[idx];
   if(!it){ _lexSweepDone=true; lexFinish(); return; }
   var dots=items.map(function(_,k){ return '<span class="'+(k<idx?'done':(k===idx?'cur':''))+'"></span>'; }).join('');
-  var sent=esc(it.sentence||'').replace(/_{2,}|\[\.\.\.\]|\.\.\./,'<span class="lexx-gapfill">&nbsp;</span>');
+  var sent=lexBoldKey(esc(it.sentence||'')).replace(/_{2,}|\[\.\.\.\]|…|\.\.\./,'<span class="lexx-gapfill">&nbsp;</span>');
   w.innerHTML='<div class="lexx-stage"><div class="lexx-card"><div class="lexx-who">Ailex</div><div class="lexx-say">Ostatni ruch: te formy były kilka porcji temu. Wydobądź je jeszcze raz — to domyka ślad pamięciowy.</div></div>'
     +'<div class="lexx-ex"><div class="lexx-ex-head"><span class="lexx-eyebrow">Powrót pamięciowy</span></div><div class="lexx-obj">Szybko — to było kilka porcji temu.</div>'
-    +'<div class="lexx-dots">'+dots+'</div><p class="lexx-q">'+sent+'</p>'
+    +'<div class="lexx-dots">'+dots+'</div><p class="lexx-q">'+sent+'</p>'+(lexBeginnerLvl()?lexGlossHtml(it.pl||''):'')
     +'<input class="lexx-input" id="lexx-sweep-in" placeholder="z pamięci"><button class="lexx-check" id="lexx-sweep-btn" onclick="lexSweepSubmit()">'+(idx+1<items.length?'Następne':'Zakończ powrót')+'</button>'
     +'<div class="lexx-fb" id="lexx-sweep-fb"></div></div></div>';
   setTimeout(function(){ var t=document.getElementById('lexx-sweep-in'); if(t) t.focus(); },80);
@@ -1983,8 +1986,15 @@ window.lexSweepSubmit=function(){
   try{ lexRecordSM2(it.answer, '', ok?3:1); }catch(e){}
   var btn=document.getElementById('lexx-sweep-btn'); if(btn){ btn.textContent=(_lexSweepIdx+1<_lexSweepItems.length)?'Następne →':'Zakończ powrót →'; btn.onclick=function(){ _lexSweepIdx++; lexSweepStep(); }; }
 };
+function lexReflectTarget(){ var v=(_lexVocab||[]).filter(function(x){return x&&x.word&&x.translation;}); return v.length?v[v.length-1]:null; }
 function lexReflectScenario(){
-  var foc=(_lexData&&_lexData.focus)||''; var words=((_lexVocab||[]).slice(-6).map(function(v){return v.word;}).filter(Boolean));
+  var foc=(_lexData&&_lexData.focus)||'';
+  if(lexBeginnerLvl()){
+    var tg=lexReflectTarget();
+    if(tg) return 'Ułóż jedno proste zdanie po '+langAdv()+'. Użyj słowa: **'+tg.word+'** ('+tg.translation+').'+(foc?(' Temat: „'+foc+'".'):'');
+    return 'Ułóż jedno proste zdanie po '+langAdv()+' — użyj któregoś słowa z tej lekcji.';
+  }
+  var words=((_lexVocab||[]).slice(-6).map(function(v){return v.word;}).filter(Boolean));
   if(foc) return 'Napisz 2-3 własne zdania na temat: „'+foc+'". Spróbuj użyć słów z tej lekcji.';
   if(words.length) return 'Ułóż 2-3 własne zdania, w których naturalnie użyjesz: '+words.slice(0,4).join(', ')+'.';
   return 'Napisz 2-3 zdania od siebie po '+langAdv()+' — cokolwiek, co dziś przećwiczyłeś.';
@@ -1993,9 +2003,14 @@ function lexFinish(){ if(_lexReflectionDone){ lexEndLesson(); return; } lexRende
 function lexRenderReflection(){
   var w=document.getElementById('lex-stage'); if(!w){ lexEndLesson(); return; }
   var pf=document.getElementById('lex-portionfill'); if(pf) pf.style.width='98%';
-  w.innerHTML='<div class="lexx-stage"><div class="lexx-card"><div class="lexx-who">Ailex</div><div class="lexx-say">Ostatni krok — i najważniejszy. Napisz coś od siebie. Powiem Ci szczerze, co już brzmi naturalnie, a co warto podszlifować.</div></div>'
-    +'<div class="lexx-ex"><div class="lexx-ex-head"><span class="lexx-eyebrow">Wolna produkcja</span></div><div class="lexx-obj">'+esc(lexReflectScenario())+'</div>'
-    +'<textarea class="lexx-input" id="lexx-reflect-in" rows="4" placeholder="Pisz po '+langAdv()+'… (2-3 zdania)"></textarea>'
+  var _beg=lexBeginnerLvl();
+  var _say=_beg?'Ostatni krok. Ułóż jedno zdanie od siebie — użyj słowa, które właśnie przećwiczyliśmy. Ocenię łagodnie i pokażę wzór.':'Ostatni krok — i najważniejszy. Napisz coś od siebie. Powiem Ci szczerze, co już brzmi naturalnie, a co warto podszlifować.';
+  var _eb=_beg?'Twoje pierwsze zdanie':'Wolna produkcja';
+  var _ph=_beg?('Ułóż jedno zdanie po '+langAdv()+'…'):('Pisz po '+langAdv()+'… (2-3 zdania)');
+  var _rows=_beg?2:4;
+  w.innerHTML='<div class="lexx-stage"><div class="lexx-card"><div class="lexx-who">Ailex</div><div class="lexx-say">'+esc(_say)+'</div></div>'
+    +'<div class="lexx-ex"><div class="lexx-ex-head"><span class="lexx-eyebrow">'+esc(_eb)+'</span></div><div class="lexx-obj">'+lexBoldKey(esc(lexReflectScenario()))+'</div>'
+    +'<textarea class="lexx-input" id="lexx-reflect-in" rows="'+_rows+'" placeholder="'+esc(_ph)+'"></textarea>'
     +'<button class="lexx-check" id="lexx-reflect-btn" onclick="lexReflectSubmit()">Poproś Ailexa o szczerą ocenę</button>'
     +'<button class="lexx-next" style="background:transparent;border:none;color:var(--dim2);text-decoration:underline;font-size:12.5px;margin-top:6px" onclick="_lexReflectionDone=true;lexEndLesson()">Pomiń</button>'
     +'<div class="lexx-fb" id="lexx-reflect-fb"></div></div></div>';
@@ -2005,9 +2020,14 @@ window.lexReflectSubmit=async function(){
   var t=document.getElementById('lexx-reflect-in'); var v=(t&&t.value||'').trim();
   if(!v){ var fb0=document.getElementById('lexx-reflect-fb'); if(fb0){ fb0.className='lexx-fb neutral'; fb0.style.display='block'; fb0.textContent='Napisz choć jedno zdanie — nawet niedoskonałe.'; } return; }
   var btn=document.getElementById('lexx-reflect-btn'); if(btn){ btn.disabled=true; btn.textContent='Lex czyta…'; }
-  var prompt='Jesteś Ailexem — trenerem języka '+langGen()+' i metodykiem. Uczeń (poziom '+lexLevel+') napisał na koniec lekcji: "'+v+'". '
-    +'Oceń SZCZERZE i krótko (po polsku, 2-4 zdania): co brzmi naturalnie, a co zdradza nie-native. Podaj jedną poprawioną wersję najsłabszego fragmentu. Bez wykrzykników typu Świetnie. '
-    +'Zwróć WYŁĄCZNIE JSON: {"feedback":"szczera ocena po polsku z poprawioną wersją","gaps":["luka 1"]}';
+  var _beg=lexBeginnerLvl();
+  var prompt=_beg
+    ? ('Jesteś Ailexem — cierpliwym trenerem języka '+langGen()+'. Uczeń POCZĄTKUJĄCY (poziom '+lexLevel+') ułożył jedno z pierwszych własnych zdań: "'+v+'". '
+      +'Oceń CIEPŁO i bardzo krótko (po polsku, 2-3 zdania): pochwal odwagę, wskaż najwyżej JEDEN najważniejszy drobiazg, podaj jeden prosty wzorcowy wariant. Bądź łagodny — to absolutny początek, nie żądaj naturalności native. '
+      +'Zwróć WYŁĄCZNIE JSON: {"feedback":"ciepła, krótka ocena po polsku ze wzorem","gaps":[]}')
+    : ('Jesteś Ailexem — trenerem języka '+langGen()+' i metodykiem. Uczeń (poziom '+lexLevel+') napisał na koniec lekcji: "'+v+'". '
+      +'Oceń SZCZERZE i krótko (po polsku, 2-4 zdania): co brzmi naturalnie, a co zdradza nie-native. Podaj jedną poprawioną wersję najsłabszego fragmentu. Bez wykrzykników typu Świetnie. '
+      +'Zwróć WYŁĄCZNIE JSON: {"feedback":"szczera ocena po polsku z poprawioną wersją","gaps":["luka 1"]}');
   var feedback='';
   try{ var raw=await lexProxy(prompt,500); var a=raw.indexOf('{'), b=raw.lastIndexOf('}'); if(a>=0&&b>a){ var j=JSON.parse(raw.slice(a,b+1)); feedback=j.feedback||''; } if(!feedback) feedback=raw; }
   catch(e){ feedback='Nie udało się pobrać oceny — ale dobrze, że napisałeś od siebie. To najważniejszy krok.'; }
