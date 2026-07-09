@@ -3785,6 +3785,8 @@ window.matSetLangApply=async function(setId, code){
     <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
     <div id="mat-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
       <div id="mat-sidebar-inner" style="padding:88px 0 64px 16px;min-width:200px;position:relative">
+      <!-- Kontynuuj ostatnią sesję — przeniesione z głównej kolumny do sidebara -->
+      <div id="mat-sb-continue" style="padding-right:16px;margin-bottom:14px"></div>
       <!-- Powtórki SM-2 przeniesione w całości do navbara (ntab-powtorki). Kafelek sidebar-owy usunięty jako duplikat. -->
       <!-- Katalogi (zwijane) -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-right:16px">
@@ -4310,7 +4312,7 @@ async function initToFixPage(){
         </button>
         <div id="lex-sb-gaps" style="display:flex;flex-direction:column;gap:6px;padding-right:16px"></div>
         <!-- Zeszyt → otwiera książkę -->
-        <button onclick="lexSbToggle('notebook')" class="lex-sb-h" id="lex-sbh-notebook" style="width:calc(100% - 20px);margin:24px 16px 8px 4px;display:flex;align-items:center;justify-content:space-between;background:transparent;border:none;cursor:pointer;padding:0">
+        <button onclick="lexSbToggle('notebook')" class="lex-sb-h" id="lex-sbh-notebook" style="width:calc(100% - 20px);margin:24px 16px 8px 4px;display:none;align-items:center;justify-content:space-between;background:transparent;border:none;cursor:pointer;padding:0">
           <span style="font-size:11px;font-weight:500;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2)">Zeszyt</span>
           <span class="lex-sb-chev" style="color:var(--dim2);font-size:11px;transition:transform .2s">▾</span>
         </button>
@@ -4489,6 +4491,9 @@ async function initToFixPage(){
         </button>
       </div>
     </div>
+
+    <!-- ── KATALOG MATERIAŁÓW (inline; zastępuje modal lexcat) ── -->
+    <div id="lex-catalog-inline" style="display:none"></div>
 
     <!-- ── EWALUACJA STARTOWA — Lex Cię poznaje (Assessment Bible E0–E10) ── -->
     <div id="lex-eval" style="display:none;padding:0 24px">
@@ -16477,6 +16482,10 @@ async function lexInit(){
 <style id="el-lexcat">
 .lexcat-modal{position:fixed;inset:0;z-index:10040;background:rgba(26,35,64,.42);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px}
 .lexcat-sheet{background:#fff;border-radius:22px;width:min(760px,96vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(26,35,64,.28);overflow:hidden}
+.lexcat-inline-sheet{background:#fff;border:1.5px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 6px 22px rgba(26,35,64,.05)}
+.lexcat-inline-sheet .lexcat-body{overflow:visible;max-height:none}
+.lexcat-back-btn{display:inline-flex;align-items:center;gap:6px;background:var(--paper2);border:1px solid var(--border2);border-radius:100px;padding:7px 14px;font-size:13px;font-weight:500;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s}
+.lexcat-back-btn:hover{border-color:var(--orange)}
 .lexcat-head{padding:22px 26px 16px;border-bottom:.5px solid var(--border)}
 .lexcat-bcrumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim2);margin-bottom:12px;flex-wrap:wrap;min-height:16px}
 .lexcat-bcrumb a{color:var(--orange);cursor:pointer;text-decoration:none}
@@ -16634,14 +16643,15 @@ async function lexInit(){
 
   window.lexCatalogOpen=function(mode){
     _state={view:(mode==='user'?'user':'eyelingo'), lang:(window._lexLang||'en'), level:null}; _picks={}; _syncedOpen=false;
-    var old=document.getElementById('lexcat-modal'); if(old) old.remove();
-    var m=document.createElement('div'); m.className='lexcat-modal'; m.id='lexcat-modal';
-    m.addEventListener('click', function(ev){ if(ev.target===m) m.remove(); });
-    m.innerHTML='<div class="lexcat-sheet">'
+    var host=document.getElementById('lex-catalog-inline'); if(!host) return;
+    // Katalog inline — zastępuje modal; chowa ekrany wejścia Ailexa i renderuje w tym samym oknie.
+    ['lex-lang-select','lex-onboarding','lex-eval','lex-card-engine','lex-summary'].forEach(function(s){ var el=document.getElementById(s); if(el) el.style.display='none'; });
+    host.style.display='block';
+    host.innerHTML='<div class="lexcat-inline-sheet">'
       +'<div class="lexcat-head">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+      +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
+      +'<button id="lexcat-back" class="lexcat-back-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>Wróć</button>'
       +'<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy)">Materiał do nauki</div>'
-      +'<button id="lexcat-close" style="background:none;border:none;font-size:22px;color:var(--dim2);cursor:pointer;width:30px;height:30px">×</button>'
       +'</div>'
       +'<div id="lexcat-seg-wrap" style="margin-bottom:14px"></div>'
       +'<div class="lexcat-searchwrap"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>'
@@ -16649,10 +16659,9 @@ async function lexInit(){
       +'</div>'
       +'<div class="lexcat-body" id="lexcat-body"></div>'
       +'</div>';
-    document.body.appendChild(m);
-    document.getElementById('lexcat-close').addEventListener('click', function(){ m.remove(); });
+    document.getElementById('lexcat-back').addEventListener('click', function(){ if(typeof lexCatalogClose==='function') lexCatalogClose(); });
     document.getElementById('lexcat-search').addEventListener('input', function(){ lexCatalogSearch(this.value); });
-    var head=m.querySelector('.lexcat-head');
+    var head=host.querySelector('.lexcat-head');
     head.addEventListener('click', function(ev){
       var seg=ev.target.closest('[data-mode]'); if(seg){ _state.view=seg.getAttribute('data-mode'); _state.level=null; var s=document.getElementById('lexcat-search'); if(s) s.value=''; renderSeg(); renderBody(); }
     });
@@ -16663,7 +16672,13 @@ async function lexInit(){
       var lvl=ev.target.closest('[data-lvl]'); if(lvl){ _state.level=lvl.getAttribute('data-lvl')||null; renderEyelingo(); return; }
       var pick=ev.target.closest('[data-pick]'); if(pick){ doPick(_picks[pick.getAttribute('data-pick')], pick, true); return; }
     });
+    try{ host.scrollIntoView({block:'start',behavior:'auto'}); }catch(e){}
     renderSeg(); renderBody();
+  };
+  window.lexCatalogClose=function(){
+    var host=document.getElementById('lex-catalog-inline'); if(host){ host.style.display='none'; host.innerHTML=''; }
+    if(typeof lexShowScreen==='function') lexShowScreen('lex-onboarding');
+    if(typeof lexRenderEntry==='function') lexRenderEntry();
   };
 
   function renderSeg(){ var w=document.getElementById('lexcat-seg-wrap'); if(w) w.innerHTML=segHTML(); }
@@ -16730,7 +16745,7 @@ async function lexInit(){
       window._lexLang=langCode||p.lang||window._lexLang||'en';
       window._lexSources=[{kind:p.kind,id:p.id,label:p.label,level:p.level||lvlUser,lang:window._lexLang}];
       try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet(p.kind,p.id,p.label,p.level||null,0,window._lexLang); }catch(e){}
-      var m=document.getElementById('lexcat-modal'); if(m) m.remove();
+      if(typeof lexCatalogClose==='function'){ lexCatalogClose(); } else { var m=document.getElementById('lexcat-modal'); if(m) m.remove(); }
       if(typeof lexRefreshPickerSelection==='function') lexRefreshPickerSelection();
     }
     if(p.kind==='user' && !p.lang){
@@ -17484,7 +17499,8 @@ async function lexInit(){
 
   // 9.4 — „Kontynuuj ostatnią sesję" w Twoje zestawy
   window.matRenderContinue=function(){
-    var wrap=document.getElementById('mat-continue-wrap'); if(!wrap) return;
+    var wrap=document.getElementById('mat-sb-continue') || document.getElementById('mat-continue-wrap'); if(!wrap) return;
+    var _mainWrap=document.getElementById('mat-continue-wrap'); if(_mainWrap && _mainWrap!==wrap) _mainWrap.innerHTML='';
     var d=getSnap();
     if(!d){ wrap.innerHTML=''; return; }
     wrap.innerHTML='<div onclick="trybResumeSession()" title="Wróć do ostatniej przerwanej sesji nauki"'
