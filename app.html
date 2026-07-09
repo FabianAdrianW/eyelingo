@@ -1166,7 +1166,7 @@ async function loadJpScriptPref(){
   var v=null;
   try{ if(UID){ var r=await db.from('profiles').select('jp_script').eq('user_id',UID).maybeSingle(); if(r&&r.data&&r.data.jp_script) v=r.data.jp_script; } }catch(e){}
   if(!v){ try{ v=localStorage.getItem('eyl_jpscript_'+(UID||'anon')); }catch(e){} }
-  _lexScriptPref=(v==='romaji'?'romaji':'native'); return _lexScriptPref;
+  _lexScriptPref=(v==='native'?'native':'romaji'); return _lexScriptPref;
 }
 async function saveJpScriptPref(v){
   v=(v==='romaji'?'romaji':'native'); _lexScriptPref=v;
@@ -1620,7 +1620,7 @@ function lexShowStep(s){
     var box=document.createElement('div'); box.className='lexx-ex lexx-introcard';
     var h='<div class="lexx-ex-head"><span class="lexx-badge">Słowa porcji</span><span style="font-size:13px;color:var(--dim2)">'+esc(data.focus||'')+'</span></div>';
     var intro=data.intro?('<div class="lexx-introtext">'+lexBoldKey(esc(data.intro))+'</div>'):'';
-    var chips='<div class="lexx-items">'+(data.items||[]).map(function(it){ var _cd=(_lexScript==='romaji'&&it.reading)?it.reading:(it.word||''); return '<span class="lexx-chip" onclick="lexSceneSpeak(\''+esc(String(it.word||'')).replace(/'/g,"")+'\')">'+esc(_cd)+(it.translation?'<span class="tr">'+esc(it.translation)+'</span>':'')+'</span>'; }).join('')+'</div>';
+    var chips='<div class="lexx-items">'+(data.items||[]).map(function(it){ var _cd=(it.word||''); var _rmj=it.reading?('<span style="font-size:11px;opacity:.6;font-weight:400;margin-left:5px">'+esc(it.reading)+'</span>'):''; return '<span class="lexx-chip" onclick="lexSceneSpeak(\''+esc(String(it.word||'')).replace(/'/g,"")+'\')">'+esc(_cd)+_rmj+(it.translation?'<span class="tr">'+esc(it.translation)+'</span>':'')+'</span>'; }).join('')+'</div>';
     box.innerHTML=h+intro+chips+'<div style="font-size:12px;color:var(--dim2);margin-top:10px;line-height:1.5">Tapnij słowo, by usłyszeć wymowę. Potem '+((data.exercises||[]).length||4)+' krótkie ćwiczenia, jedno na raz — kończysz produkcją.</div>';
     stage.appendChild(box);
     var st=document.createElement('button'); st.className='lexx-next'; st.textContent='Zaczynamy →'; st.onclick=function(){ lexShowStep(0); };

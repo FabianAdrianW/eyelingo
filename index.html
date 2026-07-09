@@ -4517,6 +4517,7 @@ async function initToFixPage(){
           <span id="lex-score-badge" style="display:none"></span>
           <button id="lex-speech-toggle" onclick="lexToggleSpeech()" style="font-size:16px;padding:4px 8px;background:transparent;border:1px solid var(--border2);border-radius:100px;cursor:pointer" title="Włącz/wyłącz czytanie"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>
           <button id="lex-audiolang-btn" onclick="lexToggleAudioLang()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Lekcja: PL</button>
+          <button id="lex-script-btn" onclick="lexToggleScript()" style="display:none;font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif" title="Przełącz pismo lekcji: transliteracja ↔ oryginalne">Pismo: transliteracja</button>
           <button onclick="lexAskOpen()" style="font-size:11px;padding:4px 12px;background:var(--orange);border:1px solid var(--orange);border-radius:100px;color:#fff;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Zadaj pytanie Ailexowi — głosem lub tekstem"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 11a7 7 0 0 1-14 0M12 18v4"></path></svg>Zapytaj</button>
           <button onclick="lexBookOpen(9999)" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Twoje słowa z lekcji"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h13a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"></path><path d="M8 4v16M11 9h5M11 13h5"></path></svg>Zeszyt</button>
           <button onclick="lexToggleBoard()" style="font-size:11px;padding:4px 12px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"></path><path d="M8 21h8M12 17v4"></path></svg>Tablica</button>
@@ -11553,8 +11554,8 @@ function _lexTranslitNames(code){
   return M[String(code||'').toLowerCase()]||{t:'transliteracja łacińska',n:'pismo oryginalne'};
 }
 async function loadScriptPref(){
-  try{ var _s=(await db.auth.getSession()).data.session; if(_s){ var r=await db.from('profiles').select('jp_script').eq('user_id',_s.user.id).maybeSingle(); if(r&&r.data&&r.data.jp_script) return (r.data.jp_script==='romaji'?'romaji':'native'); } }catch(e){}
-  return 'native';
+  try{ var _s=(await db.auth.getSession()).data.session; if(_s){ var r=await db.from('profiles').select('jp_script').eq('user_id',_s.user.id).maybeSingle(); if(r&&r.data&&r.data.jp_script) return (r.data.jp_script==='native'?'native':'romaji'); } }catch(e){}
+  return 'romaji';
 }
 async function saveScriptPref(v){
   v=(v==='romaji'?'romaji':'native'); _lexScript=v;
@@ -11565,6 +11566,19 @@ function _lexTranslitInstr(){
   var n=_lexTranslitNames(window._lexLang||'');
   return 'TRYB TRANSLITERACJI: uczeń nie zna pisma oryginalnego ('+n.n+'). WSZYSTKIE ciągi w języku docelowym (intro, słowa-cele, zdania w ćwiczeniach cue/cloze/contrast/sculpt/produce, opcje, luki, cele, podpowiedzi) zapisuj w '+n.t+'. Markery **…** wokół słów-celów ZOSTAW. W "items" pole "word" ZOSTAW w piśmie oryginalnym ('+n.n+'), a transliterację ('+n.t+') podaj w polu "reading". W "intro" dodaj pole "intro_say" = to samo intro w piśmie oryginalnym ('+n.n+') z **markerami** (używane do wymowy/audio). ';
 }
+function lexUpdateScriptBtn(){
+  var b=document.getElementById('lex-script-btn'); if(!b) return;
+  var isNL=_lexIsTranslitLang(window._lexLang||'');
+  b.style.display=isNL?'inline-block':'none';
+  b.textContent='Pismo: '+((_lexScript==='romaji')?'transliteracja':'oryginalne');
+}
+window.lexToggleScript=function(){
+  _lexScript=(_lexScript==='romaji'?'native':'romaji');
+  try{ saveScriptPref(_lexScript); }catch(e){}
+  try{ lexUpdateScriptBtn(); }catch(e){}
+  try{ if(window._lexxData && typeof window.lexxRenderPortion==='function') window.lexxRenderPortion(window._lexxData); }catch(e){}
+  try{ if(typeof showToast==='function') showToast((_lexScript==='romaji')?'Pismo: transliteracja — pełny efekt od następnej porcji':'Pismo: oryginalne — pełny efekt od następnej porcji',''); }catch(e){}
+};
 var _lexGaps = [];
 var _lexBoard = [];
 var _lexResumeData = null;
@@ -13094,6 +13108,7 @@ async function lexStartLesson(){
   window._lexPortionFocuses = [];
   try{ if(window._lexLang) localStorage.setItem(uk('lex_last_lang'), window._lexLang); }catch(e){}
   try{ _lexScript = _lexIsTranslitLang(window._lexLang||'') ? await loadScriptPref() : 'native'; }catch(e){ _lexScript='native'; }
+  try{ if(typeof lexUpdateScriptBtn==='function') lexUpdateScriptBtn(); }catch(e){}
   // Scaffolding: jeśli uczeń wybrał zestawy fiszek — to one są materiałem lekcji.
   // Poziom przykładów Lexa = poziom zestawów Eyelingo (np. A2→słowa A2), inaczej poziom ucznia.
   window._lexSourceWords=[]; window._lexLessonLevel=null;
@@ -15710,7 +15725,7 @@ async function lexInit(){
       var h='<div class="lexx-ex-head"><span class="lexx-badge">Słowa porcji</span><span style="font-size:13px;color:var(--dim2)">'+esc(data.focus||'')+'</span></div>';
       var chips='<div class="lexx-items">'+(data.items||[]).map(function(it){
         var isDue=(window._lexxDue||[]).some(function(w){ return lexxNormEx(w.word)===lexxNormEx(it.word||''); });
-        return '<span class="lexx-chip">'+(isDue?'<span style="font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:rgba(201,106,42,.12);color:var(--orange);padding:2px 7px;border-radius:100px">fiszki</span>':'')+'<span class="tl lexx-fw" data-tl-lang="'+lang()+'">'+(typeof window.tlBuildHTML==='function'?window.tlBuildHTML(String((_lexScript==='romaji'&&it.reading)?it.reading:(it.word||'')),lang()):esc(it.word))+'</span></span>';
+        return '<span class="lexx-chip">'+(isDue?'<span style="font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:rgba(201,106,42,.12);color:var(--orange);padding:2px 7px;border-radius:100px">fiszki</span>':'')+'<span class="tl lexx-fw" data-tl-lang="'+lang()+'">'+(typeof window.tlBuildHTML==='function'?window.tlBuildHTML(String(it.word||''),lang()):esc(it.word))+'</span>'+(it.reading?'<span style="font-size:11px;color:var(--dim2);font-weight:400;margin-left:5px">'+esc(it.reading)+'</span>':'')+'</span>';
       }).join('')+'</div>';
       box.innerHTML=h+chips+'<div style="font-size:12px;color:var(--dim2);margin-top:10px;line-height:1.5">Tapnij słowo — tłumaczenie i wymowa na żądanie. Potem '+((data.exercises||[]).length||4)+' krótkie ćwiczenia, jedno na raz — kończysz produkcją.</div>';
       stage0.appendChild(box);
@@ -15732,6 +15747,7 @@ async function lexInit(){
     }
   }
 
+  window.lexxRenderPortion=function(_d){return lexxRenderPortion(_d);};
   function lexxRenderPortion(data){
     window._lexxDone=(data.exercises||[]).map(function(){return false;});
     try{ if(typeof lexBoardFabShow==='function') lexBoardFabShow(true); }catch(e){}
