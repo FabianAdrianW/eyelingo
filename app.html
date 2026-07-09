@@ -1278,6 +1278,14 @@ function lexParseJSON(raw){
 
 /* ── kompozytor kształtu porcji (port lexxComposeShape) ── */
 let _lexShapeS={lastShape:null,recog:0,total:0};
+function lexRegimeShape(shape, beg){
+  if(!beg || !shape || !shape.length) return shape;
+  var out=shape.map(function(t){ if(t==='scenario'||t==='produce') return 'sculpt'; if(t==='contrast') return 'cloze'; return t; });
+  var dd=[]; out.forEach(function(t){ if(!(dd.length&&dd[dd.length-1]===t&&t!=='cloze')) dd.push(t); });
+  if(dd[0]!=='cue') dd.unshift('cue');
+  if(dd[dd.length-1]!=='sculpt') dd.push('sculpt');
+  return dd;
+}
 function lexComposeShape(pn){
   var S=_lexShapeS; var gapRp=1;
   function key(a){ return a.join('>'); }
@@ -1351,7 +1359,7 @@ async function lexGeneratePortion(){
         +'. Uczeń to specjalista 25+. WSZYSTKIE wymienione słowa MUSZĄ być celami tej porcji (umieść je w items i przećwicz). To kolejna część przerabiania całego zestawu — nie powtarzaj słów z poprzednich porcji. Twoja rola to rusztowanie: doprowadź ucznia od biernego rozpoznania do AKTYWNEGO użycia. ';
     }
   }catch(e){}
-  var _shape=lexComposeShape(pn);
+  var _shape=lexRegimeShape(lexComposeShape(pn), lexBeginnerLvl());
   var lvlGuard=({B2:'Materiał MUSI być na poziomie B2 — żadnych elementarnych tematów typu "to be", podstawowe czasy, kolory, liczby.',C1:'Materiał MUSI być na poziomie C1 — zaawansowane kolokacje, phrasal verbs, niuanse rejestru, idiomy. ABSOLUTNIE żadnych podstaw.',C2:'Materiał MUSI być na poziomie C2 — subtelne niuanse, rzadkie kolokacje, styl, rejestr. ABSOLUTNIE żadnych podstaw.'})[lexLevel]||'';
   var exLevelInstr = lexExLevel==='basic'
     ? 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze MUSZĄ być bardzo proste — poziom A1–A2, krótkie zdania, codzienne sytuacje, bez idiomów i złożonych struktur. '

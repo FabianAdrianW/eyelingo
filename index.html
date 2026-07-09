@@ -15607,6 +15607,14 @@ async function lexInit(){
     var m={en:'angielsku',es:'hiszpańsku',de:'niemiecku',fr:'francusku',it:'włosku',nl:'niderlandzku',pt:'portugalsku',no:'norwesku',ru:'rosyjsku',uk:'ukraińsku',ar:'arabsku',jp:'japońsku',zh:'chińsku',ko:'koreańsku',pl:'polsku'};
     return m[code] || (typeof langName==='function'?langName():'docelowym języku');
   }
+  function lexxRegimeShape(shape, beg){
+    if(!beg || !shape || !shape.length) return shape;
+    var out=shape.map(function(t){ if(t==='scenario'||t==='produce') return 'sculpt'; if(t==='contrast') return 'cloze'; return t; });
+    var dd=[]; out.forEach(function(t){ if(!(dd.length&&dd[dd.length-1]===t&&t!=='cloze')) dd.push(t); });
+    if(dd[0]!=='cue') dd.unshift('cue');
+    if(dd[dd.length-1]!=='sculpt') dd.push('sculpt');
+    return dd;
+  }
   function lexxComposeShape(){
     var S=window._lexxShape||(window._lexxShape={lastShape:null,recog:0,total:0});
     var pn=window._lexxPortionNum;
@@ -15698,7 +15706,7 @@ async function lexInit(){
     // Luka receptywno-produktywna waży TYPY zadań (Assessment Bible §6.5 → selektor z Pedagogy Bible)
     var gapRp = (km && typeof km.gap_rp==='number') ? km.gap_rp : 1;
     // Kształt porcji = kompozytor kliencki (deterministyczny, §1.3.2). LLM NIE wybiera sekwencji.
-    var _shape=(typeof lexxComposeShape==='function')?lexxComposeShape():['cue','cloze',(gapRp>=2?'produce':'sculpt')];
+    var _shape=lexxRegimeShape((typeof lexxComposeShape==='function')?lexxComposeShape():['cue','cloze',(gapRp>=2?'produce':'sculpt')], lexIsBeginner());
     try{ console.log('[Lex] porcja '+pn+' kształt:', _shape.join(' → ')); }catch(e){}
     var _conductTarget=(typeof _lexAudioLang!=='undefined' && _lexAudioLang===lang());
     var L=_conductTarget ? lexxAdv(lang()) : 'polsku';   // forma po-...: instrukcje/wyjaśnienia/glosy w jęz. prowadzenia
@@ -16661,7 +16669,7 @@ async function lexInit(){
     return '<div class="lexcat-seg">'+b('eyelingo','Zestawy Eyelingo')+b('user','Moje zestawy')+'</div>';
   }
 
-  window.lexCatalogOpen=function(mode){
+  window.lexCatalogOpen=function(mode,opts){ opts=opts||{}; var _landing=!!opts.landing;
     _state={view:(mode==='user'?'user':'eyelingo'), lang:(window._lexLang||'en'), level:null}; _picks={}; _syncedOpen=false;
     var host=document.getElementById('lex-catalog-inline'); if(!host) return;
     // Katalog inline — zastępuje modal; chowa ekrany wejścia Ailexa i renderuje w tym samym oknie.
@@ -16670,8 +16678,8 @@ async function lexInit(){
     host.innerHTML='<div class="lexcat-inline-sheet">'
       +'<div class="lexcat-head">'
       +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
-      +'<button id="lexcat-back" class="lexcat-back-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>Wróć</button>'
-      +'<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy)">Materiał do nauki</div>'
+      +(_landing?'':'<button id="lexcat-back" class="lexcat-back-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>Wróć</button>')
+      +'<div style="font-family:DM Sans,sans-serif;font-size:18px;font-weight:500;color:var(--navy)">'+(_landing?'Ucz się z Ailexem':'Materiał do nauki')+'</div>'
       +'</div>'
       +'<div id="lexcat-seg-wrap" style="margin-bottom:14px"></div>'
       +'<div class="lexcat-searchwrap"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>'
@@ -16679,7 +16687,7 @@ async function lexInit(){
       +'</div>'
       +'<div class="lexcat-body" id="lexcat-body"></div>'
       +'</div>';
-    document.getElementById('lexcat-back').addEventListener('click', function(){ if(typeof lexCatalogClose==='function') lexCatalogClose(); });
+    var _bk=document.getElementById('lexcat-back'); if(_bk) _bk.addEventListener('click', function(){ if(typeof lexCatalogClose==='function') lexCatalogClose(); });
     document.getElementById('lexcat-search').addEventListener('input', function(){ lexCatalogSearch(this.value); });
     var head=host.querySelector('.lexcat-head');
     head.addEventListener('click', function(ev){
@@ -18217,4 +18225,99 @@ if ('serviceWorker' in navigator) {
       .catch(function (e) { console.warn('SW registration failed', e); });
   });
 }
+</script>
+
+<!-- ═══ EYELINGO — Trener AI: landing = katalog · Kontynuuj w sidebarze (wszystkie języki) · Luki off ═══ -->
+<script>
+(function(){
+  // 1) LANDING = KATALOG (Zestawy Eyelingo / Moje zestawy jako główny content Trenera).
+  //    Guardy zachowane: bezpośredni start z kafla (_lexDirectStart) i lekcja w toku (_lexLessonRunning) nie są nadpisywane.
+  window.lexQuickStart=function(){
+    if(window._lexDirectStart) return;
+    try{ var eng=document.getElementById('lex-card-engine'); if(window._lexLessonRunning && eng && eng.style.display!=='none') return; }catch(e){}
+    if(typeof lexCatalogOpen==='function'){ lexCatalogOpen('eyelingo',{landing:true}); }
+    else if(typeof lexShowScreen==='function'){ lexShowScreen('lex-onboarding'); }
+  };
+
+  // 2) KONTYNUUJ — zunifikowane w sidebarze po WSZYSTKICH językach.
+  //    Klucz stanu porcji: lex_resume_portion_<lang>_<uid> (jeden snapshot na język).
+  window.lexResumeLang=function(lang){
+    try{
+      if(lang){
+        window._lexLang=lang;
+        var info=(typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[lang])||null;
+        if(info){ window._lexLangName=info.name; window._lexLangNative=info.native; }
+      }
+    }catch(e){}
+    // Landing katalogu musi zniknąć zanim wejdziemy w silnik lekcji (lexxResume pokazuje lex-card-engine).
+    try{ var host=document.getElementById('lex-catalog-inline'); if(host){ host.style.display='none'; host.innerHTML=''; } }catch(e){}
+    if(typeof lexxResume==='function') lexxResume();
+  };
+
+  window.lexRenderSidebarResume=async function(){
+    var box=document.getElementById('lex-sb-resume'); if(!box) return;
+    box.style.display='none'; box.innerHTML='';
+    var esc=(typeof lexEsc==='function')?lexEsc:function(x){return String(x==null?'':x);};
+    var items=[];
+    // 1) Przerwane lekcje porcjowe — po jednej na język
+    try{
+      var suffix='_'+(window._uid||'anon');
+      var prefix='lex_resume_portion_';
+      for(var i=0;i<localStorage.length;i++){
+        var k=localStorage.key(i);
+        if(!k || k.indexOf(prefix)!==0) continue;
+        if(k.length<=suffix.length || k.slice(-suffix.length)!==suffix) continue;
+        var lang=k.slice(prefix.length, k.length-suffix.length);
+        var st=null; try{ st=JSON.parse(localStorage.getItem(k)||'null'); }catch(e){}
+        if(!st || !(st.portionNum>0 && st.portionNum<st.portionTarget)) continue;
+        var nm=(st.sources && st.sources.length) ? String(st.sources[0].label).replace(/^[^\w]+\s*/,'') : (st.focus||'lekcja');
+        var kind=(st.sources && st.sources[0] && st.sources[0].kind)||'';
+        items.push({lang:lang, label:nm, kind:kind, pn:st.portionNum, pt:st.portionTarget, ts:st.ts||''});
+      }
+      items.sort(function(a,b){ return String(b.ts||'').localeCompare(String(a.ts||'')); });
+    }catch(e){}
+    if(items.length){
+      box.style.display='block';
+      var head='<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px 4px">Kontynuuj</div>';
+      box.innerHTML=head+items.map(function(it){
+        var lb=String(it.lang||'').toUpperCase();
+        var src=it.kind==='user'?'Twój zestaw':(it.kind==='eyelingo'?'Eyelingo':'');
+        var meta=(src?src+' · ':'')+'porcja '+it.pn+' z '+it.pt;
+        return '<button onclick="lexResumeLang(\''+it.lang+'\')" style="width:100%;text-align:left;background:var(--paper2);border:1.5px solid var(--orange);border-radius:12px;padding:11px 13px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+          +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>'
+          +'<span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.label)+' <span style="font-weight:500;color:var(--dim2);font-size:10px">'+lb+'</span></span>'
+          +'<span style="display:block;font-size:11px;color:var(--dim2)">'+esc(meta)+'</span></span></button>';
+      }).join('');
+      return;
+    }
+    // 2) Fallback: stara lekcja czatowa (completed=false) — zgodność wsteczna
+    try{
+      var sess=(await db.auth.getSession()).data.session; if(!sess) return;
+      var r0=await db.from('lex_lessons').select('*').eq('user_id',sess.user.id).eq('completed',false).order('created_at',{ascending:false}).limit(5);
+      var rows=(r0&&r0.data)||[];
+      if(!rows.length) return;
+      var r=rows.find(function(x){return x.messages && x.messages.length>=2;});
+      if(!r) return;
+      window._lexResumeData=r;
+      var when=r.created_at?new Date(r.created_at).toLocaleDateString('pl-PL',{day:'numeric',month:'short'}):'';
+      box.style.display='block';
+      box.innerHTML='<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px 4px">Kontynuuj</div>'
+        +'<button onclick="lexResumeLesson()" style="width:100%;text-align:left;background:var(--paper2);border:1.5px solid var(--orange);border-radius:12px;padding:11px 13px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:10px">'
+        +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0"><polygon points="6 4 20 12 6 20"></polygon></svg>'
+        +'<span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:600;color:var(--navy)">Kontynuuj ostatnią lekcję</span>'
+        +'<span style="display:block;font-size:11px;color:var(--dim2)">'+(r.messages.length)+' wiadomości · '+(r.level||'?')+' · '+when+'</span></span></button>';
+    }catch(e){}
+  };
+
+  // 3) LUKI — chwilowo wyłączone (kod źródłowy zachowany; przywrócenie = usunięcie tego nadpisania).
+  window.lexRenderSidebarGaps=function(){
+    try{ var box=document.getElementById('lex-sb-gaps'); if(box){ box.innerHTML=''; box.style.display='none'; } }catch(e){}
+    try{ var h=document.getElementById('lex-sbh-gaps'); if(h) h.style.display='none'; }catch(e){}
+  };
+  // Ukryj nagłówek/listę Luk także zaraz po załadowaniu DOM (gdyby sidebar zdążył się wyrenderować wcześniej).
+  try{
+    var _hideLuki=function(){ try{ var h=document.getElementById('lex-sbh-gaps'); if(h) h.style.display='none'; var b=document.getElementById('lex-sb-gaps'); if(b){ b.innerHTML=''; b.style.display='none'; } }catch(e){} };
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', _hideLuki); else _hideLuki();
+  }catch(e){}
+})();
 </script>
