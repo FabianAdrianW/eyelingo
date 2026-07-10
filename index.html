@@ -11552,7 +11552,7 @@ var _lexVocab = [];
 // ── Opcja pisma w lekcjach Ailexa (transliteracja) — wszystkie pisma nielatinskie ──
 // Preferencja wspolna z mobile przez profiles.jp_script ('native'|'romaji').
 // Addytywnie: gdy brak reading/intro_say albo tryb 'native' => render natywny (jak dotad).
-var _lexScript='native';
+var _lexScript='native'; window.lexGetScript=function(){ return _lexScript; };
 function _lexIsTranslitLang(code){ return {jp:1,zh:1,ko:1,ru:1,uk:1,ar:1}[String(code||'').toLowerCase()]===1; }
 function _lexTranslitNames(code){
   var M={ jp:{t:'romaji (Hepburn)',n:'kana/kanji'}, zh:{t:'pinyin z zaznaczonymi tonami',n:'znaki hanzi'}, ko:{t:'Revised Romanization',n:'hangul'}, ru:{t:'transliteracja łacińska',n:'cyrylica'}, uk:{t:'transliteracja łacińska',n:'cyrylica'}, ar:{t:'transliteracja łacińska (DIN/ALA-LC)',n:'pismo arabskie'} };
@@ -15457,7 +15457,7 @@ async function lexInit(){
   window.lexxStartPortions = async function(sets){
     window._lexxPortionNum = 0;
     window._lexKnowBefore = {}; // migawka znajomości SM-2 sprzed lekcji (do wykresu przed/po)
-    try{ // migawka „przed” dla WSZYSTKICH słów materiału (nie tylko ocenionych) — chart pokazuje wszystkie użyte słowa
+    try{
       var _kbU=(typeof _usrsUid==='function')?await _usrsUid():null;
       var _kbS=(_kbU&&typeof _usrsLoad==='function')?(_usrsLoad(_kbU)||{}):{};
       (window._lexSourceWords||[]).forEach(function(_sw){ if(!_sw||!_sw.word) return; var _kk=(typeof _usrsCK==='function')?_usrsCK(_sw.word,_sw.translation||''):null; if(_kk&&!(_kk in window._lexKnowBefore)){ var _pv=_kbS[_kk]||{}; window._lexKnowBefore[_kk]={ef:_pv.ef,reps:_pv.reps,interval:_pv.interval,word:_sw.word,translation:(_sw.translation||'')}; } });
@@ -18302,9 +18302,29 @@ if ('serviceWorker' in navigator) {
 
   // „Dostosuj lekcję" = poprzedni, zaprojektowany ekran ustawień
   window.lexTrenerAdjust=function(){
-    try{ var h=host(); if(h){ h.style.display='none'; } }catch(e){}
-    if(typeof lexShowScreen==='function') lexShowScreen('lex-onboarding');
-    if(typeof lexFullSetup==='function') lexFullSetup();
+    var old=document.getElementById('lex-tr-adjust'); if(old) old.remove();
+    var lang=window._lexLang||'en';
+    var pismo='';
+    try{
+      if(typeof _lexIsTranslitLang==='function' && _lexIsTranslitLang(lang)){
+        var cur=(typeof lexGetScript==='function')?lexGetScript():'native';
+        var lbl=(cur==='romaji')?'transliteracja':'oryginalne';
+        pismo='<div style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin:18px 0 8px">Pismo lekcji</div>'
+          +'<button id="lex-tr-pismo" style="font-size:12px;padding:8px 14px;background:#fff;border:1.5px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Pismo: '+lbl+'</button>'
+          +'<div style="font-size:11px;color:var(--dim2);margin-top:8px;line-height:1.4">Transliteracja ↔ pismo oryginalne. Zmiana wchodzi od następnej porcji.</div>';
+      }
+    }catch(e){}
+    var m=document.createElement('div'); m.id='lex-tr-adjust';
+    m.style.cssText='position:fixed;inset:0;background:rgba(26,35,64,.35);z-index:10060;display:flex;align-items:center;justify-content:center;padding:20px';
+    m.addEventListener('click',function(ev){ if(ev.target===m) m.remove(); });
+    m.innerHTML='<div style="background:#fff;border-radius:18px;max-width:460px;width:100%;max-height:86vh;overflow:auto;padding:22px 22px 20px;font-family:DM Sans,sans-serif">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px"><div style="font-size:17px;font-weight:500;color:var(--navy)">Dostosuj lekcję</div>'
+      +'<button onclick="document.getElementById(\'lex-tr-adjust\').remove()" style="background:none;border:none;font-size:22px;color:var(--dim2);cursor:pointer;width:30px;height:30px">×</button></div>'
+      +'<div id="lex-adjust-body"></div>'+pismo+'</div>';
+    document.body.appendChild(m);
+    try{ if(typeof lexAdjustRenderBody==='function') lexAdjustRenderBody(); }catch(e){}
+    var pb=document.getElementById('lex-tr-pismo');
+    if(pb) pb.addEventListener('click',function(){ try{ if(typeof lexToggleScript==='function') lexToggleScript(); }catch(e){} lexTrenerAdjust(); });
   };
 
   window.lexTrenerSeg=function(seg){ window._lexTrenerSeg=(seg==='user'?'user':'eyelingo'); _level=null; lexTrenerBrowse(); if(typeof lexLoadSidebar==='function') lexLoadSidebar(); };
