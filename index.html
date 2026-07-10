@@ -1823,8 +1823,8 @@ window.switchMatTab = function(tab){
     <!-- Zakładki: w jednym rzędzie obok logo, widoczne dla zalogowanych -->
     <div class="nav-tabs" id="nav-tabs">
       <button class="nav-tab active" id="ntab-community" onclick="switchTab('community',this)">Zestawy</button>
-      <button class="nav-tab" id="ntab-powtorki" onclick="navPowtorki(this)">Powtórki <span id="nav-due-badge" style="display:none;font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px;font-weight:600;vertical-align:middle">0</span></button>
       <button class="nav-tab" id="ntab-teacher" onclick="switchTab('teacher',this)">Trener AI <span style="font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px">PRO</span></button>
+      <button class="nav-tab" id="ntab-powtorki" onclick="navPowtorki(this)">Powtórki <span id="nav-due-badge" style="display:none;font-size:10px;background:#c96a2a;color:#fff;padding:2px 6px;border-radius:10px;margin-left:4px;font-weight:600;vertical-align:middle">0</span></button>
       <button class="nav-tab" id="ntab-tutors" onclick="switchTab('tutors',this)">Lektorzy</button>
     </div>
     <div style="flex:1;min-width:8px"></div>
@@ -13688,9 +13688,9 @@ async function lexFetchCloudAudio(text, langCode){
   var r=await fetch(LEX_TTS_ENDPOINT,{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},
-    body:JSON.stringify({text:text, language_code:langCode})
+    body:JSON.stringify({text:text, language_code:langCode, voice_id:(typeof window.LEX_TTS_VOICE!=='undefined'&&window.LEX_TTS_VOICE)?window.LEX_TTS_VOICE:'JBFqnCBsd6RMkjVDRZzb'})
   });
-  if(!r.ok){ var e=new Error('tts '+r.status); e.status=r.status; throw e; }
+  if(!r.ok){ var _ti=''; try{ var _tj=await r.json(); _ti=' upstream='+(_tj.upstream||'?')+' '+String(_tj.detail||_tj.error||''); }catch(_te){} try{ window._ttsLastError={ httpStatus:r.status, info:_ti.trim(), path:'lesson' }; }catch(_te2){} var e=new Error('tts '+r.status+_ti); e.status=r.status; throw e; }
   var blob=await r.blob();
   var url=URL.createObjectURL(blob);
   window._lexTtsCache[ck]=url;
@@ -15457,6 +15457,11 @@ async function lexInit(){
   window.lexxStartPortions = async function(sets){
     window._lexxPortionNum = 0;
     window._lexKnowBefore = {}; // migawka znajomości SM-2 sprzed lekcji (do wykresu przed/po)
+    try{ // migawka „przed” dla WSZYSTKICH słów materiału (nie tylko ocenionych) — chart pokazuje wszystkie użyte słowa
+      var _kbU=(typeof _usrsUid==='function')?await _usrsUid():null;
+      var _kbS=(_kbU&&typeof _usrsLoad==='function')?(_usrsLoad(_kbU)||{}):{};
+      (window._lexSourceWords||[]).forEach(function(_sw){ if(!_sw||!_sw.word) return; var _kk=(typeof _usrsCK==='function')?_usrsCK(_sw.word,_sw.translation||''):null; if(_kk&&!(_kk in window._lexKnowBefore)){ var _pv=_kbS[_kk]||{}; window._lexKnowBefore[_kk]={ef:_pv.ef,reps:_pv.reps,interval:_pv.interval,word:_sw.word,translation:(_sw.translation||'')}; } });
+    }catch(e){}
     window._lexxShape={lastShape:null,recog:0,total:0}; window._lexxShapeLog=[]; // Krok 1: reset kompozytora
     window._lexxSweepPool = [];
     window._lexxSweepDone = false;
@@ -15493,7 +15498,7 @@ async function lexInit(){
   }
 
   // ── Wznowienie przerwanej lekcji porcjowej (localStorage; engine generuje porcje na żywo) ──
-  function lexxResumeKey(){ try{ return uk('lex_resume_portion_'+(window._lexLang||'en')); }catch(e){ return 'lex_resume_portion'; } }
+  function lexxResumeKey(){ try{ var _rk=(window._lexSources&&window._lexSources[0]&&window._lexSources[0].kind)||window._lexResumeKindHint||'eyelingo'; return uk('lex_resume_portion_'+_rk+'_'+(window._lexLang||'en')); }catch(e){ return 'lex_resume_portion'; } }
   window.lexxSaveResume=function(){
     try{
       if(window._lexxReflectionDone) return;
@@ -18227,20 +18232,18 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 
-<!-- ═══ EYELINGO — Trener AI v2: browser jak w Zestawach (Język/Poziom/Kategorie + Moje zestawy) ═══
-     · content renderowany do #lex-catalog-inline (pełna szerokość teacher-main = jak sekcja Zestawy)
-     · klik w kategorię/zestaw = natychmiastowy start lekcji Ailexa (mirror matCardStartLesson)
-     · sidebar „Kontynuuj" scoped do aktywnego segmentu + licznik na nieaktywnym
-     · „Dostosuj lekcję" jako lekki panel (język prowadzenia / czas) — bez bramki
-     · Luki wyłączone (kod źródłowy zachowany)
+<!-- ═══ EYELINGO — Trener AI v3 ═══
+     · browser jak w Zestawach (Język/Poziom/Kategorie + Moje zestawy) do #lex-catalog-inline (pełna szerokość)
+     · klik = natychmiastowy start lekcji Ailexa (mirror matCardStartLesson → lexStartLesson)
+     · „Dostosuj lekcję" = POPRZEDNI ekran ustawień (lexFullSetup / _LEX_FULL_SETUP_HTML)
+     · nagłówek skonsolidowany: „Ucz się z Ailexem" + PRO; zbędny statyczny nagłówek Trenera ukryty w trybie Ailex
+     · sidebar „Kontynuuj" scoped do segmentu + licznik na nieaktywnym; Luki off
      Silnik Ailexa nietknięty — tylko wywołania istniejących funkcji. -->
 <script>
 (function(){
   var LVLS=['A1','A2','B1','B2','C1','C2'];
-  var _ids=null;               // {lang:{code:id}, lvl:{code:id}}
-  var _catCache={};            // per-lang kategorie
+  var _ids=null, _lang=null, _level=null;
   window._lexTrenerSeg=window._lexTrenerSeg||'eyelingo';
-  var _lang=null, _level=null;
 
   function esc(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function langInfo(c){ return (typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[c])||{name:c,native:c,flag:'🌐'}; }
@@ -18256,7 +18259,6 @@ if ('serviceWorker' in navigator) {
     return _ids;
   }
 
-  // ── Kontynuuj: snapshoty porcji po języku (lex_resume_portion_<lang>_<uid>) ──
   function resumeItems(){
     var items=[];
     try{
@@ -18265,11 +18267,14 @@ if ('serviceWorker' in navigator) {
         var k=localStorage.key(i);
         if(!k||k.indexOf(prefix)!==0) continue;
         if(k.length<=suffix.length||k.slice(-suffix.length)!==suffix) continue;
-        var lang=k.slice(prefix.length,k.length-suffix.length);
+        var mid=k.slice(prefix.length,k.length-suffix.length);
+        var lang=mid, kkind=null;
+        if(mid.indexOf('eyelingo_')===0){ kkind='eyelingo'; lang=mid.slice(9); }
+        else if(mid.indexOf('user_')===0){ kkind='user'; lang=mid.slice(5); }
         var st=null; try{ st=JSON.parse(localStorage.getItem(k)||'null'); }catch(e){}
         if(!st||!(st.portionNum>0&&st.portionNum<st.portionTarget)) continue;
         var src=(st.sources&&st.sources[0])||{};
-        var kind=src.kind||'eyelingo';
+        var kind=src.kind||kkind||'eyelingo';
         var nm=src.label?String(src.label).replace(/^[^\w]+\s*/,''):(st.focus||'lekcja');
         items.push({lang:lang,label:nm,kind:kind,pn:st.portionNum,pt:st.portionTarget,ts:st.ts||''});
       }
@@ -18277,11 +18282,8 @@ if ('serviceWorker' in navigator) {
     }catch(e){}
     return items;
   }
-  function segCounts(){
-    var e=0,u=0; resumeItems().forEach(function(it){ if(it.kind==='user') u++; else e++; }); return {eyelingo:e,user:u};
-  }
+  function segCounts(){ var e=0,u=0; resumeItems().forEach(function(it){ if(it.kind==='user') u++; else e++; }); return {eyelingo:e,user:u}; }
 
-  // ── Start lekcji z kategorii/zestawu (mirror matCardStartLesson dla dowolnego kind) ──
   window.lexTrenerStart=function(kind,id,label,lang,level){
     try{
       window._lexLang=lang||window._lexLang||'en';
@@ -18292,15 +18294,19 @@ if ('serviceWorker' in navigator) {
     try{ var h=host(); if(h){ h.style.display='none'; h.innerHTML=''; } }catch(e){}
     if(typeof lexStartLesson==='function') lexStartLesson();
   };
-  window.lexResumeLang=function(lang){
-    try{
-      if(lang){ window._lexLang=lang; var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[lang])||null; if(info){ window._lexLangName=info.name; window._lexLangNative=info.native; } }
-    }catch(e){}
+  window.lexResumeLang=function(lang, kind){ window._lexResumeKindHint=kind||null;
+    try{ if(lang){ window._lexLang=lang; var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[lang])||null; if(info){ window._lexLangName=info.name; window._lexLangNative=info.native; } } }catch(e){}
     try{ var h=host(); if(h){ h.style.display='none'; h.innerHTML=''; } }catch(e){}
     if(typeof lexxResume==='function') lexxResume();
   };
 
-  // ── Segmenty / lejek ──
+  // „Dostosuj lekcję" = poprzedni, zaprojektowany ekran ustawień
+  window.lexTrenerAdjust=function(){
+    try{ var h=host(); if(h){ h.style.display='none'; } }catch(e){}
+    if(typeof lexShowScreen==='function') lexShowScreen('lex-onboarding');
+    if(typeof lexFullSetup==='function') lexFullSetup();
+  };
+
   window.lexTrenerSeg=function(seg){ window._lexTrenerSeg=(seg==='user'?'user':'eyelingo'); _level=null; lexTrenerBrowse(); if(typeof lexLoadSidebar==='function') lexLoadSidebar(); };
   window.lexTrenerPickLang=function(c){ _lang=c; _level=null; renderBody(); };
   window.lexTrenerPickLvl=function(l){ _level=l||null; renderBody(); };
@@ -18308,29 +18314,25 @@ if ('serviceWorker' in navigator) {
   function headHTML(){
     var seg=window._lexTrenerSeg, c=segCounts();
     function segBtn(mode,label,otherN){
-      var on=(seg===mode);
-      var cue=(!on&&otherN>0)?(' · '+otherN):'';
+      var on=(seg===mode); var cue=(!on&&otherN>0)?(' · '+otherN):'';
       return '<button onclick="lexTrenerSeg(\''+mode+'\')" style="border:none;font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;padding:7px 18px;border-radius:100px;cursor:pointer;transition:.15s;'
         +(on?'background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.08)':'background:transparent;color:var(--dim2)')+'">'+label+cue+'</button>';
     }
-    return '<div style="max-width:960px;margin:0;padding:24px 0 12px">'
-      +'<div class="ph-eyebrow" style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:6px">Materiał</div>'
-      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap">'
-      +'<h2 class="ph-title" style="margin:0">Ucz się z Ailexem</h2>'
-      +'<button onclick="lexTrenerAdjust()" style="background:none;border:none;color:var(--orange);font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap">'
+    var pro='<span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:8px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span>';
+    return '<div style="max-width:960px;margin:0;padding:0 0 12px">'
+      +'<div class="ph-eyebrow">Materiał</div>'
+      +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">'
+      +'<h2 class="ph-title" style="margin:0">Ucz się z Ailexem'+pro+'</h2>'
+      +'<button onclick="lexTrenerAdjust()" style="background:none;border:none;color:var(--orange);font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;margin-top:6px">'
       +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:15px;height:15px"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>Dostosuj lekcję</button>'
       +'</div>'
-      +'<div style="font-size:13px;color:var(--dim);margin:4px 0 16px">Wybierz materiał — Ailex zbuduje z niego lekcję.</div>'
-      +'<div style="display:inline-flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:100px;margin-bottom:18px">'
+      +'<div class="ph-sub" style="margin:4px 0 16px">Wybierz materiał — Ailex zbuduje z niego lekcję.</div>'
+      +'<div style="display:inline-flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:100px;margin-bottom:16px">'
       +segBtn('eyelingo','Zestawy Eyelingo',c.eyelingo)+segBtn('user','Moje zestawy',c.user)+'</div>'
       +'<div id="lex-tr-body"></div></div>';
   }
 
-  async function renderBody(){
-    var b=document.getElementById('lex-tr-body'); if(!b) return;
-    if(window._lexTrenerSeg==='user'){ return renderUser(b); }
-    return renderEyelingo(b);
-  }
+  async function renderBody(){ var b=document.getElementById('lex-tr-body'); if(!b) return; if(window._lexTrenerSeg==='user') return renderUser(b); return renderEyelingo(b); }
 
   async function renderEyelingo(b){
     b.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:20px 0">Wczytuję…</div>';
@@ -18340,24 +18342,18 @@ if ('serviceWorker' in navigator) {
     var langId=_ids.lang[_lang];
     var lvlById={}; Object.keys(_ids.lvl).forEach(function(cd){ lvlById[_ids.lvl[cd]]=cd; });
     var rows=[];
-    if(langId!=null){
-      try{ var from=0,pg=1000; while(true){ var r=await db.from('flashcards').select('category_id,level_id').eq('language_id',langId).range(from,from+pg-1); var d=(r&&r.data)||[]; rows=rows.concat(d); if(d.length<pg) break; from+=pg; if(from>20000) break; } }catch(e){}
-    }
+    if(langId!=null){ try{ var from=0,pg=1000; while(true){ var r=await db.from('flashcards').select('category_id,level_id').eq('language_id',langId).range(from,from+pg-1); var d=(r&&r.data)||[]; rows=rows.concat(d); if(d.length<pg) break; from+=pg; if(from>20000) break; } }catch(e){} }
     var presentLv={}; rows.forEach(function(r){ var lc=lvlById[r.level_id]; if(lc) presentLv[lc]=1; });
     var levels=LVLS.filter(function(l){return presentLv[l];});
     if(_level&&!presentLv[_level]) _level=null;
     var fr=_level?rows.filter(function(r){return lvlById[r.level_id]===_level;}):rows;
     var byCat={}; fr.forEach(function(r){ if(r.category_id==null) return; byCat[r.category_id]=(byCat[r.category_id]||0)+1; });
-    var catIds=Object.keys(byCat);
-    var meta={};
+    var catIds=Object.keys(byCat), meta={};
     if(catIds.length){ try{ var rc=await db.from('categories').select('id,label').in('id',catIds).order('id',{ascending:true}); (rc.data||[]).forEach(function(c){ meta[c.id]={label:c.label}; }); }catch(e){} }
     var orderedIds=Object.keys(meta).length?Object.keys(meta):catIds;
-
     var html='';
     html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow">'+codes.map(function(c){ var info=langInfo(c); return '<button class="eylc-chip'+(c===_lang?' on':'')+'" onclick="lexTrenerPickLang(\''+c+'\')">'+info.flag+' '+esc(langName(c))+'</button>'; }).join('')+'</div>';
-    if(levels.length){
-      html+='<div class="eylc-flabel" style="margin-top:16px">Poziom</div><div class="eylc-chiprow"><button class="eylc-chip'+(!_level?' on':'')+'" onclick="lexTrenerPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eylc-chip'+(_level===lv?' on':'')+'" onclick="lexTrenerPickLvl(\''+lv+'\')">'+lv+'</button>'; }).join('')+'</div>';
-    }
+    if(levels.length){ html+='<div class="eylc-flabel" style="margin-top:16px">Poziom</div><div class="eylc-chiprow"><button class="eylc-chip'+(!_level?' on':'')+'" onclick="lexTrenerPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eylc-chip'+(_level===lv?' on':'')+'" onclick="lexTrenerPickLvl(\''+lv+'\')">'+lv+'</button>'; }).join('')+'</div>'; }
     html+='<div class="eylc-secth" style="margin-top:20px">Kategorie ('+orderedIds.length+')</div>';
     if(!orderedIds.length){ html+='<div style="text-align:center;padding:40px 20px;color:var(--dim2);font-size:14px">Brak kategorii'+(_level?(' na poziomie '+esc(_level)):'')+'.</div>'; b.innerHTML=html; return; }
     var lvlArg=_level||'';
@@ -18396,50 +18392,34 @@ if ('serviceWorker' in navigator) {
   }
 
   window.lexTrenerBrowse=function(){
+    try{ window._lexResumeKindHint=null; }catch(e){}
     if(window._lexDirectStart) return;
     try{ var eng=document.getElementById('lex-card-engine'); if(window._lexLessonRunning && eng && eng.style.display!=='none') return; }catch(e){}
     var h=host(); if(!h) return;
     hideScreens();
-    h.style.display='block';
-    h.innerHTML=headHTML();
+    h.style.display='block'; h.innerHTML=headHTML();
     try{ h.scrollIntoView({block:'start',behavior:'auto'}); }catch(e){}
     renderBody();
   };
-  // Landing Trenera = ten browser
   window.lexQuickStart=function(){ lexTrenerBrowse(); };
 
-  // ── Dostosuj lekcję: lekki panel (język prowadzenia / czas) — bez restartu bieżącej porcji ──
-  window.lexTrenerAdjust=function(){
-    var old=document.getElementById('lex-tr-adjust'); if(old) old.remove();
-    var hasSrc=!!(window._lexSources&&window._lexSources.length);
-    var tgt=langName(window._lexLang||'en');
-    var audio=(typeof _lexAudioLang!=='undefined')?_lexAudioLang:'pl';
-    var dur=(window._lexObDur|| (window._lexProfile&&_lexProfile.lesson_duration) ||25);
-    var m=document.createElement('div'); m.id='lex-tr-adjust';
-    m.style.cssText='position:fixed;inset:0;background:rgba(26,35,64,.35);z-index:10060;display:flex;align-items:center;justify-content:center;padding:20px';
-    m.addEventListener('click',function(ev){ if(ev.target===m) m.remove(); });
-    function pill(active){ return active?'2px solid var(--orange);background:#fff8f3':'1.5px solid var(--border2);background:#fff'; }
-    m.innerHTML='<div style="background:#fff;border-radius:18px;max-width:420px;width:100%;padding:22px 22px 20px;font-family:DM Sans,sans-serif">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div style="font-size:17px;font-weight:500;color:var(--navy)">Dostosuj lekcję</div>'
-      +'<button onclick="document.getElementById(\'lex-tr-adjust\').remove()" style="background:none;border:none;font-size:22px;color:var(--dim2);cursor:pointer;width:30px;height:30px">×</button></div>'
-      +'<div style="font-size:12px;color:var(--dim2);margin-bottom:14px;line-height:1.5">Zmiany wejdą od następnej porcji — bieżąca leci dalej.</div>'
-      +'<div style="font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--dim2);margin-bottom:8px">Język prowadzenia</div>'
-      +'<div style="display:flex;gap:8px;margin-bottom:18px">'
-      +'<button data-audio="pl" style="flex:1;padding:10px;border-radius:12px;border:'+pill(audio!==window._lexLang)+';cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;color:var(--navy)">Polski</button>'
-      +'<button data-audio="tgt" '+(hasSrc?'':'disabled')+' style="flex:1;padding:10px;border-radius:12px;border:'+pill(audio===window._lexLang)+';cursor:'+(hasSrc?'pointer':'default')+';opacity:'+(hasSrc?'1':'.5')+';font-family:inherit;font-size:13px;font-weight:500;color:var(--navy)">'+esc(tgt)+'</button></div>'
-      +'<div style="font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--dim2);margin-bottom:8px">Długość</div>'
-      +'<div style="display:flex;gap:8px">'+[15,25,40].map(function(d){ return '<button data-dur="'+d+'" style="flex:1;padding:10px;border-radius:12px;border:'+pill(+dur===d)+';cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;color:var(--navy)">'+d+' min</button>'; }).join('')+'</div>'
-      +'</div>';
-    m.addEventListener('click',function(ev){
-      var a=ev.target.closest('[data-audio]');
-      if(a){ var v=a.getAttribute('data-audio'); if(v==='tgt'&&!hasSrc) return; window._lexAudioLang=(v==='tgt')?(window._lexLang||'en'):'pl'; try{ localStorage.setItem(uk('lex_audio_lang'),window._lexAudioLang); }catch(e){} if(typeof lexUpdateAudioLangBtn==='function') lexUpdateAudioLangBtn(); lexTrenerAdjust(); return; }
-      var d=ev.target.closest('[data-dur]');
-      if(d){ window._lexObDur=+d.getAttribute('data-dur'); try{ if(window._lexProfile) _lexProfile.lesson_duration=window._lexObDur; }catch(e){} lexTrenerAdjust(); return; }
-    });
-    document.body.appendChild(m);
+  // Ukryj zbędny statyczny nagłówek Trenera w trybie Ailex (dubluje „Ucz się z Ailexem"); pokaż w trybie Rozmowa.
+  var _origTST=window.teacherShowTab;
+  window.teacherShowTab=function(tab){
+    if(typeof _origTST==='function') _origTST(tab);
+    try{
+      var tm=document.getElementById('teacher-main');
+      var eb=tm&&tm.querySelector('.ph-eyebrow');
+      var ti=document.getElementById('teacher-main-title');
+      var su=document.getElementById('teacher-main-sub');
+      var hide=(tab==='teacher');
+      if(eb) eb.style.display=hide?'none':'';
+      if(ti) ti.style.display=hide?'none':'';
+      if(su) su.style.display=hide?'none':'';
+    }catch(e){}
   };
 
-  // ── Sidebar „Kontynuuj" — scoped do aktywnego segmentu ──
+  // Sidebar „Kontynuuj" — scoped do aktywnego segmentu
   window.lexRenderSidebarResume=async function(){
     var box=document.getElementById('lex-sb-resume'); if(!box) return;
     box.style.display='none'; box.innerHTML='';
@@ -18449,16 +18429,14 @@ if ('serviceWorker' in navigator) {
     box.style.display='block';
     var head='<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px 4px">Kontynuuj</div>';
     box.innerHTML=head+items.map(function(it,idx){
-      var accent=(idx===0);
-      var meta='porcja '+it.pn+' z '+it.pt;
-      return '<button onclick="lexResumeLang(\''+it.lang+'\')" style="width:100%;text-align:left;background:var(--paper2);border:'+(accent?'2px solid var(--orange)':'.5px solid var(--border)')+';border-radius:12px;padding:11px 13px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+      var accent=(idx===0), meta='porcja '+it.pn+' z '+it.pt;
+      return '<button onclick="lexResumeLang(\''+it.lang+'\',\''+(it.kind||'')+'\')" style="width:100%;text-align:left;background:var(--paper2);border:'+(accent?'2px solid var(--orange)':'.5px solid var(--border)')+';border-radius:12px;padding:11px 13px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:10px;margin-bottom:8px">'
         +'<svg viewBox="0 0 24 24" fill="none" stroke="'+(accent?'var(--orange)':'var(--dim2)')+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0"><polygon points="6 4 20 12 6 20"/></svg>'
         +'<span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.label)+' <span style="font-weight:500;color:var(--dim2);font-size:10px">'+String(it.lang||'').toUpperCase()+'</span></span>'
         +'<span style="display:block;font-size:11px;color:var(--dim2)">'+esc(meta)+'</span></span></button>';
     }).join('');
   };
 
-  // ── Luki wyłączone (kod źródłowy zachowany) ──
   window.lexRenderSidebarGaps=function(){
     try{ var box=document.getElementById('lex-sb-gaps'); if(box){ box.innerHTML=''; box.style.display='none'; } }catch(e){}
     try{ var h=document.getElementById('lex-sbh-gaps'); if(h) h.style.display='none'; }catch(e){}
