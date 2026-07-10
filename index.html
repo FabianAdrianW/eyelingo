@@ -18226,3 +18226,243 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+
+<!-- ═══ EYELINGO — Trener AI v2: browser jak w Zestawach (Język/Poziom/Kategorie + Moje zestawy) ═══
+     · content renderowany do #lex-catalog-inline (pełna szerokość teacher-main = jak sekcja Zestawy)
+     · klik w kategorię/zestaw = natychmiastowy start lekcji Ailexa (mirror matCardStartLesson)
+     · sidebar „Kontynuuj" scoped do aktywnego segmentu + licznik na nieaktywnym
+     · „Dostosuj lekcję" jako lekki panel (język prowadzenia / czas) — bez bramki
+     · Luki wyłączone (kod źródłowy zachowany)
+     Silnik Ailexa nietknięty — tylko wywołania istniejących funkcji. -->
+<script>
+(function(){
+  var LVLS=['A1','A2','B1','B2','C1','C2'];
+  var _ids=null;               // {lang:{code:id}, lvl:{code:id}}
+  var _catCache={};            // per-lang kategorie
+  window._lexTrenerSeg=window._lexTrenerSeg||'eyelingo';
+  var _lang=null, _level=null;
+
+  function esc(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function langInfo(c){ return (typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[c])||{name:c,native:c,flag:'🌐'}; }
+  function langName(c){ var n=langInfo(c).name||c; return n.charAt(0).toUpperCase()+n.slice(1); }
+  function host(){ return document.getElementById('lex-catalog-inline'); }
+  function hideScreens(){ ['lex-lang-select','lex-onboarding','lex-eval','lex-card-engine','lex-summary'].forEach(function(s){ var el=document.getElementById(s); if(el) el.style.display='none'; }); }
+
+  async function ensureIds(){
+    if(_ids) return _ids;
+    _ids={lang:{},lvl:{}};
+    try{ var r=await db.from('languages').select('code,id'); (r.data||[]).forEach(function(x){ _ids.lang[x.code]=x.id; }); }catch(e){}
+    try{ var r2=await db.from('levels').select('code,id'); (r2.data||[]).forEach(function(x){ _ids.lvl[x.code]=x.id; }); }catch(e){}
+    return _ids;
+  }
+
+  // ── Kontynuuj: snapshoty porcji po języku (lex_resume_portion_<lang>_<uid>) ──
+  function resumeItems(){
+    var items=[];
+    try{
+      var suffix='_'+(window._uid||'anon'), prefix='lex_resume_portion_';
+      for(var i=0;i<localStorage.length;i++){
+        var k=localStorage.key(i);
+        if(!k||k.indexOf(prefix)!==0) continue;
+        if(k.length<=suffix.length||k.slice(-suffix.length)!==suffix) continue;
+        var lang=k.slice(prefix.length,k.length-suffix.length);
+        var st=null; try{ st=JSON.parse(localStorage.getItem(k)||'null'); }catch(e){}
+        if(!st||!(st.portionNum>0&&st.portionNum<st.portionTarget)) continue;
+        var src=(st.sources&&st.sources[0])||{};
+        var kind=src.kind||'eyelingo';
+        var nm=src.label?String(src.label).replace(/^[^\w]+\s*/,''):(st.focus||'lekcja');
+        items.push({lang:lang,label:nm,kind:kind,pn:st.portionNum,pt:st.portionTarget,ts:st.ts||''});
+      }
+      items.sort(function(a,b){ return String(b.ts||'').localeCompare(String(a.ts||'')); });
+    }catch(e){}
+    return items;
+  }
+  function segCounts(){
+    var e=0,u=0; resumeItems().forEach(function(it){ if(it.kind==='user') u++; else e++; }); return {eyelingo:e,user:u};
+  }
+
+  // ── Start lekcji z kategorii/zestawu (mirror matCardStartLesson dla dowolnego kind) ──
+  window.lexTrenerStart=function(kind,id,label,lang,level){
+    try{
+      window._lexLang=lang||window._lexLang||'en';
+      window._lexSources=[{kind:kind,id:id,label:label,level:level||null,lang:window._lexLang}];
+      window._lexDirectStart=true; window._lexNextTopic=null;
+      if(typeof lexLogRecentSet==='function') lexLogRecentSet(kind,id,label,level||null,0,window._lexLang);
+    }catch(e){}
+    try{ var h=host(); if(h){ h.style.display='none'; h.innerHTML=''; } }catch(e){}
+    if(typeof lexStartLesson==='function') lexStartLesson();
+  };
+  window.lexResumeLang=function(lang){
+    try{
+      if(lang){ window._lexLang=lang; var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[lang])||null; if(info){ window._lexLangName=info.name; window._lexLangNative=info.native; } }
+    }catch(e){}
+    try{ var h=host(); if(h){ h.style.display='none'; h.innerHTML=''; } }catch(e){}
+    if(typeof lexxResume==='function') lexxResume();
+  };
+
+  // ── Segmenty / lejek ──
+  window.lexTrenerSeg=function(seg){ window._lexTrenerSeg=(seg==='user'?'user':'eyelingo'); _level=null; lexTrenerBrowse(); if(typeof lexLoadSidebar==='function') lexLoadSidebar(); };
+  window.lexTrenerPickLang=function(c){ _lang=c; _level=null; renderBody(); };
+  window.lexTrenerPickLvl=function(l){ _level=l||null; renderBody(); };
+
+  function headHTML(){
+    var seg=window._lexTrenerSeg, c=segCounts();
+    function segBtn(mode,label,otherN){
+      var on=(seg===mode);
+      var cue=(!on&&otherN>0)?(' · '+otherN):'';
+      return '<button onclick="lexTrenerSeg(\''+mode+'\')" style="border:none;font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;padding:7px 18px;border-radius:100px;cursor:pointer;transition:.15s;'
+        +(on?'background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.08)':'background:transparent;color:var(--dim2)')+'">'+label+cue+'</button>';
+    }
+    return '<div style="max-width:960px;margin:0;padding:24px 0 12px">'
+      +'<div class="ph-eyebrow" style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:6px">Materiał</div>'
+      +'<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap">'
+      +'<h2 class="ph-title" style="margin:0">Ucz się z Ailexem</h2>'
+      +'<button onclick="lexTrenerAdjust()" style="background:none;border:none;color:var(--orange);font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap">'
+      +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:15px;height:15px"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>Dostosuj lekcję</button>'
+      +'</div>'
+      +'<div style="font-size:13px;color:var(--dim);margin:4px 0 16px">Wybierz materiał — Ailex zbuduje z niego lekcję.</div>'
+      +'<div style="display:inline-flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:100px;margin-bottom:18px">'
+      +segBtn('eyelingo','Zestawy Eyelingo',c.eyelingo)+segBtn('user','Moje zestawy',c.user)+'</div>'
+      +'<div id="lex-tr-body"></div></div>';
+  }
+
+  async function renderBody(){
+    var b=document.getElementById('lex-tr-body'); if(!b) return;
+    if(window._lexTrenerSeg==='user'){ return renderUser(b); }
+    return renderEyelingo(b);
+  }
+
+  async function renderEyelingo(b){
+    b.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:20px 0">Wczytuję…</div>';
+    await ensureIds();
+    var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en'];
+    if(!_lang||codes.indexOf(_lang)<0) _lang=(window._lexLang&&codes.indexOf(window._lexLang)>=0)?window._lexLang:codes[0];
+    var langId=_ids.lang[_lang];
+    var lvlById={}; Object.keys(_ids.lvl).forEach(function(cd){ lvlById[_ids.lvl[cd]]=cd; });
+    var rows=[];
+    if(langId!=null){
+      try{ var from=0,pg=1000; while(true){ var r=await db.from('flashcards').select('category_id,level_id').eq('language_id',langId).range(from,from+pg-1); var d=(r&&r.data)||[]; rows=rows.concat(d); if(d.length<pg) break; from+=pg; if(from>20000) break; } }catch(e){}
+    }
+    var presentLv={}; rows.forEach(function(r){ var lc=lvlById[r.level_id]; if(lc) presentLv[lc]=1; });
+    var levels=LVLS.filter(function(l){return presentLv[l];});
+    if(_level&&!presentLv[_level]) _level=null;
+    var fr=_level?rows.filter(function(r){return lvlById[r.level_id]===_level;}):rows;
+    var byCat={}; fr.forEach(function(r){ if(r.category_id==null) return; byCat[r.category_id]=(byCat[r.category_id]||0)+1; });
+    var catIds=Object.keys(byCat);
+    var meta={};
+    if(catIds.length){ try{ var rc=await db.from('categories').select('id,label').in('id',catIds).order('id',{ascending:true}); (rc.data||[]).forEach(function(c){ meta[c.id]={label:c.label}; }); }catch(e){} }
+    var orderedIds=Object.keys(meta).length?Object.keys(meta):catIds;
+
+    var html='';
+    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow">'+codes.map(function(c){ var info=langInfo(c); return '<button class="eylc-chip'+(c===_lang?' on':'')+'" onclick="lexTrenerPickLang(\''+c+'\')">'+info.flag+' '+esc(langName(c))+'</button>'; }).join('')+'</div>';
+    if(levels.length){
+      html+='<div class="eylc-flabel" style="margin-top:16px">Poziom</div><div class="eylc-chiprow"><button class="eylc-chip'+(!_level?' on':'')+'" onclick="lexTrenerPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eylc-chip'+(_level===lv?' on':'')+'" onclick="lexTrenerPickLvl(\''+lv+'\')">'+lv+'</button>'; }).join('')+'</div>';
+    }
+    html+='<div class="eylc-secth" style="margin-top:20px">Kategorie ('+orderedIds.length+')</div>';
+    if(!orderedIds.length){ html+='<div style="text-align:center;padding:40px 20px;color:var(--dim2);font-size:14px">Brak kategorii'+(_level?(' na poziomie '+esc(_level)):'')+'.</div>'; b.innerHTML=html; return; }
+    var lvlArg=_level||'';
+    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'+orderedIds.map(function(cid){
+      var m=meta[cid]||{label:'Kategoria '+cid}, cnt=byCat[cid]||0;
+      var args="'eyelingo',"+JSON.stringify(String(cid))+","+JSON.stringify(m.label||'')+","+JSON.stringify(_lang)+","+JSON.stringify(lvlArg);
+      return '<div class="eylc-cat" onclick="lexTrenerStart('+args.replace(/"/g,'&quot;')+')">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px"><span style="font-size:14px;font-weight:500;color:var(--navy)">'+esc(m.label)+'</span>'
+        +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex-shrink:0"><polygon points="6 4 20 12 6 20"/></svg></div>'
+        +'<div style="font-size:11px;color:var(--dim2)">'+cnt+' fiszek</div></div>';
+    }).join('')+'</div>';
+    b.innerHTML=html;
+  }
+
+  async function renderUser(b){
+    b.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:20px 0">Wczytuję…</div>';
+    var sets=[];
+    try{
+      var sess=(await db.auth.getSession()).data.session;
+      if(sess){
+        var us=null;
+        try{ us=await db.from('user_sets').select('id,name,lang,user_set_cards(id)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(80); }catch(e1){ us=null; }
+        if(!us||us.error){ try{ us=await db.from('user_sets').select('id,name,user_set_cards(id)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(80); }catch(e2){ us={data:[]}; } }
+        sets=((us&&us.data)||[]).map(function(s){ return {id:s.id,label:s.name,count:(s.user_set_cards||[]).length,lang:(s.lang||null)}; }).filter(function(x){return x.count>0;});
+      }
+    }catch(e){}
+    if(!sets.length){ b.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--dim2);font-size:14px">Nie masz jeszcze własnych zestawów. Dodaj je w zakładce Zestawy → Moje zestawy.</div>'; return; }
+    b.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'+sets.map(function(s){
+      var badge=s.lang?(String(s.lang).toUpperCase()+' · '):'';
+      var args="'user',"+JSON.stringify(String(s.id))+","+JSON.stringify(s.label||'')+","+JSON.stringify(s.lang||'')+",''";
+      return '<div class="eylc-cat" onclick="lexTrenerStart('+args.replace(/"/g,'&quot;')+')">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px"><span style="font-size:14px;font-weight:500;color:var(--navy)">'+esc(s.label)+'</span>'
+        +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex-shrink:0"><polygon points="6 4 20 12 6 20"/></svg></div>'
+        +'<div style="font-size:11px;color:var(--dim2)">'+badge+s.count+' fiszek</div></div>';
+    }).join('')+'</div>';
+  }
+
+  window.lexTrenerBrowse=function(){
+    if(window._lexDirectStart) return;
+    try{ var eng=document.getElementById('lex-card-engine'); if(window._lexLessonRunning && eng && eng.style.display!=='none') return; }catch(e){}
+    var h=host(); if(!h) return;
+    hideScreens();
+    h.style.display='block';
+    h.innerHTML=headHTML();
+    try{ h.scrollIntoView({block:'start',behavior:'auto'}); }catch(e){}
+    renderBody();
+  };
+  // Landing Trenera = ten browser
+  window.lexQuickStart=function(){ lexTrenerBrowse(); };
+
+  // ── Dostosuj lekcję: lekki panel (język prowadzenia / czas) — bez restartu bieżącej porcji ──
+  window.lexTrenerAdjust=function(){
+    var old=document.getElementById('lex-tr-adjust'); if(old) old.remove();
+    var hasSrc=!!(window._lexSources&&window._lexSources.length);
+    var tgt=langName(window._lexLang||'en');
+    var audio=(typeof _lexAudioLang!=='undefined')?_lexAudioLang:'pl';
+    var dur=(window._lexObDur|| (window._lexProfile&&_lexProfile.lesson_duration) ||25);
+    var m=document.createElement('div'); m.id='lex-tr-adjust';
+    m.style.cssText='position:fixed;inset:0;background:rgba(26,35,64,.35);z-index:10060;display:flex;align-items:center;justify-content:center;padding:20px';
+    m.addEventListener('click',function(ev){ if(ev.target===m) m.remove(); });
+    function pill(active){ return active?'2px solid var(--orange);background:#fff8f3':'1.5px solid var(--border2);background:#fff'; }
+    m.innerHTML='<div style="background:#fff;border-radius:18px;max-width:420px;width:100%;padding:22px 22px 20px;font-family:DM Sans,sans-serif">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div style="font-size:17px;font-weight:500;color:var(--navy)">Dostosuj lekcję</div>'
+      +'<button onclick="document.getElementById(\'lex-tr-adjust\').remove()" style="background:none;border:none;font-size:22px;color:var(--dim2);cursor:pointer;width:30px;height:30px">×</button></div>'
+      +'<div style="font-size:12px;color:var(--dim2);margin-bottom:14px;line-height:1.5">Zmiany wejdą od następnej porcji — bieżąca leci dalej.</div>'
+      +'<div style="font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--dim2);margin-bottom:8px">Język prowadzenia</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:18px">'
+      +'<button data-audio="pl" style="flex:1;padding:10px;border-radius:12px;border:'+pill(audio!==window._lexLang)+';cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;color:var(--navy)">Polski</button>'
+      +'<button data-audio="tgt" '+(hasSrc?'':'disabled')+' style="flex:1;padding:10px;border-radius:12px;border:'+pill(audio===window._lexLang)+';cursor:'+(hasSrc?'pointer':'default')+';opacity:'+(hasSrc?'1':'.5')+';font-family:inherit;font-size:13px;font-weight:500;color:var(--navy)">'+esc(tgt)+'</button></div>'
+      +'<div style="font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--dim2);margin-bottom:8px">Długość</div>'
+      +'<div style="display:flex;gap:8px">'+[15,25,40].map(function(d){ return '<button data-dur="'+d+'" style="flex:1;padding:10px;border-radius:12px;border:'+pill(+dur===d)+';cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;color:var(--navy)">'+d+' min</button>'; }).join('')+'</div>'
+      +'</div>';
+    m.addEventListener('click',function(ev){
+      var a=ev.target.closest('[data-audio]');
+      if(a){ var v=a.getAttribute('data-audio'); if(v==='tgt'&&!hasSrc) return; window._lexAudioLang=(v==='tgt')?(window._lexLang||'en'):'pl'; try{ localStorage.setItem(uk('lex_audio_lang'),window._lexAudioLang); }catch(e){} if(typeof lexUpdateAudioLangBtn==='function') lexUpdateAudioLangBtn(); lexTrenerAdjust(); return; }
+      var d=ev.target.closest('[data-dur]');
+      if(d){ window._lexObDur=+d.getAttribute('data-dur'); try{ if(window._lexProfile) _lexProfile.lesson_duration=window._lexObDur; }catch(e){} lexTrenerAdjust(); return; }
+    });
+    document.body.appendChild(m);
+  };
+
+  // ── Sidebar „Kontynuuj" — scoped do aktywnego segmentu ──
+  window.lexRenderSidebarResume=async function(){
+    var box=document.getElementById('lex-sb-resume'); if(!box) return;
+    box.style.display='none'; box.innerHTML='';
+    var seg=window._lexTrenerSeg;
+    var items=resumeItems().filter(function(it){ return seg==='user'?(it.kind==='user'):(it.kind!=='user'); });
+    if(!items.length) return;
+    box.style.display='block';
+    var head='<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px 4px">Kontynuuj</div>';
+    box.innerHTML=head+items.map(function(it,idx){
+      var accent=(idx===0);
+      var meta='porcja '+it.pn+' z '+it.pt;
+      return '<button onclick="lexResumeLang(\''+it.lang+'\')" style="width:100%;text-align:left;background:var(--paper2);border:'+(accent?'2px solid var(--orange)':'.5px solid var(--border)')+';border-radius:12px;padding:11px 13px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+        +'<svg viewBox="0 0 24 24" fill="none" stroke="'+(accent?'var(--orange)':'var(--dim2)')+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0"><polygon points="6 4 20 12 6 20"/></svg>'
+        +'<span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.label)+' <span style="font-weight:500;color:var(--dim2);font-size:10px">'+String(it.lang||'').toUpperCase()+'</span></span>'
+        +'<span style="display:block;font-size:11px;color:var(--dim2)">'+esc(meta)+'</span></span></button>';
+    }).join('');
+  };
+
+  // ── Luki wyłączone (kod źródłowy zachowany) ──
+  window.lexRenderSidebarGaps=function(){
+    try{ var box=document.getElementById('lex-sb-gaps'); if(box){ box.innerHTML=''; box.style.display='none'; } }catch(e){}
+    try{ var h=document.getElementById('lex-sbh-gaps'); if(h) h.style.display='none'; }catch(e){}
+  };
+  try{ var _hideLuki=function(){ try{ var h=document.getElementById('lex-sbh-gaps'); if(h) h.style.display='none'; var b=document.getElementById('lex-sb-gaps'); if(b){ b.innerHTML=''; b.style.display='none'; } }catch(e){} }; if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',_hideLuki); else _hideLuki(); }catch(e){}
+})();
+</script>
