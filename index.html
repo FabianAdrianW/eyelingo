@@ -1309,6 +1309,90 @@ function eyelingoLoader(text,size){
 }
 function eylInitSpinners(){try{var ns=document.querySelectorAll('[data-eyl-spin]');for(var i=0;i<ns.length;i++){var el=ns[i];if(el.getAttribute('data-eyl-done'))continue;el.setAttribute('data-eyl-done','1');el.innerHTML=eyelingoSpinner(parseInt(el.getAttribute('data-eyl-spin'),10)||64);}}catch(e){}}
 if(document.readyState!=='loading')eylInitSpinners();else document.addEventListener('DOMContentLoaded',eylInitSpinners);
+
+/* ══════════════════════════════════════════════════════════════════
+   BRAMA NAWIGACJI (anti-flash)
+   Zasada: po kliknieciu w navbar uzytkownik NIGDY nie widzi tresci
+   strony innej niz docelowa. Brama zaslania obszar tresci w tej samej
+   klatce co klikniecie, a znika dopiero gdy strona docelowa jest gotowa.
+   Jesli gotowa jest natychmiast (<130 ms) — spinner sie nie pojawia
+   (jest opoznionym fade-inem), wiec przejscie jest wizualnie natychmiastowe.
+   Jesli trwa dluzej — ZAWSZE widac markowy loader (logo + kometa + tekst).
+   Bezpiecznik: brama nigdy nie zostaje na stale (twardy limit czasu).
+   ══════════════════════════════════════════════════════════════════ */
+try{document.head.insertAdjacentHTML('beforeend',
+ '<style id="el-navgate">'
+ +'#eyl-nav-gate{position:fixed;left:0;right:0;top:0;bottom:0;z-index:150;background:var(--paper,#f8f7f4);display:none}'
+ +'#eyl-nav-gate.on{display:block}'
+ +'#eyl-nav-gate .eyl-gate-in{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);opacity:0;animation:eylGateIn .22s ease .13s forwards}'
+ +'@keyframes eylGateIn{from{opacity:0}to{opacity:1}}'
+ +'#eyl-boot-gate{position:fixed;left:0;right:0;top:0;bottom:0;z-index:9999;background:var(--paper,#f8f7f4);display:flex;align-items:center;justify-content:center}'
+ +'</style>');}catch(e){}
+
+var _EYLG={holds:0,kill:null};
+function eylGateEl(){
+  var el=document.getElementById('eyl-nav-gate');
+  if(!el){
+    el=document.createElement('div');
+    el.id='eyl-nav-gate';
+    el.innerHTML='<div class="eyl-gate-in" id="eyl-gate-body"></div>';
+    (document.body||document.documentElement).appendChild(el);
+  }
+  return el;
+}
+function eylGateShow(text){
+  try{
+    var el=eylGateEl();
+    var b=document.getElementById('eyl-gate-body');
+    if(b) b.innerHTML=(typeof eyelingoLoader==='function')
+      ? eyelingoLoader(text||'Wczytuję…',64)
+      : '<div style="text-align:center;color:var(--dim2)">'+(text||'Wczytuję…')+'</div>';
+    el.classList.add('on');
+  }catch(e){}
+}
+function eylGateHide(){
+  try{
+    var el=document.getElementById('eyl-nav-gate');
+    if(el) el.classList.remove('on');
+    clearTimeout(_EYLG.kill);
+  }catch(e){}
+  _EYLG.holds=0;
+}
+/* Zwraca funkcje zwalniajaca. Brama znika dopiero gdy zwolniono WSZYSTKIE uchwyty
+   i minely 2 klatki (gwarancja, ze strona docelowa zdazyla sie ulozyc). */
+function eylGateHold(text,maxMs){
+  _EYLG.holds++;
+  eylGateShow(text);
+  try{ clearTimeout(_EYLG.kill); }catch(e){}
+  _EYLG.kill=setTimeout(function(){ eylGateHide(); }, maxMs||9000);
+  var done=false;
+  return function(){
+    if(done) return; done=true;
+    _EYLG.holds=Math.max(0,_EYLG.holds-1);
+    if(_EYLG.holds===0){
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){
+        if(_EYLG.holds===0) eylGateHide();
+      }); });
+    }
+  };
+}
+function eylBootGateOff(){
+  try{ var g=document.getElementById('eyl-boot-gate'); if(g&&g.parentNode) g.parentNode.removeChild(g); }catch(e){}
+}
+window.eylGateShow=eylGateShow; window.eylGateHide=eylGateHide;
+window.eylGateHold=eylGateHold; window.eylBootGateOff=eylBootGateOff;
+/* Teksty ekranu ladowania per strona */
+var EYL_LOAD_TXT={
+  community:'Otwieram Twoje fiszki…',
+  teacher:'Uruchamiam Trenera AI…',
+  tryb:'Przygotowuję sesję…',
+  dash:'Wczytuję pulpit…',
+  tutors:'Wczytuję lektorów…',
+  messages:'Wczytuję wiadomości…',
+  tofix:'Otwieram zgłoszenia…',
+  auth:'Chwileczkę…',
+  home:'Chwileczkę…'
+};
 </script>
 <style id="lp2-styles">
 .lp{--lp-display:'DM Sans','Inter',sans-serif;color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
@@ -1533,6 +1617,21 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 </style>
 </head>
 <body>
+<!-- Brama startowa: pierwsza pomalowana klatka to loader, NIE landing.
+     Zdejmuje ja pierwsze wywolanie showPage() (czyli w momencie, gdy znamy juz
+     strone docelowa). Bezpiecznik 12 s gwarantuje, ze nigdy nie zostanie na stale. -->
+<div id="eyl-boot-gate"><div id="eyl-boot-body"></div></div>
+<script>
+(function(){
+  try{
+    var b=document.getElementById('eyl-boot-body');
+    if(b && typeof eyelingoLoader==='function') b.innerHTML=eyelingoLoader('Wczytuję Eyelingo…',72);
+  }catch(e){}
+  setTimeout(function(){
+    try{ var g=document.getElementById('eyl-boot-gate'); if(g&&g.parentNode) g.parentNode.removeChild(g); }catch(e){}
+  }, 12000);
+})();
+</script>
 <script>
 // Global function shims - ensure these are available before page loads
 window.switchMatTab = function(tab){
@@ -2981,19 +3080,51 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
 
 // ── Strony Community i Ranking ──
 function showPage(name){
+  // ── KROK 1: REDIRECTY PRZED czymkolwiek widocznym ───────────────────────
+  // Wczesniej 'chat' najpierw odslanial page-chat, potem rekurencyjnie page-teacher,
+  // a wlasciwa zakladka wjezdzala dopiero po setTimeout(...,50) — to byla migawka.
+  // Teraz cel jest rozstrzygniety zanim cokolwiek zostanie pokazane.
+  var _tab=null;
+  if(name==='chat'){ name='teacher'; _tab='chat'; }
+  if(name==='strefa'){ name='community'; window._matPendingLearn=true; }
+  if(name==='teacher' && !_tab) _tab='teacher';
+
+  // ── KROK 2: BRAMA w tej samej klatce co klikniecie ──────────────────────
+  try{ if(typeof eylBootGateOff==='function') eylBootGateOff(); }catch(e){}
+  var _rel=(typeof eylGateHold==='function')
+    ? eylGateHold((typeof EYL_LOAD_TXT!=='undefined' && EYL_LOAD_TXT[name])||'Wczytuję…')
+    : function(){};
+
   // Stop any ongoing TTS
   if(typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
   // Stop any audio elements
   document.querySelectorAll('audio').forEach(function(a){try{a.pause();a.currentTime=0;}catch(e){}});
-  // Strefa Nauki scalona z „Twoje zestawy": każde wejście do 'strefa' renderuje się jako powierzchnia nauki w community.
-  if(name==='strefa'){ name='community'; window._matPendingLearn=true; }
   // Update URL hash
   try{history.replaceState(null,'','#'+name);}catch(e){}
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  const pg=document.getElementById('page-'+name);
+
+  // ── KROK 3: podmiana strony (pod brama — niewidoczna dla usera) ─────────
+  document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
+  var pg=document.getElementById('page-'+name);
   if(pg){pg.classList.add('active');window.scrollTo(0,0);}
+  setActiveTab(name);
+
+  // Show only sidebar toggle for current page, hide others
+  ['mat-sidebar-toggle','strefa-sidebar-toggle','odkryj-sidebar-toggle',
+   'mat-sidebar','strefa-sidebar','odkryj-sidebar'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  var _sidebarToggleMap={};
+  var _sidebarMap={community:'mat-sidebar',strefa:'strefa-sidebar',odkryj:'odkryj-sidebar'};
+  if(_sidebarToggleMap[name]){ var _t=document.getElementById(_sidebarToggleMap[name]); if(_t) _t.style.display='flex'; }
+  if(_sidebarMap[name]){
+    var _s=document.getElementById(_sidebarMap[name]);
+    if(_s) _s.style.display='block';
+  }
+
+  // ── KROK 4: przygotowanie tresci; _prep = obietnica gotowosci ───────────
+  var _prep=null;
   if(name==='community'){
-    loadCollections();
+    _prep=loadCollections();
     if(window._matPendingLearn){
       window._matPendingLearn=false;
       if(typeof matEnterLearn==='function') matEnterLearn();
@@ -3003,26 +3134,20 @@ function showPage(name){
     }
     if(typeof refreshNavDueBadge==='function'){ try{ refreshNavDueBadge(); }catch(e){} }
   }
-  if(name==='messages'){ if(typeof loadTcpConvList==='function') loadTcpConvList(); if(typeof tcpRenderMyIdentity==='function') tcpRenderMyIdentity(); }
-  if(name==='tofix') initToFixPage();
-  if(name==='teacher'){ setTimeout(function(){ teacherShowTab('teacher'); }, 50); }
-  if(name==='dash'){ try{ loadDashboard(); }catch(e){} }
-  if(name==='tutors') initTutors();
-  // Redirects for merged pages — route to parent hub
-  if(name==='chat'){showPage('teacher');setTimeout(function(){teacherShowTab('chat');},50);return false;}
-  if(name==='tryb'){ /* page-tryb handles itself */ }
-  setActiveTab(name);
-  // Show only sidebar toggle for current page, hide others
-  ['mat-sidebar-toggle','strefa-sidebar-toggle','odkryj-sidebar-toggle',
-   'mat-sidebar','strefa-sidebar','odkryj-sidebar'].forEach(function(id){
-    var el=document.getElementById(id); if(el) el.style.display='none';
-  });
-  var _sidebarToggleMap={};
-  var _sidebarMap={community:'mat-sidebar',strefa:'strefa-sidebar',odkryj:'odkryj-sidebar'};
-  if(_sidebarToggleMap[name]){ var _t=document.getElementById(_sidebarToggleMap[name]); if(_t) _t.style.display='flex'; }
-  if(_sidebarMap[name]){ 
-    var _s=document.getElementById(_sidebarMap[name]); 
-    if(_s) _s.style.display='block';
+  if(name==='messages'){ if(typeof loadTcpConvList==='function') _prep=loadTcpConvList(); if(typeof tcpRenderMyIdentity==='function') tcpRenderMyIdentity(); }
+  if(name==='tofix') _prep=initToFixPage();
+  if(name==='teacher'){ _prep=teacherShowTab(_tab||'teacher'); }   // BEZ setTimeout — synchronicznie
+  if(name==='dash'){ try{ _prep=loadDashboard(); }catch(e){} }
+  if(name==='tutors') _prep=initTutors();
+
+  // ── KROK 5: zdjecie bramy ──────────────────────────────────────────────
+  if(name==='tryb'){
+    // Tryb/Powtorki renderuja sie asynchronicznie POZA showPage (startSession →
+    // showTrybModePicker / showTrybView). Uchwyt oddajemy tym funkcjom;
+    // bezpiecznik czasowy w eylGateHold i tak nie pozwoli bramie zostac na stale.
+    window._eylTrybRel=_rel;
+  } else {
+    Promise.resolve(_prep).catch(function(){}).then(function(){ _rel(); });
   }
   return false;
 }
@@ -4856,6 +4981,7 @@ function toggleStrefaSidebar(){
 async function powtorkiEnter(){
   window._trybSource='strefa';
   if(typeof showPage==='function') showPage('tryb');
+  try{ if(typeof eylGateShow==='function') eylGateShow('Sprawdzam, co jest dziś do powtórki…'); }catch(e){}
   var session=document.getElementById('tryb-session');
   var lobby=document.getElementById('tryb-lobby');
   var summary=document.getElementById('tryb-summary');
@@ -4888,6 +5014,7 @@ async function powtorkiEnter(){
       +'<div style="font-size:14px;color:var(--dim2);max-width:320px;margin:0 auto 22px;line-height:1.6">Brak powtórek na dziś. Wróć jutro albo dodaj nowe słowa.</div>'
       +'<button onclick="trybBackToStrefa()" style="background:transparent;border:1.5px solid var(--border2);border-radius:100px;padding:9px 20px;font-size:13px;color:var(--dim);cursor:pointer;font-family:DM Sans,sans-serif">Wróć do zestawów</button>';
     host.appendChild(empty);
+    try{ if(window._eylTrybRel){ window._eylTrybRel(); window._eylTrybRel=null; } }catch(e){}
     return;
   }
   var _dueF=due;
@@ -7287,6 +7414,9 @@ function startTrybNauki(cardsRaw,setName){
 window.startTrybNauki=startTrybNauki;
 
 function showTrybView(v){
+  // Lobby/Podsumowanie = finalny widok -> mozna zdjac brame nawigacji.
+  // 'session' NIE zwalnia: startSession() ustawia ten widok zanim dociagnie karty.
+  if(v!=='session'){ try{ if(window._eylTrybRel){ window._eylTrybRel(); window._eylTrybRel=null; } }catch(e){} }
   var lobby=document.getElementById('tryb-lobby');
   var session=document.getElementById('tryb-session');
   var summary=document.getElementById('tryb-summary');
@@ -7618,6 +7748,9 @@ window.trybBackToStrefa=trybBackToStrefa;
 
 // ── TRYB NAUKI — MODE PICKER ──────────────────────────
 function showTrybModePicker(){
+  // Ekran wyboru trybu to pierwszy finalny widok sesji -> zdejmij brame
+  // (release jest odroczony o 2 klatki, wiec picker zdazy sie wyrenderowac).
+  try{ if(window._eylTrybRel){ window._eylTrybRel(); window._eylTrybRel=null; } }catch(e){}
   showTrybView('session');
   // Hide the card scene while picking mode
   var scene = document.getElementById('tryb-card-scene');
@@ -10753,8 +10886,9 @@ function teacherShowTab(tab){
   var pro='<span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span>';
   if(tab==='chat'){ if(title)title.innerHTML='AI Partner'; if(sub)sub.textContent='Swobodna rozmowa z AI dopasowana do Twojego poziomu'; }
   else { if(title)title.innerHTML='Trener AI '+pro; if(sub)sub.textContent='Ailex utrwala słowa, które przerabiasz na stronie i na desktopie — wydobywasz je z pamięci, nie tylko oglądasz.'; }
+  var _lexP=null;
   if(tab==='chat' && typeof initChat==='function') initChat();
-  if(tab==='teacher') lexInit();
+  if(tab==='teacher') _lexP=lexInit();
   // Sekcje sidebara
   var sbChat=document.getElementById('teacher-sb-chat-history');
   var sbPro=document.getElementById('teacher-sb-pro');
@@ -10762,6 +10896,7 @@ function teacherShowTab(tab){
   if(sbPro) sbPro.style.display = tab==='teacher' ? 'block' : 'none';
   if(tab==='teacher' && typeof lexLoadSidebar==='function') lexLoadSidebar();
   if(typeof teacherRenderHistory==='function') teacherRenderHistory();
+  return _lexP;   // brama nawigacji czeka na gotowosc ekranu Lexa
 }
 
 // ── HUB (Design Bible W5): rekomendacja dnia + ostatnie sesje ──
@@ -15258,22 +15393,22 @@ async function lexInit(){
       if(_appInitialized) return; // already done
       if(r.data&&r.data.session){
         _appInitialized=true;
-        if(typeof loadDashboard==='function'){
-          loadDashboard().then(function(){
-            var hash=window.location.hash.replace('#','');
-            var valid=['dash','community','strefa','teacher'];
-            showPage(valid.indexOf(hash)>=0?hash:'dash');
-          });
-        }
+        // Wczesniej: await loadDashboard() PRZED showPage() -> przez caly czas
+        // ladowania widoczny byl landing (#page-home ma class="page active").
+        // Teraz od razu idziemy na strone docelowa; showPage sam odpali
+        // loadDashboard() dla 'dash' i trzyma brame do jego zakonczenia.
+        var hash=window.location.hash.replace('#','');
+        var valid=['dash','community','strefa','teacher'];
+        showPage(valid.indexOf(hash)>=0?hash:'dash');
       } else {
-        showPage('auth');
+        showPage('auth');   // zachowanie bez zmian — showPage sam zdejmie brame startowa
       }
     });
   }
   // Hide all fixed sidebars - they're position:fixed so escape page display:none
   // showPage() will reveal the correct one
   // Sidebars are now position:sticky - hidden with parent page
-  setTimeout(tryInit,200);
+  tryInit();   // bez sztucznego opoznienia — tryInit sam czeka na `db` (co 100 ms)
 })();
 </script>
 
