@@ -868,7 +868,7 @@ async function markKnownBulk(cards, lang){
     var w=c.word||'', t=c.translation||''; if(!w&&!t) return;
     var ck=_usrsCK(w,t); if(seen[ck]) return; seen[ck]=1;
     var fc=(c.flashcard_id!=null?c.flashcard_id:null);
-    rows.push({user_id:UID,card_key:ck,word:w,translation:t,lang:(lang||'en'),source:(fc!=null?'eyelingo':'custom'),flashcard_id:fc,ease_factor:2.6,repetitions:5,interval_days:iv,next_review:nr});
+    rows.push({user_id:UID,card_key:ck,word:w,translation:t,lang:_eylTrueLang({word:w, lang:_eylNormLang(lang)}),source:(fc!=null?'eyelingo':'custom'),flashcard_id:fc,ease_factor:2.6,repetitions:5,interval_days:iv,next_review:nr});
     PROG[ck]={r:5,iv:iv,due:false};
   });
   if(!rows.length) return 0;
@@ -905,7 +905,7 @@ async function srsDeclare(word,translation,q,opts){
   var nr=new Date(Date.now()+t.iv*86400000).toISOString().slice(0,10);
   try{
     await db.from('srs_progress').upsert({
-      user_id:UID, card_key:ck, word:word, translation:translation||'', lang:(opts.lang||curSetLang||'en'),
+      user_id:UID, card_key:ck, word:word, translation:translation||'', lang:_eylTrueLang({word:word, lang:(_eylNormLang(opts.lang)||_eylNormLang(curSetLang))}),
       source:(fc!=null?'eyelingo':'custom'), flashcard_id:fc,
       ease_factor:2.5, repetitions:t.r, interval_days:t.iv, next_review:nr
     },{onConflict:'user_id,card_key'});
@@ -1822,7 +1822,7 @@ function sm2Canon(card,quality){
 async function srsUpsertCanon(word,translation,quality,opts){
   if(!word||quality==null||!UID) return;
   opts=opts||{};
-  var lang=opts.lang||_lexLang||curSetLang||'en';
+  var lang=_eylTrueLang({word:word, lang:(_eylNormLang(opts.lang)||_eylNormLang(_lexLang)||_eylNormLang(curSetLang))});
   var fc=(opts.flashcard_id!=null?opts.flashcard_id:null);
   var ck=opts.card_key||_usrsCK(word,translation);
   var cur={};
@@ -2284,20 +2284,88 @@ async function eylOpenCat(lang,lvl,catId,catName){
 var _pwQueue=[], _pwIdx=0, _pwDir='foreign', _pwFlipped=false, _pwDone=0, _pwTotal=0;
 /* ── Blokowanie powtórek per język (parytet z index.html): dominujący pierwszy,
    interleaving zostaje w bloku, między blokami spokojna karta przejścia. ── */
+/* ── KANONICZNY JĘZYK KARTY (kod identyczny z index.html — Logic Bible §0.4.6) ──
+   srs_progress.lang bywa błędny/pusty (zapis brał globalny stan UI, nie język karty).
+   Ustalenie: 1) autorytatywnie z bazy (flashcards.language_id / user_sets.lang),
+   2) rekoncyliacja wg pisma, 3) brak → '' → osobny blok „Pozostałe". 'jp' = kanon. */
+var _EYL_LANG_CODES={en:1,es:1,de:1,fr:1,it:1,nl:1,pt:1,no:1,ru:1,uk:1,ar:1,jp:1,zh:1,ko:1};
+function _eylNormLang(code){
+  var c=String(code==null?'':code).toLowerCase().trim().split(/[-_]/)[0];
+  if(c==='ja') c='jp';
+  return _EYL_LANG_CODES[c]?c:'';
+}
+var _EYL_JA_HINT=/[\u95a2\u5bfe\u7d4c\u56f3\u58f2\u8aad\u767a\u8ee2\u82b8\u5f01\u685c\u6b69\u5e30\u770c\u9a13\u56e3\u4fa1\u55b6\u5e83\u5fb3\u6226\u9244\u9ed2\u4e9c\u5186\u5150\u5b9f\u53f7\u72ec\u4f1a\u5b66\u9a5b\u9a5c]/;
+function _eylScriptFam(x){
+  x=String(x||'');
+  if(/[\u3040-\u30FF\u31F0-\u31FF]/.test(x)) return 'kana';
+  if(/[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F]/.test(x)) return 'hangul';
+  if(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(x)) return 'arabic';
+  if(/[\u0400-\u052F]/.test(x)) return 'cyrillic';
+  if(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF]/.test(x)) return 'han';
+  return 'latin';
+}
+function _eylTrueLang(card){
+  var stored=_eylNormLang(card&&card.lang);
+  var txt=(card&&(card.word||card.front))||'';
+  var fam=_eylScriptFam(txt);
+  if(fam==='latin') return stored;
+  var ok=false;
+  if(fam==='kana') ok=(stored==='jp');
+  else if(fam==='hangul') ok=(stored==='ko');
+  else if(fam==='arabic') ok=(stored==='ar');
+  else if(fam==='cyrillic') ok=(stored==='ru'||stored==='uk');
+  else if(fam==='han') ok=(stored==='zh'||stored==='jp');
+  if(ok) return stored;
+  if(fam==='kana') return 'jp';
+  if(fam==='hangul') return 'ko';
+  if(fam==='arabic') return 'ar';
+  if(fam==='cyrillic') return 'ru';
+  if(fam==='han') return _EYL_JA_HINT.test(txt) ? 'jp' : 'zh';
+  return stored;
+}
+var _eylLangCodeMap=null;
+async function _eylLangCodes(){
+  if(_eylLangCodeMap) return _eylLangCodeMap;
+  try{
+    var r=await db.from('languages').select('id,code');
+    if(r&&r.error) return {};
+    var m={}; ((r&&r.data)||[]).forEach(function(x){ var c=_eylNormLang(x.code); if(c) m[x.id]=c; });
+    _eylLangCodeMap=m; return m;
+  }catch(e){ return {}; }
+}
+function _eylBackfillLang(byLang){
+  try{
+    if(!UID||!byLang) return;
+    Object.keys(byLang).forEach(function(L){
+      var ks=byLang[L]||[]; if(!ks.length) return;
+      for(var i=0;i<ks.length;i+=200){
+        db.from('srs_progress').update({lang:L}).eq('user_id',UID).in('card_key',ks.slice(i,i+200))
+          .then(function(){},function(e){ console.warn('[srs] backfill lang:', e&&e.message); });
+      }
+    });
+  }catch(e){}
+}
 function _eylSeqByLang(items){
-  var g={}, order=[]; (items||[]).forEach(function(it){ var l=(it&&it.lang||'').toLowerCase()||'_'; if(!g[l]){g[l]=[];order.push(l);} g[l].push(it); });
-  order.sort(function(a,b){ return g[b].length-g[a].length || (a<b?-1:(a>b?1:0)); });
+  var g={}, order=[];
+  (items||[]).forEach(function(it){
+    if(it) it.lang=_eylTrueLang(it);            // ostatnia linia obrony: pismo > zapis (nigdy japońska karta w bloku 'en')
+    var l=_eylNormLang(it&&it.lang)||'?'; if(!g[l]){g[l]=[];order.push(l);} g[l].push(it);
+  });
+  order.sort(function(a,b){
+    if(a==='?') return 1; if(b==='?') return -1;
+    return g[b].length-g[a].length || (a<b?-1:(a>b?1:0));
+  });
   var out=[]; order.forEach(function(l){ g[l].forEach(function(x){ out.push(x); }); });
   return {items:out, langs:order, multiLang:order.length>1};
 }
-function _eylLangMeta(code){ code=String(code||'').toLowerCase(); var nm=(typeof eylLangLabel==='function')?eylLangLabel(code):code.toUpperCase(); var fl=(typeof eylLangFlag==='function')?eylLangFlag(code):''; return {name:nm||code.toUpperCase(), flag:fl||''}; }
+function _eylLangMeta(code){ code=_eylNormLang(code); if(!code) return {name:'Pozostałe', flag:''}; var nm=(typeof eylLangLabel==='function')?eylLangLabel(code):code.toUpperCase(); var fl=(typeof eylLangFlag==='function')?eylLangFlag(code):''; return {name:nm||code.toUpperCase(), flag:fl||''}; }
 function _pwBlockGate(){
   if(_pwIdx>=_pwQueue.length) return false;
   var cur=_pwQueue[_pwIdx]; if(!cur) return false;
-  var lc=String(cur.lang||'').toLowerCase(); if(!lc) return false;
+  var lc=_eylNormLang(cur.lang)||'?';       // karty bez języka → własny blok „Pozostałe"
   var atStart=(_pwIdx===0);                 // przekładka „na starcie powtórek"
   var langChanged=false;
-  if(_pwIdx>0){ var prev=_pwQueue[_pwIdx-1]; var lp=prev?String(prev.lang||'').toLowerCase():''; langChanged=(!!lc && lc!==lp); }
+  if(_pwIdx>0){ var prev=_pwQueue[_pwIdx-1]; var lp=prev?(_eylNormLang(prev.lang)||'?'):''; langChanged=(lc!==lp); }
   if(!atStart && !langChanged) return false;
   if(!window._pwBlockShown) window._pwBlockShown={};
   var key=_pwIdx+'|'+lc; if(window._pwBlockShown[key]) return false;
@@ -2305,9 +2373,9 @@ function _pwBlockGate(){
   _pwRenderTransition(cur); return true;
 }
 function _pwRenderTransition(card){
-  var lang=String(card.lang||'').toLowerCase(), cnt=0;
-  for(var i=_pwIdx;i<_pwQueue.length && String(_pwQueue[i].lang||'').toLowerCase()===lang;i++) cnt++;
-  var meta=_eylLangMeta(lang);
+  var lang=_eylNormLang(card.lang)||'?', cnt=0;
+  for(var i=_pwIdx;i<_pwQueue.length && (_eylNormLang(_pwQueue[i].lang)||'?')===lang;i++) cnt++;
+  var meta=_eylLangMeta(lang==='?'?'':lang);
   var gr=document.getElementById('pw-grades'); if(gr) gr.style.display='none';
   var hn=document.getElementById('pw-hint'); if(hn) hn.textContent='';
   var tt=document.getElementById('pw-title'); if(tt) tt.textContent='Powtórki';
@@ -2328,16 +2396,23 @@ function _pwContinue(){ pwRenderCard(); }
 async function _pwLiveCustomKeys(){
   if(!UID) return null;
   try{
-    var sr=await db.from('user_sets').select('id').eq('user_id',UID);
+    var sr=await db.from('user_sets').select('id,lang').eq('user_id',UID);
     if(sr&&sr.error) return null;                 // błąd → null → nie filtrujemy (bezpieczny fallback)
-    var ids=((sr&&sr.data)||[]).map(function(s){ return s.id; });
-    var keys={};
+    var sets=((sr&&sr.data)||[]);
+    var ids=sets.map(function(s){ return s.id; });
+    var slang={}; sets.forEach(function(s){ slang[s.id]=_eylNormLang(s.lang); });
+    var keys={}, langByKey={};
     for(var i=0;i<ids.length;i+=200){
-      var cr=await db.from('user_set_cards').select('word,translation').in('set_id',ids.slice(i,i+200));
+      var cr=await db.from('user_set_cards').select('set_id,word,translation').in('set_id',ids.slice(i,i+200));
       if(cr&&cr.error) return null;               // błąd cząstkowy → przerwij, nie gub kart
-      ((cr&&cr.data)||[]).forEach(function(c){ if(c.word||c.translation) keys[_usrsCK(c.word||'',c.translation||'')]=1; });
+      ((cr&&cr.data)||[]).forEach(function(c){
+        if(!c.word&&!c.translation) return;
+        var ck=_usrsCK(c.word||'',c.translation||'');
+        keys[ck]=1;
+        var L=slang[c.set_id]||''; if(L && !langByKey[ck]) langByKey[ck]=L;   // język właściciela karty
+      });
     }
-    return keys;                                  // {} przy zerze kart = poprawnie odsiewa custom-duchy
+    return {keys:keys, langByKey:langByKey};      // {} przy zerze kart = poprawnie odsiewa custom-duchy
   }catch(e){ return null; }
 }
 // Żywotność katalogu (parytet z index.html _usrsLiveCatalog): karta katalogowa ważna,
@@ -2347,21 +2422,27 @@ async function _pwLiveCatalog(rows){
   try{
     var catRows=rows.filter(function(r){ return r.flashcard_id!=null; });
     if(!catRows.length) return {ids:{},keys:{}};
-    var ids={}, idList=[], seen={};
+    var lmap=await _eylLangCodes();               // languages.id → kod
+    var ids={}, langById={}, idList=[], seen={};
     catRows.forEach(function(r){ var id=r.flashcard_id; if(id!=null && !seen[id]){ seen[id]=1; idList.push(id); } });
     for(var i=0;i<idList.length;i+=500){
-      var q=await db.from('flashcards').select('id').in('id',idList.slice(i,i+500));
+      var q=await db.from('flashcards').select('id,language_id').in('id',idList.slice(i,i+500));
       if(q&&q.error) return null;
-      ((q&&q.data)||[]).forEach(function(x){ ids[x.id]=1; });
+      ((q&&q.data)||[]).forEach(function(x){ ids[x.id]=1; var L=lmap[x.language_id]; if(L) langById[x.id]=L; });
     }
-    var keys={}, suspectWords=[], sw={};
+    var keys={}, langByKey={}, suspectWords=[], sw={};
     catRows.forEach(function(r){ if(!ids[r.flashcard_id]){ var w=r.word||''; if(w && !sw[w]){ sw[w]=1; suspectWords.push(w); } } });
     for(var j=0;j<suspectWords.length;j+=200){
-      var q2=await db.from('flashcards').select('word,translation').in('word',suspectWords.slice(j,j+200));
+      var q2=await db.from('flashcards').select('word,translation,language_id').in('word',suspectWords.slice(j,j+200));
       if(q2&&q2.error) return null;
-      ((q2&&q2.data)||[]).forEach(function(c){ if(c.word||c.translation) keys[_usrsCK(c.word||'',c.translation||'')]=1; });
+      ((q2&&q2.data)||[]).forEach(function(c){
+        if(!c.word&&!c.translation) return;
+        var ck=_usrsCK(c.word||'',c.translation||'');
+        keys[ck]=1;
+        var L=lmap[c.language_id]; if(L && !langByKey[ck]) langByKey[ck]=L;
+      });
     }
-    return {ids:ids,keys:keys};
+    return {ids:ids,keys:keys,langById:langById,langByKey:langByKey};
   }catch(e){ return null; }
 }
 async function _pwFilterOrphans(rows){
@@ -2375,10 +2456,14 @@ async function _pwFilterOrphans(rows){
       var ck=r.card_key||_usrsCK(r.word||'',r.translation||'');
       if(r.flashcard_id!=null){
         if(!cat) return true;                                  // katalogu nie ustalono → zostaw (bezpiecznie)
+        var LC=cat.langById[r.flashcard_id]||cat.langByKey[ck]||'';
+        if(LC) r._alang=LC;                                    // autorytatywny język karty katalogowej
         return !!cat.ids[r.flashcard_id] || !!cat.keys[ck];    // żywe id LUB żywe słowo → zostaw; inaczej: zestaw usunięty → odsiej
       }
       if(!live) return true;                                   // custom nie ustalono → zostaw
-      return !!live[ck];                                       // custom: tylko jeśli nadal w jakimś zestawie
+      var LU=(live.langByKey&&live.langByKey[ck])||'';
+      if(LU) r._alang=LU;                                      // autorytatywny język z user_sets.lang
+      return !!live.keys[ck];                                  // custom: tylko jeśli nadal w jakimś zestawie
     });
   }catch(e){ return rows; }
 }
@@ -2401,6 +2486,15 @@ async function _pwFetchDue(limit){
     }
     rows=rows.filter(function(r){ return r.word||r.translation; });
     rows=await _pwFilterOrphans(rows);   // usuń karty z usuniętych materiałów/zestawów
+    // Kanoniczny język karty (autorytatywnie z bazy → pismo) + cicha naprawa srs_progress.
+    var _fix={};
+    rows.forEach(function(r){
+      var was=String(r.lang||'');
+      var res=_eylTrueLang({word:r.word, lang:(r._alang||was)});
+      r.lang=res;
+      if(res && res!==was && r.card_key){ (_fix[res]=_fix[res]||[]).push(r.card_key); }
+    });
+    try{ _eylBackfillLang(_fix); }catch(e){}
     try{ var ids=[]; rows.forEach(function(r){ if(r.flashcard_id!=null) ids.push(r.flashcard_id); });
       if(ids.length){ var fr=await db.from('flashcards').select('id,romaji').in('id',ids); var rm={}; ((fr&&fr.data)||[]).forEach(function(x){ rm[x.id]=x.romaji||''; }); rows.forEach(function(r){ if(r.flashcard_id!=null && rm[r.flashcard_id]) r.romaji=rm[r.flashcard_id]; }); }
     }catch(e){}
@@ -2497,7 +2591,7 @@ async function pwGrade(q){
   if(navigator.vibrate) navigator.vibrate(6);
   try{
     await srsUpsertCanon(r.word||'', r.translation||'', q, {
-      card_key:r.card_key, lang:r.lang||'en', flashcard_id:(r.flashcard_id!=null?r.flashcard_id:null),
+      card_key:r.card_key, lang:(r.lang||''), flashcard_id:(r.flashcard_id!=null?r.flashcard_id:null),
       cur:{ease_factor:r.ease_factor,repetitions:r.repetitions,interval_days:r.interval_days}
     });
   }catch(e){}
@@ -2729,7 +2823,7 @@ async function alexApplyKnown(demos){
     if(newReps===curReps && newIv===curIv) continue;
     try{
       await db.from('srs_progress').upsert({
-        user_id:UID, card_key:ck, word:fc.word, translation:fc.translation||'', lang:_alexLang,
+        user_id:UID, card_key:ck, word:fc.word, translation:fc.translation||'', lang:_eylTrueLang({word:fc.word, lang:_eylNormLang(_alexLang)}),
         repetitions:newReps, interval_days:newIv,
         next_review:new Date(Date.now()+newIv*86400000).toISOString().slice(0,10),
         source:'alex'

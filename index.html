@@ -7437,12 +7437,20 @@ async function loadTrybStats(){
 
 // ── Blokowanie powtórek per język (spójne z app.html): dominujący język pierwszy,
 //    interleaving zostaje WEWNĄTRZ bloku; między blokami spokojna karta przejścia. ──
-// ── Rekoncyliacja języka wg PISMA (fix: japońska fiszka w sesji angielskiej) ──
-// Stare wiersze srs_progress potrafią mieć zły/pusty `lang` (np. japońska karta z
-// dawnych materiałów zapisana jako 'en'). Powtórki grupują i filtrują po języku, więc
-// taka karta „wpadała" do bloku angielskiego. Zasada twarda: karta w piśmie NIEŁACIŃSKIM
-// nigdy nie może uchodzić za język łaciński. Pismo łacińskie zostawiamy zapisowi
-// (en/de/fr itd. nie da się odróżnić po samym piśmie).
+// ── KANONICZNY JĘZYK KARTY (identyczny kod na web i mobile — Logic Bible §0.4.6) ──
+// Pole `srs_progress.lang` bywa błędne lub puste (zapis brał globalny stan UI, nie język
+// karty). Dlatego język ustalamy w trzech krokach:
+//   1) AUTORYTATYWNIE z bazy — katalog: flashcards.language_id → languages.code;
+//      custom: user_sets.lang przez user_set_cards;
+//   2) rekoncyliacja wg PISMA — karta w piśmie niełacińskim nigdy nie uchodzi za język łaciński;
+//   3) brak ustalenia → '' → osobny blok „Pozostałe" (nigdy po cichu do cudzego bloku).
+// Kod kanoniczny japońskiego to 'jp' (Flashcard Bible §6 — 'ja' to legacy alias).
+var _EYL_LANG_CODES={en:1,es:1,de:1,fr:1,it:1,nl:1,pt:1,no:1,ru:1,uk:1,ar:1,jp:1,zh:1,ko:1};
+function _eylNormLang(code){
+  var c=String(code==null?'':code).toLowerCase().trim().split(/[-_]/)[0];
+  if(c==='ja') c='jp';                              // legacy alias → kanoniczne 'jp'
+  return _EYL_LANG_CODES[c]?c:'';
+}
 var _EYL_JA_HINT=/[\u95a2\u5bfe\u7d4c\u56f3\u58f2\u8aad\u767a\u8ee2\u82b8\u5f01\u685c\u6b69\u5e30\u770c\u9a13\u56e3\u4fa1\u55b6\u5e83\u5fb3\u6226\u9244\u9ed2\u4e9c\u5186\u5150\u5b9f\u53f7\u72ec\u4f1a\u5b66\u9a5b\u9a5c]/;
 function _eylScriptFam(x){
   x=String(x||'');
@@ -7454,36 +7462,67 @@ function _eylScriptFam(x){
   return 'latin';
 }
 function _eylTrueLang(card){
-  var stored=String((card&&card.lang)||'').toLowerCase().split('-')[0];
+  var stored=_eylNormLang(card&&card.lang);
   var txt=(card&&(card.word||card.front))||'';
   var fam=_eylScriptFam(txt);
-  if(fam==='latin') return stored;                 // łacińskie → ufamy zapisowi
-  var ok=false;                                     // czy zapisany język pasuje do pisma?
-  if(fam==='kana') ok=(stored==='ja');
+  if(fam==='latin') return stored;                  // łacińskie → ufamy ustaleniu
+  var ok=false;                                     // czy ustalony język pasuje do pisma?
+  if(fam==='kana') ok=(stored==='jp');
   else if(fam==='hangul') ok=(stored==='ko');
   else if(fam==='arabic') ok=(stored==='ar');
   else if(fam==='cyrillic') ok=(stored==='ru'||stored==='uk');
-  else if(fam==='han') ok=(stored==='zh'||stored==='ja');
+  else if(fam==='han') ok=(stored==='zh'||stored==='jp');
   if(ok) return stored;
-  if(fam==='kana') return 'ja';                     // konflikt lub pusty → z pisma
+  if(fam==='kana') return 'jp';                     // konflikt lub pusty → z pisma
   if(fam==='hangul') return 'ko';
   if(fam==='arabic') return 'ar';
   if(fam==='cyrillic') return 'ru';
-  if(fam==='han') return _EYL_JA_HINT.test(txt) ? 'ja' : 'zh';
+  if(fam==='han') return _EYL_JA_HINT.test(txt) ? 'jp' : 'zh';
   return stored;
 }
+// languages.id → kod języka (cache na sesję)
+var _eylLangCodeMap=null;
+async function _eylLangCodes(){
+  if(_eylLangCodeMap) return _eylLangCodeMap;
+  try{
+    var r=await db.from('languages').select('id,code');
+    if(r&&r.error) return {};
+    var m={}; ((r&&r.data)||[]).forEach(function(x){ var c=_eylNormLang(x.code); if(c) m[x.id]=c; });
+    _eylLangCodeMap=m; return m;
+  }catch(e){ return {}; }
+}
+// Cicha naprawa danych: rozjazd zapisany↔ustalony → UPDATE srs_progress.lang (nie blokuje UI)
+function _eylBackfillLang(uid, byLang){
+  try{
+    if(!uid||!byLang) return;
+    Object.keys(byLang).forEach(function(L){
+      var ks=byLang[L]||[]; if(!ks.length) return;
+      for(var i=0;i<ks.length;i+=200){
+        db.from('srs_progress').update({lang:L}).eq('user_id',uid).in('card_key',ks.slice(i,i+200))
+          .then(function(){},function(e){ console.warn('[srs] backfill lang:', e&&e.message); });
+      }
+    });
+  }catch(e){}
+}
 function _eylSeqByLang(items){
-  var g={}, order=[]; (items||[]).forEach(function(it){ var l=(it&&it.lang||'').toLowerCase()||'_'; if(!g[l]){g[l]=[];order.push(l);} g[l].push(it); });
-  order.sort(function(a,b){ return g[b].length-g[a].length || (a<b?-1:(a>b?1:0)); });
+  var g={}, order=[];
+  (items||[]).forEach(function(it){
+    if(it) it.lang=_eylTrueLang(it);            // ostatnia linia obrony: pismo > zapis (nigdy japońska karta w bloku 'en')
+    var l=_eylNormLang(it&&it.lang)||'?'; if(!g[l]){g[l]=[];order.push(l);} g[l].push(it);
+  });
+  order.sort(function(a,b){
+    if(a==='?') return 1; if(b==='?') return -1;    // „Pozostałe" zawsze na końcu
+    return g[b].length-g[a].length || (a<b?-1:(a>b?1:0));
+  });
   var out=[]; order.forEach(function(l){ g[l].forEach(function(x){ out.push(x); }); });
   return {items:out, langs:order, multiLang:order.length>1};
 }
-function _trybLangMeta(code){ code=String(code||'').toLowerCase(); var m=(typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP[code]:null; return m?{name:(m.label||code.toUpperCase()),flag:(m.flag||'')}:{name:code.toUpperCase(),flag:''}; }
+function _trybLangMeta(code){ code=_eylNormLang(code); if(!code) return {name:'Pozostałe',flag:''}; var m=(typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP[code]:null; return m?{name:(m.label||code.toUpperCase()),flag:(m.flag||'')}:{name:code.toUpperCase(),flag:''}; }
 function _trybRenderTransition(card, reRender){
   var host=document.getElementById('tryb-session')||document.getElementById('page-tryb'); if(!host){ if(reRender) reRender(); return; }
-  var lang=String(card.lang||'').toLowerCase(), cnt=0;
-  for(var i=_trybIdx;i<_trybCards.length && String(_trybCards[i].lang||'').toLowerCase()===lang;i++) cnt++;
-  var meta=_trybLangMeta(lang);
+  var lang=_eylNormLang(card.lang)||'?', cnt=0;
+  for(var i=_trybIdx;i<_trybCards.length && (_eylNormLang(_trybCards[i].lang)||'?')===lang;i++) cnt++;
+  var meta=_trybLangMeta(lang==='?'?'':lang);
   var ov=document.createElement('div'); ov.id='tryb-lang-transition';
   ov.style.cssText='position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:var(--paper,#f8f7f4);animation:lexFadeIn .2s ease';
   ov.innerHTML='<div style="text-align:center;padding:40px 24px;max-width:420px">'
@@ -7500,11 +7539,12 @@ function _trybRenderTransition(card, reRender){
 function _trybBlockGate(reRender){
   if(_trybIdx>=_trybCards.length) return false;
   var cur=_trybCards[_trybIdx]; if(!cur) return false;
-  var lc=String(cur.lang||'').toLowerCase(); if(!lc) return false;
   var isPowt=(typeof _trybExternalName!=='undefined' && _trybExternalName==='Powtórki na dziś');
+  var lc=_eylNormLang(cur.lang)||'?';
+  if(!isPowt && lc==='?') return false;      // zwykła nauka zestawu bez języka → bez przekładek
   var atStart=(_trybIdx===0 && isPowt);     // przekładka „na starcie powtórek" (tylko Powtórki, nie zwykła nauka zestawu)
   var langChanged=false;
-  if(_trybIdx>0){ var prev=_trybCards[_trybIdx-1]; var lp=prev?String(prev.lang||'').toLowerCase():''; langChanged=(!!lc && lc!==lp); }
+  if(_trybIdx>0){ var prev=_trybCards[_trybIdx-1]; var lp=prev?(_eylNormLang(prev.lang)||'?'):''; langChanged=(lc!==lp); }
   if(!atStart && !langChanged) return false;
   if(!window._trybBlockShown) window._trybBlockShown={};
   var key=_trybIdx+'|'+lc; if(window._trybBlockShown[key]) return false;
@@ -7556,11 +7596,13 @@ async function usrsRecord(card,newSRS){
     var uid=await _usrsUid(); if(!uid||!card||!newSRS) return;
     var w=card.word||card.front||''; var tr=card.translation||card.back||'';
     if(!w&&!tr) return;
-    var lang=card.lang||window._trybStudyLang||'';
     var key=_usrsCK(w,tr);
     var fc=(card.id!=null?card.id:null);
     // 1) Cache lokalny (offline + szybkie rekomendacje)
     var store=_usrsLoad(uid);
+    // Język karty: własny → wcześniej zapisany → (ostatecznie) język bieżącej sesji.
+    // Nigdy 'en' na ślepo; pismo ma ostatnie słowo (Logic Bible §9.9).
+    var lang=_eylTrueLang({word:w, lang:(_eylNormLang(card.lang) || _eylNormLang(store[key]&&store[key].lang) || _eylNormLang(window._trybStudyLang))});
     try{ if(window._trybSessionActive && window._trybKnowBefore && !(key in window._trybKnowBefore)){ var _pv=store[key]||{}; window._trybKnowBefore[key]={ef:_pv.ef,reps:_pv.reps,interval:_pv.interval,word:w,translation:tr}; } }catch(e){}
     try{var _old=store[key];var _wm=_old&&_old.reps>=3&&_old.interval>=21;var _nm=newSRS.repetitions>=3&&newSRS.interval_days>=21;if(!_wm&&_nm)track('card_mastered',{surface:'web',lang:lang});}catch(_e){}
     store[key]={ef:newSRS.ease_factor,interval:newSRS.interval_days,reps:newSRS.repetitions,due:newSRS.next_review,word:w,translation:tr,fc:fc,lang:lang,ts:Date.now()};
@@ -7617,17 +7659,25 @@ var _usrsLiveKeysCache={uid:null,keys:null,ts:0};
 async function _usrsLiveCustomKeys(uid){
   try{
     if(_usrsLiveKeysCache.uid===uid && _usrsLiveKeysCache.keys && (Date.now()-_usrsLiveKeysCache.ts)<20000) return _usrsLiveKeysCache.keys;
-    var sr=await db.from('user_sets').select('id').eq('user_id',uid);
+    var sr=await db.from('user_sets').select('id,lang').eq('user_id',uid);
     if(sr&&sr.error) return null;
-    var ids=((sr&&sr.data)||[]).map(function(s){return s.id;});
-    var keys={};
+    var sets=((sr&&sr.data)||[]);
+    var ids=sets.map(function(s){return s.id;});
+    var slang={}; sets.forEach(function(s){ slang[s.id]=_eylNormLang(s.lang); });
+    var keys={}, langByKey={};
     for(var i=0;i<ids.length;i+=200){
-      var cr=await db.from('user_set_cards').select('word,translation').in('set_id',ids.slice(i,i+200));
+      var cr=await db.from('user_set_cards').select('set_id,word,translation').in('set_id',ids.slice(i,i+200));
       if(cr&&cr.error) return null;
-      ((cr&&cr.data)||[]).forEach(function(c){ if(c.word||c.translation) keys[_usrsCK(c.word||'',c.translation||'')]=1; });
+      ((cr&&cr.data)||[]).forEach(function(c){
+        if(!c.word&&!c.translation) return;
+        var ck=_usrsCK(c.word||'',c.translation||'');
+        keys[ck]=1;
+        var L=slang[c.set_id]||''; if(L && !langByKey[ck]) langByKey[ck]=L;   // język właściciela karty
+      });
     }
-    _usrsLiveKeysCache={uid:uid,keys:keys,ts:Date.now()};
-    return keys;
+    var out={keys:keys, langByKey:langByKey};
+    _usrsLiveKeysCache={uid:uid,keys:out,ts:Date.now()};
+    return out;
   }catch(e){ return null; }
 }
 // Żywotność katalogu: karta katalogowa (flashcard_id != null) jest ważna, gdy jej id
@@ -7637,21 +7687,27 @@ async function _usrsLiveCatalog(rows){
   try{
     var catRows=rows.filter(function(r){ return r.flashcard_id!=null; });
     if(!catRows.length) return {ids:{},keys:{}};
-    var ids={}, idList=[], seen={};
+    var lmap=await _eylLangCodes();                             // languages.id → kod
+    var ids={}, langById={}, idList=[], seen={};
     catRows.forEach(function(r){ var id=r.flashcard_id; if(id!=null && !seen[id]){ seen[id]=1; idList.push(id); } });
     for(var i=0;i<idList.length;i+=500){                       // 1) które flashcard_id nadal żyją
-      var q=await db.from('flashcards').select('id').in('id',idList.slice(i,i+500));
+      var q=await db.from('flashcards').select('id,language_id').in('id',idList.slice(i,i+500));
       if(q&&q.error) return null;                             // błąd → fail-open (nie filtrujemy katalogu)
-      ((q&&q.data)||[]).forEach(function(x){ ids[x.id]=1; });
+      ((q&&q.data)||[]).forEach(function(x){ ids[x.id]=1; var L=lmap[x.language_id]; if(L) langById[x.id]=L; });
     }
-    var keys={}, suspectWords=[], sw={};                       // 2) dla martwych id sprawdź, czy SŁOWO nadal jest w katalogu
+    var keys={}, langByKey={}, suspectWords=[], sw={};          // 2) dla martwych id sprawdź, czy SŁOWO nadal jest w katalogu
     catRows.forEach(function(r){ if(!ids[r.flashcard_id]){ var w=r.word||''; if(w && !sw[w]){ sw[w]=1; suspectWords.push(w); } } });
     for(var j=0;j<suspectWords.length;j+=200){
-      var q2=await db.from('flashcards').select('word,translation').in('word',suspectWords.slice(j,j+200));
+      var q2=await db.from('flashcards').select('word,translation,language_id').in('word',suspectWords.slice(j,j+200));
       if(q2&&q2.error) return null;                           // błąd → fail-open
-      ((q2&&q2.data)||[]).forEach(function(c){ if(c.word||c.translation) keys[_usrsCK(c.word||'',c.translation||'')]=1; });
+      ((q2&&q2.data)||[]).forEach(function(c){
+        if(!c.word&&!c.translation) return;
+        var ck=_usrsCK(c.word||'',c.translation||'');
+        keys[ck]=1;
+        var L=lmap[c.language_id]; if(L && !langByKey[ck]) langByKey[ck]=L;
+      });
     }
-    return {ids:ids,keys:keys};
+    return {ids:ids,keys:keys,langById:langById,langByKey:langByKey};
   }catch(e){ return null; }
 }
 async function _usrsFilterOrphans(uid, rows){
@@ -7665,10 +7721,14 @@ async function _usrsFilterOrphans(uid, rows){
       var ck=r.card_key||_usrsCK(r.word||'',r.translation||'');
       if(r.flashcard_id!=null){
         if(!cat) return true;                                 // katalogu nie ustalono → zostaw (bezpiecznie)
+        var LC=cat.langById[r.flashcard_id]||cat.langByKey[ck]||'';
+        if(LC) r._alang=LC;                                   // autorytatywny język karty katalogowej
         return !!cat.ids[r.flashcard_id] || !!cat.keys[ck];   // żywe id LUB żywe słowo → zostaw; inaczej: zestaw usunięty → odsiej
       }
       if(!live) return true;                                  // custom nie ustalono → zostaw
-      return !!live[ck];                                      // custom: tylko jeśli nadal w żywym zestawie
+      var LU=(live.langByKey&&live.langByKey[ck])||'';
+      if(LU) r._alang=LU;                                     // autorytatywny język z user_sets.lang
+      return !!live.keys[ck];                                 // custom: tylko jeśli nadal w żywym zestawie
     });
   }catch(e){ return rows; }
 }
@@ -7683,7 +7743,7 @@ async function usrsDueList(limit){
     for(var _from=0; _from<_cap; _from+=1000){
       var _to=Math.min(_from+999, _cap-1);
       var _res=await db.from('srs_progress')
-        .select('word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review')
+        .select('card_key,word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review')
         .eq('user_id',uid).lte('next_review',today).order('next_review',{ascending:true}).range(_from,_to);
       if(_res&&_res.error){ if(_from===0) rows=null; break; }
       var _chunk=(_res&&_res.data)||[];
@@ -7694,7 +7754,7 @@ async function usrsDueList(limit){
   // 2) Offline → cache lokalny
   if(rows===null){
     var store=_usrsLoad(uid);
-    rows=Object.keys(store).map(function(k){var r=store[k];return {word:r.word,translation:r.translation,flashcard_id:r.fc,ease_factor:r.ef,repetitions:r.reps,interval_days:r.interval,next_review:r.due,lang:r.lang};})
+    rows=Object.keys(store).map(function(k){var r=store[k];return {card_key:k,word:r.word,translation:r.translation,flashcard_id:r.fc,ease_factor:r.ef,repetitions:r.reps,interval_days:r.interval,next_review:r.due,lang:r.lang};})
       .filter(function(r){return r.next_review&&r.next_review<=today;});
   }
   rows=await _usrsFilterOrphans(uid, rows);
@@ -7703,7 +7763,17 @@ async function usrsDueList(limit){
   // ćwiczone w lekcjach Lexa, których nie zapisano jako fiszki ("lekcja zbiera"). Wcześniejszy
   // filtr wymagał obecności w aktualnym zestawie i gubił zaległości (75 due → pokazywał ~9).
   rows.sort(function(a,b){ return a.next_review<b.next_review?-1:(a.next_review>b.next_review?1:0); });
-  return rows.slice(0,_cap).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1,lang:_eylTrueLang(r)}; });
+  // Kanoniczny język: autorytatywnie z bazy (r._alang) → rekoncyliacja wg pisma. Rozjazd
+  // względem zapisu → cicha naprawa srs_progress (żeby błąd nie wracał przy kolejnej sesji).
+  var _fix={};
+  rows.forEach(function(r){
+    var was=String(r.lang||'');
+    var res=_eylTrueLang({word:r.word, lang:(r._alang||was)});
+    r.lang=res;
+    if(res && res!==was && r.card_key){ (_fix[res]=_fix[res]||[]).push(r.card_key); }
+  });
+  try{ _eylBackfillLang(uid,_fix); }catch(e){}
+  return rows.slice(0,_cap).map(function(r){ return {id:(r.flashcard_id!=null?r.flashcard_id:null),card_key:r.card_key,word:r.word,translation:r.translation,emoji:'',example:'',etymology:'',ease_factor:r.ease_factor||2.5,repetitions:r.repetitions||0,interval_days:r.interval_days||1,lang:r.lang}; });
 }
 async function usrsDueCount(){ try{ var l=await usrsDueList(5000); return l.length; }catch(e){ return 0; } }
 
@@ -9264,7 +9334,8 @@ async function showTrybEyelingoSets(){
                     cards = cards3 || [];
                   }
                   if(cards && cards.length){
-                    _trybExternalCards = cards.map(function(c){ return {word: c.word, translation: c.translation}; });
+                    window._trybStudyLang = lang.code || '';
+                    _trybExternalCards = cards.map(function(c){ return {word: c.word, translation: c.translation, lang: (lang.code||'')}; });
                     _trybExternalName = lang.flag + ' ' + lang.label + ' ' + lvl + ' · ' + (cat.label||cat.code);
                     picker.style.display = 'none';
                     showTrybView('lobby');
@@ -10797,7 +10868,8 @@ async function strefaSelectEyelingoCategory(langCode, langLabel, flag, lvl, catI
     try{ if(typeof lexLogRecentSet==='function') lexLogRecentSet('eyelingo', catId, cleanCat(catName), lvl, cards.length, langCode); }catch(_e){}
     strefaShowWordPreview(cards, fullName, function(){
       if(typeof closeMatModal==='function') closeMatModal();
-      _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',flashcard_id:(c.id!=null?c.id:null)}; });
+      window._trybStudyLang = langCode || '';
+      _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',flashcard_id:(c.id!=null?c.id:null),lang:(langCode||'')}; });
       _trybExternalName = fullName;
       RewardSystem.load();
       showPage('tryb');
