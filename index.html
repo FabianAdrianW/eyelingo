@@ -1803,7 +1803,7 @@ window.switchMatTab = function(tab){
   // Eksport do globalnego scope (wywoływane z inline onclick)
   window.eylBrowse=eylBrowse; window.eylPickLang=eylPickLang; window.eylPickLvl=eylPickLvl; window.eylPreview=eylPreview; window.eylOpenCat=eylOpenCat;
   window.eylReloadProg=function(){ EYLPROG_READY=false; return eylLoadProg(); };
-  window.eylAgg=_agg; window.eylPill=_pill; window.eylBar=_bar; window.eylCk=_ck; window.eylEnsureProg=async function(){ if(!EYLPROG_READY) await eylLoadProg(); };
+  window.eylAgg=_agg; window.eylPill=_pill; window.eylBar=_bar; window.eylCk=_ck; window.eylEnsureProg=async function(){ if(!EYLPROG_READY) await eylLoadProg(); }; window.eylGetRecents=_getRecents;
 })();
 </script>
 
@@ -3778,7 +3778,7 @@ window.matSetLangApply=async function(setId, code){
     <!-- LEFT SIDEBAR: Katalogi (sliding) -->
     <button id="mat-sidebar-toggle" onclick="toggleMatSidebar()" style="position:absolute;top:50vh;right:-24px;transform:translateY(-50%);z-index:51;width:24px;height:48px;border-radius:0 12px 12px 0;background:var(--navy);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 8px rgba(26,35,64,.2)">‹</button>
     <div id="mat-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
-      <div id="mat-sidebar-inner" style="padding:88px 14px 64px 14px;min-width:200px;position:relative">
+      <div id="mat-sidebar-inner" style="padding:88px 14px 64px 14px;min-width:0;position:relative">
       <!-- Kontynuuj ostatnią sesję — przeniesione z głównej kolumny do sidebara -->
       <div id="mat-sb-continue" style="margin-bottom:14px"></div>
       <!-- Powtórki SM-2 przeniesione w całości do navbara (ntab-powtorki). Kafelek sidebar-owy usunięty jako duplikat. -->
@@ -4269,7 +4269,7 @@ async function initToFixPage(){
 
   <!-- LEFT SIDEBAR -->
   <div id="teacher-sidebar" style="width:220px;flex-shrink:0;align-self:flex-start;position:sticky;top:0;height:100vh;overflow-y:auto;scrollbar-width:none;border-right:.5px solid var(--border);z-index:49">
-    <div style="padding:88px 14px 64px 14px;min-width:200px">
+    <div style="padding:88px 14px 64px 14px;min-width:0">
 
       <!-- Tryby — kompaktowe przyciski nawigacji -->
       <div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 10px 2px">Tryb</div>
@@ -17472,7 +17472,7 @@ async function lexInit(){
       if(idx<=0 || idx>=window._trybCards.length) return;
       var remaining=window._trybCards.slice(idx).map(function(c){return {word:c.word||'',translation:c.translation||''};}).filter(function(c){return c.word&&c.translation;});
       if(!remaining.length) return;
-      localStorage.setItem(keyNow(), JSON.stringify({remaining:remaining, name:window._trybExternalName||'Sesja nauki', total:window._trybCards.length, done:idx, ts:Date.now()}));
+      localStorage.setItem(keyNow(), JSON.stringify({remaining:remaining, name:window._trybExternalName||'Sesja nauki', total:window._trybCards.length, done:idx, ts:Date.now(), seg:(window._matSessOrigin||'')}));
     }catch(e){}
   };
   window.trybClearSnapshot=function(){ try{ localStorage.removeItem(keyNow()); }catch(e){} };
@@ -17558,6 +17558,106 @@ async function lexInit(){
   window.sbContinueBlock=function(items){ if(!items||!items.length) return '';
     var head='<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px 2px">Kontynuuj</div>';
     return head+items.map(function(it,i){ return window.sbContinueTile({onclick:it.onclick,title:it.title,sub:it.sub,accent:(i===0)}); }).join('');
+  };
+})();
+</script>
+
+<!-- ═══ Zestawy — kafel „Kontynuuj" ściśle per segment ═══
+     eyl  → wznawia ostatnio przeglądaną kategorię Eyelingo
+     mine → wznawia ostatnio przeglądany zestaw użytkownika
+     Przerwana sesja pojawia się WYŁĄCZNIE w swoim segmencie (tag origin). -->
+<script>
+(function(){
+  if(window._matSegResumeReady) return;
+  window._matSegResumeReady=true;
+
+  function _u(){ return window._uid||''; }
+  function _setKey(){ return 'eyl_last_set_'+(_u()||'anon'); }
+  function _snapKey(){ return 'strefa_last_session_'+_u(); }
+  function _q(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
+
+  // ── Śledzenie: ostatnio otwarty zestaw (segment „Moje zestawy") ──
+  var _openSet=window.openSet;
+  window.openSet=function(id){
+    var r=(typeof _openSet==='function')?_openSet.apply(this,arguments):undefined;
+    try{
+      var s=(typeof _matSets!=='undefined'&&_matSets)?_matSets.find(function(x){ return x.id===id; }):null;
+      if(s) localStorage.setItem(_setKey(), JSON.stringify({id:s.id, name:s.name||'Zestaw', n:((s.user_set_cards||[]).length), ts:Date.now()}));
+    }catch(e){}
+    window._matSessOrigin='mine';
+    try{ if(window.matRenderContinue) window.matRenderContinue(); }catch(e){}
+    return r;
+  };
+
+  // ── Śledzenie pochodzenia sesji (żeby snapshot nie wyciekł do drugiego segmentu) ──
+  var _eylOpen=window.eylOpenCat;
+  if(typeof _eylOpen==='function'){
+    window.eylOpenCat=function(){
+      window._matSessOrigin='eyl';
+      var r=_eylOpen.apply(this,arguments);
+      try{ Promise.resolve(r).then(function(){ if(window.matRenderContinue) window.matRenderContinue(); }); }catch(e){}
+      return r;
+    };
+  }
+  var _startStudy=window.startStudyFromModal;
+  if(typeof _startStudy==='function'){
+    window.startStudyFromModal=function(){ window._matSessOrigin='mine'; return _startStudy.apply(this,arguments); };
+  }
+
+  // ── Kafel „Kontynuuj" — zawsze tylko z aktywnego segmentu ──
+  window.matRenderContinue=async function(){
+    var wrap=document.getElementById('mat-sb-continue'); if(!wrap) return;
+    var _mainWrap=document.getElementById('mat-continue-wrap'); if(_mainWrap) _mainWrap.innerHTML='';
+    wrap.innerHTML='';
+    var seg=(window._matSeg==='mine')?'mine':'eyl';
+
+    // (a) przerwana sesja nauki — wyłącznie jeśli pochodzi z tego segmentu
+    var snap=null;
+    try{
+      var raw=localStorage.getItem(_snapKey());
+      if(raw){
+        var d=JSON.parse(raw);
+        if(d && d.remaining && d.remaining.length
+           && (Date.now()-(d.ts||0) < 7*24*3600*1000)
+           && d.seg===seg) snap=d;
+      }
+    }catch(e){}
+    if(snap){
+      wrap.innerHTML=window.sbContinueBlock([{
+        onclick:'trybResumeSession()',
+        title:'Kontynuuj ostatnią sesję',
+        sub:(snap.name||'')+' · zostało '+snap.remaining.length+' z '+(snap.total||snap.remaining.length)+' kart'
+      }]);
+      return;
+    }
+
+    // (b) wznowienie przeglądania — z tego samego segmentu
+    var items=[];
+    if(seg==='eyl'){
+      var rec=[];
+      try{ if(typeof window.eylGetRecents==='function') rec=await window.eylGetRecents(); }catch(e){}
+      var r0=rec&&rec[0];
+      if(r0&&r0.catId!=null){
+        var args="'"+String(r0.lang||'')+"','"+String(r0.level||'')+"',"+JSON.stringify(String(r0.catId))+","+JSON.stringify(String(r0.catLabel||''));
+        items.push({
+          onclick:_q('eylOpenCat('+args+')'),
+          title:(r0.catLabel||'Kategoria'),
+          sub:String(r0.lang||'').toUpperCase()+(r0.level?(' · '+r0.level):'')+' · wróć do przeglądania'
+        });
+      }
+    } else {
+      var last=null;
+      try{ last=JSON.parse(localStorage.getItem(_setKey())||'null'); }catch(e){}
+      if(last&&last.id!=null){
+        items.push({
+          onclick:_q('openSet('+JSON.stringify(last.id)+')'),
+          title:(last.name||'Zestaw'),
+          sub:(last.n||0)+' fiszek · wróć do zestawu'
+        });
+      }
+    }
+    if(!items.length){ wrap.innerHTML=''; return; }
+    wrap.innerHTML=window.sbContinueBlock(items);
   };
 })();
 </script>
@@ -18162,6 +18262,24 @@ async function lexInit(){
   #dc-read-body{ max-width: 100%; }
   /* Wątek Lexa pełna szerokość na wąskich ekranach */
   #chat-messages{ max-width: 100%; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   SIDEBARY SEKCJI — jedna, symetryczna rynna (deterministycznie)
+   Elementy wypełniają pełną szerokość, teksty dosunięte do lewej.
+   ════════════════════════════════════════════════════════════ */
+#mat-sidebar-inner, #teacher-sidebar > div{
+  box-sizing:border-box !important;
+  padding-left:14px !important;
+  padding-right:14px !important;
+  margin-left:0 !important;
+  min-width:0 !important;
+}
+#mat-sidebar-inner > *, #teacher-sidebar > div > *{
+  box-sizing:border-box !important;
+  max-width:100% !important;
+  margin-left:0 !important;
+  margin-right:0 !important;
 }
 </style>
 <script>
