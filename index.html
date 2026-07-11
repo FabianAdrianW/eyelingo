@@ -3640,6 +3640,7 @@ window.loadMySets = async function loadMySets(){
     var _selN='id,name,lang,user_id,is_public,likes_count,user_set_cards(id,word,translation)';
     var {data,error:_e}=await db.from('user_sets').select(_selS).eq('user_id',session.user.id).order('created_at',{ascending:false});
     if(_e){ var _r=await db.from('user_sets').select(_selN).eq('user_id',session.user.id).order('created_at',{ascending:false}); data=_r.data; }
+    try{ if(typeof eylRepairSetLangs==='function') eylRepairSetLangs(data||[]); }catch(_e2){}   // w tle, nie blokuje renderu
     var _valid=new Set((data||[]).map(function(s){return s.id;}));
     var _chg=false;
     (_collections||[]).forEach(function(c){ var _b=(c.sets||[]).length; c.sets=(c.sets||[]).filter(function(s){return _valid.has(s.id);}); if(c.sets.length!==_b)_chg=true; });
@@ -3697,8 +3698,8 @@ window.loadCommunity = async function loadCommunity(){
   try{
     var {data:{session}}=await db.auth.getSession();
     if(session) _matMyUid=session.user.id;
-    var _cS='id,name,user_id,is_public,likes_count,source,user_set_cards(id,word,translation)';
-    var _cN='id,name,user_id,is_public,likes_count,user_set_cards(id,word,translation)';
+    var _cS='id,name,lang,user_id,is_public,likes_count,source,user_set_cards(id,word,translation)';
+    var _cN='id,name,lang,user_id,is_public,likes_count,user_set_cards(id,word,translation)';
     var {data,error}=await db.from('user_sets').select(_cS).eq('is_public',true).order('likes_count',{ascending:false}).limit(50);
     if(error){ var _rc=await db.from('user_sets').select(_cN).eq('is_public',true).order('likes_count',{ascending:false}).limit(50); data=_rc.data; }
     _matSets=(data||[]).map(function(s){ return Object.assign({},s,{username:'Użytkownik'}); });
@@ -5054,6 +5055,38 @@ async function strefaStartPowtorki(){
   if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
   showPage('tryb');
   setTimeout(function(){ if(typeof startSession==='function') startSession('set_external'); }, 200);
+}
+
+// ── Naprawa języka istniejących zestawów (Logic Bible §9.9.1) ──
+// Historycznie auto-detekcja stemplowała zestawy ASCII jako 'en' „z pewnością" — stąd
+// hiszpańskie słowa w angielskim bloku Powtórek. Ten przebieg prostuje to na podstawie katalogu.
+window._eylSetLangFixDone=false;
+async function eylRepairSetLangs(sets){
+  try{
+    if(window._eylSetLangFixDone) return;
+    if(typeof window.eylDetectLangByCatalog!=='function') return;
+    window._eylSetLangFixDone=true;
+    var list=(sets||[]).filter(function(s){ return s && s.id && (s.user_set_cards||[]).length>=3; });
+    for(var i=0;i<list.length && i<40;i++){
+      var s=list[i];
+      var stored=(typeof _eylNormLang==='function')?_eylNormLang(s.lang):String(s.lang||'');
+      var res=null;
+      try{ res=await window.eylDetectLangByCatalog(s.user_set_cards||[]); }catch(e){ continue; }
+      if(!res || !res.code || !res.total) continue;
+      var strong=(res.total>=4 && res.top>=Math.ceil(res.total*0.8));
+      var ok=false;
+      if(!stored && res.confident) ok=true;                       // brak języka → uzupełnij
+      else if(stored && res.code!==stored && strong) ok=true;     // zapis sprzeczny z katalogiem → popraw
+      if(!ok) continue;
+      try{
+        await db.from('user_sets').update({lang:res.code}).eq('id', s.id);
+        s.lang=res.code;
+        console.info('[Eyelingo] język zestawu poprawiony:', s.name, stored||'(pusty)', '→', res.code);
+      }catch(e){}
+    }
+    // Zestawy poprawione → język kart w srs_progress uzdrowi się przy najbliższym wejściu w Powtórki.
+    try{ _usrsLiveKeysCache={uid:null,keys:null,ts:0}; }catch(e){}
+  }catch(e){}
 }
 
 // ── Moje zestawy accordion (Tryb Nauki) ──
@@ -7504,6 +7537,18 @@ function _eylBackfillLang(uid, byLang){
     });
   }catch(e){}
 }
+// Oznacz karty sesji językiem zestawu — używać w KAŻDYM wejściu do sesji (Logic Bible §9.9.1).
+function _eylTagCards(cards, lang){
+  var L=_eylNormLang(lang);
+  return (cards||[]).map(function(c){
+    var o={word:c.word||'', translation:c.translation||''};
+    if(c.image_url) o.image_url=c.image_url;
+    if(c.image_attr) o.image_attr=c.image_attr;
+    if(c.flashcard_id!=null) o.flashcard_id=c.flashcard_id; else if(c.id!=null) o.flashcard_id=c.id;
+    o.lang=_eylTrueLang({word:o.word, lang:(_eylNormLang(c.lang)||L)});
+    return o;
+  });
+}
 function _eylSeqByLang(items){
   var g={}, order=[];
   (items||[]).forEach(function(it){
@@ -7810,6 +7855,7 @@ function trybBackToStrefa(){
   if(window.speechSynthesis) try{ window.speechSynthesis.cancel(); }catch(e){}
   if(typeof trybSaveSnapshot==='function') trybSaveSnapshot();
   window._trybExternalCards=null;
+  try{ window._trybStudyLang=''; }catch(e){}
   // Po scaleniu wracamy do czystego widoku „Twoje zestawy" (nie do starego katalogu Strefy,
   // który dublował siatkę i miał zepsuty przycisk „← Katalogi").
   if(typeof showPage==='function') showPage('community');
@@ -8682,6 +8728,7 @@ function trybReturnToSource(){
   return false;
 }
 function endSession(){
+  try{ window._trybStudyLang=''; }catch(e){}      // koniec sesji → żaden zapis nie dziedziczy starego języka
   try{ if(typeof refreshNavDueBadge==='function') refreshNavDueBadge(); }catch(e){}   // po sesji badge Powtórek == realna liczba (parytet z app.html closePowt)
   if(_trybSessionStats.total>0){ showTrybSessionSummary(); return; }
   // Brak postępu — wróć tam, skąd przyszedłeś (Strefa/Materiały), nie na landing Tryb Nauki
@@ -9375,7 +9422,7 @@ async function showTrybSetPicker(){
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){if(list)list.innerHTML='<div style="color:var(--dim2);font-size:13px">Zaloguj się</div>';return;}
-    var {data}=await db.from('user_sets').select('id,name,user_set_cards(word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(30);
+    var {data}=await db.from('user_sets').select('id,name,lang,user_set_cards(word,translation)').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(30);
     if(list)list.innerHTML='';
 
     // Section header: Moje zestawy
@@ -9391,7 +9438,7 @@ async function showTrybSetPicker(){
         btn.onmouseout=function(){this.style.borderColor='var(--border)';};
         var cards=s.user_set_cards||[];
         btn.innerHTML=(window.escH?escH(s.name):s.name)+' <span style="font-size:12px;color:var(--dim2);font-weight:400">· '+cards.length+' fiszek</span>';
-        btn.onclick=function(){_trybExternalCards=cards;_trybExternalName=s.name;picker.style.display='none';startSession('set_external');};
+        btn.onclick=function(){_trybExternalCards=_eylTagCards(cards,s.lang);_trybExternalName=s.name;window._trybStudyLang=_eylNormLang(s.lang);picker.style.display='none';startSession('set_external');};
         list.appendChild(btn);
       });
     } else {
@@ -9404,7 +9451,7 @@ async function showTrybSetPicker(){
     // Section: Zestawy Eyelingo (public sets)
     try{
       var {data:pubData}=await db.from('user_sets')
-        .select('id,name,user_set_cards(word,translation)')
+        .select('id,name,lang,user_set_cards(word,translation)')
         .eq('is_public',true)
         .order('likes_count',{ascending:false})
         .limit(10);
@@ -9420,7 +9467,7 @@ async function showTrybSetPicker(){
           btn.onmouseout=function(){this.style.borderColor='var(--border)';};
           var cards=s.user_set_cards||[];
           btn.innerHTML=(window.escH?escH(stripEmoji(s.name)):stripEmoji(s.name))+' <span style="font-size:12px;color:var(--dim2);font-weight:400">· '+cards.length+' fiszek</span>';
-          btn.onclick=function(){_trybExternalCards=cards;_trybExternalName=s.name;picker.style.display='none';startSession('set_external');};
+          btn.onclick=function(){_trybExternalCards=_eylTagCards(cards,s.lang);_trybExternalName=s.name;window._trybStudyLang=_eylNormLang(s.lang);picker.style.display='none';startSession('set_external');};
           list.appendChild(btn);
         });
       }
@@ -10657,7 +10704,8 @@ async function strefaSidebarSelect(type){
         return;
       }
       strefaShowWordPreview(cards, 'Powtórki na dziś · ' + cards.length + ' słów', function(){
-        _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||''}; });
+        window._trybStudyLang = '';                 // brak pewnego języka → nie zgaduj (Logic Bible §9.9.1)
+        _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',lang:''}; });
         _trybExternalName = 'Powtórki na dziś';
         RewardSystem.load();
         showPage('tryb');
@@ -10714,10 +10762,12 @@ async function strefaSelectUserSet(setId, setNameEnc){
   var setName = decodeURIComponent(setNameEnc);
   setBreadcrumb('Moje zestawy → ' + setName);
   try{
+    var _sl=''; try{ var _sr=await db.from('user_sets').select('lang').eq('id',setId).single(); _sl=(_sr&&_sr.data&&_sr.data.lang)||''; }catch(e0){}
     var {data:cards} = await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id', setId);
     if(!cards||!cards.length){ strefaShowCenter('<div style="padding:20px;color:var(--dim2)">Brak fiszek w tym zestawie</div>'); return; }
     strefaShowWordPreview(cards, setName, function(){
-      _trybExternalCards = cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',image_url:c.image_url||'',image_attr:c.image_attr||''}; });
+      window._trybStudyLang = _eylNormLang(_sl);
+      _trybExternalCards = _eylTagCards(cards, _sl);
       _trybExternalName = setName;
       window._trybSource='strefa';
       RewardSystem.load();
@@ -17297,6 +17347,36 @@ async function lexInit(){
   // Minimalny wybór języka dla WŁASNEGO zestawu (brak zapisanego) + trwały zapis → badge na stałe
   // ── Auto-detect języka zestawu na podstawie słów (heurystyczny, bez API, jednorazowy zapis) ──
   // ── Heurystyka języka zestawu (po słowach z fiszek; en/es/nl/jp + de/fr/pt bonus) ──
+  // Język zestawu z katalogu Eyelingo. Zwraca {code, confident, hits, total}.
+  window.eylDetectLangByCatalog=async function(words){
+    try{
+      if(typeof _eylLangCodes!=='function') return {code:null, confident:false};
+      var sample=(words||[]).slice(0,60).map(function(w){ return String((w&&(w.word!=null?w.word:w))||'').trim(); }).filter(Boolean);
+      if(sample.length<2) return {code:null, confident:false};
+      var lmap=await _eylLangCodes();
+      var perWord={};
+      for(var i=0;i<sample.length;i+=100){
+        var r=await db.from('flashcards').select('word,language_id').in('word',sample.slice(i,i+100));
+        if(r&&r.error) return {code:null, confident:false};
+        ((r&&r.data)||[]).forEach(function(x){
+          var c=lmap[x.language_id]; if(!c) return;
+          var k=String(x.word||'').toLowerCase().trim(); if(!k) return;
+          if(!perWord[k]) perWord[k]={};
+          perWord[k][c]=1;
+        });
+      }
+      var hits={}, tot=0;
+      Object.keys(perWord).forEach(function(k){
+        var ls=Object.keys(perWord[k]);
+        if(ls.length!==1) return;                       // słowo w kilku językach → nie głosuje
+        hits[ls[0]]=(hits[ls[0]]||0)+1; tot++;
+      });
+      if(!tot) return {code:null, confident:false, hits:hits, total:0};
+      var best=null, bestN=0;
+      Object.keys(hits).forEach(function(c){ if(hits[c]>bestN){ bestN=hits[c]; best=c; } });
+      return {code:best, confident:(tot>=3 && bestN>=Math.ceil(tot*0.7)), hits:hits, total:tot, top:bestN};
+    }catch(e){ return {code:null, confident:false}; }
+  };
   window.lexGuessLang=function(words){
     var sample=(words||[]).slice(0,40).map(function(w){ return String((w&&(w.word!=null?w.word:w))||'').toLowerCase().trim(); }).filter(Boolean);
     if(!sample.length) return {code:null, confident:false, scores:{}};
@@ -17323,8 +17403,8 @@ async function lexInit(){
     var best=null, bestS=0, second=0;
     for(var L in sc){ if(sc[L]>bestS){ second=bestS; bestS=sc[L]; best=L; } else if(sc[L]>second){ second=sc[L]; } }
     if(bestS<1){
-      var ascii=sample.filter(function(w){ return /^[a-z][a-z .'\-]*$/.test(w); }).length;
-      if(ascii>=Math.max(2, Math.ceil(sample.length*0.6))) return {code:'en', confident:true, scores:sc};
+      // Dawniej: „same znaki ASCII ⇒ angielski (confident)". To był zmyślony angielski —
+      // hiszpański/włoski/portugalski bez diakrytyków też jest ASCII. Nie zgadujemy (§9.9.1).
       return {code:null, confident:false, scores:sc};
     }
     var confident=(bestS>=2 && bestS>=second+1) || (best==='jp' && bestS>=4) || (bestS>=3);
@@ -17333,12 +17413,16 @@ async function lexInit(){
 
   // Auto-detect języka zestawu — zapis TYLKO przy pewnej detekcji; bez modala.
   window.lexDetectSetLang=async function(setId, words, cb){
-    var g=window.lexGuessLang(words);
-    if(g && g.code && g.confident){
-      try{ await db.from('user_sets').update({lang:g.code}).eq('id', setId); }catch(e){ console.warn('[Lex] auto-detect lang save error:', e&&e.message); }
-      if(cb) cb(g.code); return;
+    var code=null;
+    // 1) Katalog Eyelingo — sygnał najsilniejszy (14 języków, 56k fiszek).
+    try{ var cat=await window.eylDetectLangByCatalog(words); if(cat && cat.code && cat.confident) code=cat.code; }catch(e){}
+    // 2) Heurystyka (pismo + stopwordy) — tylko gdy katalog nie rozstrzygnął.
+    if(!code){ var g=window.lexGuessLang(words); if(g && g.code && g.confident) code=g.code; }
+    if(code){
+      try{ await db.from('user_sets').update({lang:code}).eq('id', setId); }catch(e){ console.warn('[Lex] auto-detect lang save error:', e&&e.message); }
+      if(cb) cb(code); return;
     }
-    // Brak pewnej detekcji — nie pokazuj okna i nie zapisuj domysłu.
+    // Brak pewnej detekcji — nie zapisuj domysłu (§9.9.1). Karty pójdą do bloku „Pozostałe".
     if(cb) cb(null);
   };
 
@@ -17688,7 +17772,7 @@ async function lexInit(){
       if(!Array.isArray(window._trybCards) || !window._trybCards.length) return;
       var idx=window._trybIdx||0;
       if(idx<=0 || idx>=window._trybCards.length) return;
-      var remaining=window._trybCards.slice(idx).map(function(c){return {word:c.word||'',translation:c.translation||''};}).filter(function(c){return c.word&&c.translation;});
+      var remaining=window._trybCards.slice(idx).map(function(c){return {word:c.word||'',translation:c.translation||'',lang:(c.lang||''),flashcard_id:(c.id!=null?c.id:null)};}).filter(function(c){return c.word&&c.translation;});
       if(!remaining.length) return;
       localStorage.setItem(keyNow(), JSON.stringify({remaining:remaining, name:window._trybExternalName||'Sesja nauki', total:window._trybCards.length, done:idx, ts:Date.now(), seg:(window._matSessOrigin||'')}));
     }catch(e){}
@@ -17705,6 +17789,8 @@ async function lexInit(){
     var d=getSnap(); if(!d) return;
     window._trybExternalCards=d.remaining;
     window._trybExternalName=d.name;
+    window._trybStudyLang='';                      // język niosą karty; nie dziedzicz poprzedniej sesji
+    window._trybPreordered=true;                   // kolejność bloków językowych przetrwała w snapshotcie
     trybClearSnapshot();
     if(typeof window.strefaRenderContinue==='function') window.strefaRenderContinue();
     if(typeof showPage==='function') showPage('tryb');

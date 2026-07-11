@@ -879,7 +879,7 @@ async function markKnownCurrent(){
   if(!curSetCards||!curSetCards.length){ await loadCurSetCards(); }
   if(!curSetCards.length){ alert('Brak s\u0142\u00f3w w tym zestawie.'); return; }
   if(!confirm('Oznaczy\u0107 wszystkie s\u0142owa ('+curSetCards.length+') jako znane? Trafi\u0105 do d\u0142ugich powt\u00f3rek i znikn\u0105 z dzisiejszej kolejki. Zawsze mo\u017cesz je p\u00f3\u017aniej powt\u00f3rzy\u0107.')) return;
-  await markKnownBulk(curSetCards, curSetLang);
+  await markKnownBulk(curSetCards, curSetLangSrc);
   try{ await renderSetStatus(); }catch(e){}
   try{ refreshDueBadge(); }catch(e){}
   try{ homeRefresh(); }catch(e){}
@@ -905,7 +905,7 @@ async function srsDeclare(word,translation,q,opts){
   var nr=new Date(Date.now()+t.iv*86400000).toISOString().slice(0,10);
   try{
     await db.from('srs_progress').upsert({
-      user_id:UID, card_key:ck, word:word, translation:translation||'', lang:_eylTrueLang({word:word, lang:(_eylNormLang(opts.lang)||_eylNormLang(curSetLang))}),
+      user_id:UID, card_key:ck, word:word, translation:translation||'', lang:_eylTrueLang({word:word, lang:(_eylNormLang(opts.lang)||curSetLangSrc)}),
       source:(fc!=null?'eyelingo':'custom'), flashcard_id:fc,
       ease_factor:2.5, repetitions:t.r, interval_days:t.iv, next_review:nr
     },{onConflict:'user_id,card_key'});
@@ -918,7 +918,7 @@ async function brGrade(q){
   if(navigator.vibrate) navigator.vibrate(q>=3?[5,18,8]:6);
   try{
     var ck=_usrsCK(c.word||'',c.translation||'');
-    await srsDeclare(c.word||'', c.translation||'', q, {lang:curSetLang, flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null), card_key:ck});
+    await srsDeclare(c.word||'', c.translation||'', q, {lang:curSetLangSrc, flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null), card_key:ck});
   }catch(e){}
   _brGraded++;
   if(bi<CARDS.length-1){ bi++; renderCard(); }
@@ -1003,10 +1003,11 @@ function escapeHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replac
 
 /* ===== Zestaw ===== */
 let curSetId=null, curSetName='', curSetCount=0, curSetLang='en';
+let curSetLangSrc='';   // prawdziwy język zestawu ('' = nieznany) — TYLKO do zapisu SRS
 let curSetKind='set', _eylCards=[];
 function setBack(){ if(curSetKind==='eyelingo'){ go('eyelingo'); if(typeof eylRenderBrowse==='function') eylRenderBrowse(); } else { go('mine'); } }
 function openSet(id,name,count,lang){
-  curSetKind='set'; curSetId=id; curSetName=name; curSetCount=count; curSetLang=lang||'en';
+  curSetKind='set'; curSetId=id; curSetName=name; curSetCount=count; curSetLang=lang||'en'; curSetLangSrc=_eylNormLang(lang);
   var bl=document.getElementById('set-back-label'); if(bl) bl.textContent='Moje zestawy';
   document.getElementById('set-name').textContent=name;
   document.getElementById('set-meta').textContent=count+' '+plural(count,'fiszka','fiszki','fiszek')+' · '+lexLangFlag(curSetLang)+' '+lexLangInfo(curSetLang).name;
@@ -1510,7 +1511,7 @@ function lexRenderResumeCarousel(wrap, snaps){
 async function resumeLesson(snap){
   if(!snap||!snap.set_id) return;
   curSetId=snap.set_id; curSetName=snap.set_name||''; curSetCount=snap.set_count||0;
-  curSetLang=snap.lang||'en'; _lexLang=curSetLang;
+  curSetLang=snap.lang||'en'; curSetLangSrc=_eylNormLang(snap.lang); _lexLang=curSetLang;
   lexLevel=snap.level||'B1'; lexExLevel=snap.exLevel||'intermediate'; lexConductLang=snap.conductLang||'pl';
   _lexScript=(snap.script==='romaji'?'romaji':'native');
   try{ if(_isTranslitLang(curSetLang||'') && !snap.script){ _lexScript=(await loadJpScriptPref())||_lexDefaultScriptForLevel(snap.level||lexSetLevel()); } }catch(e){}
@@ -1822,7 +1823,7 @@ function sm2Canon(card,quality){
 async function srsUpsertCanon(word,translation,quality,opts){
   if(!word||quality==null||!UID) return;
   opts=opts||{};
-  var lang=_eylTrueLang({word:word, lang:(_eylNormLang(opts.lang)||_eylNormLang(_lexLang)||_eylNormLang(curSetLang))});
+  var lang=_eylTrueLang({word:word, lang:(_eylNormLang(opts.lang)||_eylNormLang(_lexLang)||curSetLangSrc)});
   var fc=(opts.flashcard_id!=null?opts.flashcard_id:null);
   var ck=opts.card_key||_usrsCK(word,translation);
   var cur={};
@@ -2267,7 +2268,7 @@ async function eylOpenCat(lang,lvl,catId,catName){
     if(!cards.length){ if(b) b.innerHTML=prev; alert('Ta kategoria nie ma jeszcze fiszek dla tego języka.'); return; }
     _eylCards=cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',romaji:(c.romaji||''),flashcard_id:(c.id!=null?c.id:null)}; });
     window._eylCurLevel=(lvl||null);
-    curSetKind='eyelingo'; curSetId='eyl:'+lang+':'+catId; curSetName=catName; curSetCount=_eylCards.length; curSetLang=lang;
+    curSetKind='eyelingo'; curSetId='eyl:'+lang+':'+catId; curSetName=catName; curSetCount=_eylCards.length; curSetLang=lang; curSetLangSrc=_eylNormLang(lang);
     var bl=document.getElementById('set-back-label'); if(bl) bl.textContent='Zestawy Eyelingo';
     document.getElementById('set-name').textContent=catName;
     document.getElementById('set-meta').textContent=curSetCount+' '+plural(curSetCount,'fiszka','fiszki','fiszek')+' \u00b7 '+eylLangFlag(lang)+' '+eylLangLabel(lang)+(lvl?' \u00b7 '+lvl:'');
