@@ -1683,7 +1683,7 @@ window.switchMatTab = function(tab){
     var orderedIds=Object.keys(meta).length?Object.keys(meta):catIds;
 
     var html='';
-    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow">'+codes.map(function(c){ var info=_langInfo(c); return '<button class="eylc-chip'+(c===code?' on':'')+'" onclick="eylPickLang('+JSON.stringify(c).replace(/"/g,'&quot;')+')">'+info.flag+' '+_eEsc(info.label)+'</button>'; }).join('')+'</div>';
+    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow eylc-langrow">'+codes.map(function(c){ var info=_langInfo(c); return '<button class="eylc-chip'+(c===code?' on':'')+'" onclick="eylPickLang('+JSON.stringify(c).replace(/"/g,'&quot;')+')">'+info.flag+' '+_eEsc(info.label)+'</button>'; }).join('')+'</div>';
     if(levels.length){
       html+='<div class="eylc-flabel" style="margin-top:16px">Poziom</div><div class="eylc-chiprow"><button class="eylc-chip'+(!_eylSeg.level?' on':'')+'" onclick="eylPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eylc-chip'+(_eylSeg.level===lv?' on':'')+'" onclick="eylPickLvl('+JSON.stringify(lv).replace(/"/g,'&quot;')+')">'+lv+'</button>'; }).join('')+'</div>';
     }
@@ -18473,7 +18473,7 @@ if ('serviceWorker' in navigator) {
         +(on?'background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.08)':'background:transparent;color:var(--dim2)')+'">'+label+cue+'</button>';
     }
     var pro='<span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:8px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span>';
-    return '<div style="max-width:960px;margin:0;padding:0 0 12px">'
+    return '<div style="max-width:none;margin:0;padding:0 0 12px">'
       +'<div class="ph-eyebrow">Materiał</div>'
       +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">'
       +'<h2 class="ph-title" style="margin:0">Ucz się z Ailexem'+pro+'</h2>'
@@ -18522,7 +18522,7 @@ if ('serviceWorker' in navigator) {
     var actIds=[], doneIds=[];
     orderedIds.forEach(function(cid){ (_agg(byKeys[cid]||[]).status==='done'?doneIds:actIds).push(cid); });
     var html='';
-    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow">'+codes.map(function(c){ var info=langInfo(c); return '<button class="eylc-chip'+(c===_lang?' on':'')+'" onclick="lexTrenerPickLang(\''+c+'\')">'+info.flag+' '+esc(langName(c))+'</button>'; }).join('')+'</div>';
+    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow eylc-langrow">'+codes.map(function(c){ var info=langInfo(c); return '<button class="eylc-chip'+(c===_lang?' on':'')+'" onclick="lexTrenerPickLang(\''+c+'\')">'+info.flag+' '+esc(langName(c))+'</button>'; }).join('')+'</div>';
     if(levels.length){ html+='<div class="eylc-flabel" style="margin-top:16px">Poziom</div><div class="eylc-chiprow"><button class="eylc-chip'+(!_level?' on':'')+'" onclick="lexTrenerPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eylc-chip'+(_level===lv?' on':'')+'" onclick="lexTrenerPickLvl(\''+lv+'\')">'+lv+'</button>'; }).join('')+'</div>'; }
     if(!orderedIds.length){ html+='<div class="eylc-secth" style="margin-top:20px">Kategorie (0)</div><div style="text-align:center;padding:40px 20px;color:var(--dim2);font-size:14px">Brak kategorii'+(_level?(' na poziomie '+esc(_level)):'')+'.</div>'; b.innerHTML=html; return; }
     if(doneIds.length){
@@ -18617,5 +18617,71 @@ if ('serviceWorker' in navigator) {
     try{ var h=document.getElementById('lex-sbh-gaps'); if(h) h.style.display='none'; }catch(e){}
   };
   try{ var _hideLuki=function(){ try{ var h=document.getElementById('lex-sbh-gaps'); if(h) h.style.display='none'; var b=document.getElementById('lex-sb-gaps'); if(b){ b.innerHTML=''; b.style.display='none'; } }catch(e){} }; if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',_hideLuki); else _hideLuki(); }catch(e){}
+})();
+</script>
+
+
+<!-- ═══ EYELINGO — Kafelki języków: jednolity wygląd (Zestawy + Trener AI) ═══
+     · ten sam chip (.eylc-chip) w obu sekcjach — wyśrodkowany napis
+     · wszystkie chipy języka mają szerokość najdłuższego (nazwa języka wyznacza miarę)
+     · chipy poziomu (A1…C2) bez zmian
+     Wycofanie: usuń ten blok. -->
+<style id="el-langchips">
+.eylc-chiprow.eylc-langrow{align-items:stretch}
+.eylc-chiprow.eylc-langrow .eylc-chip{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  text-align:center;white-space:nowrap;line-height:1.2;
+}
+</style>
+<script>
+/* Wyrównanie szerokości chipów języka do najdłuższego (mierzone po renderze). */
+(function(){
+  if(window._eylLangChipsReady) return;
+  window._eylLangChipsReady = true;
+
+  function equalizeRow(row){
+    var chips = row.querySelectorAll('.eylc-chip');
+    if(!chips.length) return;
+    var i, max = 0;
+    for(i=0;i<chips.length;i++) chips[i].style.width='';
+    for(i=0;i<chips.length;i++){
+      var w = Math.ceil(chips[i].getBoundingClientRect().width);
+      if(w > max) max = w;
+    }
+    if(!max) return;                       // host ukryty → pomiar 0, spróbujemy ponownie po pokazaniu
+    for(i=0;i<chips.length;i++) chips[i].style.width = max + 'px';
+  }
+
+  function run(){
+    try{
+      var rows = document.querySelectorAll('.eylc-chiprow.eylc-langrow');
+      for(var i=0;i<rows.length;i++) equalizeRow(rows[i]);
+    }catch(e){}
+  }
+  window.eylEqualizeLangChips = run;
+
+  var raf = null;
+  function schedule(){
+    if(raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(function(){ raf = null; run(); });
+  }
+
+  function observe(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    try{ new MutationObserver(schedule).observe(el, {childList:true, subtree:true}); }catch(e){}
+    try{ new MutationObserver(schedule).observe(el, {attributes:true, attributeFilter:['style']}); }catch(e){}
+  }
+
+  function init(){
+    observe('eyl-segment');          // Zestawy → Zestawy Eyelingo
+    observe('lex-catalog-inline');   // Trener AI → katalog materiałów
+    schedule();
+    try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(schedule); }catch(e){}
+    window.addEventListener('load', schedule);
+  }
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
 </script>
