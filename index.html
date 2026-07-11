@@ -1625,9 +1625,11 @@ window.switchMatTab = function(tab){
     return {total:total, touched:touched, mastered:mastered, pct:pct, status:status};
   }
   function _pill(a){
-    if(a.status==='done') return '<span style="font-size:10.5px;color:#085041;background:#e1f5ee;padding:2px 9px;border-radius:100px">Opanowane ✓</span>';
-    if(a.status==='prog') return '<span style="font-size:10.5px;color:#854f0b;background:#faeeda;padding:2px 9px;border-radius:100px">W toku · '+a.pct+'%</span>';
-    return '<span style="font-size:10.5px;color:var(--dim2);background:rgba(26,35,64,.05);padding:2px 9px;border-radius:100px">Nowe</span>';
+    // Pigułka = ATOM. flex:0 0 auto + nowrap → procent NIGDY nie spada pod „W toku".
+    var base='font-size:10.5px;padding:2px 9px;border-radius:100px;display:inline-flex;align-items:center;white-space:nowrap;flex:0 0 auto;';
+    if(a.status==='done') return '<span class="eylc-cpill" style="'+base+'color:#085041;background:#e1f5ee">Opanowane ✓</span>';
+    if(a.status==='prog') return '<span class="eylc-cpill" style="'+base+'color:#854f0b;background:#faeeda">W toku · '+a.pct+'%</span>';
+    return '<span class="eylc-cpill" style="'+base+'color:var(--dim2);background:rgba(26,35,64,.05)">Nowe</span>';
   }
   function _bar(a){
     if(a.total===0) return '';
@@ -1694,8 +1696,9 @@ window.switchMatTab = function(tab){
       var args=JSON.stringify(code).replace(/"/g,'&quot;')+','+JSON.stringify(lvlArg).replace(/"/g,'&quot;')+','+JSON.stringify(String(cid)).replace(/"/g,'&quot;')+','+JSON.stringify(m.label||'').replace(/"/g,'&quot;');
       return '<div class="eylc-cat" onclick="eylOpenCat('+args+')">'
         +'<button class="eylc-eye" title="Podejrzyj s\u0142owa" onclick="event.stopPropagation();eylPreview('+args+')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;padding-right:30px"><span style="font-size:14px;font-weight:500;color:var(--navy)">'+_eEsc(m.label)+'</span>'+_pill(a)+'</div>'
-        +'<div style="font-size:11px;color:var(--dim2)">'+a.total+' fiszek'+(a.touched?(' \u00b7 '+a.mastered+' opanowanych'):'')+'</div>'+_bar(a)+'</div>';
+        +'<div class="eylc-cnm">'+_eEsc(m.label)+'</div>'
+        +'<div class="eylc-cfoot"><span class="eylc-cmeta">'+a.total+' fiszek'+(a.touched?(' \u00b7 '+a.mastered+' opanowanych'):'')+'</span>'+_pill(a)+'</div>'
+        +_bar(a)+'</div>';
     }
     var _gO='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">', _gC='</div>';
     var actIds=[], doneIds=[];
@@ -1720,14 +1723,17 @@ window.switchMatTab = function(tab){
   function eylPickLvl(l){ _eylSeg.level=l||null; eylBrowse(); }
 
   // ── Podgląd zawartości kategorii („oko") ──
-  async function eylPreview(code, level, catId, label){
+  async function eylPreview(code, level, catId, label, ctx){
     await _ensureIds();
     var langId=_eylLangIds[code], lvlId=level?_eylLevelIds[level]:null, info=_langInfo(code);
     var ov=document.getElementById('eylc-preview'); if(ov) ov.remove();
     ov=document.createElement('div'); ov.id='eylc-preview'; ov.className='eylc-modal';
     ov.addEventListener('click', function(e){ if(e.target===ov) ov.remove(); });
     var learnArgs=JSON.stringify(code).replace(/"/g,'&quot;')+','+JSON.stringify(level||'').replace(/"/g,'&quot;')+','+JSON.stringify(String(catId)).replace(/"/g,'&quot;')+','+JSON.stringify(label||'').replace(/"/g,'&quot;');
-    ov.innerHTML='<div class="eylc-sheet"><div class="eylc-shead"><div style="min-width:0"><div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_eEsc(label||'Kategoria')+'</div><div style="font-size:12px;color:var(--dim2);margin-top:3px">'+info.flag+' '+_eEsc(info.label)+(level?(' · '+_eEsc(level)):'')+' · podgląd</div></div><button class="eylc-x" onclick="document.getElementById(\'eylc-preview\').remove()">×</button></div><div class="eylc-sbody" id="eylc-pbody"><div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Wczytuję słowa…</div></div><div class="eylc-sfoot"><button class="eylc-learn" onclick="document.getElementById(\'eylc-preview\').remove();eylOpenCat('+learnArgs+')">Ucz się tej kategorii →</button></div></div>';
+    var _foot=(ctx==='trener')
+      ? '<div class="eylc-sfoot"><button class="eylc-learn" onclick="document.getElementById(\'eylc-preview\').remove();lexTrenerStart(\'eyelingo\','+JSON.stringify(String(catId)).replace(/"/g,'&quot;')+','+JSON.stringify(label||'').replace(/"/g,'&quot;')+','+JSON.stringify(code).replace(/"/g,'&quot;')+','+JSON.stringify(level||'').replace(/"/g,'&quot;')+')">Rozpocznij lekcję →</button></div>'
+      : '<div class="eylc-sfoot"><button class="eylc-learn" onclick="document.getElementById(\'eylc-preview\').remove();eylOpenCat('+learnArgs+')">Ucz się tej kategorii →</button></div>';
+    ov.innerHTML='<div class="eylc-sheet"><div class="eylc-shead"><div style="min-width:0"><div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_eEsc(label||'Kategoria')+'</div><div style="font-size:12px;color:var(--dim2);margin-top:3px">'+info.flag+' '+_eEsc(info.label)+(level?(' · '+_eEsc(level)):'')+' · podgląd</div></div><button class="eylc-x" onclick="document.getElementById(\'eylc-preview\').remove()">×</button></div><div class="eylc-sbody" id="eylc-pbody"><div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Wczytuję słowa…</div></div>'+_foot+'</div>';
     document.body.appendChild(ov);
     var body=document.getElementById('eylc-pbody');
     try{
@@ -18517,9 +18523,12 @@ if ('serviceWorker' in navigator) {
     function card(cid){
       var a=_agg(byKeys[cid]||[]); var m=meta[cid]||{label:'Kategoria '+cid}; var cnt=byCount[cid]||a.total;
       var args="'eyelingo',"+JSON.stringify(String(cid))+","+JSON.stringify(m.label||'')+","+JSON.stringify(_lang)+","+JSON.stringify(lvlArg);
+      var pv=JSON.stringify(_lang).replace(/"/g,'&quot;')+','+JSON.stringify(lvlArg).replace(/"/g,'&quot;')+','+JSON.stringify(String(cid)).replace(/"/g,'&quot;')+','+JSON.stringify(m.label||'').replace(/"/g,'&quot;')+",'trener'";
       return '<div class="eylc-cat" onclick="lexTrenerStart('+args.replace(/"/g,'&quot;')+')">'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px"><span style="font-size:14px;font-weight:500;color:var(--navy)">'+esc(m.label)+'</span>'+_pill(a)+'</div>'
-        +'<div style="font-size:11px;color:var(--dim2)">'+cnt+' fiszek'+(a.touched?(' \u00b7 '+a.mastered+' opanowanych'):'')+'</div>'+_bar(a)+'</div>';
+        +'<button class="eylc-eye" title="Podejrzyj s\u0142owa" onclick="event.stopPropagation();eylPreview('+pv+')"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
+        +'<div class="eylc-cnm">'+esc(m.label)+'</div>'
+        +'<div class="eylc-cfoot"><span class="eylc-cmeta">'+cnt+' fiszek'+(a.touched?(' \u00b7 '+a.mastered+' opanowanych'):'')+'</span>'+_pill(a)+'</div>'
+        +_bar(a)+'</div>';
     }
     var actIds=[], doneIds=[];
     orderedIds.forEach(function(cid){ (_agg(byKeys[cid]||[]).status==='done'?doneIds:actIds).push(cid); });
@@ -18559,9 +18568,9 @@ if ('serviceWorker' in navigator) {
       var badge=s.lang?(String(s.lang).toUpperCase()+' · '):'';
       var args="'user',"+JSON.stringify(String(s.id))+","+JSON.stringify(s.label||'')+","+JSON.stringify(s.lang||'')+",''";
       return '<div class="eylc-cat" onclick="lexTrenerStart('+args.replace(/"/g,'&quot;')+')">'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px"><span style="font-size:14px;font-weight:500;color:var(--navy)">'+esc(s.label)+'</span>'
-        +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex-shrink:0"><polygon points="6 4 20 12 6 20"/></svg></div>'
-        +'<div style="font-size:11px;color:var(--dim2)">'+badge+s.count+' fiszek</div></div>';
+        +'<div class="eylc-cnm">'+esc(s.label)+'</div>'
+        +'<div class="eylc-cfoot"><span class="eylc-cmeta">'+badge+s.count+' fiszek</span>'
+        +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex:0 0 auto"><polygon points="6 4 20 12 6 20"/></svg></div></div>';
     }).join('')+'</div>';
   }
 
@@ -18687,3 +18696,49 @@ if ('serviceWorker' in navigator) {
   else init();
 })();
 </script>
+
+
+<!-- ═══ EYELINGO — Kafelki kategorii: jedna struktura + prawy margines sekcji ═══
+     · nazwa ma WŁASNY wiersz (do 2 linii) — nie walczy o miejsce z pigułką statusu
+     · stopka (liczba fiszek + „W toku · %") dociśnięta do dołu → procenty w jednej
+       osi pionowej w całym rzędzie: oko znajduje liczbę bez szukania
+     · pigułka nigdy się nie łamie (nowrap + flex:0 0 auto)
+     · pionowy margines po prawej w sekcjach Zestawy i Trener AI (wspólna oś prawej krawędzi)
+     Wycofanie: usuń ten blok. -->
+<style id="el-cattile">
+/* ── Struktura kafelka kategorii (Zestawy Eyelingo + Trener AI) ── */
+.eylc-cat{display:flex;flex-direction:column;min-height:106px}
+.eylc-cat .eylc-cnm{
+  font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy);
+  line-height:1.35;padding-right:34px;          /* rezerwa na przycisk „oko" */
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;overflow-wrap:anywhere;
+}
+.eylc-cat .eylc-cfoot{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-top:auto;padding-top:9px;               /* stopka zawsze przy dole kafelka */
+}
+.eylc-cat .eylc-cmeta{
+  font-size:11px;color:var(--dim2);min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.eylc-cat .eylc-cpill{flex:0 0 auto;white-space:nowrap}
+
+/* ── Pionowy margines po prawej: Zestawy (#mat-main-content) i Trener AI (#lex-catalog-inline).
+      Trener AI dostaje margines na katalogu, nie na całej kolumnie — dzięki temu
+      Rozmowa (wątek 720px, wyśrodkowany) pozostaje nienaruszona. ── */
+@media (min-width:769px) and (max-width:1023px){
+  #mat-main-content{ padding-right:48px !important; }   /* 24 baza + 24 margines */
+  #lex-catalog-inline{ padding-right:24px; }
+}
+@media (min-width:1024px){
+  :root{ --eyl-gutter-r: clamp(32px, 4vw, 80px); }
+  #mat-main-content{ padding-right: calc(clamp(24px, 3vw, 48px) + var(--eyl-gutter-r)) !important; }
+  #lex-catalog-inline{ padding-right: var(--eyl-gutter-r); }
+}
+/* Opcjonalny hairline zamiast samego światła — odkomentuj, jeśli margines ma być widoczny:
+@media (min-width:1024px){
+  #mat-main-content, #lex-catalog-inline{ border-right:1px solid var(--border); }
+}
+*/
+</style>
