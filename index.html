@@ -1054,7 +1054,7 @@ nav { padding-bottom: env(safe-area-inset-bottom, 0); }
   /* Hub page headers */
   #page-strefa h2, #page-odkryj h2, #page-daily h2,
   #page-teacher h2, #page-tutors h2, #page-community h2,
-  .page-head .ph-title {
+  .ph-title {
     font-size: 26px !important;
   }
   .page-content,.page-content-side{ padding-left:16px !important; padding-right:16px !important; }
@@ -1216,10 +1216,16 @@ html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 .page-content{ padding:var(--page-top) var(--page-side) var(--page-bottom); box-sizing:border-box; }
 .page-content-side{ padding:var(--page-top) var(--page-side) var(--page-bottom) var(--page-side); box-sizing:border-box; }
 .page-head{ margin-bottom:32px; }
-.page-head .ph-eyebrow{ font-family:'DM Sans',sans-serif; font-size:11px; font-weight:500; letter-spacing:1.2px; text-transform:uppercase; color:var(--dim2); margin-bottom:8px; }
-.page-head .ph-title{ font-family:'DM Sans',sans-serif; font-size:32px; font-weight:500; letter-spacing:-0.6px; line-height:1.15; color:var(--navy); margin:0 0 4px; }
-.page-head .ph-sub{ font-size:14px; color:var(--dim2); margin:0; line-height:1.5; }
+/* Typografia nagłówka podstrony — klasy SAMODZIELNE (nie potomkowie .page-head),
+   aby nagłówki renderowane dynamicznie poza .page-head (Trener AI) miały
+   identyczny font/rozmiar/odstępy. Design Bible: DM Sans 500, navy, 32px. */
+.ph-eyebrow{ font-family:'DM Sans',sans-serif; font-size:11px; font-weight:500; letter-spacing:1.2px; text-transform:uppercase; color:var(--dim2); margin-bottom:8px; }
+.ph-title{ font-family:'DM Sans',sans-serif; font-size:32px; font-weight:500; letter-spacing:-0.6px; line-height:1.15; color:var(--navy); margin:0 0 4px; }
+.ph-sub{ font-size:14px; color:var(--dim2); margin:0; line-height:1.5; }
 .page-head-row{ display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+/* Pojedyncza, osierocona zakładka „Moje materiały" dubluje pigułkę segmentu
+   „Moje zestawy" — ukryta (kod zostaje, feature-flag zamiast usuwania). */
+#mat-tabs-row{ display:none !important; }
 .collection-card:hover{border-color:var(--orange);transform:translateY(-2px);box-shadow:0 6px 20px rgba(26,35,64,.08)}
 
 /* ─── Hide scrollbars everywhere ─── */
@@ -1548,8 +1554,8 @@ window.switchMatTab = function(tab){
   var search=document.getElementById('mat-search');
   if(search) search.value='';
   if(tab==='mine'){
-    if(title) title.textContent='Twoje zestawy';
-    if(sub) sub.textContent='Twoje fiszki i zestawy';
+    if(title) title.textContent='Ucz się z fiszek';
+    if(sub) sub.textContent='Wybierz zestaw — przeglądaj słówka i ćwicz w czterech trybach.';
     if(grid){ grid.style.display='grid'; }
     if(createBtn&&window._matMyUid) createBtn.style.display='block';
     var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display=(window._matMyUid?'inline-flex':'none');
@@ -1788,8 +1794,8 @@ window.switchMatTab = function(tab){
       setBtn(bMine,false); setBtn(bEyl,true);
       MINE_IDS.forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
       var box=_seg(); if(box) box.style.display='block';
-      if(title) title.textContent='Zestawy Eyelingo';
-      if(sub) sub.textContent='Program językowy · 14 języków';
+      if(title) title.textContent='Ucz się z fiszek';
+      if(sub) sub.textContent='Wybierz zestaw — przeglądaj słówka i ćwicz w czterech trybach.';
       var _sb=document.getElementById('mat-sidebar'); if(_sb){ _sb.style.display=''; _sb.style.visibility=''; }
       var _sbt=document.getElementById('mat-sidebar-toggle'); if(_sbt) _sbt.style.display='none';
       var _cat=document.getElementById('mat-sb-catalogs'); if(_cat) _cat.style.display='none';
@@ -3811,9 +3817,8 @@ window.matSetLangApply=async function(setId, code){
       <!-- Header -->
       <div class="page-head page-head-row">
         <div>
-          <div class="ph-eyebrow">Materiały</div>
-          <h2 id="mat-main-title" class="ph-title">Twoje zestawy</h2>
-          <p id="mat-main-sub" class="ph-sub">Twoje fiszki i zestawy</p>
+          <h2 id="mat-main-title" class="ph-title">Ucz się z fiszek</h2>
+          <p id="mat-main-sub" class="ph-sub">Wybierz zestaw — przeglądaj słówka i ćwicz w czterech trybach.</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <input id="mat-search" class="fi" placeholder="Szukaj..." style="width:200px;font-size:13px" oninput="filterMat(this.value)">
@@ -4344,7 +4349,6 @@ async function initToFixPage(){
   <div id="teacher-main" style="flex:1;min-width:0;padding:88px 40px 64px 40px">
 
   <div class="page-head">
-    <div class="ph-eyebrow">Tutor AI</div>
     <h2 class="ph-title" id="teacher-main-title">Trener AI <span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:6px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span></h2>
     <p class="ph-sub" id="teacher-main-sub">Swobodna rozmowa z AI dopasowana do Twojego poziomu</p>
   </div>
@@ -18181,7 +18185,7 @@ async function lexInit(){
 }
 
 /* ── (4) Płynny tytuł podstrony (mobilne !important nadal wygrywa ≤600) ── */
-.page-head .ph-title{ font-size: clamp(24px, 3.2vw, 32px); }
+.ph-title{ font-size: clamp(24px, 3.2vw, 32px); }
 
 /* ════════════════════════════════════════════════════════════
    (1) GLOBALNY KONTENER 1400 — wyśrodkowanie bloku sidebar+main
@@ -18330,8 +18334,8 @@ async function lexInit(){
     var surf=document.getElementById('mat-learn-surface'); if(surf) surf.style.display='none';
     var tabs=document.querySelector('#page-community .mat-tabs'); if(tabs) tabs.style.display='';
     var srch=document.getElementById('mat-search'); if(srch) srch.style.display='';
-    var title=document.getElementById('mat-main-title'); if(title) title.textContent='Twoje zestawy';
-    var sub=document.getElementById('mat-main-sub'); if(sub) sub.textContent='Twoje fiszki i zestawy';
+    var title=document.getElementById('mat-main-title'); if(title) title.textContent='Ucz się z fiszek';
+    var sub=document.getElementById('mat-main-sub'); if(sub) sub.textContent='Wybierz zestaw — przeglądaj słówka i ćwicz w czterech trybach.';
     if(typeof switchMatTab==='function') switchMatTab('mine');
   }
 
@@ -18481,15 +18485,18 @@ if ('serviceWorker' in navigator) {
         +(on?'background:#fff;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,.08)':'background:transparent;color:var(--dim2)')+'">'+label+cue+'</button>';
     }
     var pro='<span style="font-size:12px;background:var(--orange);color:#fff;padding:3px 10px;border-radius:100px;vertical-align:middle;margin-left:8px;font-family:DM Sans,sans-serif;letter-spacing:0">PRO</span>';
-    return '<div style="max-width:none;margin:0;padding:0 0 12px">'
-      +'<div class="ph-eyebrow">Materiał</div>'
-      +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">'
-      +'<h2 class="ph-title" style="margin:0">Ucz się z Ailexem'+pro+'</h2>'
-      +'<button onclick="lexTrenerAdjust()" style="background:none;border:none;color:var(--orange);font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;margin-top:6px">'
+    return '<div style="max-width:none;margin:0;padding:0">'
+      +'<div class="page-head page-head-row">'
+      +'<div>'
+      +'<h2 class="ph-title">Ucz się z Ailexem'+pro+'</h2>'
+      +'<p class="ph-sub">Wybierz zestaw — Ailex zbuduje z niego lekcję.</p>'
+      +'</div>'
+      +'<div style="display:flex;gap:8px;align-items:center">'
+      +'<button onclick="lexTrenerAdjust()" style="background:none;border:none;color:var(--orange);font-size:13px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap">'
       +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:15px;height:15px"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>Dostosuj lekcję</button>'
       +'</div>'
-      +'<div class="ph-sub" style="margin:4px 0 16px">Wybierz materiał — Ailex zbuduje z niego lekcję.</div>'
-      +'<div style="display:inline-flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:100px;margin-bottom:16px">'
+      +'</div>'
+      +'<div style="display:inline-flex;gap:4px;background:rgba(26,35,64,.06);padding:4px;border-radius:100px;margin-bottom:14px">'
       +segBtn('eyelingo','Zestawy Eyelingo',c.eyelingo)+segBtn('user','Moje zestawy',c.user)+'</div>'
       +'<div id="lex-tr-body"></div></div>';
   }
@@ -18540,7 +18547,7 @@ if ('serviceWorker' in navigator) {
       var dOpen=!!window._lexTrenerDoneOpen;
       html+='<div style="margin-top:20px;margin-bottom:16px"><button onclick="lexTrenerToggleDone()" style="width:100%;display:flex;align-items:center;gap:9px;background:#f3f8f5;border:1px solid #dcebe2;border-radius:14px;padding:13px 16px;cursor:pointer;font-family:inherit">'
         +'<span style="width:24px;height:24px;border-radius:8px;background:#e1f3ea;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#085041" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg></span>'
-        +'<span style="flex:1;text-align:left;font-size:14px;font-weight:500;color:var(--navy)">Materiały przerobione</span>'
+        +'<span style="flex:1;text-align:left;font-size:14px;font-weight:500;color:var(--navy)">Zestawy przerobione</span>'
         +'<span style="font-size:12px;font-weight:600;color:#085041;background:#e1f3ea;border-radius:20px;padding:2px 10px">'+doneIds.length+'</span>'
         +'<svg id="lex-tr-done-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2" style="transition:transform .25s;transform:rotate('+(dOpen?'180deg':'0deg')+')"><path d="M6 9l6 6 6-6"/></svg>'
         +'</button>'
