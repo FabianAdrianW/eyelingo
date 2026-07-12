@@ -13,7 +13,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,
     QLabel, QLineEdit, QSystemTrayIcon, QScrollArea,
-    QMenu, QPushButton, QGridLayout, QMessageBox, QHBoxLayout
+    QMenu, QPushButton, QGridLayout, QMessageBox, QHBoxLayout, QCheckBox
 )
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QBrush, QPen
@@ -133,29 +133,55 @@ if os.path.exists(_env_path):
 else:
     load_dotenv()
 
-# ── POSTHOG ANALITYKI ──────────────────────────────
-from posthog import Posthog
+# ── ANALITYKA FIRST-PARTY (Supabase, region UE) — zastępuje PostHog (audyt 2.4) ──
+import threading as _an_threading
+_ph_user_id = None   # id użytkownika (ustawiany po zalogowaniu)
+_an_token = None     # access_token do auth.uid() w RPC
+_an_sid = None       # identyfikator sesji
 
-_ph = Posthog(
-    project_api_key='phc_um2sjdPyZpuwdn4k2bAGeZeD4xCrnUhxzuZGiS4rpPcz',
-    host='https://eu.i.posthog.com'
-)
-_ph_user_id = None  # ustawiany po zalogowaniu
+# mapowanie zdarzeń desktopu na kanon wspólnego panelu (cross-surface)
+_AN_ALIAS = {
+    "app_opened": "session_start",
+    "test_completed": "review_session_completed",
+}
+
+def _an_ensure_sid():
+    global _an_sid
+    if not _an_sid:
+        import uuid as _uuid
+        _an_sid = _uuid.uuid4().hex
+    return _an_sid
 
 def ph_identify(user_id: str, email: str):
     global _ph_user_id
     _ph_user_id = user_id
+
+def _an_send(batch):
     try:
-        _ph.identify(distinct_id=user_id, properties={"email": email})
+        url = SUPABASE_URL.rstrip("/") + "/rest/v1/rpc/track_events"
+        tok = _an_token or SUPABASE_KEY
+        body = json.dumps({"p_batch": batch}).encode("utf-8")
+        req = urllib.request.Request(url, data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("apikey", SUPABASE_KEY)
+        req.add_header("Authorization", "Bearer " + (tok or ""))
+        with urllib.request.urlopen(req, timeout=10) as _r:
+            _r.read()
     except Exception:
         pass
 
 def ph_capture(event: str, props: dict = None):
-    if _ph_user_id:
-        try:
-            _ph.capture(distinct_id=_ph_user_id, event=event, properties=props or {})
-        except Exception:
-            pass
+    if not _ph_user_id:
+        return
+    try:
+        sid = _an_ensure_sid()
+        batch = [{"event": event, "props": props or {}, "surface": "desktop", "session": sid}]
+        alias = _AN_ALIAS.get(event)
+        if alias:
+            batch.append({"event": alias, "props": props or {}, "surface": "desktop", "session": sid})
+        _an_threading.Thread(target=_an_send, args=(batch,), daemon=True).start()
+    except Exception:
+        pass
 
 # ───────────────────────────────────────────────────
 
@@ -181,28 +207,95 @@ except Exception:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
+import time as _time_dbg
+# Audyt bezp. DESK-2: log debugowy WYŁĄCZONY domyślnie (w produkcji rósłby u użytkownika
+# i mógłby zawierać dane diagnostyczne). Włącz świadomie: EYELINGO_DEBUG=1
+try:
+    if os.getenv("EYELINGO_DEBUG") == "1":
+        import pathlib as _pl_dbg
+        _DBG_LOG = str(_pl_dbg.Path.home() / ".eyelingo_debug.log")
+    else:
+        _DBG_LOG = None
+except Exception:
+    _DBG_LOG = None
+
+def _dbg_reset():
+    if _DBG_LOG:
+        try:
+            open(_DBG_LOG, "w", encoding="utf-8").close()
+        except Exception:
+            pass
+
+def _dbg(msg):
+    line = f"{_time_dbg.strftime('%H:%M:%S')} {msg}"
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass
+    if _DBG_LOG:
+        try:
+            with open(_DBG_LOG, "a", encoding="utf-8") as _f:
+                _f.write(line + "\n")
+        except Exception:
+            pass
+
+_last_synced_token = None
+
 def _sync_postgrest_token(token=None):
-    """Propaguj access_token do klienta PostgREST/RPC.
-    supabase.auth.set_session()/refresh_session() NIE aktualizują nagłówka
-    Authorization dla zapytań do tabel i funkcji. Bez tego po restarcie
-    auth.uid() jest NULL → premium zablokowane, category_views z null user_id,
-    kategorie/fiszki się nie ładują (działa dopiero po świeżym logowaniu)."""
+    """Wymuś access_token na kliencie PostgREST/RPC — wersjo-odpornie.
+    supabase.auth.set_session()/refresh_session() nie zawsze aktualizują nagłówek
+    Authorization dla zapytań do tabel/RPC. Bez tego po restarcie auth.uid() jest
+    NULL → RLS blokuje → premium=FREE, materiały się nie ładują. Ustawiamy nagłówek
+    na wszystkich wariantach struktury klienta i logujemy wynik do konsoli."""
+    global _last_synced_token, _an_token
     try:
         if not token:
             cur = supabase.auth.get_session()
             token = getattr(cur, "access_token", None) or \
                     getattr(getattr(cur, "session", None), "access_token", None)
         if not token:
+            if _last_synced_token != "NONE":
+                _dbg("[TOKEN] brak access_token do synchronizacji")
+                _last_synced_token = "NONE"
             return
+        hdr = f"Bearer {token}"
+        _an_token = token
+        done = []
+        pg = getattr(supabase, "postgrest", None)
+        # a) oficjalne API postgrest-py
         try:
-            supabase.postgrest.auth(token)
-        except Exception:
+            if pg is not None:
+                pg.auth(token); done.append("postgrest.auth")
+        except Exception as e:
+            _dbg(f"[TOKEN] postgrest.auth blad: {e}")
+        # b) bezpośrednio na sesji HTTP klienta postgrest (różne wersje trzymają ją inaczej)
+        if pg is not None:
+            for attr in ("session", "_session"):
+                s = getattr(pg, attr, None)
+                try:
+                    if s is not None and hasattr(s, "headers"):
+                        s.headers["Authorization"] = hdr; done.append(f"postgrest.{attr}.headers")
+                except Exception:
+                    pass
             try:
-                supabase.postgrest.session.headers["Authorization"] = f"Bearer {token}"
+                h = getattr(pg, "headers", None)
+                if h is not None:
+                    h["Authorization"] = hdr; done.append("postgrest.headers")
             except Exception:
                 pass
-    except Exception:
-        pass
+        # c) domyślne nagłówki całego klienta — dziedziczone przez nowo budowane zapytania
+        try:
+            opts = getattr(supabase, "options", None)
+            oh = getattr(opts, "headers", None) if opts is not None else None
+            if oh is not None:
+                oh["Authorization"] = hdr; done.append("options.headers")
+        except Exception:
+            pass
+        if token != _last_synced_token:
+            _dbg(f"[TOKEN] ustawiono na: {done or 'NIC'}  tok=<ustawiony>")  # audyt bezp. DESK-2: nie logujemy fragmentu sekretu
+            _last_synced_token = token
+    except Exception as e:
+        _dbg(f"[TOKEN] wyjatek: {e}")
 
 _refresh_lock = threading.Lock()
 
@@ -228,7 +321,7 @@ def _refresh_and_sync():
                     _sync_postgrest_token(getattr(sess, "access_token", None))
                 return True
         except Exception as e:
-            print(f"[JWT] refresh_and_sync: {e}")
+            _dbg(f"[JWT] refresh_and_sync: {e}")
         return False
 
 # ──────────────────────────────────────────────────────
@@ -309,57 +402,89 @@ def create_checkout_session(price_key: str, user_email: str) -> str | None:
 SESSION_FILE = Path.home() / ".fiszki_session.json"
 
 def save_session(session):
-    json.dump({
-        "access_token":  session.access_token,
-        "refresh_token": session.refresh_token,
-    }, open(SESSION_FILE, "w"))
+    try:
+        at = getattr(session, "access_token", None)
+        rt = getattr(session, "refresh_token", None)
+        if not at or not rt:
+            _dbg(f"[SESSION] save_session: BRAK tokenow (at={bool(at)}, rt={bool(rt)}) — nie zapisuje")
+        else:
+            with open(SESSION_FILE, "w", encoding="utf-8") as _f:
+                json.dump({"access_token": at, "refresh_token": rt}, _f)
+            _dbg(f"[SESSION] save_session: zapisano -> {SESSION_FILE}")
+    except Exception as _e:
+        _dbg(f"[SESSION] save_session blad: {_e}")
     try:
         _sync_postgrest_token(getattr(session, "access_token", None))
     except Exception:
         pass
 
 def load_session():
-    if not SESSION_FILE.exists():
-        return None
     try:
-        return json.load(open(SESSION_FILE))
-    except Exception:
+        if not SESSION_FILE.exists():
+            _dbg(f"[SESSION] load_session: plik NIE istnieje ({SESSION_FILE})")
+            return None
+        with open(SESSION_FILE, encoding="utf-8") as _f:
+            data = json.load(_f)
+        _dbg("[SESSION] load_session: wczytano plik OK")
+        return data
+    except Exception as _e:
+        _dbg(f"[SESSION] load_session blad: {_e}")
         return None
 
 def clear_session():
-    if SESSION_FILE.exists():
-        SESSION_FILE.unlink()
+    try:
+        if SESSION_FILE.exists():
+            SESSION_FILE.unlink()
+            _dbg("[SESSION] clear_session: USUNIETO plik sesji")
+    except Exception as _e:
+        _dbg(f"[SESSION] clear_session blad: {_e}")
 
 def try_restore_session() -> bool:
     saved = load_session()
+    _dbg(f"[SESSION] try_restore: saved={'TAK' if saved else 'NIE'}")
     if not saved:
         return False
     try:
-        # 1) Ustaw zapisaną sesję w kliencie
-        supabase.auth.set_session(saved["access_token"], saved["refresh_token"])
-        # 2) Wymuś odświeżenie — zapisany access_token mógł wygasnąć.
-        #    Bez tego get_user() w wątkach roboczych zwraca None
-        #    ('NoneType' object has no attribute 'user') do czasu re-logowania.
+        # 1) set_session sam odświeży wygasły access_token przez refresh_token.
+        #    Nie zużywamy rotującego tokenu ręcznie z góry (podwójne użycie = "session missing").
+        try:
+            supabase.auth.set_session(saved["access_token"], saved["refresh_token"])
+            _dbg("[SESSION] set_session(saved): OK")
+        except Exception as _e:
+            _dbg(f"[SESSION] set_session(saved) blad: {_e}")
+        # 2) Pobierz aktualną sesję z klienta
         sess = None
         try:
-            resp = supabase.auth.refresh_session(saved["refresh_token"])
-            sess = getattr(resp, "session", None)
-        except Exception:
-            sess = None
-        # 3) Fallback — pobierz bieżącą sesję, jeśli refresh nic nie zwrócił
-        if sess is None:
+            cur = supabase.auth.get_session()
+            sess = getattr(cur, "session", None) or cur
+        except Exception as _e:
+            _dbg(f"[SESSION] get_session blad: {_e}")
+        # 3) Dopiero gdy brak sesji/tokenu — jawny refresh (raz)
+        if not (sess and getattr(sess, "access_token", None)):
             try:
-                cur = supabase.auth.get_session()
-                sess = getattr(cur, "session", cur)
-            except Exception:
-                sess = None
+                resp = supabase.auth.refresh_session(saved["refresh_token"])
+                sess = getattr(resp, "session", None) or resp
+                _dbg(f"[SESSION] refresh_session(token): sess={'TAK' if sess else 'NIE'}")
+            except Exception as _e:
+                _dbg(f"[SESSION] refresh_session(token) blad: {_e}")
         if sess and getattr(sess, "access_token", None):
+            _rt = getattr(sess, "refresh_token", None) or saved["refresh_token"]
+            try:
+                supabase.auth.set_session(sess.access_token, _rt)
+            except Exception as _e:
+                _dbg(f"[SESSION] set_session(fresh) blad: {_e}")
             save_session(sess)
-            # 4) Weryfikacja: użytkownik musi być realnie dostępny
-            if current_user() is not None:
+            _sync_postgrest_token(getattr(sess, "access_token", None))
+            u = current_user()
+            _dbg(f"[SESSION] try_restore: user={'TAK' if u else 'NIE'}")
+            if u is not None:
+                _dbg("[SESSION] try_restore: OK — sesja przywrocona")
                 return True
-    except Exception:
-        pass
+        else:
+            _dbg("[SESSION] try_restore: brak sesji po set/refresh")
+    except Exception as _e:
+        _dbg(f"[SESSION] try_restore: wyjatek: {_e}")
+    _dbg("[SESSION] try_restore: NIEUDANE — czyszcze sesje")
     clear_session()
     return False
 
@@ -756,7 +881,7 @@ class LearningSession:
 
     # ── interakcje ────────────────────────────────────
     def track(self, event: str, props: dict = None):
-        """Śledź interakcję — wysyłaj od razu do PostHog."""
+        """Śledź interakcję — wysyłaj od razu do analityki first-party (Supabase)."""
         self._interactions[event] = self._interactions.get(event, 0) + 1
         ph_capture(event, props or {})
 
@@ -769,7 +894,7 @@ class LearningSession:
             "total_duration_min": round(total_sec / 60, 1),
             "interactions":       self._interactions,
         })
-        _ph.flush()
+        pass  # first-party: wysyłka natychmiastowa, brak bufora
 
 _session = LearningSession()
 
@@ -1441,6 +1566,9 @@ class LoginWindow(_DraggableWindow):
         if len(password) < 6:
             self.lbl_error.setText("Hasło musi mieć co najmniej 6 znaków.")
             return
+        if self._mode == "register" and len(password) < 8:
+            self.lbl_error.setText("Hasło musi mieć co najmniej 8 znaków.")
+            return
         if self._mode == "register":
             if not username:
                 self.lbl_error.setText("Wpisz pseudonim.")
@@ -1470,9 +1598,8 @@ class LoginWindow(_DraggableWindow):
                 ph_capture("user_logged_in")
                 # Zapisz pseudonim przy rejestracji
                 if self._mode == "register" and hasattr(self, '_username') and self._username:
-                    supabase.from_("profiles").update({
-                        "username": self._username
-                    }).eq("user_id", user.id).execute()
+                    # Audyt RLS N1: UPDATE profiles zablokowany dla usera — używamy RPC.
+                    supabase.rpc("update_my_profile", {"p_username": self._username}).execute()
         except Exception:
             pass
         self.logged_in.emit(session)
@@ -3440,7 +3567,7 @@ class PurchaseWindow(_DraggableWindow):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(360, 460)
+        self.setFixedSize(360, 620)
         self._price_key  = ""
         self._user_email = ""
         self._build()
@@ -3495,11 +3622,58 @@ class PurchaseWindow(_DraggableWindow):
                 }}
             """
 
+        # ── Zgody wymagane przy zakupie (kit 0.2 §B — dwa OSOBNE oświadczenia, domyślnie odznaczone) ──
+        _cb_style = (
+            "QCheckBox { color: rgba(205,212,240,220); background: transparent;"
+            " font-size: 10px; spacing: 8px; }"
+            " QCheckBox::indicator { width: 15px; height: 15px; }"
+        )
+        self.cb_docs = QCheckBox("Akceptuję Regulamin oraz Politykę Prywatności.")
+        self.cb_docs.setStyleSheet(_cb_style)
+        self.cb_docs.setFont(QFont("Segoe UI", 9))
+        self.cb_docs.stateChanged.connect(self._consents_changed)
+        il.addWidget(self.cb_docs)
+
+        _legal = QLabel(
+            f'<a href="{BASE}regulamin.html" style="color:rgba(201,106,42,235);">Regulamin</a>'
+            f' &nbsp;·&nbsp; '
+            f'<a href="{BASE}prywatnosc.html" style="color:rgba(201,106,42,235);">Polityka Prywatności</a>'
+        )
+        _legal.setOpenExternalLinks(True)
+        _legal.setStyleSheet("background:transparent; font-size:10px;")
+        _legal.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        il.addWidget(_legal)
+
+        self.cb_now = QCheckBox(
+            "Żądam rozpoczęcia świadczenia usługi PRO natychmiast,\n"
+            "przed upływem 14-dniowego terminu na odstąpienie od\n"
+            "umowy. Przyjmuję do wiadomości, że po pełnym wykonaniu\n"
+            "usługi utracę prawo odstąpienia, a w razie odstąpienia\n"
+            "przed pełnym wykonaniem zapłacę proporcjonalnie za\n"
+            "okres, z którego skorzystałem."
+        )
+        self.cb_now.setStyleSheet(_cb_style)
+        self.cb_now.setFont(QFont("Segoe UI", 9))
+        self.cb_now.stateChanged.connect(self._consents_changed)
+        il.addWidget(self.cb_now)
+
+        self.lbl_renew = QLabel(
+            "Subskrypcja odnawia się automatycznie co miesiąc (39 zł) lub co rok (329 zł), "
+            "dopóki jej nie anulujesz. Anulować możesz w każdej chwili — napisz na "
+            "eyelingo.app@gmail.com lub użyj panelu płatności."
+        )
+        self.lbl_renew.setWordWrap(True)
+        self.lbl_renew.setFont(QFont("Segoe UI", 9))
+        self.lbl_renew.setStyleSheet("color:rgba(170,180,215,190); background:transparent;")
+        il.addWidget(self.lbl_renew)
+        il.addSpacing(4)
+
         self.btn_once = QPushButton("Subskrypcja roczna  ·  329 zł/rok")
         self.btn_once.setStyleSheet(_sty("rgba(201,106,42,235)", "rgba(150,78,30,200)"))
         self.btn_once.setFont(QFont("Segoe UI", 12))
         self.btn_once.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_once.clicked.connect(self._pay_once)
+        self.btn_once.setEnabled(False)
         il.addWidget(self.btn_once)
 
         self.btn_sub = QPushButton("Subskrypcja miesięczna  ·  39 zł/mies")
@@ -3507,6 +3681,7 @@ class PurchaseWindow(_DraggableWindow):
         self.btn_sub.setFont(QFont("Segoe UI", 12))
         self.btn_sub.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_sub.clicked.connect(self._pay_sub)
+        self.btn_sub.setEnabled(False)
         il.addWidget(self.btn_sub)
 
         self.lbl_msg = QLabel("")
@@ -3534,7 +3709,18 @@ class PurchaseWindow(_DraggableWindow):
             self.lbl_info.setText(f"{lang_label}  ·  Poziom {level_label}")
         self.lbl_msg.setText("")
         self.lbl_msg.setStyleSheet("color:rgba(255,100,100,220);background:transparent;")
+        # zgody sa jednorazowe — przy kazdym otwarciu od nowa (brak pre-zaznaczenia)
+        self.cb_docs.setChecked(False)
+        self.cb_now.setChecked(False)
+        self._consents_changed()
         self.show(); self.raise_(); self.activateWindow()
+
+    def _consents_changed(self, _state=None):
+        ok = self.cb_docs.isChecked() and self.cb_now.isChecked()
+        self.btn_once.setEnabled(ok)
+        self.btn_sub.setEnabled(ok)
+        if ok:
+            self.lbl_msg.setText("")
 
     def _pay_once(self):
         self._start_checkout("premium_yearly")
@@ -3543,6 +3729,17 @@ class PurchaseWindow(_DraggableWindow):
         self._start_checkout("premium_monthly")
 
     def _start_checkout(self, price_key):
+        if not (self.cb_docs.isChecked() and self.cb_now.isChecked()):
+            self.lbl_msg.setText("Zaznacz obie zgody, aby kontynuować.")
+            return
+        try:
+            ph_capture("checkout_consents", {
+                "price_key": price_key,
+                "consent_docs": True,
+                "consent_immediate_access": True,
+            })
+        except Exception:
+            pass
         self.lbl_msg.setText("Łączenie z płatnościami...")
         self.lbl_msg.setStyleSheet("color:rgba(200,210,255,180);background:transparent;")
         self._worker = CheckoutWorker(price_key, self._user_email)
@@ -3738,6 +3935,14 @@ class SettingsWindow(_DraggableWindow):
         bl.addWidget(btn_save)
         bl.addWidget(btn_close)
         bl.addStretch()
+        _legal_row = QLabel(
+            '<a href="https://fabianadrianw.github.io/eyelingo/regulamin.html" style="color:rgba(150,160,200,200);">Regulamin</a>'
+            ' &nbsp;&middot;&nbsp; '
+            '<a href="https://fabianadrianw.github.io/eyelingo/prywatnosc.html" style="color:rgba(150,160,200,200);">Prywatno&#347;&#263;</a>'
+        )
+        _legal_row.setOpenExternalLinks(True)
+        _legal_row.setStyleSheet("background:transparent; font-size:9px;")
+        bl.addWidget(_legal_row)
         bl.addWidget(btn_def)
         root.addWidget(bar)
 
@@ -5254,7 +5459,7 @@ class TrayApp:
         self._is_premium    = is_premium
         self._levels_bought = levels_bought
         # DIAGNOSTYKA: dokładnie co dociera do bramy dostępu
-        print(f"[PREMIUM] is_premium={is_premium!r}  raw={profile.get('is_premium')!r}  "
+        _dbg(f"[PREMIUM] is_premium={is_premium!r}  raw={profile.get('is_premium')!r}  "
               f"premium_until={profile.get('premium_until')!r}  levels_bought={levels_bought}")
         # Premium ustawiamy PIERWSZE — żeby nic (workery/wyjątki) go nie wyprzedziło
         try:
@@ -5772,6 +5977,9 @@ def _warn_if_no_tray():
 
 
 def main():
+    _dbg_reset()
+    _dbg("=== APP START ===")
+    _dbg(f"[SESSION] plik sesji: {SESSION_FILE}")
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     _apply_macos_accessory()
@@ -5781,6 +5989,18 @@ def main():
     login_window = LoginWindow()
 
     def on_logged_in(_session):
+        try:
+            _tok = None
+            try:
+                _cur = supabase.auth.get_session()
+                _tok = getattr(_cur, "access_token", None) or \
+                       getattr(getattr(_cur, "session", None), "access_token", None)
+            except Exception:
+                pass
+            _sync_postgrest_token(_tok)
+            _dbg(f"[SESSION] on_logged_in: token={'OK' if _tok else 'BRAK'}")
+        except Exception:
+            pass
         tray.load_user_stats()
         try:
             import json, pathlib
