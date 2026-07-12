@@ -3479,11 +3479,11 @@ window.saveNewSet = async function saveNewSet(){
         if(!_collections[ci].sets) _collections[ci].sets=[];
         _collections[ci].sets.push({id:set.id, name:name});
         db.auth.getSession().then(function(r){
-          if(r.data&&r.data.session) saveCollections(r.data.session.user.id);
-        });
-      }
+          if(!(r.data&&r.data.session)) return null;
+          return saveCollections(r.data.session.user.id);   // zapis do bazy MUSI poprzedzić odczyt
+        }).then(function(){ loadCollections(); });
+      } else { loadCollections(); }
       window._createSetTargetCollection = null;
-      loadCollections();
     }
     if(window.loadMySets) loadMySets();
   }catch(e){typeof showToast!=='undefined'&&showToast('Błąd: '+(e.message||e),'');}
@@ -8925,7 +8925,7 @@ async function catalogTileDrop(e, colIdx){
   } else {
     typeof showToast!=='undefined'&&showToast(setName+' usunięty z katalogów','success');
   }
-  saveCollections(sess.user.id);
+  await saveCollections(sess.user.id);
   loadCollections();
   if(window.loadMySets) loadMySets();
   // Odśwież aktualnie otwarty katalog — bez tego przeniesiony zestaw nadal
@@ -8945,8 +8945,9 @@ window.loadCollections = async function loadCollections(){
       if(sidebar) sidebar.innerHTML = '<div style="font-size:12px;color:var(--dim2)">Zaloguj się</div>';
       return;
     }
-    var stored = localStorage.getItem('eyelingo_collections_' + sess.user.id);
-    _collections = stored ? JSON.parse(stored) : [];
+    // Katalogi są własnością KONTA, nie przeglądarki → czytamy z Supabase.
+    // (localStorage pozostaje tylko cache'em/źródłem jednorazowej migracji.)
+    _collections = await window.EylSync.collectionsLoad(sess.user.id);
 
     if(!sidebar) return;
     sidebar.innerHTML = '';
@@ -9086,7 +9087,7 @@ async function moveSetToCollection(setId, setName){
   // Remove from other collections first
   _collections.forEach(function(c){ c.sets = (c.sets||[]).filter(function(s){ return s.id !== setId; }); });
   _collections[idx].sets.push({id: setId, name: setName});
-  saveCollections(sess.user.id);
+  await saveCollections(sess.user.id);
   loadCollections();
   // Refresh mine tab
   if(_matTab === 'mine') loadMySets();
@@ -9095,7 +9096,10 @@ async function moveSetToCollection(setId, setName){
 }
 
 
-function saveCollections(uid){ try{ localStorage.setItem('eyelingo_collections_' + uid, JSON.stringify(_collections)); }catch(e){} }
+async function saveCollections(uid){
+  try{ localStorage.setItem('eyelingo_collections_' + uid, JSON.stringify(_collections)); }catch(e){}   // cache offline
+  try{ await window.EylSync.collectionsSave(uid, _collections); }catch(e){}                              // kanon: Supabase
+}
 
 var _matSidebarOpen = true;
 function toggleMatSidebar(){
@@ -9162,7 +9166,7 @@ function openCreateCollection(){
       var sess = (await db.auth.getSession()).data.session;
       if(!sess) return;
       _collections.push({name:name, sets:[], created:Date.now()});
-      saveCollections(sess.user.id);
+      await saveCollections(sess.user.id);
       overlay.remove();
       loadCollections();
       if(typeof showToast==='function') showToast('Katalog "'+name+'" utworzony!','success');
@@ -9175,7 +9179,7 @@ async function deleteCollection(idx){
   var sess = (await db.auth.getSession()).data.session;
   if(!sess) return;
   _collections.splice(idx,1);
-  saveCollections(sess.user.id);
+  await saveCollections(sess.user.id);
   loadCollections();
 }
 
@@ -9207,7 +9211,7 @@ function openCollection(idx){
     var rm = document.createElement('button');
     rm.style.cssText = 'background:none;border:none;color:var(--dim2);cursor:pointer;font-size:14px';
     rm.textContent = '×';
-    rm.onclick = async function(){ var sess2=(await db.auth.getSession()).data.session; if(!sess2)return; _collections[idx].sets.splice(si,1); saveCollections(sess2.user.id); modal.remove(); openCollection(idx); };
+    rm.onclick = async function(){ var sess2=(await db.auth.getSession()).data.session; if(!sess2)return; _collections[idx].sets.splice(si,1); await saveCollections(sess2.user.id); modal.remove(); openCollection(idx); };
     row.appendChild(rm);
     list.appendChild(row);
   });
@@ -9230,7 +9234,7 @@ async function addSetToCollection(colIdx, modalEl){
   if(!chosen) return;
   if(!_collections[colIdx].sets) _collections[colIdx].sets = [];
   _collections[colIdx].sets.push({id:chosen.id, name:chosen.name});
-  saveCollections(sess.user.id);
+  await saveCollections(sess.user.id);
   modalEl.remove();
   openCollection(colIdx);
   if(typeof showToast==='function') showToast(chosen.name+' dodany!','success');
@@ -19018,3 +19022,586 @@ if ('serviceWorker' in navigator) {
 }
 */
 </style>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     EYELINGO — EylSync: stan użytkownika w chmurze (katalogi · recents · wznowienia)
+     Kanon = Supabase. localStorage pełni odtąd rolę WYŁĄCZNIE cache'u.
+       · user_collections + user_collection_sets  → katalogi (własność konta, nie przeglądarki)
+       · user_state (KV)                          → recents + przerwana sesja Strefy Nauki
+       · mobile_lesson_state                      → wznowienia lekcji Lex (wspólne z app.html)
+     Zasada: istniejące funkcje UI nie są przepisywane — są opakowywane (wrapper),
+     a lokalne klucze zachowują dotychczasowy format, więc render pozostaje nietknięty.
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  if(window.EylSync) return;
+  var S={}; window.EylSync=S;
+
+  S.carry={};              // set_id → ostatni pełny snapshot z chmury (pola obce dla webu)
+  window._eylLessonSnaps=[];   // snapshoty wznowień (posortowane: najświeższy pierwszy)
+  var _lastLessonPull=0;
+
+  function uidNow(){ return window._uid||''; }
+  function ms(t){ if(t==null) return 0; var n=Number(t); if(!isNaN(n)&&n>0) return n; var d=Date.parse(t); return isNaN(d)?0:d; }
+  async function sess(){ try{ return (await db.auth.getSession()).data.session; }catch(e){ return null; } }
+
+  /* ═══ user_state — generyczny magazyn KV per konto ═══ */
+  S.stateGet=async function(key){
+    var s=await sess(); if(!s) return null;
+    try{
+      var r=await db.from('user_state').select('value').eq('user_id',s.user.id).eq('key',key).maybeSingle();
+      return (r&&r.data)?r.data.value:null;
+    }catch(e){ return null; }
+  };
+  S.stateSet=async function(key,value){
+    var s=await sess(); if(!s) return false;
+    try{
+      await db.from('user_state').upsert(
+        {user_id:s.user.id, key:key, value:value, updated_at:new Date().toISOString()},
+        {onConflict:'user_id,key'});
+      return true;
+    }catch(e){ return false; }
+  };
+
+  /* ═══════════════════════════ KATALOGI ═══════════════════════════
+     Kształt w pamięci pozostaje: [{id,name,sets:[{id,name}]}] — render bez zmian.
+     Nazwy zestawów pochodzą z user_sets (rename widoczny od razu; usunięty zestaw znika). */
+  S.collectionsLoad=async function(uid){
+    var s=await sess(); if(!s) return [];
+    var cols=[];
+    try{
+      var r=await db.from('user_collections').select('id,name,position,created_at')
+        .eq('user_id',s.user.id).order('position',{ascending:true}).order('created_at',{ascending:true});
+      cols=(r&&r.data)||[];
+    }catch(e){ cols=[]; }
+
+    // Jednorazowa migracja katalogów z localStorage (poprzedni magazyn) do chmury
+    if(!cols.length){
+      var migKey='eyelingo_collections_migrated_'+uid, local=null;
+      try{ if(!localStorage.getItem(migKey)) local=JSON.parse(localStorage.getItem('eyelingo_collections_'+uid)||'null'); }catch(e){}
+      if(local && local.length){
+        try{
+          await S.collectionsSave(uid, local);
+          localStorage.setItem(migKey,'1');
+          var r2=await db.from('user_collections').select('id,name,position,created_at')
+            .eq('user_id',s.user.id).order('position',{ascending:true}).order('created_at',{ascending:true});
+          cols=(r2&&r2.data)||[];
+        }catch(e){}
+      }
+    }
+    if(!cols.length) return [];
+
+    var ids=cols.map(function(c){ return c.id; });
+    var links=[];
+    try{ var rl=await db.from('user_collection_sets').select('collection_id,set_id').in('collection_id',ids); links=(rl&&rl.data)||[]; }catch(e){}
+    var setIds=[]; links.forEach(function(l){ if(setIds.indexOf(l.set_id)<0) setIds.push(l.set_id); });
+    var names={};
+    if(setIds.length){
+      try{ var rs=await db.from('user_sets').select('id,name').in('id',setIds); (rs.data||[]).forEach(function(x){ names[x.id]=x.name; }); }catch(e){}
+    }
+    return cols.map(function(c){
+      return {
+        id:c.id, name:c.name,
+        sets:links.filter(function(l){ return l.collection_id===c.id && names[l.set_id]!=null; })
+                  .map(function(l){ return {id:l.set_id, name:names[l.set_id]}; })
+      };
+    });
+  };
+
+  // Pełna synchronizacja stanu w pamięci → baza (insert nowych, usunięcie skasowanych, diff powiązań)
+  S.collectionsSave=async function(uid, cols){
+    var s=await sess(); if(!s) return false;
+    cols=cols||[];
+    try{
+      var r=await db.from('user_collections').select('id').eq('user_id',s.user.id);
+      var existing=((r&&r.data)||[]).map(function(x){ return x.id; });
+      var keep=[];
+
+      for(var i=0;i<cols.length;i++){
+        var col=cols[i];
+        if(col.id==null){
+          var ins=await db.from('user_collections')
+            .insert({user_id:s.user.id, name:col.name||'Katalog', position:i})
+            .select('id').single();
+          if(ins&&ins.data) col.id=ins.data.id; else continue;
+        } else {
+          await db.from('user_collections').update({name:col.name||'Katalog', position:i})
+            .eq('id',col.id).eq('user_id',s.user.id);
+        }
+        keep.push(col.id);
+
+        var want=(col.sets||[]).map(function(x){ return x.id; }).filter(function(x){ return x!=null; });
+        var have=[];
+        try{ var rh=await db.from('user_collection_sets').select('set_id').eq('collection_id',col.id); have=((rh&&rh.data)||[]).map(function(x){ return x.set_id; }); }catch(e){}
+        var add=want.filter(function(x){ return have.indexOf(x)<0; });
+        var del=have.filter(function(x){ return want.indexOf(x)<0; });
+        if(add.length) await db.from('user_collection_sets').insert(add.map(function(x){ return {collection_id:col.id, set_id:x}; }));
+        if(del.length) await db.from('user_collection_sets').delete().eq('collection_id',col.id).in('set_id',del);
+      }
+
+      var drop=existing.filter(function(x){ return keep.indexOf(x)<0; });
+      if(drop.length) await db.from('user_collections').delete().eq('user_id',s.user.id).in('id',drop);
+      return true;
+    }catch(e){ return false; }
+  };
+
+  /* ═══════════════════════════ RECENTS ═══════════════════════════
+     Kanon (wspólny z app.html): {id, kind:'eyl'|'set', name, lang, level, count, keys[], ts}
+       · 'eyl'  → id = 'eyl:<lang>:<catId>'
+       · 'set'  → id = user_sets.id
+     Web trzyma lokalnie własne formaty (eyl_recent_*, eyl_last_set_*) — konwersja przy pull/push. */
+  function mergeRecents(a,b){
+    var by={}, order=[];
+    (a||[]).concat(b||[]).forEach(function(it){
+      if(!it||it.id==null) return;
+      var k=String(it.id), p=by[k];
+      if(!p){ by[k]=Object.assign({},it); order.push(k); return; }
+      var newer=(ms(it.ts)>=ms(p.ts))?it:p, older=(newer===it)?p:it;
+      var m=Object.assign({},older,newer);
+      // pola, których jedna powierzchnia nie zna, nie mogą wypaść przy nadpisaniu
+      ['keys','lang','level','count','name'].forEach(function(f){
+        if((m[f]==null || m[f]==='' || (Array.isArray(m[f])&&!m[f].length)) && older[f]!=null && older[f]!=='') m[f]=older[f];
+      });
+      by[k]=m;
+    });
+    var out=order.map(function(k){ return by[k]; });
+    out.sort(function(x,y){ return ms(y.ts)-ms(x.ts); });
+    return out.slice(0,12);
+  }
+
+  function localRecents(){
+    var u=uidNow()||'anon', out=[];
+    try{
+      (JSON.parse(localStorage.getItem('eyl_recent_'+u)||'[]')||[]).forEach(function(r){
+        if(!r||r.catId==null) return;
+        out.push({id:'eyl:'+(r.lang||'')+':'+r.catId, kind:'eyl', name:r.catLabel||'', lang:r.lang||'', level:r.level||null, count:0, ts:ms(r.ts)});
+      });
+    }catch(e){}
+    try{
+      var s=JSON.parse(localStorage.getItem('eyl_last_set_'+u)||'null');
+      if(s&&s.id!=null) out.push({id:s.id, kind:'set', name:s.name||'Zestaw', lang:'', level:null, count:s.n||0, ts:ms(s.ts)});
+    }catch(e){}
+    return out;
+  }
+
+  function applyRecentsLocal(list){
+    var u=uidNow()||'anon';
+    try{
+      var eyl=(list||[]).filter(function(x){ return x.kind==='eyl'; }).map(function(x){
+        var p=String(x.id).split(':');
+        return {lang:x.lang||p[1]||'', level:x.level||'', catId:p[2]||'', catLabel:x.name||'', ts:ms(x.ts)};
+      }).slice(0,8);
+      localStorage.setItem('eyl_recent_'+u, JSON.stringify(eyl));
+    }catch(e){}
+    try{
+      var st=(list||[]).filter(function(x){ return x.kind==='set'; })[0];
+      if(st) localStorage.setItem('eyl_last_set_'+u, JSON.stringify({
+        id:(isNaN(Number(st.id))?st.id:Number(st.id)), name:st.name||'Zestaw', n:st.count||0, ts:ms(st.ts)
+      }));
+    }catch(e){}
+  }
+
+  var _lastRecPull=0;
+  S.recentsSync=async function(force){
+    var now=Date.now();
+    if(!force && now-_lastRecPull<10000) return null;   // kafle „Kontynuuj" renderują się często — nie odpytujemy bazy za każdym razem
+    _lastRecPull=now;
+    var cloud=await S.stateGet('recents');
+    var merged=mergeRecents(Array.isArray(cloud)?cloud:[], localRecents());
+    applyRecentsLocal(merged);
+    if(JSON.stringify(merged)!==JSON.stringify(cloud||[])) await S.stateSet('recents', merged);
+    return merged;
+  };
+  S.recentPush=async function(item){
+    if(!item||item.id==null) return;
+    item.ts=Date.now();
+    _lastRecPull=0;
+    var cloud=await S.stateGet('recents');
+    var merged=mergeRecents([item], Array.isArray(cloud)?cloud:[]);
+    applyRecentsLocal(merged);
+    await S.stateSet('recents', merged);
+  };
+
+  /* ═══════════════ Przerwana sesja Strefy Nauki (snapshot kart) ═══════════════ */
+  function snapKey(){ return 'strefa_last_session_'+(uidNow()||''); }
+  var _lastStudyPull=0;
+  S.studyPull=async function(force){
+    var now=Date.now();
+    if(!force && now-_lastStudyPull<10000) return null;
+    _lastStudyPull=now;
+    var cloud=await S.stateGet('study_snapshot');
+    var local=null; try{ local=JSON.parse(localStorage.getItem(snapKey())||'null'); }catch(e){}
+    if(cloud && cloud.remaining && cloud.remaining.length && ms(cloud.ts)>ms(local&&local.ts)){
+      try{ localStorage.setItem(snapKey(), JSON.stringify(cloud)); }catch(e){}
+      return cloud;
+    }
+    return local;
+  };
+  S.studyPush=async function(){
+    var local=null; try{ local=JSON.parse(localStorage.getItem(snapKey())||'null'); }catch(e){}
+    if(local && local.remaining && local.remaining.length) await S.stateSet('study_snapshot', local);
+  };
+  S.studyClear=async function(){ await S.stateSet('study_snapshot', {}); };
+
+  /* ═══════════════ WZNOWIENIA LEKCJI (mobile_lesson_state) ═══════════════
+     Kanoniczny set_id — identyczny na obu powierzchniach:
+       zestaw użytkownika → user_sets.id · kategoria Eyelingo → 'eyl:<lang>:<catId>'
+       lekcja z wielu źródeł (web) → 'multi:<hash>' (apka odtworzy ją z sourceWords) */
+  S.setIdFromSources=function(sources, lang){
+    var ss=sources||[];
+    if(!ss.length) return null;
+    if(ss.length===1){
+      var s0=ss[0];
+      if(s0.kind==='user') return String(s0.id);
+      return 'eyl:'+(s0.lang||lang||'en')+':'+s0.id;
+    }
+    return 'multi:'+ss.map(function(s){ return (s.kind==='user'?'u':'e')+s.id; }).join('_');
+  };
+
+  function srcFromSetId(sn){
+    var sid=String(sn.set_id||'');
+    if(sid.indexOf('eyl:')===0){
+      var p=sid.split(':');
+      return [{kind:'eyelingo', id:p[2], label:sn.set_name||'Kategoria', lang:p[1]||sn.lang||'en', level:sn.level||null, count:sn.set_count||0}];
+    }
+    if(sid.indexOf('multi:')===0) return [];
+    return [{kind:'user', id:(isNaN(Number(sid))?sid:Number(sid)), label:sn.set_name||'Zestaw', lang:sn.lang||'en', level:sn.level||null, count:sn.set_count||0}];
+  }
+
+  // snapshot kanoniczny (v2) → format lokalny webu (lexxHasResume/lexxResume czytają dokładnie to)
+  S.toWeb=function(sn){
+    if(!sn) return null;
+    var sources=(sn.sources&&sn.sources.length)?sn.sources:srcFromSetId(sn);
+    return {
+      lang:sn.lang||'en',
+      sources:sources,
+      sourceWords:sn.sourceWords||[],
+      lessonLevel:sn.level||null,
+      focus:sn.focus||null,
+      enrichGap:sn.enrichGap||null,
+      portionNum:sn.portionNum||0,
+      portionTarget:sn.portionTarget||5,
+      script:sn.script||'native',
+      currentData:sn.data||null,
+      step:sn.step||0,
+      done:sn.done||null,
+      vocab:sn.vocab||[],
+      board:sn.board||[],
+      gaps:sn.gaps||[],
+      session:sn.session||null,
+      ts:sn.ts||Date.now(),
+      _setId:sn.set_id
+    };
+  };
+
+  function webKeyFor(st){
+    var kind=(st.sources&&st.sources[0]&&st.sources[0].kind==='user')?'user':'eyelingo';
+    return 'lex_resume_portion_'+kind+'_'+(st.lang||'en')+'_'+(uidNow()||'anon');
+  }
+
+  S.lessonPull=async function(force){
+    var now=Date.now();
+    if(!force && now-_lastLessonPull<20000) return window._eylLessonSnaps||[];
+    _lastLessonPull=now;
+    var s=await sess(); if(!s) return [];
+    var rows=[];
+    try{
+      var r=await db.from('mobile_lesson_state').select('set_id,snapshot,updated_at')
+        .eq('user_id',s.user.id).is('completed_at',null)
+        .order('updated_at',{ascending:false}).limit(8);
+      rows=(r&&r.data)||[];
+    }catch(e){ return window._eylLessonSnaps||[]; }
+
+    var out=[];
+    rows.forEach(function(r){
+      var sn=r.snapshot; if(!sn) return;
+      S.carry[String(r.set_id)]=sn;
+      if(!sn.ts) sn.ts=ms(r.updated_at);
+      var web=S.toWeb(sn);
+      if(!web || !(web.portionNum>0 && web.portionNum<web.portionTarget)) return;
+      out.push(web);
+      // cache lokalny w formacie webu — dzięki temu istniejące rendery (hero, sidebar, Trener AI) widzą lekcje z apki
+      try{
+        var k=webKeyFor(web), cur=null;
+        try{ cur=JSON.parse(localStorage.getItem(k)||'null'); }catch(e){}
+        if(!cur || ms(web.ts)>=ms(cur.ts)) localStorage.setItem(k, JSON.stringify(web));
+      }catch(e){}
+    });
+    out.sort(function(a,b){ return ms(b.ts)-ms(a.ts); });
+    window._eylLessonSnaps=out;
+    return out;
+  };
+
+  S.lessonPush=async function(st){
+    var s=await sess(); if(!s||!st) return;
+    var sid=S.setIdFromSources(st.sources, st.lang); if(!sid) return;
+    var src0=(st.sources&&st.sources[0])||{};
+    var prev=S.carry[String(sid)]||{};
+    var snap={
+      v:2, surface:'web',
+      set_id:sid,
+      set_name:(src0.label||st.focus||'Lekcja'),
+      set_count:(src0.count||(st.sourceWords||[]).length||0),
+      kind:(src0.kind==='user'?'set':'eyelingo'),
+      lang:st.lang||'en',
+      level:st.lessonLevel||prev.level||null,
+      exLevel:prev.exLevel||null,
+      conductLang:prev.conductLang||'pl',
+      script:st.script||'native',
+      portionNum:st.portionNum||0,
+      portionTarget:st.portionTarget||5,
+      data:st.currentData||null,
+      step:st.step||0,
+      done:st.done||[],
+      vocab:st.vocab||[],
+      board:st.board||[],
+      gaps:st.gaps||[],
+      sources:st.sources||[],
+      sourceWords:st.sourceWords||[],
+      session:st.session||null,
+      focus:st.focus||null,
+      enrichGap:st.enrichGap||null,
+      // pola silnika mobilnego — przenoszone bez zmian, by powrót na telefon nie tracił stanu
+      sweepPool:prev.sweepPool||[],
+      shapeS:prev.shapeS||{lastShape:null,recog:0,total:0},
+      sweepDone:!!prev.sweepDone,
+      reflectionDone:!!prev.reflectionDone,
+      ts:Date.now()
+    };
+    S.carry[String(sid)]=snap;
+    try{
+      await db.from('mobile_lesson_state').upsert(
+        {user_id:s.user.id, set_id:sid, snapshot:snap, updated_at:new Date().toISOString(), completed_at:null},
+        {onConflict:'user_id,set_id'});
+    }catch(e){}
+  };
+
+  S.lessonClear=async function(sid){
+    var s=await sess(); if(!s||!sid) return;
+    try{ await db.from('mobile_lesson_state').delete().eq('user_id',s.user.id).eq('set_id',String(sid)); }catch(e){}
+    delete S.carry[String(sid)];
+    window._eylLessonSnaps=(window._eylLessonSnaps||[]).filter(function(x){ return String(x._setId)!==String(sid); });
+  };
+
+  // Słowa materiału dla snapshotu bez sourceWords (starsze migawki z apki)
+  S.wordsBySetId=async function(sid){
+    sid=String(sid||''); if(!sid) return [];
+    try{
+      if(sid.indexOf('eyl:')===0){
+        var p=sid.split(':'), code=p[1], cid=p[2];
+        var lr=await db.from('languages').select('id').eq('code',code).maybeSingle();
+        var langId=(lr&&lr.data)?lr.data.id:null; if(langId==null) return [];
+        var out=[], from=0;
+        while(true){
+          var q=await db.from('flashcards').select('word,translation,romaji')
+            .eq('language_id',langId).eq('category_id',cid).order('id',{ascending:true}).range(from,from+499);
+          var d=(q&&q.data)||[];
+          d.forEach(function(c){ out.push({word:c.word||'', translation:c.translation||'', romaji:(c.romaji||'')}); });
+          if(d.length<500) break; from+=500; if(from>5000) break;
+        }
+        return out;
+      }
+      if(sid.indexOf('multi:')===0) return [];
+      var rs=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',sid).order('sort_order',{ascending:true});
+      return ((rs&&rs.data)||[]).filter(function(c){ return c.word; }).map(function(c){ return {word:c.word, translation:c.translation||''}; });
+    }catch(e){ return []; }
+  };
+})();
+</script>
+
+<!-- ═══ Wpięcie EylSync w istniejące ścieżki (wrappery — silnik Ailexa nietknięty) ═══ -->
+<script>
+(function(){
+  if(window._eylSyncHooked) return;
+  window._eylSyncHooked=true;
+  var S=window.EylSync;
+  var _pushTimer=null, _pendingSnap=null;
+
+  function ms(t){ if(t==null) return 0; var n=Number(t); if(!isNaN(n)&&n>0) return n; var d=Date.parse(t); return isNaN(d)?0:d; }
+
+  /* ── Wznowienia: zapis → chmura (debounce), odczyt → najświeższy snapshot z DOWOLNEGO materiału ── */
+  var _origSave=window.lexxSaveResume;
+  window.lexxSaveResume=function(){
+    var r=(typeof _origSave==='function')?_origSave.apply(this,arguments):undefined;
+    try{
+      if(window._lexxReflectionDone) return r;
+      _pendingSnap={
+        lang:(window._lexLang||'en'),
+        sources:(window._lexSources||[]),
+        sourceWords:(window._lexSourceWords||[]),
+        lessonLevel:(window._lexLessonLevel||null),
+        focus:(window._lexLessonFocus||null),
+        enrichGap:(window._lexEnrichGap||null),
+        portionNum:(window._lexxPortionNum||0),
+        portionTarget:(window._lexxPortionTarget||5),
+        script:(window._lexScript||'native'),
+        currentData:(window._lexxData||null),
+        step:(window._lexxStep||0),
+        done:(window._lexxDone||null),
+        vocab:(window._lexVocab||[]),
+        board:(window._lexBoard||[]),
+        gaps:(window._lexGaps||[]),
+        session:(window._lexSession||null)
+      };
+      clearTimeout(_pushTimer);
+      _pushTimer=setTimeout(function(){ var sn=_pendingSnap; _pendingSnap=null; if(sn) S.lessonPush(sn); }, 800);
+    }catch(e){}
+    return r;
+  };
+  function flushLesson(){
+    if(!_pendingSnap) return;
+    clearTimeout(_pushTimer);
+    var sn=_pendingSnap; _pendingSnap=null;
+    try{ S.lessonPush(sn); }catch(e){}
+  }
+  window.addEventListener('pagehide', flushLesson);
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') flushLesson(); });
+
+  var _origClear=window.lexxClearResume;
+  window.lexxClearResume=function(){
+    var sid=null;
+    try{ sid=S.setIdFromSources(window._lexSources, window._lexLang); }catch(e){}
+    var r=(typeof _origClear==='function')?_origClear.apply(this,arguments):undefined;
+    _pendingSnap=null; clearTimeout(_pushTimer);
+    try{ if(sid) S.lessonClear(sid); }catch(e){}
+    return r;
+  };
+
+  // lexxHasResume: najświeższa przerwana lekcja niezależnie od bieżąco wybranego materiału
+  // (bez tego lekcja rozpoczęta w apce byłaby niewidoczna na webie, gdy język/segment się różni)
+  var _origHas=window.lexxHasResume;
+  window.lexxHasResume=function(){
+    var local=null, cloud=null;
+    try{ local=(typeof _origHas==='function')?_origHas.apply(this,arguments):null; }catch(e){}
+    try{
+      var snaps=(window._eylLessonSnaps||[]).filter(function(st){ return st && st.portionNum>0 && st.portionNum<st.portionTarget; });
+      cloud=snaps[0]||null;
+    }catch(e){}
+    if(local && cloud) return (ms(local.ts)>=ms(cloud.ts))?local:cloud;   // trwająca lekcja na tym urządzeniu ma pierwszeństwo
+    return local||cloud;
+  };
+
+  // lexxResume: ustaw kontekst ze snapshotu (może pochodzić z innego materiału / z telefonu) i uzupełnij słowa
+  var _origResume=window.lexxResume;
+  window.lexxResume=async function(){
+    try{
+      var st=(typeof window.lexxHasResume==='function')?window.lexxHasResume():null;
+      if(st){
+        if(st._setId && (!st.sourceWords || !st.sourceWords.length)){
+          var w=await S.wordsBySetId(st._setId);
+          if(w && w.length){
+            st.sourceWords=w;
+            if(!st.sources || !st.sources.length){
+              st.sources=[{kind:(String(st._setId).indexOf('eyl:')===0?'eyelingo':'user'), id:st._setId, label:'Lekcja', lang:st.lang||'en'}];
+            }
+          }
+        }
+        window._lexLang=st.lang||window._lexLang||'en';
+        if(st.sources && st.sources.length) window._lexSources=st.sources;
+        if(st.sources && st.sources[0]) window._lexResumeKindHint=st.sources[0].kind;
+        try{
+          var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[window._lexLang])||null;
+          if(info){ window._lexLangName=info.name; window._lexLangNative=info.native; }
+        }catch(e){}
+        // zapisz uzupełniony snapshot do cache pod kluczem, z którego czyta oryginalny lexxResume()
+        try{
+          var kind=(st.sources&&st.sources[0]&&st.sources[0].kind==='user')?'user':'eyelingo';
+          localStorage.setItem('lex_resume_portion_'+kind+'_'+(st.lang||'en')+'_'+(window._uid||'anon'), JSON.stringify(st));
+        }catch(e){}
+      }
+    }catch(e){}
+    return (typeof _origResume==='function')?_origResume.apply(this,arguments):undefined;
+  };
+
+  // Pull wznowień przed renderem ekranu wejścia Lexa i sidebaru
+  var _origEntry=window.lexRenderEntry;
+  if(typeof _origEntry==='function'){
+    window.lexRenderEntry=async function(){
+      try{ await S.lessonPull(true); }catch(e){}
+      return _origEntry.apply(this, arguments);
+    };
+  }
+  var _origSbResume=window.lexRenderSidebarResume;
+  if(typeof _origSbResume==='function'){
+    window.lexRenderSidebarResume=async function(){
+      try{ await S.lessonPull(); }catch(e){}
+      return _origSbResume.apply(this, arguments);
+    };
+  }
+
+  /* ── Recents: przeglądanie zestawów/kategorii wspólne dla strony i apki ── */
+  var _origOpenSet=window.openSet;
+  if(typeof _origOpenSet==='function'){
+    window.openSet=function(id){
+      var r=_origOpenSet.apply(this, arguments);
+      try{
+        var s=(typeof _matSets!=='undefined'&&_matSets)?_matSets.find(function(x){ return x.id===id; }):null;
+        S.recentPush({
+          id:id, kind:'set',
+          name:(s&&s.name)||'Zestaw',
+          lang:(s&&s.lang)||'',
+          level:null,
+          count:(s&&(s.user_set_cards||[]).length)||0
+        });
+      }catch(e){}
+      return r;
+    };
+  }
+  var _origEylOpenCat=window.eylOpenCat;
+  if(typeof _origEylOpenCat==='function'){
+    window.eylOpenCat=function(lang, level, catId, catLabel){
+      var r=_origEylOpenCat.apply(this, arguments);
+      try{
+        S.recentPush({
+          id:'eyl:'+(lang||'')+':'+catId, kind:'eyl',
+          name:catLabel||'Kategoria', lang:lang||'', level:level||null, count:0
+        });
+      }catch(e){}
+      return r;
+    };
+  }
+
+  // Kafle „Kontynuuj" — najpierw dociągnij stan z chmury, potem renderuj
+  var _origMatCont=window.matRenderContinue;
+  if(typeof _origMatCont==='function'){
+    window.matRenderContinue=async function(){
+      try{ await S.recentsSync(); await S.studyPull(); }catch(e){}
+      return _origMatCont.apply(this, arguments);
+    };
+  }
+  var _origStrefaCont=window.strefaRenderContinue;
+  if(typeof _origStrefaCont==='function'){
+    window.strefaRenderContinue=function(){
+      var r=_origStrefaCont.apply(this, arguments);
+      try{ S.studyPull().then(function(){ _origStrefaCont(); }); }catch(e){}
+      return r;
+    };
+  }
+
+  /* ── Przerwana sesja Strefy Nauki → chmura ── */
+  var _origSnapSave=window.trybSaveSnapshot;
+  if(typeof _origSnapSave==='function'){
+    window.trybSaveSnapshot=function(){
+      var r=_origSnapSave.apply(this, arguments);
+      try{ S.studyPush(); }catch(e){}
+      return r;
+    };
+  }
+  var _origSnapClear=window.trybClearSnapshot;
+  if(typeof _origSnapClear==='function'){
+    window.trybClearSnapshot=function(){
+      var r=_origSnapClear.apply(this, arguments);
+      try{ S.studyClear(); }catch(e){}
+      return r;
+    };
+  }
+
+  // Wejście na kartę / powrót do zakładki — odśwież stan z chmury
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState!=='visible') return;
+    if(!window._uid) return;
+    try{ S.lessonPull(true); }catch(e){}
+    try{ S.recentsSync(true).then(function(){ if(typeof window.matRenderContinue==='function') window.matRenderContinue(); }); }catch(e){}
+  });
+})();
+</script>
