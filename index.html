@@ -2557,6 +2557,7 @@ window.switchMatTab = function(tab){
           <a class="btn btn-orange" id="dl-primary" href="#"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path></svg><span id="dl-primary-label">Pobierz</span></a>
         </div>
         <div id="dl-others" style="margin-top:14px;font-size:13px;color:var(--dim2);line-height:1.8"></div>
+        <p style="margin-top:10px;font-size:12.5px;color:var(--dim2);line-height:1.6">Eyelingo na komputer nie ma jeszcze certyfikatu wydawcy, więc system pokaże ostrzeżenie przy instalacji. Poniżej dokładnie, co zobaczysz i co kliknąć.</p>
         <div id="dl-note" style="margin-top:16px;padding:12px 14px;background:var(--paper);border:1px solid var(--border);border-radius:10px;font-size:12.5px;color:var(--dim2);line-height:1.6"></div>
         <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);font-size:13px;color:var(--dim2);line-height:1.6">
           <strong style="color:var(--navy)">Tip dla graczy:</strong> Ustaw grę w trybie <strong style="color:var(--navy)">Borderless Window</strong> — fiszki będą widoczne podczas grania.
@@ -3148,11 +3149,66 @@ function _dlDetect(){
   if(_dlIsWin()) return 'win';
   return null;   // Linux / nieznane — pokaż wszystko, bez zgadywania
 }
-var DL_NOTES={
-  win:'<strong style="color:var(--navy)">Pierwsze uruchomienie:</strong> Windows może pokazać ekran „Windows chronił Twój komputer”. Kliknij <strong style="color:var(--navy)">Więcej informacji → Uruchom mimo to</strong>. Aplikacja nie ma jeszcze certyfikatu wydawcy — to standardowe ostrzeżenie dla nowych programów.',
-  mac_intel:'<strong style="color:var(--navy)">Twój Mac ma procesor Intel.</strong> Wersja dla tej architektury jest jeszcze w przygotowaniu — obecna paczka działa wyłącznie na Apple Silicon (M1–M4). W międzyczasie możesz korzystać z Eyelingo w przeglądarce; postępy i tak synchronizują się między wszystkimi urządzeniami.',
-  mac:'<strong style="color:var(--navy)">Pierwsze uruchomienie:</strong> otwórz .dmg, przeciągnij Eyelingo do folderu Programy, a potem kliknij ikonę <strong style="color:var(--navy)">prawym przyciskiem → Otwórz → Otwórz</strong>. Jeśli macOS napisze, że plik jest uszkodzony, wpisz w Terminalu:<br><code style="display:inline-block;margin-top:6px;padding:4px 8px;background:#fff;border:1px solid var(--border);border-radius:6px;font-size:12px">xattr -dr com.apple.quarantine /Applications/Eyelingo.app</code>'
+// ── Instrukcja instalacji: aplikacja nie ma certyfikatu wydawcy, wiec oba systemy
+// pokaza ostrzezenie. Nie da sie tego usunac bez podpisu — ale da sie sprawic, zeby
+// uzytkownik przez nie przeszedl zamiast sie wycofac. Kroki mowia dokladnie, co zobaczy.
+var MAC_CMD = 'xattr -dr com.apple.quarantine /Applications/Eyelingo.app';
+
+var DL_GUIDE = {
+  win: {
+    steps: [
+      'Uruchom pobrany plik <strong>Eyelingo-Setup-Windows.exe</strong>.',
+      'Zobaczysz niebieski ekran <strong>„Windows chronił Twój komputer”</strong>. Kliknij <strong>Więcej informacji</strong>, a potem <strong>Uruchom mimo to</strong>.',
+      'Potwierdź prośbę o uprawnienia administratora i przejdź instalator.',
+      'Eyelingo uruchomi się <strong>w zasobniku</strong> — ikona przy zegarku, w prawym dolnym rogu. Nie szukaj okna na środku ekranu.'
+    ],
+    warn: 'Jeśli zamiast ostrzeżenia zobaczysz komunikat <strong>„Inteligentna kontrola aplikacji zablokowała aplikację”</strong> — Twój Windows ma włączoną funkcję, która nie przepuszcza programów bez certyfikatu wydawcy. Tej blokady nie da się obejść. Korzystaj z Eyelingo w przeglądarce — postępy są wspólne, nic nie tracisz.'
+  },
+  mac: {
+    steps: [
+      'Otwórz pobrany plik <strong>.dmg</strong> i przeciągnij Eyelingo do folderu <strong>Programy</strong>.',
+      'W folderze Programy kliknij ikonę Eyelingo <strong>prawym przyciskiem myszy</strong> (lub Ctrl+klik) i wybierz <strong>Otwórz</strong>.',
+      'W oknie, które się pojawi, kliknij <strong>Otwórz</strong> jeszcze raz. Zwykłe podwójne kliknięcie za pierwszym razem nie zadziała — to jednorazowa procedura.',
+      'Eyelingo pojawi się <strong>w pasku menu</strong> na górze ekranu. Nie ma ikony w Docku.'
+    ],
+    warn: 'Jeśli macOS napisze, że aplikacja jest <strong>uszkodzona</strong> — nie jest. To Gatekeeper reaguje na brak certyfikatu. Otwórz <strong>Terminal</strong> i wklej tę komendę:',
+    cmd: MAC_CMD
+  },
+  mac_intel: {
+    steps: [],
+    warn: '<strong>Twój Mac ma procesor Intel.</strong> Wersja dla tej architektury jest w przygotowaniu — obecna paczka działa wyłącznie na Apple Silicon (M1–M4). Korzystaj na razie z Eyelingo w przeglądarce; postępy synchronizują się między wszystkimi urządzeniami, więc nic nie tracisz.'
+  }
 };
+
+function eylCopyCmd(btn){
+  try{
+    navigator.clipboard.writeText(MAC_CMD);
+    var old=btn.textContent; btn.textContent='Skopiowano';
+    setTimeout(function(){ btn.textContent=old; },1600);
+  }catch(e){}
+}
+
+function _dlRenderGuide(key){
+  var g = DL_GUIDE[key]; if(!g) return '';
+  var h = '';
+  if(g.steps && g.steps.length){
+    h += '<div style="font-weight:600;color:var(--navy);margin-bottom:10px">Jak zainstalować</div>';
+    h += '<ol style="margin:0 0 4px 0;padding-left:20px;line-height:1.7">';
+    g.steps.forEach(function(st){ h += '<li style="margin-bottom:6px">'+st+'</li>'; });
+    h += '</ol>';
+  }
+  if(g.warn){
+    h += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);line-height:1.6">'+g.warn+'</div>';
+  }
+  if(g.cmd){
+    h += '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">'
+      +  '<code style="flex:1;min-width:240px;padding:8px 10px;background:#fff;border:1px solid var(--border);border-radius:8px;font-size:12px;overflow-x:auto;white-space:nowrap">'+g.cmd+'</code>'
+      +  '<button onclick="eylCopyCmd(this)" style="padding:8px 14px;border:1px solid var(--border2);border-radius:8px;background:#fff;color:var(--navy);font-size:12px;cursor:pointer;font-family:inherit">Kopiuj</button>'
+      +  '</div>';
+  }
+  return h;
+}
+
 function initDownloadCard(){
   var btn=document.getElementById('dl-primary'); if(!btn) return;
   var os=_dlDetect();
@@ -3168,11 +3224,10 @@ function initDownloadCard(){
     btn.setAttribute('download','');
     btn.style.opacity=''; btn.style.pointerEvents='';
   } else {
-    // Platforma bez gotowej paczki — przycisk wygaszony, żaden link donikąd.
     btn.setAttribute('href','#');
     btn.style.opacity='.45'; btn.style.pointerEvents='none';
   }
-  // Pozostałe platformy — bez akcentu, jako linki (tylko te, które realnie istnieją)
+  // Pozostale platformy — bez akcentu, jako linki (tylko realnie istniejace paczki)
   var keys=['win','mac_arm','mac_intel'].filter(function(k){ return k!==(os||'win') && DOWNLOADS[k].file; });
   if(oth){
     oth.innerHTML = keys.length ? ('Inny system: '+keys.map(function(k){
@@ -3180,9 +3235,8 @@ function initDownloadCard(){
     }).join(' · ')) : '';
   }
   if(note){
-    if(os==='mac_intel')            note.innerHTML=DL_NOTES.mac_intel;
-    else if(os&&os.indexOf('mac')===0) note.innerHTML=DL_NOTES.mac;
-    else                            note.innerHTML=DL_NOTES.win;
+    var key = (os==='mac_intel') ? 'mac_intel' : (os && os.indexOf('mac')===0 ? 'mac' : 'win');
+    note.innerHTML = _dlRenderGuide(key);
   }
 }
 try{ if(document.readyState!=='loading') initDownloadCard(); else document.addEventListener('DOMContentLoaded', initDownloadCard); }catch(e){}
