@@ -243,27 +243,43 @@ def ph_capture(event: str, props: dict = None):
 # GitHub Pages, chroni go RLS. Wbudowujemy go jako fallback, żeby paczka po prostu
 # działała. .env nadal nadpisuje wartości (tryb dev / inny projekt).
 DEFAULT_SUPABASE_URL = "https://sntlgkhktscezxpxrchl.supabase.co"
-# UWAGA: klient Pythona (supabase 2.15.x) waliduje klucz jako JWT i odrzuca nowy
-# format `sb_publishable_...` zanim wysle jakikolwiek request. Uzywamy wiec klucza
-# legacy `anon` (JWT). Jest rownie publiczny — chroni go RLS, nie tajnosc.
-# Do zamiany na `sb_publishable_...` dopiero po podniesieniu biblioteki supabase.
-DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNudGxna2hrdHNjZXp4cHhyY2hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMDM1MzIsImV4cCI6MjA5MzY3OTUzMn0.YogPIxCaySZ7Gsz5jx4RcA91uaOiLo19ZWu1wuO9xLY"
+# Ten sam klucz publishable co w index.html — jedno zrodlo prawdy dla wszystkich
+# powierzchni. Wymaga supabase >= 2.16 (starsze wersje walidowaly klucz jako JWT
+# i odrzucaly format `sb_publishable_...`). Wersja jest przypieta w requirements.
+DEFAULT_SUPABASE_KEY = "sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8"
 
 SUPABASE_URL = os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or DEFAULT_SUPABASE_KEY
 
+# ClientOptions: w nowszych wersjach eksportowane wprost z `supabase`. Stara sciezka
+# `supabase.lib.client_options` DALEJ SIE IMPORTUJE, ale zwraca wydmuszke bez pola
+# `storage` — klient wywala sie dopiero przy tworzeniu. Dlatego kolejnosc jest wazna:
+# najpierw nowa sciezka, stara tylko jako fallback dla starozytnych wersji.
+_ClientOptions = None
 try:
-    from supabase.lib.client_options import ClientOptions as _ClientOptions
-    # Bibliteczny auto-refresh odpala się w tle i rywalizuje z naszym
-    # (try_restore_session / timer JWT / current_user) o JEDNORAZOWY rotujący
-    # refresh_token -> przy starcie z przywróconej sesji jeden wątek unieważnia
-    # sesję ('Sesja wygasła', premium=FREE, zestawy nie ładują się do re-logowania).
-    # Wyłączamy go i zostawiamy wyłącznie nasze, zserializowane odświeżanie.
+    from supabase import ClientOptions as _ClientOptions          # supabase >= 2.16
+except Exception:
+    try:
+        from supabase.lib.client_options import ClientOptions as _ClientOptions  # legacy
+    except Exception:
+        _ClientOptions = None
+
+# Biblioteczny auto-refresh odpala się w tle i rywalizuje z naszym
+# (try_restore_session / timer JWT / current_user) o JEDNORAZOWY rotujący
+# refresh_token -> przy starcie z przywróconej sesji jeden wątek unieważnia
+# sesję ('Sesja wygasła', premium=FREE, zestawy nie ładują się do re-logowania).
+# Wyłączamy go i zostawiamy wyłącznie nasze, zserializowane odświeżanie.
+#
+# UWAGA: fallback bez ClientOptions ZOSTAWIA auto-refresh WLACZONY, czyli przywraca
+# tamten blad. Nie chowamy tego pod dywan — glosny log, zeby dalo sie to wychwycic.
+if _ClientOptions is not None:
     supabase: Client = create_client(
         SUPABASE_URL, SUPABASE_KEY,
         options=_ClientOptions(auto_refresh_token=False),
     )
-except Exception:
+else:
+    print("[SUPABASE] OSTRZEZENIE: brak ClientOptions - auto_refresh_token zostaje "
+          "WLACZONY. Mozliwe uniewaznianie sesji. Sprawdz wersje biblioteki supabase.")
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
