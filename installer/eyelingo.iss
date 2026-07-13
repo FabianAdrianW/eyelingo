@@ -19,15 +19,21 @@ AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
-DefaultDirName={autopf}\{#AppName}
+DefaultDirName={commonpf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-; Instalacja per-user nie wymaga uprawnień administratora — mniej tarcia przy pierwszym uruchomieniu.
-PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+; Instalacja do C:\Program Files, per-machine, z podniesieniem uprawnien.
+; POWOD: Smart App Control (Windows 11) traktuje niepodpisane pliki wykonywalne
+; w katalogach zapisywalnych przez uzytkownika (AppData) jako wzorzec zagrozenia
+; i blokuje je twardo (blad 4551). Program Files przechodzi lagodniejsza ocene.
+; To zlagodzenie, nie rozwiazanie — pelne rozwiazanie to podpis kodu.
+PrivilegesRequired=admin
 OutputDir=..\installer_out
 OutputBaseFilename=Eyelingo-Setup-Windows
-SetupIconFile=..\assets\icon.ico
+; Ikona jest opcjonalna — brak assets\icon.ico nie może wywalić builda.
+#if FileExists(AddBackslash(SourcePath) + "..\assets\icon.ico")
+  SetupIconFile=..\assets\icon.ico
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
