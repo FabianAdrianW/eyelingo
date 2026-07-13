@@ -28,7 +28,7 @@ def make_ico(src):
     try:
         from PIL import Image
     except ImportError:
-        print("[ICO] brak Pillow — pomijam (pip install pillow)")
+        print("[ICO] brak Pillow - pomijam (pip install pillow)")
         return
     img = Image.open(src).convert("RGBA")
     out = os.path.join(OUT_DIR, "icon.ico")
@@ -39,12 +39,12 @@ def make_ico(src):
 
 def make_icns(src):
     if sys.platform != "darwin":
-        print("[ICNS] pomijam — .icns buduje się tylko na macOS (iconutil)")
+        print("[ICNS] pomijam - .icns buduje sie tylko na macOS (iconutil)")
         return
     try:
         from PIL import Image
     except ImportError:
-        print("[ICNS] brak Pillow — pomijam")
+        print("[ICNS] brak Pillow - pomijam")
         return
     img = Image.open(src).convert("RGBA")
     iconset = os.path.join(OUT_DIR, "icon.iconset")
@@ -64,7 +64,7 @@ def make_icns(src):
 def main():
     src = _source()
     if not src:
-        print("[UWAGA] Nie znalazłem icon512.png ani eyelingomark.png — build pójdzie bez ikony.")
+        print("[UWAGA] Brak icon512.png / eyelingomark.png - build pojdzie bez ikony.")
         return
     os.makedirs(OUT_DIR, exist_ok=True)
     print(f"[SRC] {src}")
