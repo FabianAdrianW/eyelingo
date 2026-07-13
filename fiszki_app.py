@@ -37,33 +37,20 @@ def _bootstrap_platform():
 
 _bootstrap_platform()
 
-# ── TTS (gTTS + playsound) ──────────────────────────
+# ── TTS (gTTS + Qt Multimedia) ──────────────────────
+# PAK-1: w spakowanej aplikacji NIE MA pip ani zapisywalnego site-packages, więc
+#        auto-instalacja zależności w runtime musiała zniknąć (wieszała start).
+# PAK-2: playsound 1.2.2 jest martwy (nie działa na macOS/Py3.12, nie pakuje się
+#        czysto). Odtwarzanie idzie teraz przez QtMultimedia — część PyQt6,
+#        zero dodatkowych zależności, działa na Windows i macOS.
 _tts_available = False
-
-def _ensure_tts():
-    global _tts_available
-    try:
-        from gtts import gTTS
-        import playsound
-        _tts_available = True
-        return True
-    except ImportError:
-        pass
-    try:
-        import subprocess, sys
-        print("[TTS] Instaluję gtts i playsound...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "gtts", "playsound==1.2.2", "-q"],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        from gtts import gTTS
-        import playsound
-        _tts_available = True
-        print("[TTS] Zainstalowano pomyślnie.")
-        return True
-    except Exception as e:
-        print(f"[TTS] Nie udało się zainstalować: {e}")
-        return False
-
-_ensure_tts()
+_gTTS = None
+try:
+    from gtts import gTTS as _gTTS_imp
+    _gTTS = _gTTS_imp
+    _tts_available = True
+except Exception as _e_tts:
+    print(f"[TTS] Synteza mowy niedostępna ({_e_tts}). Aplikacja działa dalej, bez audio.")
 
 def _jp_tts_word(word):
     """Wytnij z japońskiego słowa tylko kanji (usuń hiragana/katakana jeśli jest kanji)."""
@@ -96,30 +83,77 @@ LANG_TTS_MAP = {
 # Jezyki o pismie nielatynskim — pokazujemy transliteracje (kolumna romaji), tak jak w japonskim
 NON_LATIN_LANGS = {"jp", "zh", "ko", "ar", "ru", "uk"}
 
+# Odtwarzacz musi żyć w wątku GUI (Qt), a pobranie MP3 z gTTS to sieć — więc
+# rozdzielamy: wątek roboczy pobiera plik, sygnał wraca na główny wątek, ten gra.
+from PyQt6.QtCore import QObject as _QObject, QUrl as _QUrl
+
+_tts_bridge   = None
+_tts_player   = None
+_tts_audioout = None
+_tts_tmp      = []
+
+
+class _TTSBridge(_QObject):
+    ready = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.ready.connect(self._play)
+
+    def _play(self, path):
+        global _tts_player, _tts_audioout, _tts_tmp
+        # Sprzątanie poprzednich plików tymczasowych (nie kasujemy tego, co gra teraz)
+        for old_p in _tts_tmp[:-1]:
+            try:
+                os.unlink(old_p)
+            except Exception:
+                pass
+        _tts_tmp = _tts_tmp[-1:]
+        try:
+            from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+            if _tts_player is None:
+                _tts_player   = QMediaPlayer()
+                _tts_audioout = QAudioOutput()
+                _tts_player.setAudioOutput(_tts_audioout)
+            _tts_audioout.setVolume(1.0)
+            _tts_player.setSource(_QUrl.fromLocalFile(path))
+            _tts_player.play()
+            _tts_tmp.append(path)
+        except Exception as e:
+            print(f"[TTS] odtwarzanie: {e}")
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+
+
 def speak_word(word, lang_code):
-    """Czytaj słowo przez gTTS + playsound w osobnym wątku."""
-    if not _tts_available:
+    """Czytaj słowo: gTTS (wątek) → QMediaPlayer (wątek GUI)."""
+    if not _tts_available or not _gTTS:
         return
     try:
         if not APP_SETTINGS.get("audio_enabled", False):
             return
     except Exception:
         pass
+    global _tts_bridge
+    if _tts_bridge is None:
+        _tts_bridge = _TTSBridge()
+    bridge = _tts_bridge
     import threading, tempfile
-    def _speak():
+
+    def _fetch():
         try:
-            from gtts import gTTS
-            import playsound as ps
             tts_lang = LANG_TTS_MAP.get(lang_code, "en")
-            tts = gTTS(text=word, lang=tts_lang, slow=False)
+            tts = _gTTS(text=word, lang=tts_lang, slow=False)
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 tmp = f.name
             tts.save(tmp)
-            ps.playsound(tmp)
-            os.unlink(tmp)
+            bridge.ready.emit(tmp)
         except Exception as e:
             print(f"[TTS] {e}")
-    threading.Thread(target=_speak, daemon=True).start()
+
+    threading.Thread(target=_fetch, daemon=True).start()
 from supabase import create_client, Client
 
 def _resource_path(rel):
@@ -185,12 +219,15 @@ def ph_capture(event: str, props: dict = None):
 
 # ───────────────────────────────────────────────────
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# PAK-3: użytkownik końcowy nie dostanie (ani nie utrzyma) pliku .env obok exe.
+# Klucz anon jest PUBLICZNY z założenia — ten sam leży jawnie w index.html na
+# GitHub Pages, chroni go RLS. Wbudowujemy go jako fallback, żeby paczka po prostu
+# działała. .env nadal nadpisuje wartości (tryb dev / inny projekt).
+DEFAULT_SUPABASE_URL = "https://sntlgkhktscezxpxrchl.supabase.co"
+DEFAULT_SUPABASE_KEY = "sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8"
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("[BLAD] Brak SUPABASE_URL lub SUPABASE_KEY w pliku .env")
-    sys.exit(1)
+SUPABASE_URL = os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or DEFAULT_SUPABASE_KEY
 
 try:
     from supabase.lib.client_options import ClientOptions as _ClientOptions
@@ -205,6 +242,146 @@ try:
     )
 except Exception:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+# ══════════════════════════════════════════════════════════════════
+# KANONICZNY SRS — srs_progress (wspólne źródło web + mobile + desktop)
+# Logic Bible: srs_progress jest kanoniczne; word_progress jest legacy (desktop).
+# Desktop CZYTA z srs_progress, a PISZE do obu (word_progress zostaje, bo karmi
+# serwerowe RPC get_due_cards_all / get_completed_categories).
+# Klucz karty i formuła SM-2 są IDENTYCZNE jak w index.html (sm2Local/usrsRecord),
+# inaczej ten sam wyraz rozjechałby się między powierzchniami.
+# ══════════════════════════════════════════════════════════════════
+_SRS_SCRIPT_RANGES = {
+    "jp": [(0x3040, 0x30FF), (0x4E00, 0x9FFF)],
+    "zh": [(0x4E00, 0x9FFF)],
+    "ko": [(0xAC00, 0xD7AF), (0x1100, 0x11FF)],
+    "ar": [(0x0600, 0x06FF), (0x0750, 0x077F)],
+    "ru": [(0x0400, 0x04FF)],
+    "uk": [(0x0400, 0x04FF)],
+}
+
+
+def _srs_norm_lang(code):
+    c = str(code or "").strip().lower()
+    if c == "ja":
+        return "jp"          # kanoniczny kod japońskiego = 'jp'
+    return c
+
+
+def _srs_true_lang(word, lang):
+    """Pismo ma ostatnie słowo (Logic Bible §9.9). UI nigdy nie ustala języka —
+    ustala go treść karty i baza. Puste, gdy nie wiadomo (nigdy nie zgadujemy)."""
+    lang = _srs_norm_lang(lang)
+    txt = str(word or "")
+    for code, ranges in _SRS_SCRIPT_RANGES.items():
+        if code in ("ru", "uk") and lang in ("ru", "uk"):
+            continue         # cyrylica nie rozstrzyga między ru a uk — zostaw deklarację
+        for ch in txt:
+            o = ord(ch)
+            for lo, hi in ranges:
+                if lo <= o <= hi:
+                    if code == "zh" and lang == "jp":
+                        return "jp"   # kanji w japońskim to nadal japoński
+                    return code
+    return lang
+
+
+def _srs_card_key(word, translation):
+    return (str(word or "").strip().lower() + "|" +
+            str(translation or "").strip().lower())
+
+
+def _srs_sm2(prev, quality):
+    """SM-2 — 1:1 z sm2Local() z index.html."""
+    from datetime import date, timedelta
+    ef       = (prev or {}).get("ease_factor") or 2.5
+    reps     = (prev or {}).get("repetitions") or 0
+    interval = (prev or {}).get("interval_days") or 1
+    if quality >= 3:
+        if reps == 0:
+            interval = 1
+        elif reps == 1:
+            interval = 3
+        else:
+            interval = int(round(interval * ef))
+        reps += 1
+    else:
+        reps = 0
+        interval = 1
+    ef = ef + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
+    if ef < 1.3:
+        ef = 1.3
+    return {
+        "ease_factor":   round(float(ef), 3),
+        "repetitions":   reps,
+        "interval_days": interval,
+        "next_review":   (date.today() + timedelta(days=interval)).isoformat(),
+    }
+
+
+def srs_upsert(card, quality):
+    """Zapis oceny do kanonicznego srs_progress. `card` musi mieć word+translation."""
+    try:
+        word = str(card.get("word") or "").strip()
+        tr   = str(card.get("translation") or "").strip()
+        if not word or not tr:
+            return           # karta jednostronna = niepowtarzalna (parytet z web)
+        uid = current_uid()
+        if not uid:
+            return
+        key = _srs_card_key(word, tr)
+        fid = card.get("flashcard_id") or card.get("id") or None
+        lang = _srs_true_lang(word, card.get("lang"))
+
+        prev = {}
+        try:
+            r = (supabase.table("srs_progress")
+                 .select("ease_factor,repetitions,interval_days")
+                 .eq("user_id", uid).eq("card_key", key).limit(1).execute())
+            if r.data:
+                prev = r.data[0]
+        except Exception:
+            prev = {}
+
+        new = _srs_sm2(prev, quality)
+        row = {
+            "user_id": uid, "card_key": key, "word": word, "translation": tr,
+            "lang": lang, "source": ("eyelingo" if fid else "custom"),
+            "flashcard_id": fid,
+            "ease_factor":   new["ease_factor"],
+            "repetitions":   new["repetitions"],
+            "interval_days": new["interval_days"],
+            "next_review":   new["next_review"],
+        }
+        supabase.table("srs_progress").upsert(row, on_conflict="user_id,card_key").execute()
+    except Exception as e:
+        print(f"[SRS] srs_progress: {e}")
+
+
+def srs_declare_seen(card):
+    """Deklaracja „znam to" — stan WIDZIANE, nie mastery (Pedagogy Bible D1).
+    Siła musi zostać pod progiem opanowania, żeby wymóg odtwarzania z pamięci ocalał."""
+    try:
+        word = str(card.get("word") or "").strip()
+        tr   = str(card.get("translation") or "").strip()
+        if not word or not tr:
+            return
+        uid = current_uid()
+        if not uid:
+            return
+        from datetime import date, timedelta
+        fid  = card.get("flashcard_id") or card.get("id") or None
+        lang = _srs_true_lang(word, card.get("lang"))
+        supabase.table("srs_progress").upsert({
+            "user_id": uid, "card_key": _srs_card_key(word, tr),
+            "word": word, "translation": tr, "lang": lang,
+            "source": ("eyelingo" if fid else "custom"), "flashcard_id": fid,
+            "ease_factor": 2.5, "repetitions": 1, "interval_days": 7,
+            "next_review": (date.today() + timedelta(days=7)).isoformat(),
+        }, on_conflict="user_id,card_key").execute()
+    except Exception as e:
+        print(f"[SRS] deklaracja: {e}")
 
 
 import time as _time_dbg
@@ -1054,7 +1231,14 @@ class KnownWordsWorker(QThread):
                 card_ids = [r["id"] for r in (q.execute().data or [])]
                 if not card_ids:
                     self.done.emit(0); return
-                resp = supabase.table("word_progress")                    .select("flashcard_id", count="exact")                    .in_("flashcard_id", card_ids)                    .gte("ease_factor", 2.5).gte("repetitions", 2).execute()
+                # Kanonicznie: srs_progress + bramka reps>=3 AND interval>=21
+                # (stara wersja liczyła z word_progress po ease>=2.5/reps>=2 — inna
+                #  definicja niż web/mobile, stąd rozjazd liczników między ekranami).
+                resp = (supabase.table("srs_progress")
+                        .select("card_key", count="exact")
+                        .in_("flashcard_id", card_ids)
+                        .gte("repetitions", MASTER_REPS_MIN)
+                        .gte("interval_days", MASTER_INTERVAL_MIN).execute())
                 self.done.emit(resp.count or 0)
                 return
             except Exception as e:
@@ -1117,6 +1301,13 @@ class MarkAllKnownWorker(QThread):
                         "times_seen": 1, "times_correct": 0,
                     }, on_conflict="user_id,flashcard_id").execute()
                 except Exception: pass
+                # Kanonicznie (cross-surface): ten sam stan do srs_progress
+                srs_declare_seen({
+                    "flashcard_id": fid,
+                    "word":        c.get("word", ""),
+                    "translation": c.get("translation", ""),
+                    "lang":        self.lang,
+                })
                 _t.sleep(0.05)
             self.done.emit()
         except Exception as e:
@@ -1153,11 +1344,20 @@ class TestCardsWorker(QThread):
             prog = {}
             try:
                 if _need_ids:
-                    prog_resp = (supabase.table("word_progress")
+                    # Kanoniczne źródło = srs_progress (widzi też postęp z web/mobile).
+                    prog_resp = (supabase.table("srs_progress")
                                  .select("flashcard_id,repetitions,ease_factor,interval_days")
                                  .eq("user_id", current_uid())
                                  .in_("flashcard_id", _need_ids).execute())
-                    prog = {r["flashcard_id"]: r for r in (prog_resp.data or [])}
+                    prog = {r["flashcard_id"]: r for r in (prog_resp.data or [])
+                            if r.get("flashcard_id")}
+                    if not prog:
+                        # Degradacja: konto sprzed migracji ma dane tylko w legacy.
+                        legacy = (supabase.table("word_progress")
+                                  .select("flashcard_id,repetitions,ease_factor,interval_days")
+                                  .eq("user_id", current_uid())
+                                  .in_("flashcard_id", _need_ids).execute())
+                        prog = {r["flashcard_id"]: r for r in (legacy.data or [])}
             except Exception:
                 prog = {}
 
@@ -1440,8 +1640,10 @@ class LoginWindow(_DraggableWindow):
         lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_loaded = False
         for lp in [
+            Path(_resource_path("logo_transparent_navy.png")),
+            Path(_resource_path("logo_navy.png")),
+            Path(_resource_path("eyelingomark.png")),
             Path(__file__).parent / "logo_transparent_navy.png",
-            Path(__file__).parent / "logo_navy.png",
         ]:
             if lp.exists():
                 pix = QPixmap(str(lp)).scaledToWidth(220, Qt.TransformationMode.SmoothTransformation)
@@ -2728,13 +2930,16 @@ class CategoryViewWorker(QThread):
 # WORKER – aktualizacja SRS po teście
 # ──────────────────────────────────────────────────────
 class SRSUpdateWorker(QThread):
-    def __init__(self, results):
+    def __init__(self, results, card_map=None, lang=""):
         super().__init__()
         self.finished.connect(self.deleteLater)
-        self.results = results  # lista (flashcard_id, quality)
+        self.results  = results          # lista (flashcard_id, quality)
+        self.card_map = card_map or {}   # flashcard_id → {word, translation}
+        self.lang     = lang
 
     def run(self):
         for fid, quality in self.results:
+            # 1) Legacy word_progress przez RPC — karmi serwerowe get_due_cards_all
             try:
                 supabase.rpc("update_word_srs", {
                     "p_flashcard_id": fid,
@@ -2742,6 +2947,15 @@ class SRSUpdateWorker(QThread):
                 }).execute()
             except Exception as e:
                 print(f"[SRS] {e}")
+            # 2) Kanonicznie: srs_progress — dopiero to widzą web i mobile
+            c = self.card_map.get(fid)
+            if c:
+                srs_upsert({
+                    "flashcard_id": fid,
+                    "word":        c.get("word", ""),
+                    "translation": c.get("translation", ""),
+                    "lang":        c.get("lang") or self.lang,
+                }, quality)
 
 # ──────────────────────────────────────────────────────
 # OKNO TWORZENIA WŁASNYCH FISZEK
@@ -3868,7 +4082,7 @@ class SettingsWindow(_DraggableWindow):
         self.chk_audio.setChecked(APP_SETTINGS.get("audio_enabled",False))
         if not _tts_available:
             self.chk_audio.setEnabled(False)
-            self.chk_audio.setText("Audio niedostępne — pip install gtts playsound==1.2.2")
+            self.chk_audio.setText("Audio niedostępne w tej wersji")
         lay.addWidget(self.chk_audio)
 
         # Skróty
@@ -5378,7 +5592,17 @@ class TrayApp:
 
     def _on_test_done(self, results):
         if results:
-            self._srs_worker = SRSUpdateWorker(results)
+            # card_key w srs_progress buduje się z treści (word|translation),
+            # więc samo flashcard_id nie wystarczy — dokładamy mapę kart z testu.
+            card_map = {}
+            try:
+                for c in (self.win_test.cards or []):
+                    _fid = c.get("flashcard_id", 0)
+                    if _fid:
+                        card_map[_fid] = c
+            except Exception:
+                card_map = {}
+            self._srs_worker = SRSUpdateWorker(results, card_map, self.overlay.lang)
             self._srs_worker.start()
             correct = sum(1 for _, q in results if q >= 3)
             _session.track("test_completed", {
@@ -5880,6 +6104,11 @@ class TrayApp:
 # GLOBALNE SKRÓTY KLAWISZOWE (biblioteka keyboard)
 # ──────────────────────────────────────────────────────
 try:
+    import platform as _pf_kb
+    if _pf_kb.system() == "Darwin":
+        # macOS: biblioteka `keyboard` wymaga uprawnień roota i potrafi wywalić start.
+        # Skróty globalne są tam wyłączone świadomie — aplikacja działa z tray/menu.
+        raise ImportError("macOS: globalne skróty wymagają roota — wyłączone")
     import keyboard
     _keyboard_available = True
 except Exception as _kb_err:
@@ -5976,12 +6205,25 @@ def _warn_if_no_tray():
         print("[TRAY] Brak zasobnika — na GNOME wymagane rozszerzenie AppIndicator/StatusNotifier.")
 
 
+def _apply_font_substitutions():
+    """UI był pisany pod 'Segoe UI' (Windows). Na macOS tej rodziny nie ma — Qt
+    zjeżdża wtedy na siermiężny fallback. Podstawienie rodziny to jedna linia
+    i naprawia typografię na całym UI, bez ruszania setek QFont(...)."""
+    import platform as _pf_f
+    try:
+        if _pf_f.system() == "Darwin":
+            QFont.insertSubstitutions("Segoe UI", ["Inter", "SF Pro Text", "Helvetica Neue"])
+    except Exception:
+        pass
+
+
 def main():
     _dbg_reset()
     _dbg("=== APP START ===")
     _dbg(f"[SESSION] plik sesji: {SESSION_FILE}")
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    _apply_font_substitutions()
     _apply_macos_accessory()
 
     overlay      = FlashcardOverlay()

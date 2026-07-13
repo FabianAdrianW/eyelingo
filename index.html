@@ -2553,9 +2553,11 @@ window.switchMatTab = function(tab){
       <div class="dcard">
         <div class="dcard-t">Pobierz aplikację</div>
         <div class="drow2">
-          <div><h3>Eyelingo dla Windows</h3><p>Wersja 1.0 · Windows 10/11</p></div>
-          <a class="btn btn-orange" href="#" onclick="handleDownload(event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path></svg>Pobierz .exe</a>
+          <div><h3 id="dl-title">Eyelingo na komputer</h3><p id="dl-sub">Wykrywanie systemu…</p></div>
+          <a class="btn btn-orange" id="dl-primary" href="#"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path></svg><span id="dl-primary-label">Pobierz</span></a>
         </div>
+        <div id="dl-others" style="margin-top:14px;font-size:13px;color:var(--dim2);line-height:1.8"></div>
+        <div id="dl-note" style="margin-top:16px;padding:12px 14px;background:var(--paper);border:1px solid var(--border);border-radius:10px;font-size:12.5px;color:var(--dim2);line-height:1.6"></div>
         <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);font-size:13px;color:var(--dim2);line-height:1.6">
           <strong style="color:var(--navy)">Tip dla graczy:</strong> Ustaw grę w trybie <strong style="color:var(--navy)">Borderless Window</strong> — fiszki będą widoczne podczas grania.
         </div>
@@ -2613,7 +2615,13 @@ function extractAIText(d){
 }
 const SEARCH_YOUTUBE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/search-youtube';
 const SUPABASE_KEY='sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8';
-const DOWNLOAD_URL='#';
+// Wydania desktopu — GitHub Releases (tag 'latest' zawsze wskazuje ostatnią wersję).
+const DOWNLOAD_BASE='https://github.com/fabianadrianw/eyelingo/releases/latest/download/';
+const DOWNLOADS={
+  win:      {file:'Eyelingo-Setup-Windows.exe',       title:'Eyelingo dla Windows', sub:'Windows 10/11 · 64-bit',                 label:'Pobierz instalator'},
+  mac_arm:  {file:'Eyelingo-macOS-AppleSilicon.dmg',  title:'Eyelingo dla macOS',   sub:'Apple Silicon (M1–M4) · macOS 11+',      label:'Pobierz .dmg'},
+  mac_intel:{file:'Eyelingo-macOS-Intel.dmg',         title:'Eyelingo dla macOS',   sub:'Intel · macOS 11+',                      label:'Pobierz .dmg'}
+};
 // Initialize Supabase with retry if CDN loaded slowly
 var db;
 // ── IZOLACJA DANYCH PER-USER (Logic Bible §0) ──
@@ -3119,7 +3127,53 @@ async function handleCreateSet(){
   else showAuth('register');
 }
 
-function handleDownload(e){if(DOWNLOAD_URL==='#'){e.preventDefault();alert('Plik .exe będzie dostępny wkrótce!')}}
+// ── Pobieranie desktopu: wykryj system, ustaw jeden akcent (Design Bible: jeden
+// pomarańcz na ekran), resztę platform podaj jako linki tekstowe. ──
+function _dlIsMac(){ return /Mac|iPhone|iPad|iPod/.test(navigator.platform||'') || /Mac OS X/.test(navigator.userAgent||''); }
+function _dlIsWin(){ return /Win/.test(navigator.platform||'') || /Windows/.test(navigator.userAgent||''); }
+function _dlIsAppleSilicon(){
+  // Safari nie wystawia architektury. Heurystyka po GPU: Apple Silicon raportuje
+  // renderer „Apple ...", Maki Intel — „Intel Iris" / „AMD Radeon".
+  try{
+    var c=document.createElement('canvas');
+    var gl=c.getContext('webgl')||c.getContext('experimental-webgl');
+    var dbg=gl&&gl.getExtension('WEBGL_debug_renderer_info');
+    var r=(dbg&&gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL))||'';
+    if(/intel|amd|radeon/i.test(r)) return false;
+    return true;
+  }catch(e){ return true; }  // nowsze Maki = Apple Silicon; i tak dajemy oba linki
+}
+function _dlDetect(){
+  if(_dlIsMac()) return _dlIsAppleSilicon()?'mac_arm':'mac_intel';
+  if(_dlIsWin()) return 'win';
+  return null;   // Linux / nieznane — pokaż wszystko, bez zgadywania
+}
+var DL_NOTES={
+  win:'<strong style="color:var(--navy)">Pierwsze uruchomienie:</strong> Windows może pokazać ekran „Windows chronił Twój komputer”. Kliknij <strong style="color:var(--navy)">Więcej informacji → Uruchom mimo to</strong>. Aplikacja nie ma jeszcze certyfikatu wydawcy — to standardowe ostrzeżenie dla nowych programów.',
+  mac:'<strong style="color:var(--navy)">Pierwsze uruchomienie:</strong> otwórz .dmg, przeciągnij Eyelingo do folderu Programy, a potem kliknij ikonę <strong style="color:var(--navy)">prawym przyciskiem → Otwórz → Otwórz</strong>. Jeśli macOS napisze, że plik jest uszkodzony, wpisz w Terminalu:<br><code style="display:inline-block;margin-top:6px;padding:4px 8px;background:#fff;border:1px solid var(--border);border-radius:6px;font-size:12px">xattr -dr com.apple.quarantine /Applications/Eyelingo.app</code>'
+};
+function initDownloadCard(){
+  var btn=document.getElementById('dl-primary'); if(!btn) return;
+  var os=_dlDetect();
+  var t=document.getElementById('dl-title'), s=document.getElementById('dl-sub'),
+      lab=document.getElementById('dl-primary-label'), oth=document.getElementById('dl-others'),
+      note=document.getElementById('dl-note');
+  var pick = os ? DOWNLOADS[os] : DOWNLOADS.win;
+  if(t)   t.textContent=pick.title;
+  if(s)   s.textContent=pick.sub;
+  if(lab) lab.textContent=pick.label;
+  btn.setAttribute('href', DOWNLOAD_BASE+pick.file);
+  btn.setAttribute('download','');
+  // Pozostałe platformy — bez akcentu, jako linki
+  var keys=['win','mac_arm','mac_intel'].filter(function(k){ return k!==(os||'win'); });
+  if(oth){
+    oth.innerHTML='Inny system: '+keys.map(function(k){
+      return '<a href="'+DOWNLOAD_BASE+DOWNLOADS[k].file+'" download style="color:var(--navy);text-decoration:underline;text-underline-offset:2px">'+DOWNLOADS[k].sub+'</a>';
+    }).join(' · ');
+  }
+  if(note) note.innerHTML = (os&&os.indexOf('mac')===0) ? DL_NOTES.mac : DL_NOTES.win;
+}
+try{ if(document.readyState!=='loading') initDownloadCard(); else document.addEventListener('DOMContentLoaded', initDownloadCard); }catch(e){}
 
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('page-auth').classList.contains('active'))submitAuth()});
 
