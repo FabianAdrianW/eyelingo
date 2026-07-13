@@ -251,6 +251,11 @@ DEFAULT_SUPABASE_KEY = "sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8"
 SUPABASE_URL = os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or DEFAULT_SUPABASE_KEY
 
+# Adres serwisu — zrodlo linkow do Regulaminu, Polityki Prywatnosci i spolecznosci.
+# BYL UZYWANY W OKNIE ZGOD, ALE NIGDY ZDEFINIOWANY -> NameError przy starcie aplikacji.
+# Skladnia byla poprawna, wiec ani ast.parse, ani py_compile tego nie lapaly.
+BASE = os.getenv("EYELINGO_BASE_URL") or "https://fabianadrianw.github.io/eyelingo/"
+
 # ClientOptions: w nowszych wersjach eksportowane wprost z `supabase`. Stara sciezka
 # `supabase.lib.client_options` DALEJ SIE IMPORTUJE, ale zwraca wydmuszke bez pola
 # `storage` — klient wywala sie dopiero przy tworzeniu. Dlatego kolejnosc jest wazna:
@@ -3338,7 +3343,7 @@ class MySetsPicker(_DraggableWindow):
             QPushButton:hover { background:rgba(40,44,72,180); color:white; }
         """)
         btn_browse_www.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_browse_www.clicked.connect(lambda: webbrowser.open("https://fabianadrianw.github.io/eyelingo/?page=community"))
+        btn_browse_www.clicked.connect(lambda: webbrowser.open(f"{BASE}?page=community"))
         self.lay.addWidget(btn_browse_www)
 
         self.lay.addWidget(_back_btn("← Wróć do języków", self._go_back))
@@ -4189,9 +4194,9 @@ class SettingsWindow(_DraggableWindow):
         bl.addWidget(btn_close)
         bl.addStretch()
         _legal_row = QLabel(
-            '<a href="https://fabianadrianw.github.io/eyelingo/regulamin.html" style="color:rgba(150,160,200,200);">Regulamin</a>'
+            f'<a href="{BASE}regulamin.html" style="color:rgba(150,160,200,200);">Regulamin</a>'
             ' &nbsp;&middot;&nbsp; '
-            '<a href="https://fabianadrianw.github.io/eyelingo/prywatnosc.html" style="color:rgba(150,160,200,200);">Prywatno&#347;&#263;</a>'
+            f'<a href="{BASE}prywatnosc.html" style="color:rgba(150,160,200,200);">Prywatno&#347;&#263;</a>'
         )
         _legal_row.setOpenExternalLinks(True)
         _legal_row.setStyleSheet("background:transparent; font-size:9px;")
