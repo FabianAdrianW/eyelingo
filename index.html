@@ -2620,7 +2620,7 @@ const DOWNLOAD_BASE='https://github.com/fabianadrianw/eyelingo/releases/latest/d
 const DOWNLOADS={
   win:      {file:'Eyelingo-Setup-Windows.exe',       title:'Eyelingo dla Windows', sub:'Windows 10/11 · 64-bit',                 label:'Pobierz instalator'},
   mac_arm:  {file:'Eyelingo-macOS-AppleSilicon.dmg',  title:'Eyelingo dla macOS',   sub:'Apple Silicon (M1–M4) · macOS 11+',      label:'Pobierz .dmg'},
-  mac_intel:{file:'Eyelingo-macOS-Intel.dmg',         title:'Eyelingo dla macOS',   sub:'Intel · macOS 11+',                      label:'Pobierz .dmg'}
+  mac_intel:{file:null,                              title:'Eyelingo dla macOS',   sub:'Intel · wersja w przygotowaniu',         label:'Wkrótce'}
 };
 // Initialize Supabase with retry if CDN loaded slowly
 var db;
@@ -3150,6 +3150,7 @@ function _dlDetect(){
 }
 var DL_NOTES={
   win:'<strong style="color:var(--navy)">Pierwsze uruchomienie:</strong> Windows może pokazać ekran „Windows chronił Twój komputer”. Kliknij <strong style="color:var(--navy)">Więcej informacji → Uruchom mimo to</strong>. Aplikacja nie ma jeszcze certyfikatu wydawcy — to standardowe ostrzeżenie dla nowych programów.',
+  mac_intel:'<strong style="color:var(--navy)">Twój Mac ma procesor Intel.</strong> Wersja dla tej architektury jest jeszcze w przygotowaniu — obecna paczka działa wyłącznie na Apple Silicon (M1–M4). W międzyczasie możesz korzystać z Eyelingo w przeglądarce; postępy i tak synchronizują się między wszystkimi urządzeniami.',
   mac:'<strong style="color:var(--navy)">Pierwsze uruchomienie:</strong> otwórz .dmg, przeciągnij Eyelingo do folderu Programy, a potem kliknij ikonę <strong style="color:var(--navy)">prawym przyciskiem → Otwórz → Otwórz</strong>. Jeśli macOS napisze, że plik jest uszkodzony, wpisz w Terminalu:<br><code style="display:inline-block;margin-top:6px;padding:4px 8px;background:#fff;border:1px solid var(--border);border-radius:6px;font-size:12px">xattr -dr com.apple.quarantine /Applications/Eyelingo.app</code>'
 };
 function initDownloadCard(){
@@ -3162,16 +3163,27 @@ function initDownloadCard(){
   if(t)   t.textContent=pick.title;
   if(s)   s.textContent=pick.sub;
   if(lab) lab.textContent=pick.label;
-  btn.setAttribute('href', DOWNLOAD_BASE+pick.file);
-  btn.setAttribute('download','');
-  // Pozostałe platformy — bez akcentu, jako linki
-  var keys=['win','mac_arm','mac_intel'].filter(function(k){ return k!==(os||'win'); });
-  if(oth){
-    oth.innerHTML='Inny system: '+keys.map(function(k){
-      return '<a href="'+DOWNLOAD_BASE+DOWNLOADS[k].file+'" download style="color:var(--navy);text-decoration:underline;text-underline-offset:2px">'+DOWNLOADS[k].sub+'</a>';
-    }).join(' · ');
+  if(pick.file){
+    btn.setAttribute('href', DOWNLOAD_BASE+pick.file);
+    btn.setAttribute('download','');
+    btn.style.opacity=''; btn.style.pointerEvents='';
+  } else {
+    // Platforma bez gotowej paczki — przycisk wygaszony, żaden link donikąd.
+    btn.setAttribute('href','#');
+    btn.style.opacity='.45'; btn.style.pointerEvents='none';
   }
-  if(note) note.innerHTML = (os&&os.indexOf('mac')===0) ? DL_NOTES.mac : DL_NOTES.win;
+  // Pozostałe platformy — bez akcentu, jako linki (tylko te, które realnie istnieją)
+  var keys=['win','mac_arm','mac_intel'].filter(function(k){ return k!==(os||'win') && DOWNLOADS[k].file; });
+  if(oth){
+    oth.innerHTML = keys.length ? ('Inny system: '+keys.map(function(k){
+      return '<a href="'+DOWNLOAD_BASE+DOWNLOADS[k].file+'" download style="color:var(--navy);text-decoration:underline;text-underline-offset:2px">'+DOWNLOADS[k].sub+'</a>';
+    }).join(' · ')) : '';
+  }
+  if(note){
+    if(os==='mac_intel')            note.innerHTML=DL_NOTES.mac_intel;
+    else if(os&&os.indexOf('mac')===0) note.innerHTML=DL_NOTES.mac;
+    else                            note.innerHTML=DL_NOTES.win;
+  }
 }
 try{ if(document.readyState!=='loading') initDownloadCard(); else document.addEventListener('DOMContentLoaded', initDownloadCard); }catch(e){}
 
