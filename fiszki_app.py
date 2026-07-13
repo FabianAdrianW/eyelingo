@@ -243,7 +243,11 @@ def ph_capture(event: str, props: dict = None):
 # GitHub Pages, chroni go RLS. Wbudowujemy go jako fallback, żeby paczka po prostu
 # działała. .env nadal nadpisuje wartości (tryb dev / inny projekt).
 DEFAULT_SUPABASE_URL = "https://sntlgkhktscezxpxrchl.supabase.co"
-DEFAULT_SUPABASE_KEY = "sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8"
+# UWAGA: klient Pythona (supabase 2.15.x) waliduje klucz jako JWT i odrzuca nowy
+# format `sb_publishable_...` zanim wysle jakikolwiek request. Uzywamy wiec klucza
+# legacy `anon` (JWT). Jest rownie publiczny — chroni go RLS, nie tajnosc.
+# Do zamiany na `sb_publishable_...` dopiero po podniesieniu biblioteki supabase.
+DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNudGxna2hrdHNjZXp4cHhyY2hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxMDM1MzIsImV4cCI6MjA5MzY3OTUzMn0.YogPIxCaySZ7Gsz5jx4RcA91uaOiLo19ZWu1wuO9xLY"
 
 SUPABASE_URL = os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or DEFAULT_SUPABASE_KEY
