@@ -65,6 +65,19 @@ jobs:
           pip install -r requirements-desktop.txt
           pip install pyinstaller pillow
 
+      # BRAMKA JAKOSCI: NameError (np. uzyta, ale niezdefiniowana zmienna) ma skladnie
+      # poprawna, wiec py_compile go NIE lapie — wybucha dopiero u uzytkownika, w locie.
+      # Taki blad ('BASE' is not defined) wywalal aplikacje przy starcie przez wiele wersji.
+      # Od teraz build pada TUTAJ, a nie w rekach uzytkownika.
+      - name: Kontrola kodu (niezdefiniowane nazwy)
+        shell: bash
+        run: |
+          pip install pyflakes
+          python -m pyflakes fiszki_app.py | grep -i "undefined name" && {
+            echo "::error::Znaleziono niezdefiniowane nazwy — build zatrzymany."
+            exit 1
+          } || echo "OK: brak niezdefiniowanych nazw"
+
       - name: Ikony
         shell: bash
         run: python tools/make_icons.py
