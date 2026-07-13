@@ -4,6 +4,25 @@ Wymagania: pip install PyQt6 supabase python-dotenv
 """
 
 import sys
+
+# PAK-4: PyInstaller w trybie okienkowym (console=False) potrafi ustawic
+# sys.stdout/sys.stderr na None. Kazdy print() w kodzie wywalilby wtedy
+# AttributeError w losowym miejscu. Podstawiamy cichy strumien + UTF-8.
+class _NullWriter:
+    def write(self, *_a, **_k): return 0
+    def flush(self, *_a, **_k): pass
+    def isatty(self): return False
+
+if sys.stdout is None:
+    sys.stdout = _NullWriter()
+if sys.stderr is None:
+    sys.stderr = _NullWriter()
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import json
 import webbrowser
 import urllib.request
