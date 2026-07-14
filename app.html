@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Eyelingo</title>
+<link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@500;600&display=swap" rel="stylesheet">
@@ -3131,5 +3132,82 @@ async function alexSend(){
 })();
 </script>
 
+<!-- ═══ PWA: instalacja na telefonie ═══════════════════════════════════════
+     Bez service workera przegladarka NIE zaproponuje "Dodaj do ekranu poczatkowego".
+     Chrome/Android: przechwytujemy beforeinstallprompt i pokazujemy wlasny pasek.
+     iOS/Safari: monitu nie ma w ogole — trzeba pokazac instrukcje wprost. -->
+<div id="pwa-bar" style="display:none;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:9999;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:14px 16px;font-family:'Inter',sans-serif">
+  <div style="display:flex;align-items:center;gap:12px">
+    <img src="icon192.png" alt="" style="width:38px;height:38px;border-radius:9px;flex-shrink:0">
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:600;font-size:14px;color:var(--navy)">Zainstaluj Eyelingo</div>
+      <div id="pwa-sub" style="font-size:12.5px;color:var(--dim);line-height:1.4">Dodaj do ekranu początkowego — otwiera się jak zwykła aplikacja.</div>
+    </div>
+    <button id="pwa-x" aria-label="Zamknij" style="border:none;background:none;color:var(--dim2);font-size:20px;line-height:1;cursor:pointer;padding:4px 6px">&times;</button>
+  </div>
+  <button id="pwa-go" style="width:100%;margin-top:11px;padding:11px;border:none;border-radius:10px;background:var(--orange);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Zainstaluj</button>
+  <div id="pwa-ios" style="display:none;margin-top:11px;font-size:12.5px;color:var(--dim);line-height:1.55">
+    Otwórz menu <strong style="color:var(--navy)">Udostępnij</strong> na dole ekranu, a następnie wybierz
+    <strong style="color:var(--navy)">Dodaj do ekranu początkowego</strong>.
+  </div>
+</div>
+<script>
+(function(){
+  // ── Service worker: warunek konieczny instalowalnosci PWA ──
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',function(){
+      navigator.serviceWorker.register('sw.js').catch(function(e){ console.warn('[SW]',e); });
+    });
+  }
+
+  var bar=document.getElementById('pwa-bar'), go=document.getElementById('pwa-go'),
+      x=document.getElementById('pwa-x'), ios=document.getElementById('pwa-ios'),
+      sub=document.getElementById('pwa-sub');
+  var deferred=null;
+  var DISMISS='eyl_pwa_dismissed';
+
+  function standalone(){
+    return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone===true;
+  }
+  function isIOS(){
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  }
+  function hide(){ if(bar) bar.style.display='none'; }
+  function show(){
+    if(!bar || standalone()) return;
+    try{ if(localStorage.getItem(DISMISS)==='1') return; }catch(e){}
+    bar.style.display='block';
+  }
+
+  if(x) x.onclick=function(){ hide(); try{ localStorage.setItem(DISMISS,'1'); }catch(e){} };
+
+  // Chrome / Android — przegladarka sama daje monit, przechwytujemy go
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    deferred=e;
+    show();
+  });
+
+  if(go) go.onclick=function(){
+    if(deferred){
+      deferred.prompt();
+      deferred.userChoice.then(function(){ deferred=null; hide(); });
+    }
+  };
+
+  // iOS/Safari — brak beforeinstallprompt, wiec pokazujemy instrukcje recznie
+  if(isIOS() && !standalone()){
+    if(go)  go.style.display='none';
+    if(ios) ios.style.display='block';
+    if(sub) sub.textContent='Eyelingo działa na iPhonie jak zwykła aplikacja.';
+    setTimeout(show, 2500);
+  }
+
+  window.addEventListener('appinstalled', function(){
+    hide();
+    try{ if(typeof track==='function') track('pwa_installed',{surface:'mobile'}); }catch(e){}
+  });
+})();
+</script>
 </body>
 </html>
