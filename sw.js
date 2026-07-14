@@ -1,55 +1,44 @@
-// Eyelingo — service worker.
-// Rola: umozliwic instalacje PWA i podac powloke aplikacji, gdy siec jest slaba.
-// NIE buforujemy danych uzytkownika ani odpowiedzi Supabase — te musza byc zawsze swieze,
-// inaczej postepy SRS rozjechalyby sie miedzy urzadzeniami.
+// ═══════════════════════════════════════════════════════════════════════════
+// NAGROBEK — ten plik istnieje wyłącznie po to, żeby SIĘ SAM USUNĄĆ.
+//
+// Kontekst: przez pomyłkę zarejestrowałem tu drugi service worker, na tym samym
+// zasięgu co działający już `service-worker.js`. Dwa service workery na jednym
+// zasięgu wypierają się nawzajem — ten przejął sterowanie i zepsuł aplikację
+// mobilną.
+//
+// Samo skasowanie pliku z repozytorium NIE WYSTARCZY: service worker raz
+// zarejestrowany żyje w przeglądarce użytkownika dalej. Dlatego zamiast usuwać,
+// podmieniamy go na wersję, która wyrejestrowuje samą siebie, czyści WYŁĄCZNIE
+// swój własny cache i przeładowuje otwarte karty — po czym sterowanie wraca do
+// `service-worker.js`.
+//
+// Ten plik można usunąć z repozytorium po kilku tygodniach, gdy przeglądarki
+// zdążą go pobrać i wykonać.
+// ═══════════════════════════════════════════════════════════════════════════
 
-const CACHE = 'eyelingo-v1';
-const SHELL = [
-  'app.html',
-  'manifest.json',
-  'icon192.png',
-  'icon512.png',
-  'eyelingo-mark.png'
-];
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE)
-      // addAll przewraca sie, gdy JEDEN plik nie istnieje — dodajemy pojedynczo,
-      // zeby brak np. jednej ikony nie zablokowal calej instalacji.
-      .then((c) => Promise.allSettled(SHELL.map((u) => c.add(u))))
-      .then(() => self.skipWaiting())
-  );
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    try {
+      // Kasujemy TYLKO nasz cache. Cache'y należące do service-worker.js
+      // zostają nietknięte — nie powtarzamy tego samego błędu drugi raz.
+      await caches.delete('eyelingo-v1');
+    } catch (e) {}
+
+    try {
+      await self.registration.unregister();
+    } catch (e) {}
+
+    // Przeładuj otwarte karty, żeby przejął je z powrotem service-worker.js.
+    try {
+      const clients = await self.clients.matchAll({ type: 'window' });
+      clients.forEach((c) => c.navigate(c.url));
+    } catch (e) {}
+  })());
 });
 
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  if (req.method !== 'GET') return;
-
-  const url = new URL(req.url);
-  // Wszystko, co dotyczy danych i zewnetrznych uslug — prosto z sieci, bez cache.
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.includes('/rest/') || url.pathname.includes('/auth/') ||
-      url.pathname.includes('/functions/')) return;
-
-  // Powloka: siec pierwsza (zeby aktualizacje wchodzily od razu), cache jako zapas offline.
-  e.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res && res.status === 200 && res.type === 'basic') {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-        }
-        return res;
-      })
-      .catch(() => caches.match(req).then((hit) => hit || caches.match('app.html')))
-  );
-});
+// Nic nie przechwytujemy — wszystko idzie prosto do sieci.
+self.addEventListener('fetch', () => {});
