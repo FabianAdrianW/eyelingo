@@ -32,7 +32,8 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,
     QLabel, QLineEdit, QSystemTrayIcon, QScrollArea,
-    QMenu, QPushButton, QGridLayout, QMessageBox, QHBoxLayout, QCheckBox
+    QMenu, QPushButton, QGridLayout, QMessageBox, QHBoxLayout, QCheckBox,
+    QProgressBar
 )
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QBrush, QPen
@@ -255,6 +256,16 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY") or DEFAULT_SUPABASE_KEY
 # BYL UZYWANY W OKNIE ZGOD, ALE NIGDY ZDEFINIOWANY -> NameError przy starcie aplikacji.
 # Skladnia byla poprawna, wiec ani ast.parse, ani py_compile tego nie lapaly.
 BASE = os.getenv("EYELINGO_BASE_URL") or "https://fabianadrianw.github.io/eyelingo/"
+
+# ── Wersja aplikacji ────────────────────────────────────────────────────────
+# Linia ponizej jest NADPISYWANA W CI przy kazdym wydaniu (krok "Wersja w kodzie").
+# Nie zmieniaj jej recznie — i tak zostanie podmieniona na numer taga.
+APP_VERSION = "0.0.0"
+
+# Repozytorium wydan — stad aktualizator czyta, co jest najnowsze.
+GITHUB_REPO       = "FabianAdrianW/eyelingo"
+UPDATE_API        = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+UPDATE_CHECK_HOURS = 24     # nie czesciej niz raz na dobe przy starcie
 
 # ClientOptions: w nowszych wersjach eksportowane wprost z `supabase`. Stara sciezka
 # `supabase.lib.client_options` DALEJ SIE IMPORTUJE, ale zwraca wydmuszke bez pola
@@ -5119,6 +5130,299 @@ _HUB_OUTLINE = """
 """
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# AKTUALIZACJE W APLIKACJI
+#
+# Po co: bez tego kazda poprawka oznacza dla uzytkownika "wejdz na strone, pobierz,
+# przeklikaj ostrzezenia". Przy kilku wydaniach ludzie po prostu przestaja.
+#
+# Efekt uboczny, ktory jest tu najcenniejszy:
+#  - Windows: plik pobrany przez PRZEGLADARKE dostaje znacznik Mark-of-the-Web i
+#    dlatego wyskakuje SmartScreen. Plik pobrany przez SAMA APLIKACJE tego znacznika
+#    NIE MA -> ostrzezenie sie nie pojawia. (Smart App Control to osobna sprawa —
+#    on ocenia sam plik i niepodpisanej aplikacji nie przepusci tak czy owak.)
+#  - macOS: pobrany przez nas plik nie ma atrybutu kwarantanny, wiec mozemy podmienic
+#    aplikacje w /Applications po cichu, bez Gatekeepera i bez "prawy klik -> Otworz".
+# ══════════════════════════════════════════════════════════════════════════
+
+def _ver_tuple(v):
+    """'v1.2.3' -> (1,2,3). Odporne na smieci; brak liczby = 0."""
+    out = []
+    for part in str(v or "").strip().lstrip("vV").split("."):
+        num = ""
+        for ch in part:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        out.append(int(num) if num else 0)
+    while len(out) < 3:
+        out.append(0)
+    return tuple(out[:3])
+
+
+def _asset_name_for_platform():
+    """Nazwa pliku wydania dla tego systemu — musi zgadzac sie z workflow."""
+    import platform as _pf
+    sysname = _pf.system()
+    if sysname == "Windows":
+        return "Eyelingo-Setup-Windows.exe"
+    if sysname == "Darwin":
+        # Intel chwilowo bez paczki — patrz workflow. Tam aktualizacji nie proponujemy.
+        return "Eyelingo-macOS-AppleSilicon.dmg" if _pf.machine() == "arm64" else None
+    return None
+
+
+class UpdateCheckWorker(QThread):
+    """Pyta GitHub o najnowsze wydanie. Cicho — brak sieci nie moze niczego zepsuc."""
+    found    = pyqtSignal(str, str, str, int)   # wersja, opis, url, rozmiar
+    none     = pyqtSignal()
+
+    def run(self):
+        try:
+            import urllib.request, json as _json
+            asset_name = _asset_name_for_platform()
+            if not asset_name:
+                self.none.emit(); return
+
+            req = urllib.request.Request(
+                UPDATE_API,
+                headers={"Accept": "application/vnd.github+json",
+                         "User-Agent": f"Eyelingo/{APP_VERSION}"},
+            )
+            with urllib.request.urlopen(req, timeout=12) as r:
+                data = _json.loads(r.read().decode("utf-8"))
+
+            latest = str(data.get("tag_name") or "")
+            if _ver_tuple(latest) <= _ver_tuple(APP_VERSION):
+                self.none.emit(); return
+
+            url = size = None
+            for a in (data.get("assets") or []):
+                if a.get("name") == asset_name:
+                    url  = a.get("browser_download_url")
+                    size = int(a.get("size") or 0)
+                    break
+            if not url:
+                self.none.emit(); return
+
+            notes = (data.get("body") or "").strip()
+            self.found.emit(latest.lstrip("vV"), notes, url, size or 0)
+        except Exception as e:
+            print(f"[UPDATE] sprawdzanie: {e}")
+            self.none.emit()
+
+
+class UpdateDownloadWorker(QThread):
+    """Pobiera paczke do katalogu tymczasowego, raportujac postep."""
+    progress = pyqtSignal(int)     # 0-100
+    done     = pyqtSignal(str)     # sciezka
+    failed   = pyqtSignal(str)
+
+    def __init__(self, url, filename):
+        super().__init__()
+        self.finished.connect(self.deleteLater)
+        self.url = url
+        self.filename = filename
+
+    def run(self):
+        try:
+            import urllib.request, tempfile, os as _os
+            dest = _os.path.join(tempfile.gettempdir(), self.filename)
+            req = urllib.request.Request(
+                self.url, headers={"User-Agent": f"Eyelingo/{APP_VERSION}"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                total = int(r.headers.get("Content-Length") or 0)
+                got = 0
+                with open(dest, "wb") as f:
+                    while True:
+                        chunk = r.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        got += len(chunk)
+                        if total:
+                            self.progress.emit(min(99, int(got * 100 / total)))
+            self.progress.emit(100)
+            self.done.emit(dest)
+        except Exception as e:
+            self.failed.emit(str(e))
+
+
+class UpdateWindow(_DraggableWindow):
+    """Okno aktualizacji. Nic nie pobiera bez zgody uzytkownika."""
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedWidth(430)
+        self._url = self._ver = None
+        self._dl = None
+        self._build()
+
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        card = QWidget()
+        card.setObjectName("card")
+        card.setStyleSheet(
+            "#card { background: rgba(16,22,42,246); border: 1px solid rgba(72,82,128,170);"
+            " border-radius: 16px; }"
+        )
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(26, 24, 26, 22)
+        lay.setSpacing(10)
+
+        self.lbl_t = QLabel("Dostępna aktualizacja")
+        self.lbl_t.setFont(QFont("Segoe UI", 14, QFont.Weight.DemiBold))
+        self.lbl_t.setStyleSheet("color: rgba(235,240,255,240); background: transparent;")
+        lay.addWidget(self.lbl_t)
+
+        self.lbl_v = QLabel("")
+        self.lbl_v.setFont(QFont("Segoe UI", 9))
+        self.lbl_v.setStyleSheet("color: rgba(150,160,200,210); background: transparent;")
+        lay.addWidget(self.lbl_v)
+
+        self.lbl_notes = QLabel("")
+        self.lbl_notes.setWordWrap(True)
+        self.lbl_notes.setFont(QFont("Segoe UI", 9))
+        self.lbl_notes.setStyleSheet(
+            "color: rgba(190,200,235,205); background: transparent; margin-top: 4px;")
+        self.lbl_notes.setMaximumHeight(120)
+        lay.addWidget(self.lbl_notes)
+
+        self.bar = QProgressBar()
+        self.bar.setVisible(False)
+        self.bar.setTextVisible(False)
+        self.bar.setFixedHeight(6)
+        self.bar.setStyleSheet(
+            "QProgressBar { background: rgba(40,48,80,200); border: none; border-radius: 3px; }"
+            "QProgressBar::chunk { background: rgba(201,106,42,235); border-radius: 3px; }"
+        )
+        lay.addWidget(self.bar)
+
+        self.lbl_status = QLabel("")
+        self.lbl_status.setFont(QFont("Segoe UI", 8))
+        self.lbl_status.setStyleSheet("color: rgba(150,160,200,200); background: transparent;")
+        lay.addWidget(self.lbl_status)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.btn_later = QPushButton("Później")
+        self.btn_later.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_later.setStyleSheet(
+            "QPushButton { background: rgba(38,46,78,200); color: rgba(200,210,240,220);"
+            " border: 1px solid rgba(72,82,128,180); border-radius: 9px; padding: 9px 16px;"
+            " font-size: 11px; }"
+            "QPushButton:hover { background: rgba(48,58,96,215); }"
+        )
+        self.btn_later.clicked.connect(self.hide)
+
+        self.btn_go = QPushButton("Pobierz i zainstaluj")
+        self.btn_go.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_go.setStyleSheet(
+            "QPushButton { background: rgba(201,106,42,235); color: white; border: none;"
+            " border-radius: 9px; padding: 9px 18px; font-size: 11px; font-weight: 600; }"
+            "QPushButton:hover { background: rgba(224,120,48,255); }"
+            "QPushButton:disabled { background: rgba(90,80,70,180); color: rgba(200,200,200,140); }"
+        )
+        self.btn_go.clicked.connect(self._start)
+
+        row.addWidget(self.btn_later)
+        row.addStretch()
+        row.addWidget(self.btn_go)
+        lay.addLayout(row)
+
+        root.addWidget(card)
+
+    def offer(self, ver, notes, url, size):
+        self._ver, self._url = ver, url
+        mb = f" · {size/1048576:.0f} MB" if size else ""
+        self.lbl_v.setText(f"Wersja {ver}{mb} · masz {APP_VERSION}")
+        # Tresc wydania bywa dluga — pokazujemy poczatek, bez zalewania okna.
+        txt = "\n".join([l for l in notes.splitlines() if l.strip()][:6])
+        self.lbl_notes.setText(txt[:400])
+        self.bar.setVisible(False)
+        self.lbl_status.setText("")
+        self.btn_go.setEnabled(True)
+        self.btn_go.setText("Pobierz i zainstaluj")
+        self.adjustSize()
+        self._center()
+        self.show(); self.raise_(); self.activateWindow()
+
+    def _center(self):
+        try:
+            scr = QApplication.primaryScreen().availableGeometry()
+            self.move(scr.center().x() - self.width() // 2,
+                      scr.center().y() - self.height() // 2)
+        except Exception:
+            pass
+
+    def _start(self):
+        if not self._url:
+            return
+        self.btn_go.setEnabled(False)
+        self.btn_go.setText("Pobieranie…")
+        self.bar.setVisible(True)
+        self.bar.setValue(0)
+        self.lbl_status.setText("Pobieram aktualizację…")
+        name = _asset_name_for_platform() or "eyelingo-update"
+        self._dl = UpdateDownloadWorker(self._url, name)
+        self._dl.progress.connect(self.bar.setValue)
+        self._dl.done.connect(self._install)
+        self._dl.failed.connect(self._fail)
+        self._dl.start()
+
+    def _fail(self, msg):
+        self.bar.setVisible(False)
+        self.lbl_status.setText(f"Nie udało się pobrać: {msg}")
+        self.btn_go.setEnabled(True)
+        self.btn_go.setText("Spróbuj ponownie")
+
+    def _install(self, path):
+        import platform as _pf, subprocess, os as _os
+        self.lbl_status.setText("Instaluję…")
+        try:
+            if _pf.system() == "Windows":
+                # Instalator Inno z tym samym AppId aktualizuje W MIEJSCU — bez odinstalowywania.
+                # /CLOSEAPPLICATIONS pozwala mu zamknac dzialajaca aplikacje i podmienic pliki.
+                subprocess.Popen([path, "/SILENT", "/CLOSEAPPLICATIONS",
+                                  "/RESTARTAPPLICATIONS", "/NORESTART"],
+                                 close_fds=True)
+                QTimer.singleShot(900, lambda: QApplication.instance().quit())
+                return
+
+            if _pf.system() == "Darwin":
+                # Plik pobralismy sami -> brak atrybutu kwarantanny -> podmiana bez Gatekeepera.
+                script = (
+                    'set -e\n'
+                    f'MNT=$(mktemp -d)\n'
+                    f'hdiutil attach -nobrowse -quiet -mountpoint "$MNT" "{path}"\n'
+                    'rm -rf "/Applications/Eyelingo.app"\n'
+                    'cp -R "$MNT/Eyelingo.app" /Applications/\n'
+                    'hdiutil detach -quiet "$MNT" || true\n'
+                    'xattr -dr com.apple.quarantine "/Applications/Eyelingo.app" || true\n'
+                    'sleep 1\n'
+                    'open -n "/Applications/Eyelingo.app"\n'
+                )
+                subprocess.Popen(["/bin/bash", "-c", script], close_fds=True)
+                QTimer.singleShot(900, lambda: QApplication.instance().quit())
+                return
+        except Exception as e:
+            print(f"[UPDATE] instalacja: {e}")
+
+        # Awaryjnie: otworz pobrany plik i pozwol uzytkownikowi dokonczyc recznie.
+        try:
+            if _pf.system() == "Windows":
+                _os.startfile(path)          # noqa
+            else:
+                subprocess.Popen(["open", path])
+            self.lbl_status.setText("Otworzyłem instalator — dokończ ręcznie.")
+        except Exception as e:
+            self._fail(str(e))
+
+
 class HubWindow(_DraggableWindow):
     """D3 — trwałe okno traya. Lewy klik na ikonę traya otwiera/zamyka je.
     Menu kontekstowe (prawy klik) zostaje jako szybki dostęp."""
@@ -5500,6 +5804,7 @@ class TrayApp:
         self.win_my_sets.set_picked.connect(self._on_custom_set_picked)
 
         self.win_hub = HubWindow(self)
+        self.win_update = UpdateWindow()
 
         self.tray = QSystemTrayIcon(make_tray_icon())
         self.tray.setToolTip("Fiszki w tle")
@@ -5509,6 +5814,9 @@ class TrayApp:
         self.act_toggle.triggered.connect(self._toggle)
         menu.addAction("Otwórz panel").triggered.connect(self._toggle_hub)  # awaryjne wejście
         menu.addSeparator()
+        menu.addAction("Sprawdź aktualizacje").triggered.connect(
+            lambda: self.check_updates(manual=True))
+        menu.addSeparator()
         menu.addAction("Wyloguj").triggered.connect(self._logout)
         menu.addAction("✖  Zamknij").triggered.connect(self._quit)
 
@@ -5517,6 +5825,10 @@ class TrayApp:
             lambda r: self._toggle_hub() if r == QSystemTrayIcon.ActivationReason.Trigger else None
         )
         self.tray.show()
+
+        # Cicha kontrola aktualizacji przy starcie (max raz na dobe). Z opoznieniem,
+        # zeby nie konkurowac z ladowaniem sesji i fiszek o pierwsze sekundy.
+        QTimer.singleShot(6000, lambda: self.check_updates(manual=False))
 
     def _toggle_hub(self):
         if self.win_hub.isVisible():
@@ -5594,6 +5906,46 @@ class TrayApp:
         self.win_cat._rebuild_grid()
         QTimer.singleShot(200, lambda: self._load_completed_cats(lang))
         self.win_cat.show(); self.win_cat.raise_(); self.win_cat.activateWindow()
+
+    def check_updates(self, manual=False):
+        """Sprawdza wydania. Automatycznie — najwyzej raz na dobe, zeby nie meczyc
+        uzytkownika ani API GitHuba. Recznie (z menu) — zawsze."""
+        import time as _t
+        if not manual:
+            try:
+                last = float(APP_SETTINGS.get("last_update_check", 0))
+                if _t.time() - last < UPDATE_CHECK_HOURS * 3600:
+                    return
+            except Exception:
+                pass
+        try:
+            APP_SETTINGS["last_update_check"] = _t.time()
+            save_settings(APP_SETTINGS)
+        except Exception:
+            pass
+
+        self._upd_manual = manual
+        self._upd_worker = UpdateCheckWorker()
+        self._upd_worker.found.connect(self._on_update_found)
+        self._upd_worker.none.connect(self._on_update_none)
+        self._upd_worker.start()
+
+    def _on_update_found(self, ver, notes, url, size):
+        try:
+            self.win_update.offer(ver, notes, url, size)
+        except Exception as e:
+            print(f"[UPDATE] {e}")
+
+    def _on_update_none(self):
+        # Cisza przy sprawdzaniu automatycznym. Recznie — potwierdzenie, ze zadzialalo.
+        if getattr(self, "_upd_manual", False):
+            try:
+                self.tray.showMessage(
+                    "Eyelingo",
+                    f"Masz najnowszą wersję ({APP_VERSION}).",
+                    QSystemTrayIcon.MessageIcon.Information, 3000)
+            except Exception:
+                pass
 
     def _show_cats_current(self):
         """ALT+K — menu kategorii DLA TEGO, CO WLASNIE LECI W NAKLADCE.
