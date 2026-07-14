@@ -1,169 +1,71 @@
-name: Eyelingo desktop — build & release
+﻿; Eyelingo - instalator Windows (Inno Setup 6)
+; Kompilacja: iscc installer\eyelingo.iss
+; Wejscie:    dist\Eyelingo\      (wynik PyInstaller)
+; Wyjscie:    installer_out\Eyelingo-Setup-Windows.exe
+;
+; UWAGA: plik MUSI byc zapisany jako UTF-8 z BOM. Inno Setup 6.7 bez BOM-u
+; czyta go jako ANSI i rozsypuje sie na pierwszym nie-ASCII znaku.
+; Dlatego komentarze i dyrektywy sa tu czysto ASCII.
 
-# Wyzwalacz: tag typu v1.0.0  (albo ręcznie z zakładki Actions).
-on:
-  push:
-    tags: ["v*"]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Numer wersji (np. 1.0.0)"
-        required: true
-        default: "1.0.0"
+#define AppName      "Eyelingo"
+#define AppPublisher "Eyelingo"
+#define AppURL       "https://fabianadrianw.github.io/eyelingo/"
+#define AppExe       "Eyelingo.exe"
 
-permissions:
-  contents: write        # potrzebne, żeby workflow mógł utworzyć Release
+; Wersja wstrzykiwana przez CI (zmienna srodowiskowa EYELINGO_VERSION).
+#define AppVersion GetEnv("EYELINGO_VERSION")
+#if AppVersion == ""
+  #define AppVersion "1.0.0"
+#endif
 
-env:
-  # Konsola Windows w Actions startuje w cp1252 i wywraca się na polskich znakach
-  # w print(). Wymuszamy UTF-8 na wszystkich runnerach.
-  PYTHONIOENCODING: "utf-8"
-  PYTHONUTF8: "1"
+[Setup]
+AppId={{9F2B4C1E-7A55-4E3D-9C10-EYELINGO0001}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppPublisher={#AppPublisher}
+AppPublisherURL={#AppURL}
+AppSupportURL={#AppURL}
+DefaultDirName={commonpf}\{#AppName}
+DefaultGroupName={#AppName}
+DisableProgramGroupPage=yes
 
-jobs:
-  build:
-    name: ${{ matrix.label }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: win
-            label: Windows x64
-          - os: macos-14          # Apple Silicon (arm64)
-            target: mac_arm
-            label: macOS Apple Silicon
-          # ── macOS Intel — CHWILOWO WYLACZONY ──────────────────────────────
-          # Runnery macos-13 (Intel) sa wycofywane przez GitHuba: jest ich malo,
-          # a kolejka potrafi nie ruszyc godzinami. Krok "Publikacja" czeka na CALA
-          # matryce, wiec jeden zakleszczony runner blokowal wydanie Windows i ARM.
-          # Zeby przywrocic: odkomentuj 3 linie ponizej + wpis mac_intel w index.html.
-          # - os: macos-13
-          #   target: mac_intel
-          #   label: macOS Intel
+; Instalacja do C:\Program Files, per-machine, z podniesieniem uprawnien.
+; POWOD: Smart App Control (Windows 11) traktuje niepodpisane pliki wykonywalne
+; w katalogach zapisywalnych przez uzytkownika (AppData) jako wzorzec zagrozenia
+; i blokuje je twardo. Program Files przechodzi lagodniejsza ocene.
+PrivilegesRequired=admin
 
-    steps:
-      - uses: actions/checkout@v4
+; AKTUALIZACJA W MIEJSCU: ten sam AppId => instalator nadpisuje poprzednia wersje.
+; Uzytkownik NIE odinstalowuje niczego, ustawienia zostaja (leza w katalogu domowym).
+; CloseApplications pozwala zamknac dzialajacego Eyelingo i podmienic pliki -
+; bez tego aktualizacja z poziomu aplikacji nie mialaby jak sie powiesc.
+CloseApplications=yes
+RestartApplications=yes
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+OutputDir=..\installer_out
+OutputBaseFilename=Eyelingo-Setup-Windows
+SetupIconFile=..\assets\icon.ico
+UninstallDisplayIcon={app}\{#AppExe}
+Compression=lzma2/max
+SolidCompression=yes
+WizardStyle=modern
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 
-      - name: Ustal wersję
-        shell: bash
-        run: |
-          V="${{ github.event.inputs.version }}"
-          if [ -z "$V" ]; then V="${GITHUB_REF_NAME#v}"; fi
-          echo "EYELINGO_VERSION=$V" >> "$GITHUB_ENV"
-          echo "Wersja: $V"
+[Languages]
+Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"
 
-      - name: Zależności
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-desktop.txt
-          pip install pyinstaller pillow
+[Tasks]
+Name: "desktopicon"; Description: "Utwórz skrót na pulpicie"; GroupDescription: "Skróty:"
+Name: "startupicon"; Description: "Uruchamiaj Eyelingo przy starcie systemu"; GroupDescription: "Skróty:"; Flags: unchecked
 
-      # BRAMKA JAKOSCI: NameError (np. uzyta, ale niezdefiniowana zmienna) ma skladnie
-      # poprawna, wiec py_compile go NIE lapie — wybucha dopiero u uzytkownika, w locie.
-      # Taki blad ('BASE' is not defined) wywalal aplikacje przy starcie przez wiele wersji.
-      # Od teraz build pada TUTAJ, a nie w rekach uzytkownika.
-      - name: Kontrola kodu (niezdefiniowane nazwy)
-        shell: bash
-        run: |
-          pip install pyflakes
-          python -m pyflakes fiszki_app.py | grep -i "undefined name" && {
-            echo "::error::Znaleziono niezdefiniowane nazwy — build zatrzymany."
-            exit 1
-          } || echo "OK: brak niezdefiniowanych nazw"
+[Files]
+Source: "..\dist\Eyelingo\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-      - name: Ikony
-        shell: bash
-        run: python tools/make_icons.py
+[Icons]
+Name: "{group}\{#AppName}";       Filename: "{app}\{#AppExe}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: startupicon
 
-      - name: PyInstaller
-        shell: bash
-        run: pyinstaller eyelingo.spec --noconfirm
-
-      # ── Windows: instalator Inno Setup ─────────────────────────────────────
-      - name: Instalator (Inno Setup)
-        if: matrix.target == 'win'
-        shell: pwsh
-        run: |
-          choco install innosetup -y --no-progress
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\eyelingo.iss"
-          Get-ChildItem installer_out
-
-      # ── macOS: podpis ad-hoc + .dmg ────────────────────────────────────────
-      # Bez Apple Developer ID aplikacja nie jest notaryzowana. Podpis ad-hoc jest
-      # KONIECZNY na arm64 (macOS nie uruchomi niepodpisanego kodu na Apple Silicon),
-      # ale nie zdejmuje kwarantanny — użytkownik i tak musi zrobić „prawy klik → Otwórz".
-      - name: Podpis ad-hoc + DMG
-        if: startsWith(matrix.target, 'mac')
-        shell: bash
-        run: |
-          set -e
-          codesign --force --deep --sign - "dist/Eyelingo.app"
-          codesign --verify --verbose "dist/Eyelingo.app" || true
-
-          if [ "${{ matrix.target }}" = "mac_arm" ]; then
-            DMG="Eyelingo-macOS-AppleSilicon.dmg"
-          else
-            DMG="Eyelingo-macOS-Intel.dmg"
-          fi
-
-          rm -rf dmg_root && mkdir dmg_root
-          cp -R "dist/Eyelingo.app" dmg_root/
-          ln -s /Applications "dmg_root/Programy"
-          cp installer/macos/PRZECZYTAJ_MNIE.txt dmg_root/ 2>/dev/null || true
-
-          mkdir -p installer_out
-          hdiutil create -volname "Eyelingo" -srcfolder dmg_root \
-            -ov -format UDZO "installer_out/$DMG"
-          ls -lh installer_out
-
-      - name: Artefakty
-        uses: actions/upload-artifact@v4
-        with:
-          name: eyelingo-${{ matrix.target }}
-          path: installer_out/*
-          if-no-files-found: error
-
-  release:
-    name: Publikacja
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Lista plików
-        run: find artifacts -type f
-
-      - name: GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.event.inputs.version) }}
-          name: Eyelingo ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.event.inputs.version) }}
-          files: artifacts/**/*
-          draft: false
-          prerelease: false
-          body: |
-            **Eyelingo na komputer** — fiszki w tle, nakładka nad innymi oknami.
-
-            | System | Plik |
-            |---|---|
-            | Windows 10/11 (64-bit) | `Eyelingo-Setup-Windows.exe` |
-            | macOS · Apple Silicon (M1–M4) | `Eyelingo-macOS-AppleSilicon.dmg` |
-
-            Wersja dla Maków z procesorem Intel — w przygotowaniu.
-
-            **Pierwsze uruchomienie**
-            - *Windows:* ekran „Windows chronił Twój komputer" → **Więcej informacji → Uruchom mimo to**.
-            - *macOS:* przeciągnij do Programów, potem **prawy klik na ikonę → Otwórz → Otwórz**.
-              Gdyby system twierdził, że plik jest uszkodzony:
-              `xattr -dr com.apple.quarantine /Applications/Eyelingo.app`
-
-            Aplikacja nie ma jeszcze certyfikatu wydawcy — stąd ostrzeżenia. Nie wpływają na działanie.
+[Run]
+Filename: "{app}\{#AppExe}"; Description: "Uruchom {#AppName}"; Flags: nowait postinstall skipifsilent
