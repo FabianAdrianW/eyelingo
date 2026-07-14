@@ -1,30 +1,55 @@
-/* Eyelingo Service Worker — minimalny, bezpieczny dla Supabase.
+/* Eyelingo Service Worker — bezpieczny dla Supabase.
+ *
  * Zasada: cache'ujemy TYLKO statyczny shell z tego samego origin (GET).
  * Wszystko cross-origin (Supabase, jsDelivr CDN, Google Fonts, OpenRouter)
  * oraz każdy nie-GET puszczamy do sieci bez dotykania — auth/API/realtime nietknięte.
+ *
+ * ── NAPRAWA v2 ────────────────────────────────────────────────────────────
+ * Poprzednia wersja przy KAŻDEJ nawigacji robiła:
+ *     cache.put('./index.html', odpowiedź)
+ * a offline zwracała:
+ *     caches.match('./index.html')
+ *
+ * Skutek: otwarcie app.html zapisywało aplikację mobilną POD KLUCZEM index.html,
+ * a przy słabej sieci (albo w zainstalowanym PWA) użytkownik dostawał stronę
+ * internetową zamiast aplikacji. Serwis miał dwie różne strony, a cache — jedną szufladę.
+ *
+ * Teraz każda strona jest cache'owana POD SWOIM WŁASNYM adresem, a fallback
+ * offline zwraca tę stronę, o którą użytkownik faktycznie poprosił.
+ * ──────────────────────────────────────────────────────────────────────────
  */
 
-const CACHE = 'eyelingo-shell-v1';
+const CACHE = 'eyelingo-shell-v2';   // bump wersji => stary, zepsuty cache zostaje wyczyszczony
 
 // Pliki shellu (ścieżki względne — działają też pod /repo/ na GitHub Pages)
 const SHELL = [
   './',
   './index.html',
+  './app.html',          // aplikacja mobilna — MUSI tu być, to ona jest celem instalacji
   './manifest.json',
-  './favicon.ico'
+  './favicon.ico',
+  './icon192.png',
+  './icon512.png',
+  './apple-touch-icon-180.png'
 ];
 
 // INSTALL — wrzuć shell do cache i aktywuj od razu
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE)
-      .then(function (cache) { return cache.addAll(SHELL); })
+      .then(function (cache) {
+        // addAll przewraca się w całości, gdy JEDEN plik nie istnieje.
+        // Dodajemy pojedynczo — brak np. jednej ikony nie może zablokować instalacji.
+        return Promise.all(SHELL.map(function (u) {
+          return cache.add(u).catch(function () { /* pomijamy brakujący plik */ });
+        }));
+      })
       .then(function () { return self.skipWaiting(); })
-      .catch(function () { /* brak pliku w SHELL nie blokuje instalacji */ })
+      .catch(function () { /* instalacja nie może padać przez cache */ })
   );
 });
 
-// ACTIVATE — wyczyść stare wersje cache
+// ACTIVATE — wyczyść stare wersje cache (w tym tę z błędem)
 self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys()
@@ -48,16 +73,26 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  // Nawigacja (otwarcie apki): sieć najpierw, cache jako fallback offline.
+  // Nawigacja (otwarcie strony lub aplikacji): sieć najpierw, cache jako zapas offline.
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req)
         .then(function (res) {
+          // KLUCZOWE: zapisujemy pod adresem TEJ konkretnej strony, nie pod index.html.
           const copy = res.clone();
-          caches.open(CACHE).then(function (c) { c.put('./index.html', copy); });
+          caches.open(CACHE).then(function (c) { c.put(req, copy); });
           return res;
         })
-        .catch(function () { return caches.match('./index.html'); })
+        .catch(function () {
+          // Offline: oddaj dokładnie tę stronę, o którą poproszono.
+          return caches.match(req).then(function (hit) {
+            if (hit) { return hit; }
+            // Nie znamy tej strony. Zgadnij po adresie, ale NIGDY nie podawaj
+            // strony internetowej komuś, kto otworzył aplikację.
+            const wantsApp = url.pathname.indexOf('app.html') !== -1;
+            return caches.match(wantsApp ? './app.html' : './index.html');
+          });
+        })
     );
     return;
   }
