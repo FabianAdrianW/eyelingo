@@ -851,7 +851,7 @@ def load_categories(lang=None, level=None, _retry=True):
             CATEGORIES = []
 
 INTERVAL_MS = 6000
-OPACITY     = 0.82
+OPACITY     = 0.57   # wartosc awaryjna; zrodlem prawdy jest APP_SETTINGS["opacity"]
 
 # ── Konfiguracja: chowanie fiszki przy kursorze (hover-hide) ──
 HOVER_HIDE_ENABLED = True    # fiszka znika, gdy kursor jest blisko
@@ -870,7 +870,7 @@ import json, pathlib
 SETTINGS_FILE = pathlib.Path.home() / ".eyelingo_settings.json"
 
 DEFAULT_SETTINGS = {
-    "opacity":      0.82,
+    "opacity":      0.57,
     "text_alpha":   240,
     "audio_enabled": False,
     "display_time": 8,
@@ -884,6 +884,7 @@ DEFAULT_SETTINGS = {
         "start_test":    "alt+t",
         "show_settings": "alt+u",
         "read_card":     "alt+r",
+        "show_cats":     "alt+k",
     }
 }
 
@@ -896,6 +897,7 @@ HOTKEY_LABELS = {
     "start_test":    "Rozpocznij test",
     "show_settings": "Otwórz ustawienia",
     "read_card":     "Czytaj słówko (TTS)",
+    "show_cats":     "Kategorie (bieżący język i poziom)",
 }
 
 def load_settings() -> dict:
@@ -1900,7 +1902,7 @@ class FlashcardOverlay(QWidget):
             Qt.WindowType.WindowTransparentForInput
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setWindowOpacity(OPACITY)
+        self.setWindowOpacity(self._cur_opacity())
         screen = QApplication.primaryScreen().availableGeometry()
         self.setGeometry(screen.left() + 20, screen.top() + 20, 320, 130)
         self.setFixedSize(360, 130)   # ZAWSZE stały rozmiar
@@ -2184,6 +2186,17 @@ class FlashcardOverlay(QWidget):
             print(f"[click-through] {e}")
 
     # ── Hover-hide: chowanie fiszki, gdy kursor jest blisko ──
+    def _cur_opacity(self) -> float:
+        """Biezaca przezroczystosc = TO, CO USTAWIL UZYTKOWNIK.
+        Wczesniej hover przywracal stala OPACITY (0.82), przez co kazde zblizenie
+        kursora po cichu kasowalo wartosc z suwaka. Stala zostaje tylko jako awaryjna."""
+        try:
+            v = float(APP_SETTINGS.get("opacity", OPACITY))
+        except Exception:
+            v = OPACITY
+        # Ponizej ~0.05 okno byloby niewidoczne i nie do odzyskania — trzymamy podloge.
+        return min(1.0, max(0.05, v))
+
     def _init_hover_hide(self):
         self._hover_timer = QTimer(self)
         self._hover_timer.timeout.connect(self._check_cursor_proximity)
@@ -2202,7 +2215,7 @@ class FlashcardOverlay(QWidget):
                 self.timer.stop()
             self.setWindowOpacity(0.0)
         else:
-            self.setWindowOpacity(OPACITY)
+            self.setWindowOpacity(self._cur_opacity())   # bylo: OPACITY (kasowalo ustawienie)
             if self._hover_paused_rotation:
                 self._hover_paused_rotation = False
                 self.timer.start(int(APP_SETTINGS.get("display_time", 8) * 1000))
@@ -5582,6 +5595,31 @@ class TrayApp:
         QTimer.singleShot(200, lambda: self._load_completed_cats(lang))
         self.win_cat.show(); self.win_cat.raise_(); self.win_cat.activateWindow()
 
+    def _show_cats_current(self):
+        """ALT+K — menu kategorii DLA TEGO, CO WLASNIE LECI W NAKLADCE.
+        Zrodlem prawdy jest overlay (to on wie, co uzytkownik faktycznie oglada),
+        a nie ostatnia nawigacja w menu — te dwie rzeczy potrafia sie rozjechac,
+        np. po wznowieniu sesji albo po przejsciu ALT+strzalka."""
+        try:
+            lang = getattr(self.overlay, "lang", None)  or getattr(self, "_lang", None)
+            lvl  = getattr(self.overlay, "level", None) or getattr(self, "_lvl", None)
+        except Exception:
+            lang = lvl = None
+
+        # Brak kontekstu (nic jeszcze nie wybrano) -> otwieramy menu od gory, nie w prozni.
+        if not lang or not lvl:
+            self._show_lang()
+            return
+
+        # Zestawy wlasne nie maja katalogu kategorii — tam ten skrot nie ma sensu.
+        if lang in ("custom", "custom_new"):
+            self._show_my_sets()
+            return
+
+        self._lang, self._lvl = lang, lvl
+        self.win_lang.hide(); self.win_lvl.hide()
+        self._on_lvl(lang, lvl)
+
     def _on_cat(self, lang, lvl, cat):
         self.overlay.load_from_supabase(lang, lvl, cat)
         self._track_views(lang, lvl, cat)
@@ -6173,6 +6211,7 @@ class HotkeySignals(QObject):
     start_test    = pyqtSignal()
     show_settings = pyqtSignal()
     read_card     = pyqtSignal()
+    show_cats     = pyqtSignal()
 
 _hotkey_signals = HotkeySignals()
 
@@ -6184,7 +6223,7 @@ def setup_hotkeys(app_ref, tray_ref):
     # Rozłącz stare połączenia żeby nie nakładały się przy przeładowaniu
     for sig in [s.next_cat, s.prev_cat,
                 s.toggle, s.pause, s.show_sel,
-                s.start_test, s.show_settings, s.read_card]:
+                s.start_test, s.show_settings, s.read_card, s.show_cats]:
         try: sig.disconnect()
         except Exception: pass
     s.next_cat.connect(tray_ref.next_category)
@@ -6195,6 +6234,7 @@ def setup_hotkeys(app_ref, tray_ref):
     s.start_test.connect(tray_ref._start_test)
     s.show_settings.connect(lambda: (tray_ref.win_settings.show(), tray_ref.win_settings.raise_()))
     s.read_card.connect(tray_ref._read_current_card)
+    s.show_cats.connect(tray_ref._show_cats_current)
 
     hk = APP_SETTINGS["hotkeys"]
     signal_map = {
@@ -6206,6 +6246,7 @@ def setup_hotkeys(app_ref, tray_ref):
         "start_test":   s.start_test,
         "show_settings":s.show_settings,
         "read_card":    s.read_card,
+        "show_cats":    s.show_cats,
     }
     for key, sig in signal_map.items():
         combo = hk.get(key, "")
