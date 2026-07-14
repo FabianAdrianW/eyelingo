@@ -869,6 +869,38 @@ HOVER_HIDE_ENABLED = True    # fiszka znika, gdy kursor jest blisko
 HOVER_HIDE_MARGIN  = 45      # px wokół fiszki — wejście w tę strefę chowa ją
 HOVER_SHOW_MARGIN  = 95      # px — kursor musi wyjść poza tę (szerszą) strefę, by wróciła (histereza)
 HOVER_POLL_MS      = 70      # co ile ms sprawdzamy pozycję kursora
+# True  = hover WSTRZYMUJE odliczanie i po zjechaniu kursora wznawia RESZTĘ czasu
+#         (fiszka NIE dostaje nowego, pełnego okna czasowego — to był bug).
+# False = odliczanie leci dalej pod kursorem; fiszki zmieniają się „niewidocznie”.
+HOVER_PAUSE_ROTATION = True
+
+# ── Konfiguracja: adaptacyjna przezroczystość na jasnym tle ──
+import platform as _pf_mod
+# macOS: zrzut ekranu wymaga zgody „Screen Recording” (TCC) — domyślnie OFF,
+# żeby nie wywoływać promptu systemowego. Windows: działa bez uprawnień.
+ADAPT_OPACITY_ENABLED = (_pf_mod.system() == "Windows")
+ADAPT_POLL_MS      = 1000    # co ile ms próbkujemy tło
+ADAPT_RING_PX      = 18      # szerokość „ramki” wokół fiszki, z której bierzemy próbki
+ADAPT_LIGHT_LUMA   = 190     # 0-255: powyżej tej luminancji piksel uznajemy za jasny
+ADAPT_ENTER_RATIO  = 0.75    # >=75% jasnych pikseli → tło jasne (próg z wymagania)
+ADAPT_EXIT_RATIO   = 0.60    # <=60% → tło znów ciemne (histereza, chroni przed migotaniem)
+ADAPT_CONFIRM_HITS = 2       # ile kolejnych pomiarów musi potwierdzić zmianę stanu
+ADAPT_DELTA        = 0.10    # o ile bardziej przezroczysta fiszka na jasnym tle
+ADAPT_MIN_OPACITY  = 0.20    # podłoga — fiszka nigdy nie znika całkiem
+
+# ── Konfiguracja: geometria karty (szerokość dopasowana do treści kategorii) ──
+CARD_MARGIN_X = 14      # wewnętrzny margines poziomy (musi = QVBoxLayout contentsMargins)
+CARD_MARGIN_Y = 8       # wewnętrzny margines pionowy
+CARD_SPACING  = 3       # odstęp między wierszami karty
+CARD_H        = 110     # STAŁA wysokość karty — jedna dla wszystkich kategorii i fiszek
+CARD_MIN_W    = 176     # nie schodzimy niżej — poniżej karta wygląda jak dymek błędu
+# Sufit szerokości NIE jest stałą liczbą pikseli — liczymy go z ekranu, na którym
+# karta faktycznie leży. Na 13" laptopie 560 px byłoby pół pulpitu; na 4K to pasek.
+CARD_MAX_W_RATIO = 0.28   # max ~28% szerokości roboczej ekranu
+CARD_MAX_W_MIN   = 320    # ...ale nigdy węziej niż to (małe ekrany)
+CARD_MAX_W_MAX   = 560    # ...ani szerzej niż to (nakładka, nie panel)
+CARD_SAFETY_W = 6       # bufor na kerning/hinting — chroni przed obcięciem ostatniej litery
+WORD_FONT_MIN = 8       # podłoga auto-zmniejszania fontu; niżej tekst jest nieczytelny
 
 # ── Konfiguracja: przenoszenie trudnych słów między kategoriami (SRS carry-forward) ──
 MASTER_REPS_MIN     = 3      # kanoniczna bramka "Opanowane": powtórzenia >= 3 ...
@@ -1904,6 +1936,9 @@ class FlashcardOverlay(QWidget):
         self._hover_hidden = False
         self._hover_paused_rotation = False
         self._init_hover_hide()
+        self._adapt_light = False        # czy tło pod fiszką jest jasne
+        self._adapt_hits  = 0            # licznik potwierdzeń zmiany stanu
+        self._init_adaptive_opacity()
 
     def _init_window(self):
         self.setWindowFlags(
@@ -1916,12 +1951,14 @@ class FlashcardOverlay(QWidget):
         self.setWindowOpacity(self._cur_opacity())
         screen = QApplication.primaryScreen().availableGeometry()
         self.setGeometry(screen.left() + 20, screen.top() + 20, 320, 130)
-        self.setFixedSize(360, 130)   # ZAWSZE stały rozmiar
+        # Rozmiar startowy (ekran powitalny). Po wczytaniu kategorii karta jest
+        # przekrojona na miarę przez _fit_to_cards() — patrz niżej.
+        self.setFixedSize(300, CARD_H)
 
     def _init_ui(self):
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 8, 14, 8)
-        lay.setSpacing(3)
+        lay.setContentsMargins(CARD_MARGIN_X, CARD_MARGIN_Y, CARD_MARGIN_X, CARD_MARGIN_Y)
+        lay.setSpacing(CARD_SPACING)
 
         # górny pasek: info + postęp
         top = QWidget()
@@ -1947,12 +1984,13 @@ class FlashcardOverlay(QWidget):
         self.lbl_word.setStyleSheet("color:rgba(255,255,255,240);")
         self.lbl_word.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_word.setWordWrap(True)
-        self.lbl_word.setMaximumWidth(320)
+        self.lbl_word.setMaximumWidth(CARD_MAX_W_MAX - 2 * CARD_MARGIN_X)
 
         self.lbl_tr = QLabel("")
         self.lbl_tr.setFont(QFont("Segoe UI", 11))
         self.lbl_tr.setStyleSheet("color:rgba(200,220,255,210);")
         self.lbl_tr.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_tr.setWordWrap(True)   # przy suficie CARD_MAX_W długie frazy zawijają się, zamiast się ucinać
 
         self.lbl_romaji = QLabel("")
         self.lbl_romaji.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
@@ -1992,6 +2030,7 @@ class FlashcardOverlay(QWidget):
         self.cards = cards
         self.index = 0
         self._is_custom = False
+        self._fit_to_cards()
         self.show()
         self._update()
 
@@ -2009,20 +2048,154 @@ class FlashcardOverlay(QWidget):
                        "romaji": "", "flashcard_id": i, "custom": True, "set_name": short_name}
                       for i, c in enumerate(cards)]
         self.index = 0
+        self._fit_to_cards()
         self.show()
         self._update()
 
+    # ── Zegar rotacji fiszek ──────────────────────────────────────────
+    # Timer jest SINGLE-SHOT i sam się przezbraja po każdej fiszce. Dzięki temu
+    # da się go wstrzymać (hover) i wznowić na RESZTĘ czasu, nie na pełne okno.
+    def _rotation_ms(self) -> int:
+        try:
+            v = float(APP_SETTINGS.get("display_time", 8))
+        except Exception:
+            v = 8.0
+        return max(1000, int(v * 1000))
+
     def _init_timer(self):
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self._next)
-        ms = int(APP_SETTINGS.get("display_time", 8) * 1000)
-        self.timer.start(ms)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self._on_rotation_timeout)
+        self._rot_left_ms = None      # reszta czasu zapamiętana przy pauzie
+        self._rotation_restart()
+
+    def _on_rotation_timeout(self):
+        self._next()
+        self._rotation_restart()      # nowa fiszka → pełne okno czasowe
+
+    def _rotation_restart(self, ms: int = None):
+        """Start pełnego okna czasowego dla BIEŻĄCEJ fiszki (reset licznika)."""
+        self._rot_left_ms = None
+        self.timer.start(int(ms) if ms else self._rotation_ms())
+
+    def _rotation_pause(self) -> bool:
+        """Wstrzymuje rotację ZACHOWUJĄC pozostały czas bieżącej fiszki."""
+        if not self.timer.isActive():
+            return False
+        left = self.timer.remainingTime()
+        self._rot_left_ms = max(0, int(left)) if left is not None and left >= 0 else 0
+        self.timer.stop()
+        return True
+
+    def _rotation_resume(self):
+        """Wznawia rotację na RESZCIE czasu — bez resetowania odliczania."""
+        left = self._rot_left_ms
+        self._rot_left_ms = None
+        if left is None:
+            return
+        self.timer.start(max(50, int(left)))
+
+    # ── Geometria karty: „tak wąsko, jak pozwala kategoria" ───────────
+    def _fm(self, size: int, bold: bool = False):
+        """QFontMetrics dla danego kroju — z cache, bo mierzymy setki fiszek."""
+        from PyQt6.QtGui import QFontMetrics
+        key = (size, bold)
+        cache = getattr(self, "_fm_cache", None)
+        if cache is None:
+            cache = self._fm_cache = {}
+        if key not in cache:
+            w = QFont.Weight.Bold if bold else QFont.Weight.Normal
+            cache[key] = QFontMetrics(QFont("Segoe UI", size, w))
+        return cache[key]
+
+    def _info_variants(self):
+        """Wszystkie warianty tekstu paska górnego, jakie mogą się pojawić w tej kategorii."""
+        out = []
+        if getattr(self, "_is_custom", False):
+            out.append(f"Własny · {self.cat}")
+        else:
+            out.append(f"{self.cat}  ·  {self.level}  ·  {lang_label(self.lang)}")
+        for c in self.cards:
+            if c.get("srs"):
+                out.append(f"Powtórka · {c.get('category', 'poprzednia kategoria')}")
+        return out
+
+    def _max_card_w(self) -> int:
+        """Sufit szerokości liczony z EKRANU, na którym karta leży (nie stała liczba).
+        Dzięki temu ta sama karta jest dyskretna i na 1366×768, i na 4K."""
+        try:
+            scr = self.screen() or QApplication.primaryScreen()
+            sw  = scr.availableGeometry().width() if scr else 1280
+        except Exception:
+            sw = 1280
+        return max(CARD_MAX_W_MIN, min(CARD_MAX_W_MAX, int(sw * CARD_MAX_W_RATIO)))
+
+    def _shrink_to_fit(self, text: str, start: int, bold: bool, avail: int) -> int:
+        """Największy rozmiar fontu (≤ start), przy którym tekst mieści się w JEDNEJ linii."""
+        size = int(start)
+        if not text:
+            return size
+        while size > WORD_FONT_MIN and self._fm(size, bold).horizontalAdvance(text) > avail:
+            size -= 1
+        return size
+
+    def _fit_to_cards(self):
+        """Ustala SZEROKOŚĆ karty pod najdłuższą treść w bieżącej kategorii.
+        Wysokość jest stała (CARD_H) — jedna dla wszystkich kategorii.
+
+        Decyzja UX: mierzymy CAŁY zestaw i ustawiamy rozmiar RAZ — karta stoi
+        nieruchomo. Gdyby szerokość liczyć per fiszkę, nakładka „oddychałaby"
+        co kilka sekund; ruch na peryferiach wzroku to najgorszy możliwy rodzaj
+        rozpraszania dla narzędzia, które ma być tłem, a nie bodźcem.
+        Kotwicą jest lewy górny róg — karta rośnie/kurczy się w prawo.
+
+        Mierzymy szerokość JEDNEJ linii przy docelowym foncie każdej fiszki, więc
+        w typowej kategorii nic się nie zawija. Gdy najdłuższa fraza przebija sufit
+        ekranu, szerokość zatrzymuje się na suficie, a o resztę dba _apply_card_text():
+        zmniejsza font i (dopiero potem) zawija. Nic nie zostaje ucięte."""
+        if not self.cards:
+            return
+
+        fm_info = self._fm(8)
+        fm_tr   = self._fm(11)
+        fm_nat  = self._fm(13)          # zapis natywny przy piśmie nielatyńskim
+
+        # 1) pasek górny: kategoria · poziom · język  +  licznik znanych słów
+        top_w = 0
+        for t in self._info_variants():
+            top_w = max(top_w, fm_info.horizontalAdvance(t))
+        kn = self.lbl_known.text()
+        if kn:
+            top_w += 4 + fm_info.horizontalAdvance(kn)   # 4 px = spacing w top_lay
+
+        # 2) treść fiszek — dokładnie te kroje, którymi będą narysowane
+        body_w = 0
+        for c in self.cards:
+            word   = c.get("word", "") or ""
+            romaji = c.get("romaji", "") or ""
+            tr     = c.get("translation", "") or ""
+            if romaji and self.lang in NON_LATIN_LANGS:
+                body_w = max(body_w, fm_nat.horizontalAdvance(word))
+                fm_rom = self._fm(min(self._get_word_font_size(romaji), 13), True)
+                body_w = max(body_w, fm_rom.horizontalAdvance(romaji))
+            else:
+                fm_w = self._fm(self._get_word_font_size(word), True)
+                body_w = max(body_w, fm_w.horizontalAdvance(word))
+            body_w = max(body_w, fm_tr.horizontalAdvance(tr))
+
+        w = max(top_w, body_w) + 2 * CARD_MARGIN_X + CARD_SAFETY_W
+        w = max(CARD_MIN_W, min(self._max_card_w(), int(w)))
+
+        self.lbl_word.setMaximumWidth(w - 2 * CARD_MARGIN_X)
+        if (w, CARD_H) != (self.width(), self.height()):
+            self.setFixedSize(w, CARD_H)
 
     def set_known_words(self, count):
         if count > 0:
             self.lbl_known.setText(f"✓ {count} słów")
         else:
             self.lbl_known.setText("")
+        self._fit_to_cards()   # licznik zmienia szerokość paska górnego → przelicz
 
     def _next(self):
         if self.cards:
@@ -2042,50 +2215,105 @@ class FlashcardOverlay(QWidget):
         else:
             return 9
 
+    def _apply_card_text(self, word: str, romaji: str, tr: str):
+        """Wpisuje treść fiszki tak, by ZAWSZE zmieściła się w stałej karcie.
+
+        Kolejność ustępstw (od najmniej do najbardziej widocznego):
+          1. font schodzi w dół, aż tekst mieści się w jednej linii,
+          2. jeśli podłoga fontu nie wystarcza — tekst się zawija,
+          3. jeśli zawinięcie przebija budżet wysokości — font schodzi dalej.
+        Nigdy nie ucinamy słowa: obcięte słówko to fiszka bez wartości."""
+        from PyQt6.QtCore import QRect
+        alpha  = int(APP_SETTINGS.get("text_alpha", 240))
+        avail  = max(40, self.width() - 2 * CARD_MARGIN_X)
+        nonlat = bool(romaji) and self.lang in NON_LATIN_LANGS
+
+        if nonlat:
+            texts = [word, romaji, tr]
+            bolds = [False, True, False]
+            sizes = [self._shrink_to_fit(word, 13, False, avail),
+                     self._shrink_to_fit(romaji, min(self._get_word_font_size(romaji), 13), True, avail),
+                     self._shrink_to_fit(tr, 11, False, avail)]
+        else:
+            texts = [word, tr]
+            bolds = [True, False]
+            sizes = [self._shrink_to_fit(word, self._get_word_font_size(word), True, avail),
+                     self._shrink_to_fit(tr, 11, False, avail)]
+
+        # Budżet pionowy = stała wysokość karty minus marginesy i pasek górny.
+        budget = (self.height() - 2 * CARD_MARGIN_Y
+                  - self._fm(8).height() - CARD_SPACING)
+
+        def total_h(ss):
+            h = CARD_SPACING * (len(texts) - 1)
+            for t, s, b in zip(texts, ss, bolds):
+                if not t:
+                    continue
+                h += self._fm(s, b).boundingRect(
+                    QRect(0, 0, avail, 4000),
+                    int(Qt.TextFlag.TextWordWrap), t).height()
+            return h
+
+        guard = 0
+        while total_h(sizes) > budget and max(sizes) > WORD_FONT_MIN and guard < 32:
+            sizes[sizes.index(max(sizes))] -= 1   # skracamy zawsze największy element
+            guard += 1
+
+        if nonlat:
+            # Pismo nielatyńskie: lbl_word = zapis natywny, lbl_romaji = transliteracja (główny bodziec)
+            self.lbl_word.setFont(QFont("Segoe UI", sizes[0]))
+            self.lbl_word.setStyleSheet(f"color:rgba(200,220,255,{int(alpha * 0.87)});")
+            self.lbl_word.setText(word)
+            self.lbl_romaji.setFont(QFont("Segoe UI", sizes[1], QFont.Weight.Bold))
+            self.lbl_romaji.setStyleSheet(f"color:rgba(255,255,255,{alpha});")
+            self.lbl_romaji.setText(romaji)
+            self.lbl_romaji.show()
+            self.lbl_tr.setFont(QFont("Segoe UI", sizes[2]))
+        else:
+            self.lbl_word.setFont(QFont("Segoe UI", sizes[0], QFont.Weight.Bold))
+            self.lbl_word.setStyleSheet(f"color:rgba(255,255,255,{alpha});")
+            self.lbl_word.setText(word)
+            self.lbl_romaji.hide()
+            self.lbl_tr.setFont(QFont("Segoe UI", sizes[1]))
+        self.lbl_tr.setText(tr)
+
     def _update(self):
         if not self.cards:
             return
         c = self.cards[self.index]
-        romaji = c.get("romaji", "")
+        romaji = c.get("romaji", "") or ""
         word = c["word"]
-        if romaji and self.lang in NON_LATIN_LANGS:
-            # Pismo nielatyńskie: lbl_word = zapis natywny (styl jak tłumaczenie), lbl_romaji = transliteracja pośrodku
-            font_size = self._get_word_font_size(romaji)
-            self.lbl_word.setFont(QFont("Segoe UI", 13))
-            self.lbl_word.setStyleSheet("color:rgba(200,220,255,210);")
-            self.lbl_word.setText(word)
-            self.lbl_romaji.setFont(QFont("Segoe UI", min(font_size, 13), QFont.Weight.Bold))
-            self.lbl_romaji.setText(romaji)
-            self.lbl_romaji.show()
-        else:
-            font_size = self._get_word_font_size(word)
-            self.lbl_word.setFont(QFont("Segoe UI", font_size, QFont.Weight.Bold))
-            self.lbl_word.setStyleSheet("color:rgba(255,255,255,240);")
-            self.lbl_word.setText(word)
-            self.lbl_romaji.hide()
-        self.lbl_tr.setText(c["translation"])
-        # Dopasuj rozmiar okna do zawartości
-        QTimer.singleShot(10, self.adjustSize)
-        # Przywróć font słówka (na wypadek gdyby coś go zmieniło)
-        if not (romaji and self.lang in NON_LATIN_LANGS):
-            self.lbl_word.setFont(QFont("Segoe UI", self._get_word_font_size(word), QFont.Weight.Bold))
+        # Rozmiar karty ustala _fit_to_cards() (raz na kategorię); tu tylko wpasowujemy tekst.
+        self._apply_card_text(word, romaji, c.get("translation", "") or "")
         # Efekt wizualny słówka
         QTimer.singleShot(50, self._play_word_effect)
         # Etykieta SRS / własny zestaw
         if c.get("srs"):
             cat_label = c.get("category", "poprzednia kategoria")
-            self.lbl_info.setText(f"Powtórka · {cat_label}")
+            self._set_info(f"Powtórka · {cat_label}")
         elif getattr(self, "_is_custom", False):
-            self.lbl_info.setText(f"Własny · {self.cat}")
+            self._set_info(f"Własny · {self.cat}")
         else:
-            self.lbl_info.setText(f"{self.cat}  ·  {self.level}  ·  {lang_label(self.lang)}")
-        # Auto-czytanie TTS
-        if APP_SETTINGS.get("audio_enabled", False):
+            self._set_info(f"{self.cat}  ·  {self.level}  ·  {lang_label(self.lang)}")
+        # Auto-czytanie TTS — nigdy „w próżnię”: gdy fiszka jest schowana
+        # pod kursorem (hover), użytkownik jej nie widzi, więc jej nie czytamy.
+        if APP_SETTINGS.get("audio_enabled", False) and not getattr(self, "_hover_hidden", False):
             raw = c.get("word", "")
             lang = self.lang or "en"
             if lang == "jp":
                 raw = _jp_tts_word(raw)
             speak_word(raw, lang)
+
+    def _set_info(self, text: str):
+        """Pasek górny nie może rozpychać karty ani się urywać w pół litery —
+        przy suficie CARD_MAX_W skracamy go wielokropkiem (standard UX)."""
+        avail = self.width() - 2 * CARD_MARGIN_X
+        kn = self.lbl_known.text()
+        if kn:
+            avail -= 4 + self._fm(8).horizontalAdvance(kn)
+        if avail > 20:
+            text = self._fm(8).elidedText(text, Qt.TextElideMode.ElideRight, avail)
+        self.lbl_info.setText(text)
 
     def _play_word_effect(self):
         """Efekt wizualny TYLKO koloru słówka - bez zmiany rozmiaru/pozycji. Max ~300ms."""
@@ -2196,17 +2424,29 @@ class FlashcardOverlay(QWidget):
         except Exception as e:
             print(f"[click-through] {e}")
 
-    # ── Hover-hide: chowanie fiszki, gdy kursor jest blisko ──
-    def _cur_opacity(self) -> float:
-        """Biezaca przezroczystosc = TO, CO USTAWIL UZYTKOWNIK.
-        Wczesniej hover przywracal stala OPACITY (0.82), przez co kazde zblizenie
-        kursora po cichu kasowalo wartosc z suwaka. Stala zostaje tylko jako awaryjna."""
+    # ── Przezroczystość: baza (ustawienia) → efektywna (baza − adaptacja) ──
+    def _base_opacity(self) -> float:
+        """Ostatni ZAPIS użytkownika — jedyne źródło prawdy. Adaptacja go nie nadpisuje."""
         try:
             v = float(APP_SETTINGS.get("opacity", OPACITY))
         except Exception:
             v = OPACITY
         # Ponizej ~0.05 okno byloby niewidoczne i nie do odzyskania — trzymamy podloge.
         return min(1.0, max(0.05, v))
+
+    def _cur_opacity(self) -> float:
+        """Efektywna przezroczystość okna: baza z ustawień, pomniejszona o ADAPT_DELTA,
+        gdy tło pod fiszką jest jasne. Gdy tło ciemnieje — wracamy do bazy."""
+        v = self._base_opacity()
+        if getattr(self, "_adapt_light", False):
+            v = max(ADAPT_MIN_OPACITY, v - ADAPT_DELTA)
+        return min(1.0, max(0.05, v))
+
+    def apply_opacity(self):
+        """Wymusza przeliczenie i nałożenie efektywnej przezroczystości."""
+        if getattr(self, "_hover_hidden", False):
+            return                      # pod kursorem okno jest na 0.0 — nie ruszamy
+        self.setWindowOpacity(self._cur_opacity())
 
     def _init_hover_hide(self):
         self._hover_timer = QTimer(self)
@@ -2215,21 +2455,25 @@ class FlashcardOverlay(QWidget):
 
     def _hover_apply(self, hidden: bool):
         """Chowa/pokazuje fiszkę przez przezroczystość (okno pozostaje click-through).
-        Nie używa hide()/show(), by nie kolidować z pauzą/wznowieniem z traya."""
+        Nie używa hide()/show(), by nie kolidować z pauzą/wznowieniem z traya.
+
+        WAŻNE: hover NIE resetuje czasu wyświetlania fiszki. Wcześniej robił
+        timer.stop() + timer.start(display_time) — czyli fiszka po zjechaniu kursora
+        dostawała pełne, nowe okno czasowe (a przy muskaniu kursorem — w nieskończoność).
+        Teraz pauza zapamiętuje RESZTĘ czasu i dokładnie ją wznawia."""
         if hidden == self._hover_hidden:
             return
         self._hover_hidden = hidden
         if hidden:
-            # pauza rotacji, by żadna fiszka nie "przeleciała" za kursorem
-            self._hover_paused_rotation = self.timer.isActive()
-            if self._hover_paused_rotation:
-                self.timer.stop()
+            if HOVER_PAUSE_ROTATION:
+                # pauza rotacji, by żadna fiszka nie „przeleciała” niewidocznie za kursorem
+                self._hover_paused_rotation = self._rotation_pause()
             self.setWindowOpacity(0.0)
         else:
-            self.setWindowOpacity(self._cur_opacity())   # bylo: OPACITY (kasowalo ustawienie)
             if self._hover_paused_rotation:
                 self._hover_paused_rotation = False
-                self.timer.start(int(APP_SETTINGS.get("display_time", 8) * 1000))
+                self._rotation_resume()      # RESZTA czasu, nie pełne okno
+            self.setWindowOpacity(self._cur_opacity())
 
     def _check_cursor_proximity(self):
         if not HOVER_HIDE_ENABLED:
@@ -2252,6 +2496,91 @@ class FlashcardOverlay(QWidget):
             m = HOVER_SHOW_MARGIN
             if not geo.adjusted(-m, -m, m, m).contains(cp):
                 self._hover_apply(False)
+
+    # ── Adaptacyjna przezroczystość: jasne tło → fiszka bardziej przezroczysta ──
+    def _init_adaptive_opacity(self):
+        if not ADAPT_OPACITY_ENABLED:
+            return
+        self._adapt_timer = QTimer(self)
+        self._adapt_timer.timeout.connect(self._check_background_lightness)
+        self._adapt_timer.start(ADAPT_POLL_MS)
+
+    def _sample_ring_light_ratio(self):
+        """Zwraca udział jasnych pikseli (0.0–1.0) w „ramce” wokół fiszki, albo None.
+
+        Dlaczego RAMKA, a nie obszar dosłownie pod fiszką: zrzut ekranu jest
+        kompozytem — nasze własne (półprzezroczyste) okno jest NA WIERZCHU, więc
+        piksele pod fiszką są już zmieszane z jej granatowym tłem i luminancja
+        wyszłaby zaniżona. Ramka ADAPT_RING_PX wokół okna jest czysta i w praktyce
+        pokazuje tę samą treść (to samo okno aplikacji), co obszar pod fiszką."""
+        try:
+            from PyQt6.QtCore import QRect
+            scr = self.screen() or QApplication.primaryScreen()
+            if scr is None:
+                return None
+            geo  = self.geometry()
+            r    = ADAPT_RING_PX
+            outer = geo.adjusted(-r, -r, r, r).intersected(scr.geometry())
+            if outer.width() < 8 or outer.height() < 8:
+                return None
+            pm = scr.grabWindow(0, outer.x(), outer.y(), outer.width(), outer.height())
+            if pm.isNull():
+                return None
+            img = pm.toImage()
+            iw, ih = img.width(), img.height()
+            if iw < 4 or ih < 4:
+                return None
+            # skala logiczne px → px obrazu (HiDPI: devicePixelRatio > 1)
+            sx = iw / float(outer.width())
+            sy = ih / float(outer.height())
+            # prostokąt fiszki w układzie 'outer' (te piksele POMIJAMY)
+            inner = QRect(geo.x() - outer.x(), geo.y() - outer.y(),
+                          geo.width(), geo.height())
+            light = total = 0
+            STEP_X = max(1, outer.width()  // 40)   # ~40 x ~24 siatka próbek
+            STEP_Y = max(1, outer.height() // 24)
+            for ly in range(0, outer.height(), STEP_Y):
+                for lx in range(0, outer.width(), STEP_X):
+                    if inner.contains(lx, ly):
+                        continue                     # to nasze okno, nie tło
+                    px = min(iw - 1, int(lx * sx))
+                    py = min(ih - 1, int(ly * sy))
+                    c = img.pixelColor(px, py)
+                    luma = 0.2126 * c.red() + 0.7152 * c.green() + 0.0722 * c.blue()
+                    total += 1
+                    if luma >= ADAPT_LIGHT_LUMA:
+                        light += 1
+            if total < 20:
+                return None
+            return light / float(total)
+        except Exception as e:
+            print(f"[adapt] próbkowanie tła nieudane: {e}")
+            return None
+
+    def _check_background_lightness(self):
+        if not ADAPT_OPACITY_ENABLED:
+            return
+        if not self.isVisible() or not self.cards or self._hover_hidden:
+            return
+        ratio = self._sample_ring_light_ratio()
+        if ratio is None:
+            return
+        # histereza: wejście na jasne przy >=75%, wyjście dopiero przy <=60%
+        want = self._adapt_light
+        if not self._adapt_light and ratio >= ADAPT_ENTER_RATIO:
+            want = True
+        elif self._adapt_light and ratio <= ADAPT_EXIT_RATIO:
+            want = False
+        if want == self._adapt_light:
+            self._adapt_hits = 0
+            return
+        # zmiana stanu musi się potwierdzić N razy z rzędu (odporność na scroll/animacje)
+        self._adapt_hits += 1
+        if self._adapt_hits < ADAPT_CONFIRM_HITS:
+            return
+        self._adapt_hits = 0
+        self._adapt_light = want
+        self.apply_opacity()   # jasno → baza − ADAPT_DELTA; ciemno → powrót do bazy
 
 
 # ──────────────────────────────────────────────────────
@@ -6185,9 +6514,8 @@ class TrayApp:
         self.login_window.activateWindow()
 
     def _restart_timer(self):
-        ms = int(APP_SETTINGS.get("display_time", 8) * 1000)
-        self.overlay.timer.stop()
-        self.overlay.timer.start(ms)
+        # zmiana 'display_time' w ustawieniach → świeże, pełne okno czasowe
+        self.overlay._rotation_restart()
 
     def _on_settings_changed(self, s):
         """Zastosuj nowe ustawienia wyglądu i skrótów."""
@@ -6195,8 +6523,8 @@ class TrayApp:
             "opacity":    s["opacity"],
             "text_alpha": s["text_alpha"],
         })
-        # przezroczystość
-        self.overlay.setWindowOpacity(s["opacity"])
+        # przezroczystość — przez apply_opacity(), żeby nie skasować stanu adaptacji
+        self.overlay.apply_opacity()
         # jasność tekstu - wpływa na słówko, romaji i tłumaczenie
         alpha = int(s["text_alpha"])
         self.overlay.lbl_word.setStyleSheet(f"color:rgba(255,255,255,{alpha});")
@@ -6322,16 +6650,17 @@ class TrayApp:
     def next_card_now(self):
         """ALT+N – następna fiszka od razu."""
         self.overlay._next()
-        self.overlay.timer.start(INTERVAL_MS)
+        self.overlay._rotation_restart()   # było: INTERVAL_MS (ignorowało ustawienie 'Sekund')
         _session.track("hotkey_used", {"hotkey": "alt+n", "action": "next_card"})
 
     def toggle_pause(self):
         """ALT+P – pauza / wznów."""
         if self.overlay.timer.isActive():
             self.overlay.timer.stop()
+            self.overlay._rot_left_ms = None
             _session.track("hotkey_used", {"hotkey": "alt+p", "action": "pause"})
         else:
-            self.overlay.timer.start(INTERVAL_MS)
+            self.overlay._rotation_restart()   # było: INTERVAL_MS
             _session.track("hotkey_used", {"hotkey": "alt+p", "action": "resume"})
 
 
@@ -6475,6 +6804,7 @@ class TrayApp:
         if filtered:
             self.overlay.cards = filtered
             self.overlay.index = 0
+            self.overlay._fit_to_cards()
             self.overlay._update()
 
 
