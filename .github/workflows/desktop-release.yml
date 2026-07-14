@@ -58,6 +58,23 @@ jobs:
           echo "EYELINGO_VERSION=$V" >> "$GITHUB_ENV"
           echo "Wersja: $V"
 
+      # Aktualizator w aplikacji porownuje APP_VERSION z tagiem najnowszego wydania.
+      # Gdyby w kodzie zostalo "0.0.0", kazdy start zglaszalby dostepna aktualizacje.
+      - name: Wersja w kodzie
+        shell: bash
+        run: |
+          python - <<'PY'
+          import io, os, re
+          v = os.environ["EYELINGO_VERSION"]
+          p = "fiszki_app.py"
+          s = io.open(p, encoding="utf-8").read()
+          s2, n = re.subn(r'^APP_VERSION = "[^"]*"',
+                          f'APP_VERSION = "{v}"', s, count=1, flags=re.M)
+          assert n == 1, "Nie znalazlem APP_VERSION w fiszki_app.py"
+          io.open(p, "w", encoding="utf-8").write(s2)
+          print(f"APP_VERSION -> {v}")
+          PY
+
       - name: Zależności
         shell: bash
         run: |
