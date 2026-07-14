@@ -6990,6 +6990,21 @@ def main():
     _dbg(f"[SESSION] plik sesji: {SESSION_FILE}")
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+
+    # Ikona aplikacji = TEN SAM znak, co w zasobniku (biało-pomarańczowy, base64 w kodzie).
+    # Wcześniej okna i pasek zadań brały granatowy wariant z icon.ico — dwa różne
+    # wizerunki tej samej marki w tym samym systemie. Teraz jest jeden.
+    app.setWindowIcon(make_tray_icon())
+    # Windows: bez własnego AppUserModelID pasek zadań przykleja okna do ikony
+    # interpretera Pythona, a nie do naszej. Jedna linijka, ratuje cały efekt.
+    try:
+        import platform as _pf
+        if _pf.system() == "Windows":
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Eyelingo.Desktop")
+    except Exception as e:
+        print(f"[icon] AppUserModelID: {e}")
+
     _apply_font_substitutions()
     _apply_macos_accessory()
 
