@@ -1651,6 +1651,7 @@ window.switchMatTab = function(tab){
   if(grid) grid.style.display='none';
   if(voices) voices.style.display='none';
   if(colView) colView.style.display='none';
+  var _dh=document.getElementById('mat-drag-hint'); if(_dh) _dh.style.display='none';
   if(createBtn) createBtn.style.display='none';
   var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display='none';
   var search=document.getElementById('mat-search');
@@ -1660,6 +1661,7 @@ window.switchMatTab = function(tab){
     if(sub) sub.textContent='Wybierz zestaw — przeglądaj słówka i ćwicz w czterech trybach.';
     if(grid){ grid.style.display='grid'; }
     if(createBtn&&window._matMyUid) createBtn.style.display='block';
+    if(_dh) _dh.style.display='flex';
     var _aiB=document.getElementById('mat-create-ai-btn'); if(_aiB) _aiB.style.display=(window._matMyUid?'inline-flex':'none');
     if(typeof loadMySets==='function') loadMySets();
     else setTimeout(function(){ if(typeof loadMySets==='function') loadMySets(); }, 300);
@@ -2320,13 +2322,13 @@ window.switchMatTab = function(tab){
         <a href="#lp-loop">Jak to działa</a>
         <a href="#lp-jezyki">Języki</a>
         <a href="#cennik">Cennik</a>
-        <a onclick="showAuth('register')">Trener AI</a>
+        <a onclick="eylGoTrener()">Trener AI</a>
       </div>
       <div class="lp-foot-col">
         <h4>Nauka</h4>
-        <a onclick="showAuth('register')">Tryb nauki</a>
+        <a onclick="eylGoNauka()">Tryb nauki</a>
         <a onclick="handleCreateSet()">Własne zestawy</a>
-        <a onclick="showAuth('register')">Aplikacja mobilna</a>
+        <a onclick="eylGoMobile()">Aplikacja mobilna</a>
       </div>
       <div class="lp-foot-col">
         <h4>Firma</h4>
@@ -2489,10 +2491,10 @@ window.switchMatTab = function(tab){
     <!-- ═══ HERO: co desktop zrobił dziś (Most #1 + ambient feedback) ═══ -->
     <div class="dash-hero">
       <div class="dash-hero-main">
-        <div class="dash-hero-eyebrow">Twój desktop pracował w tle</div>
+        <div class="dash-hero-eyebrow" id="dash-hero-eyebrow">Twój desktop pracował w tle</div>
         <div class="dash-hero-line">
           <span class="dash-hero-num" id="dash-today-shown">—</span>
-          <span class="dash-hero-unit">fiszek pokazanych dziś</span>
+          <span class="dash-hero-unit" id="dash-hero-unit">fiszek pokazanych dziś</span>
         </div>
         <p class="dash-hero-sub" id="dash-hero-sub">Eyelingo wyświetlał Ci słowa w rogu ekranu, kiedy pracowałeś. Bez wysiłku, bez przerw.</p>
         <div class="dash-hero-cta">
@@ -2822,7 +2824,7 @@ async function submitAuth(){
 
 async function loadDashboard(){
   const{data:{user}}=await db.auth.getUser();if(!user)return;
-  const name=user.email.split('@')[0];
+  const name=(user.user_metadata&&user.user_metadata.username)||user.email.split('@')[0];
   document.getElementById('dash-name').textContent=name;
   updateNav(true,name);
 
@@ -2839,7 +2841,7 @@ async function loadDashboard(){
 
   // ── Pseudonim + status premium (profiles) ──
   const{data:p}=await db.from('profiles').select('is_premium,premium_until,username').eq('user_id',user.id).maybeSingle();
-  if(p?.username) document.getElementById('dash-name').textContent=p.username;
+  if(p?.username){ document.getElementById('dash-name').textContent=p.username; if(typeof updateNav==='function') updateNav(true,p.username); }
   const now=new Date();
   const until=p?.premium_until?new Date(p.premium_until):null;
   const isPremium=p?.is_premium&&until&&until>now;
@@ -2887,12 +2889,23 @@ async function loadDesktopStats(uid, seenTotal){
   const todayShown = byDate[todayKey]?byDate[todayKey].shown:0;
   const shownEl=document.getElementById('dash-today-shown');
   const subEl=document.getElementById('dash-hero-sub');
+  const ebEl=document.getElementById('dash-hero-eyebrow');
+  const unitEl=document.getElementById('dash-hero-unit');
   if(shownEl){
     if(hasData){
       shownEl.textContent=todayShown.toLocaleString('pl-PL');
+      if(ebEl) ebEl.textContent='Twój desktop pracował w tle';
+      if(unitEl) unitEl.textContent='fiszek pokazanych dziś';
+      if(subEl) subEl.textContent='Eyelingo wyświetlał Ci słowa w rogu ekranu, kiedy pracowałeś. Bez wysiłku, bez przerw.';
     } else {
-      shownEl.textContent='—';
-      if(subEl) subEl.textContent='Zainstaluj i uruchom desktop Eyelingo, aby zobaczyć tu ile fiszek pokazał Ci dziś w tle.';
+      // Web-first: brak danych z desktopa → pokaż realny dorobek użytkownika (słowa przerobione łącznie).
+      const seen=Number(seenTotal||0);
+      shownEl.textContent=seen.toLocaleString('pl-PL');
+      if(ebEl) ebEl.textContent='Twój postęp';
+      if(unitEl) unitEl.textContent='słów już przerobionych';
+      if(subEl) subEl.textContent = seen>0
+        ? 'Tyle słów już przez Ciebie przeszło — Eyelingo pilnuje, żeby wróciły w odpowiednim momencie. Wersja na komputer pokazuje słowa w tle podczas pracy (opcjonalnie).'
+        : 'Zacznij od sesji powtórek albo rozmowy — pierwsze słowa pojawią się tu od razu. Możesz też dołożyć wersję na komputer, która pokazuje słowa w tle.';
     }
   }
 
@@ -2920,7 +2933,7 @@ function renderD7Chart(days, byDate, hasData){
     </div>`;
   }).join('');
   const foot=document.getElementById('d7-foot');
-  if(foot && !hasData) foot.textContent='Brak danych z desktopa — wykres wypełni się, gdy aplikacja zacznie pokazywać fiszki.';
+  if(foot && !hasData) foot.textContent='Ten wykres pokazuje aktywność wersji na komputer (opcjonalnej). Wypełni się, gdy uruchomisz Eyelingo na komputerze.';
 }
 
 // Most #1 — słowa znane ale nieopanowane, najtrudniejsze pierwsze
@@ -3068,6 +3081,10 @@ function startSrsSession(){
 }
 
 function eylStartFree(){ if(window._eylLoggedIn){ if(typeof showPage==='function'){ showPage('dash'); return; } } showAuth('register'); }
+// Routing CTA stopki: zalogowany → funkcja w apce, niezalogowany → rejestracja.
+function eylGoTrener(){ if(window._eylLoggedIn && typeof switchTab==='function'){ switchTab('teacher'); return; } showAuth('register'); }
+function eylGoNauka(){ if(window._eylLoggedIn && typeof switchTab==='function'){ switchTab('community'); return; } showAuth('register'); }
+function eylGoMobile(){ if(window._eylLoggedIn && typeof showPage==='function'){ showPage('dash'); return; } showAuth('register'); }
 function updateNav(li,email){
   window._eylLoggedIn=!!li;
   const n=document.getElementById('nav-r');
@@ -3827,7 +3844,7 @@ window.loadMySets = async function loadMySets(){
     var _chg=false;
     (_collections||[]).forEach(function(c){ var _b=(c.sets||[]).length; c.sets=(c.sets||[]).filter(function(s){return _valid.has(s.id);}); if(c.sets.length!==_b)_chg=true; });
     if(_chg && typeof saveCollections==='function') saveCollections(session.user.id);
-    var username=session.user.user_metadata&&session.user.user_metadata.username||session.user.email||'';
+    var username=(session.user.user_metadata&&session.user.user_metadata.username)||(session.user.email?session.user.email.split('@')[0]:'')||'';
     _matSets=(data||[]).map(function(s){ return Object.assign({},s,{username,user_id:_matMyUid}); });
     if(grid){ matRenderMine(); }
     var createBtn=document.getElementById('mat-create-btn');
@@ -3930,6 +3947,7 @@ function setCard(s){
     : '';
   // Przycisk Ucz się (SRS) + Utrwal z Lexem (modal wyboru poziomu → Lex)
   const playBtn = `<div style="display:flex;gap:7px;margin-top:10px" onclick="event.stopPropagation()">
+    <button onclick="event.stopPropagation();eylPreviewSet(${s.id})" title="Podejrzyj słowa" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 11px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s" onmouseover="this.style.borderColor='var(--navy)';this.style.color='var(--navy)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--dim2)'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
     <button onclick="matCardStartSRS(${s.id},&#39;${nmA}&#39;)" title="Tryb fiszek SRS" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--navy);background:transparent;color:var(--navy);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.background='var(--navy)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--navy)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Ucz się</button>
     <button onclick="matCardLexModal(${s.id},&#39;${nmA}&#39;,&#39;${langCode||''}&#39;)" title="Utrwal z Ailexem" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--orange);background:transparent;color:var(--orange);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.background='var(--orange)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--orange)'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Utrwal z Ailexem</button>
   </div>`;
@@ -3949,6 +3967,28 @@ function setCard(s){
     ${isMineTab ? playBtn : ''}
   </div>`;
 }
+
+// Podgląd zawartości zestawu użytkownika („oko") — ten sam modal co kategorie Eyelingo.
+window.eylPreviewSet = async function(setId){
+  var set=(typeof _matSets!=='undefined'?_matSets:[]).filter(function(s){return String(s.id)===String(setId);})[0]||null;
+  var name=set&&set.name?String(set.name):'Zestaw';
+  var cleanName=(typeof window.stripEmoji==='function')?window.stripEmoji(name):name;
+  var _e=(typeof esc==='function')?esc:function(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
+  var ov=document.getElementById('eylc-preview'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='eylc-preview'; ov.className='eylc-modal';
+  ov.addEventListener('click', function(ev){ if(ev.target===ov) ov.remove(); });
+  ov.innerHTML='<div class="eylc-sheet"><div class="eylc-shead"><div style="min-width:0"><div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_e(cleanName)+'</div><div style="font-size:12px;color:var(--dim2);margin-top:3px">Twój zestaw · podgląd</div></div><button class="eylc-x" onclick="document.getElementById(\'eylc-preview\').remove()">×</button></div><div class="eylc-sbody" id="eylc-pbody"><div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Wczytuję słowa…</div></div></div>';
+  document.body.appendChild(ov);
+  var body=document.getElementById('eylc-pbody');
+  try{
+    var rows=(set&&set.user_set_cards)?set.user_set_cards.slice():[];
+    if(!rows.length){ var r=await db.from('user_set_cards').select('word,translation').eq('set_id',setId).order('id',{ascending:true}); rows=(r&&r.data)||[]; }
+    rows=rows.filter(function(c){ return c&&(c.word||c.translation); });
+    if(!body) return;
+    if(!rows.length){ body.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Ten zestaw nie ma jeszcze słów.</div>'; return; }
+    body.innerHTML='<div class="eylc-prevlist">'+rows.map(function(c){ return '<div class="eylc-prow"><span class="w">'+_e(c.word||'')+'</span><span class="t">'+_e(c.translation||'')+'</span></div>'; }).join('')+'</div>';
+  }catch(e){ if(body) body.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Nie udało się wczytać słów.</div>'; }
+};
 
 // Uruchomienie lekcji Lexa z kafelka zestawu
 window.matCardStartLesson = function(setId, setName, langCode){
@@ -6420,10 +6460,9 @@ function srsFlip(){
   bar.id='srs-rating-bar';
   bar.style.cssText='display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap';
   bar.innerHTML=
-    '<button class="btn" style="background:#dc2626;color:#fff;flex:1;min-width:100px;padding:12px" onclick="srsRate(0)">😰 Nie pamiętam</button>'+
-    '<button class="btn" style="background:#f59e0b;color:#fff;flex:1;min-width:100px;padding:12px" onclick="srsRate(1)">😅 Trudne</button>'+
-    '<button class="btn" style="background:#16a34a;color:#fff;flex:1;min-width:100px;padding:12px" onclick="srsRate(2)">😊 Dobrze</button>'+
-    '<button class="btn" style="background:#0f6e56;color:#fff;flex:1;min-width:100px;padding:12px" onclick="srsRate(3)">🚀 Łatwo</button>';
+    '<button class="btn" style="flex:1;min-width:98px;padding:11px 14px;border-radius:12px;border:1px solid transparent;background:#fcebeb;color:#a32d2d;font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;cursor:pointer" onclick="srsRate(0)">Nie wiedziałem</button>'+
+    '<button class="btn" style="flex:1;min-width:98px;padding:11px 14px;border-radius:12px;border:1px solid transparent;background:#eaf3de;color:#3b6d11;font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;cursor:pointer" onclick="srsRate(2)">Wiedziałem</button>'+
+    '<button class="btn" style="flex:1;min-width:98px;padding:11px 14px;border-radius:12px;border:1px solid transparent;background:#e0f2fe;color:#0369a1;font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;cursor:pointer" onclick="srsRate(3)">Łatwe</button>';
 
   var progressRow=document.getElementById('btn-next')?.parentElement?.parentElement;
   if(progressRow) progressRow.appendChild(bar);
