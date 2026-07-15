@@ -3865,25 +3865,56 @@ class ProfileWorker(QThread):
     done  = pyqtSignal(dict)
     error = pyqtSignal(str)
 
-    def __init__(self):
+    def __init__(self, force_refresh: bool = False):
         super().__init__()
+        # force_refresh=True: przy ponowieniu po transiencie startowym odswiez sesje
+        # (serializowane, rotuje refresh_token RAZ) na WATKU WORKERA, nie na GUI.
+        self._force_refresh = force_refresh
         self.finished.connect(self.deleteLater)
 
     def run(self):
         try:
+            if self._force_refresh:
+                try:
+                    _refresh_and_sync()   # zserializowane; rotuje rt raz + syncuje postgrest
+                except Exception:
+                    pass
             uid = current_uid()   # waliduje sesję + synchronizuje token postgrest PRZED zapytaniami
-            resp = supabase.rpc("get_player_profile").execute()
-            data = dict(resp.data or {})
-            # Premium autorytatywnie wprost z profiles — RPC bywa niekompletny
+            # RPC osobno — nawet gdy niekompletny, moze niesc is_premium
+            data = {}
             try:
-                prof = supabase.from_("profiles").select(
-                    "is_premium,premium_until,levels_bought"
-                ).eq("user_id", uid).single().execute()
-                if prof.data:
-                    for k in ("is_premium", "premium_until", "levels_bought"):
-                        data[k] = prof.data.get(k)
-            except Exception as e2:
-                print(f"[PROFILE] premium fallback: {e2}")
+                resp = supabase.rpc("get_player_profile").execute()
+                data = dict(resp.data or {})
+            except Exception as e_rpc:
+                print(f"[PROFILE] RPC get_player_profile: {e_rpc}")
+            # Premium autorytatywnie wprost z profiles — RPC bywa niekompletny.
+            # Odczyt jest wrazliwy na wyscig token/RLS tuz po przywroceniu sesji
+            # (auth.uid()=NULL -> 0 wierszy -> .single() rzuca). Refresh + jeden retry.
+            prof_row = None
+            for _try in range(2):
+                try:
+                    prof = supabase.from_("profiles").select(
+                        "is_premium,premium_until,levels_bought"
+                    ).eq("user_id", uid).single().execute()
+                    if prof.data:
+                        prof_row = prof.data
+                        break
+                except Exception as e2:
+                    print(f"[PROFILE] premium read (próba {_try}): {e2}")
+                    if _try == 0:
+                        try:
+                            _refresh_and_sync()   # token/RLS race — odswiez i sprobuj raz
+                        except Exception:
+                            pass
+            if prof_row:
+                for k in ("is_premium", "premium_until", "levels_bought"):
+                    data[k] = prof_row.get(k)
+            elif not data:
+                # Nie udalo sie wczytac NICZEGO — nie zglaszaj falszywego FREE.
+                # Sygnalizuj blad, zeby warstwa UI ponowila (self-heal), zamiast
+                # zostawic premium na domyslnym False do recznego przelogowania.
+                self.error.emit("profil: brak danych (token/RLS)")
+                return
             self.done.emit(data)
         except Exception as e:
             self.error.emit(str(e))
@@ -6426,11 +6457,28 @@ class TrayApp:
         except Exception:
             self._toggle_hub()
 
-    def load_user_stats(self):
-        """Wczytaj pełny profil gracza."""
-        self._profile_worker = ProfileWorker()
+    def load_user_stats(self, _attempt: int = 0):
+        """Wczytaj pełny profil gracza.
+
+        Przy starcie z przywróconej sesji odczyt premium bywa przejściowo
+        blokowany (wyścig token/RLS) — worker emituje wtedy `error`. Bez
+        podłączenia tego sygnału premium zostawało na domyślnym FREE aż do
+        ręcznego przelogowania. Tu podłączamy retry z bounded liczbą prób.
+        """
+        self._profile_worker = ProfileWorker(force_refresh=_attempt > 0)
         self._profile_worker.done.connect(self._on_profile_loaded)
+        self._profile_worker.error.connect(
+            lambda msg, a=_attempt: self._on_profile_error(msg, a)
+        )
         self._profile_worker.start()
+
+    def _on_profile_error(self, msg: str, attempt: int):
+        """Transient startowy (token/RLS) — odśwież i ponów, zamiast zostawić FREE."""
+        _dbg(f"[PROFILE] błąd wczytania profilu (próba {attempt}): {msg}")
+        if attempt >= 3:
+            _dbg("[PROFILE] wyczerpano próby ponowienia — profil pozostaje niezmieniony")
+            return
+        QTimer.singleShot(1200, lambda: self.load_user_stats(_attempt=attempt + 1))
 
     def _on_profile_loaded(self, profile):
         is_premium    = _premium_active(profile)
