@@ -705,7 +705,43 @@ function translateAuthErr(m){
   if(m.indexOf('password')>=0) return 'Hasło musi mieć min. 6 znaków.';
   return 'Nie udało się: '+m;
 }
-async function askLogout(){ if(confirm('Wylogować się?')){ try{ await db.auth.signOut(); }catch(e){} location.reload(); } }
+async function askLogout(){
+  // Menu konta: wyloguj lub usuń konto (RODO — parytet z „Usuń konto" na stronie).
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:99998;background:rgba(26,35,64,.45);display:flex;align-items:flex-end;justify-content:center';
+  ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+  var sheet=document.createElement('div');
+  sheet.style.cssText='background:#fff;width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;flex-direction:column;gap:10px;font-family:Inter,sans-serif';
+  sheet.innerHTML='<div style="font-family:DM Sans,sans-serif;font-weight:600;font-size:15px;color:#1a2340;text-align:center;padding:6px 0 4px">Konto</div>';
+  var bLogout=document.createElement('button');
+  bLogout.textContent='Wyloguj się';
+  bLogout.style.cssText='padding:13px;border-radius:12px;border:1.5px solid rgba(26,35,64,.18);background:#fff;color:#1a2340;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer';
+  bLogout.onclick=async function(){ ov.remove(); try{ await db.auth.signOut(); }catch(e){} location.reload(); };
+  var bDelete=document.createElement('button');
+  bDelete.textContent='Usuń konto';
+  bDelete.style.cssText='padding:13px;border-radius:12px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer';
+  bDelete.onclick=function(){ ov.remove(); eylDeleteAccountMobile(); };
+  var bCancel=document.createElement('button');
+  bCancel.textContent='Anuluj';
+  bCancel.style.cssText='padding:12px;border:none;background:transparent;color:rgba(107,115,148,.9);font-size:14px;font-family:Inter,sans-serif;cursor:pointer';
+  bCancel.onclick=function(){ ov.remove(); };
+  sheet.appendChild(bLogout); sheet.appendChild(bDelete); sheet.appendChild(bCancel);
+  ov.appendChild(sheet); document.body.appendChild(ov);
+}
+async function eylDeleteAccountMobile(){
+  if(!confirm('Usunąć konto? To działanie jest nieodwracalne — skasujemy Twoje postępy, zestawy i pozostałe dane.')) return;
+  if(!confirm('Na pewno chcesz trwale usunąć konto? Tego nie da się cofnąć.')) return;
+  try{
+    var sess=(await db.auth.getSession()).data.session;
+    if(!sess){ alert('Sesja wygasła — zaloguj się ponownie.'); return; }
+    var r=await fetch(SUPABASE_URL+'/functions/v1/delete-account',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+sess.access_token,'apikey':SUPABASE_KEY}});
+    if(!r.ok){ alert('Nie udało się usunąć konta ('+r.status+'). Napisz do nas: eyelingo.app@gmail.com'); return; }
+    try{ localStorage.clear(); }catch(e){}
+    try{ await db.auth.signOut(); }catch(e){}
+    alert('Konto zostało usunięte. Dziękujemy, że byłeś z nami.');
+    location.reload();
+  }catch(e){ alert('Błąd połączenia. Spróbuj ponownie lub napisz: eyelingo.app@gmail.com'); }
+}
 
 /* ===== Nawigacja ===== */
 const TABS=['ucz'];
