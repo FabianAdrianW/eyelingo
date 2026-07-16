@@ -724,9 +724,9 @@ async function loadProg(){
   try{
     var from=0,pg=1000,today=_usrsTodayLocal();
     while(true){
-      var r=await db.from('srs_progress').select('card_key,repetitions,interval_days,next_review').eq('user_id',UID).range(from,from+pg-1);
+      var r=await db.from('srs_progress').select('card_key,repetitions,interval_days,next_review,ease_factor').eq('user_id',UID).range(from,from+pg-1);
       var d=(r&&r.data)||[];
-      d.forEach(function(x){ if(!x.card_key) return; PROG[x.card_key]={r:(x.repetitions||0),iv:(x.interval_days||0),due:(x.next_review&&x.next_review<=today)}; });
+      d.forEach(function(x){ if(!x.card_key) return; PROG[x.card_key]={r:(x.repetitions||0),iv:(x.interval_days||0),due:(x.next_review&&x.next_review<=today),ef:(x.ease_factor!=null?x.ease_factor:2.5)}; });
       if(d.length<pg) break; from+=pg; if(from>20000) break;
     }
   }catch(e){}
@@ -874,7 +874,7 @@ async function markKnownBulk(cards, lang){
     var ck=_usrsCK(w,t); if(seen[ck]) return; seen[ck]=1;
     var fc=(c.flashcard_id!=null?c.flashcard_id:null);
     rows.push({user_id:UID,card_key:ck,word:w,translation:t,lang:_eylTrueLang({word:w, lang:_eylNormLang(lang)}),source:(fc!=null?'eyelingo':'custom'),flashcard_id:fc,ease_factor:2.6,repetitions:5,interval_days:iv,next_review:nr});
-    PROG[ck]={r:5,iv:iv,due:false};
+    PROG[ck]={r:5,iv:iv,due:false,ef:2.6};
   });
   if(!rows.length) return 0;
   try{ for(var i=0;i<rows.length;i+=400){ await db.from('srs_progress').upsert(rows.slice(i,i+400),{onConflict:'user_id,card_key'}); } }catch(e){}
@@ -914,10 +914,10 @@ async function srsDeclare(word,translation,q,opts){
     await db.from('srs_progress').upsert({
       user_id:UID, card_key:ck, word:word, translation:translation||'', lang:_eylTrueLang({word:word, lang:(_eylNormLang(opts.lang)||curSetLangSrc)}),
       source:(fc!=null?'eyelingo':'custom'), flashcard_id:fc,
-      ease_factor:2.5, repetitions:t.r, interval_days:t.iv, next_review:nr
+      ease_factor:(PROG[ck]&&PROG[ck].ef!=null?PROG[ck].ef:2.5), repetitions:t.r, interval_days:t.iv, next_review:nr
     },{onConflict:'user_id,card_key'});
   }catch(e){}
-  PROG[ck]={r:t.r,iv:t.iv,due:false};
+  PROG[ck]={r:t.r,iv:t.iv,due:false,ef:(PROG[ck]&&PROG[ck].ef!=null?PROG[ck].ef:2.5)};
   return {repetitions:t.r,interval_days:t.iv};
 }
 async function brGrade(q){
