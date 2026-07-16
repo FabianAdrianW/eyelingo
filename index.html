@@ -5984,6 +5984,7 @@ async function chatSend(){
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok2,'apikey':APIKEY_CONST},
       body:JSON.stringify({ systemPrompt:systemPrompt, messages:_chatHistory.slice(-10), max_tokens:((cefr==='B2'||cefr==='C1'||cefr==='C2')?850:500) })
     });
+    if(res.status===429){ typing.remove(); appendChatMsg('ai','Limit rozmów na dziś wyczerpany. Wróć jutro albo odblokuj PRO — wtedy rozmawiasz bez limitów.'); return; }
     var data=await res.json();
     var rawReply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Sorry, something went wrong. Try again!';
 
@@ -19763,5 +19764,54 @@ if ('serviceWorker' in navigator) {
     try{ S.lessonPull(true); }catch(e){}
     try{ S.recentsSync(true).then(function(){ if(typeof window.matRenderContinue==='function') window.matRenderContinue(); }); }catch(e){}
   });
+})();
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   [17] Bramka darmowych lekcji Lexa — NAKŁADKA POZA silnikiem Lexa (rdzeń NIETKNIĘTY).
+   • Gatuje wyłącznie NOWE starty lekcji (window.lexStartLesson).
+   • Wznawianie idzie osobną ścieżką (lexResume*) i NIE jest ruszane.
+   • PRO omija bramkę z frontu (eylIsPremium) — nigdy nie jest blokowane ani nie konsumuje kredytu.
+   • Limit dla FREE rozstrzyga serwerowe RPC lex_consume_free_lesson()
+     (oczekiwany kształt: { allowed:bool, reason:'limit'|…, used?, limit? }).
+   • Fail-open: błąd RPC nie blokuje nauki. Twarde egzekwowanie należy do Edge Function
+     lesson-start (osobny punkt) — ta bramka jest warstwą UX.
+   Wzorzec owinięcia window.* jest identyczny jak istniejące nakładki na końcu pliku.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+  if(window._lexGateInstalled) return;
+  if(typeof window.lexStartLesson !== 'function') return;
+  window._lexGateInstalled = true;
+  var _origLexStart = window.lexStartLesson;
+
+  window.lexShowLessonPaywall = function(row){
+    var limit = (row && row.limit!=null) ? row.limit : 3;
+    var msg = 'Masz za sobą ' + limit + ' darmowe lekcje z Ailexem. Aby uczyć się dalej bez limitu, przejdź na PRO.';
+    if(typeof eylUpgradeModal === 'function'){ eylUpgradeModal('Wykorzystałeś darmowe lekcje', msg); }
+    else { try{ alert(msg); }catch(e){} }
+  };
+
+  window.lexStartLesson = async function(){
+    var self = this, args = arguments;
+    try{
+      var isPro = (typeof eylIsPremium === 'function') ? await eylIsPremium() : false;
+      if(!isPro){
+        var sess = (await db.auth.getSession()).data.session;
+        if(sess){
+          var res = await db.rpc('lex_consume_free_lesson');
+          if(res && !res.error){
+            var d = res.data;
+            var row = Array.isArray(d) ? (d[0] || null) : d;
+            if(row && row.allowed === false){
+              window.lexShowLessonPaywall(row);
+              return;
+            }
+          }
+        }
+      }
+    }catch(e){ /* fail-open — nie blokuj nauki przy błędzie */ }
+    return _origLexStart.apply(self, args);
+  };
 })();
 </script>

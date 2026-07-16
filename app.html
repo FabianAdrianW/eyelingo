@@ -3235,5 +3235,135 @@ async function alexSend(){
   window.addEventListener('appinstalled', hide);
 })();
 </script>
+<script>
+/* [17] Bramka darmowych lekcji Lexa — MOBILE (parytet z web). Gatuje wyłącznie NOWY start
+   (window.lexStart); wznawianie (lexResumeBy) NIE jest ruszane. PRO omija bramkę (nie konsumuje).
+   Limit FREE z serwerowego RPC lex_consume_free_lesson(); fail-open. Rdzeń lekcji nietknięty. */
+(function(){
+  if(window._lexGateInstalled) return;
+  if(typeof window.lexStart !== 'function') return;
+  window._lexGateInstalled = true;
+  var _origLexStart = window.lexStart;
+
+  async function _lexIsPro(){
+    try{
+      var sess=(await db.auth.getSession()).data.session;
+      if(!sess) return false;
+      var r=await db.from('profiles').select('is_premium,premium_until').eq('user_id',sess.user.id).maybeSingle();
+      if(r.error || !r.data) return false;
+      var until=r.data.premium_until?new Date(r.data.premium_until):null;
+      return !!(r.data.is_premium && until && until>new Date());
+    }catch(e){ return false; }
+  }
+
+  function _lexPaywall(limit){
+    limit = (limit!=null)?limit:3;
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(26,35,64,.5);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,sans-serif';
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    ov.innerHTML='<div style="background:#fff;max-width:360px;width:100%;border-radius:18px;padding:22px 20px;text-align:center"><div style="font-family:DM Sans,sans-serif;font-weight:600;font-size:17px;color:#1a2340;margin-bottom:8px">Wykorzystałeś darmowe lekcje</div><div style="font-size:14px;color:#5a6178;line-height:1.5;margin-bottom:18px">Masz za sobą '+limit+' darmowe lekcje z Ailexem. Aby uczyć się dalej bez limitu, przejdź na PRO.</div><button id="_lexpw-close" style="width:100%;padding:12px;border-radius:100px;border:1.5px solid rgba(26,35,64,.18);background:#fff;color:#1a2340;font-size:14px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer">Rozumiem</button></div>';
+    document.body.appendChild(ov);
+    var b=document.getElementById('_lexpw-close'); if(b) b.onclick=function(){ ov.remove(); };
+    try{ track('pro_recommended',{surface:'mobile'}); }catch(e){}
+  }
+
+  window.lexStart = async function(){
+    var self=this, args=arguments;
+    try{
+      var isPro=await _lexIsPro();
+      if(!isPro){
+        var sess=(await db.auth.getSession()).data.session;
+        if(sess){
+          var res=await db.rpc('lex_consume_free_lesson');
+          if(res && !res.error){
+            var d=res.data; var row=Array.isArray(d)?(d[0]||null):d;
+            if(row && row.allowed===false){ _lexPaywall(row.limit); return; }
+          }
+        }
+      }
+    }catch(e){ /* fail-open */ }
+    return _origLexStart.apply(self, args);
+  };
+})();
+</script>
+<script>
+/* Tłumaczenie słowa + audio podczas lekcji Lexa (parytet z web „kliknij słowo = tłumaczenie").
+   Delegowany tap na #lex-stage; słowo pod palcem wykrywane przez caretRangeFromPoint (iOS-safe).
+   Popup: słowo, tłumaczenie PL (lexProxy, cache) + audio (lexSceneSpeak). Rdzeń lekcji NIETKNIĘTY. */
+(function(){
+  if(window._lexWordTrInstalled) return; window._lexWordTrInstalled = true;
+  var _cache = {};
+  var _pop = null;
+
+  function _closePop(){ if(_pop){ _pop.remove(); _pop=null; } }
+
+  // zamknięcie po tapnięciu poza popupem (faza przechwytywania)
+  document.addEventListener('click', function(e){
+    if(_pop && !_pop.contains(e.target)) _closePop();
+  }, true);
+
+  function _ttsCode(){ try{ return (lexLangInfo(_lexLang).tts)||''; }catch(e){ return ''; } }
+
+  function _wordAtPoint(x, y){
+    var range=null;
+    try{
+      if(document.caretRangeFromPoint) range=document.caretRangeFromPoint(x,y);
+      else if(document.caretPositionFromPoint){ var p=document.caretPositionFromPoint(x,y); if(p){ range=document.createRange(); range.setStart(p.offsetNode,p.offset); range.collapse(true); } }
+    }catch(err){ return null; }
+    if(!range) return null;
+    var node=range.startContainer;
+    if(!node || node.nodeType!==3) return null;
+    var text=node.textContent||'';
+    var i=range.startOffset;
+    var isW=function(ch){ try{ return ch && /[\p{L}\p{M}'\u2019-]/u.test(ch); }catch(e){ return ch && /[A-Za-zÀ-ÿ'-]/.test(ch); } };
+    var a=i, b=i;
+    while(a>0 && isW(text[a-1])) a--;
+    while(b<text.length && isW(text[b])) b++;
+    var w=text.slice(a,b).trim().replace(/^[\-'\u2019]+|[\-'\u2019]+$/g,'');
+    return (w && w.length>=2) ? w : null;
+  }
+
+  async function _showPop(word, x, y){
+    _closePop();
+    var pop=document.createElement('div');
+    pop.style.cssText='position:fixed;z-index:100000;max-width:260px;background:#1a2340;color:#fff;border-radius:12px;padding:10px 12px;box-shadow:0 8px 28px rgba(26,35,64,.4);font-family:Inter,sans-serif;font-size:14px;line-height:1.4;display:flex;align-items:center;gap:10px';
+    var safeW=word.replace(/[<>&]/g,'');
+    pop.innerHTML='<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;color:#fff;word-break:break-word">'+safeW+'</div><div class="_tr" style="font-size:13px;color:#cfd6e6;margin-top:2px">…</div></div>'
+      +'<button class="_spk" aria-label="Wymowa" style="flex-shrink:0;width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button>';
+    document.body.appendChild(pop);
+    var pw=pop.offsetWidth, ph=pop.offsetHeight;
+    var left=Math.max(8, Math.min(x - pw/2, window.innerWidth - pw - 8));
+    var top=y - ph - 12; if(top<8) top=y+16;
+    pop.style.left=left+'px'; pop.style.top=top+'px';
+    _pop=pop;
+
+    var spk=pop.querySelector('._spk');
+    if(spk) spk.onclick=function(ev){ ev.stopPropagation(); try{ lexSceneSpeak(word, _ttsCode()); }catch(e){} };
+    try{ lexSceneSpeak(word, _ttsCode()); }catch(e){}   // odtwórz audio od razu
+
+    var trEl=pop.querySelector('._tr');
+    if(_cache[word]!=null){ if(trEl) trEl.textContent=_cache[word]; return; }
+    try{
+      var tr=await lexProxy('Przetłumacz słowo "'+word+'" na polski. Odpowiedz TYLKO polskim tłumaczeniem, bez niczego więcej, bez cudzysłowów.', 30);
+      tr=(tr||'').split('\n')[0].replace(/["'.]/g,'').trim();
+      if(!tr) tr='—';
+      _cache[word]=tr;
+      if(_pop===pop && trEl) trEl.textContent=tr;
+    }catch(e){ if(_pop===pop && trEl) trEl.textContent='(brak tłumaczenia)'; }
+  }
+
+  document.addEventListener('click', function(e){
+    var stage=document.getElementById('lex-stage');
+    if(!stage || !stage.contains(e.target)) return;
+    if(e.target.closest('button, input, textarea, a, .lexx-chip, ._spk')) return;
+    var host=e.target.closest('.lexx-q, .lexx-scene-txt');
+    if(!host) return;
+    var word=_wordAtPoint(e.clientX, e.clientY);
+    if(!word) return;
+    e.stopPropagation();
+    _showPop(word, e.clientX, e.clientY);
+  });
+})();
+</script>
 </body>
 </html>
