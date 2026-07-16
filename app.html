@@ -380,7 +380,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   .catnav .pos{flex:0 0 auto;font-size:11px;color:var(--dim2);font-weight:600;padding:0 2px;white-space:nowrap}
   .action.know{border:.5px solid #cfe0bd;background:#f3f8ec}
   .action.know .ic{background:rgba(106,168,79,.16);color:#3b7d3b}
-  .br-grades{display:none;grid-template-columns:repeat(4,1fr);gap:7px;padding:2px 20px 8px}
+  .br-grades{display:none;grid-template-columns:repeat(3,1fr);gap:7px;padding:2px 20px 8px}
   .br-g{border:none;border-radius:12px;padding:11px 4px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:#fff;display:flex;flex-direction:column;align-items:center;gap:1px;transition:.12s}
   .br-g:active{transform:scale(.96)}
   .br-g .ph{font-size:9px;font-weight:500;opacity:.85}
@@ -579,10 +579,9 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
     </div>
     <div class="br-hint" id="br-hint">Dotknij kartę, aby zobaczyć tłumaczenie i ocenić.</div>
     <div class="br-grades" id="br-grades">
-      <button class="br-g q1" onclick="brGrade(1)">Nie<span class="ph">wkrótce</span></button>
-      <button class="br-g q2" onclick="brGrade(2)">Prawie<span class="ph">jutro</span></button>
-      <button class="br-g q3" onclick="brGrade(3)">Wiem<span class="ph">za dni</span></button>
-      <button class="br-g q4" onclick="brGrade(4)">Łatwe<span class="ph">dłużej</span></button>
+      <button class="br-g q1" onclick="brGrade(1)">Nie wiedziałem<span class="ph">znów wkrótce</span></button>
+      <button class="br-g q3" onclick="brGrade(3)">Wiedziałem<span class="ph">za kilka dni</span></button>
+      <button class="br-g q4" onclick="brGrade(4)">Łatwe<span class="ph">dłuższa przerwa</span></button>
     </div>
     <div class="br-note" id="br-note">100% opanowania pojawia się po udanej powtórce — nie z samej oceny.</div>
     <div class="flip-nav">
@@ -2630,7 +2629,7 @@ async function pwGrade(q){
   var g=document.getElementById('pw-grades'); if(g) g.style.display='none';
   if(navigator.vibrate) navigator.vibrate(6);
   try{
-    await srsUpsertCanon(r.word||'', r.translation||'', q, {
+    await srsUpsertCanon(r.word||'', r.translation||'', (({1:0,3:4,4:5})[q]!=null?({1:0,3:4,4:5})[q]:2), {  // parytet EF z web rateCard qMap
       card_key:r.card_key, lang:(r.lang||''), flashcard_id:(r.flashcard_id!=null?r.flashcard_id:null),
       cur:{ease_factor:r.ease_factor,repetitions:r.repetitions,interval_days:r.interval_days}
     });

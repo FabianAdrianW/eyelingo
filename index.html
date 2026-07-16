@@ -2509,40 +2509,7 @@ window.switchMatTab = function(tab){
       </div>
     </div>
 
-    <!-- Przełącznik języka utrwalania -->
-    <div id="dash-bridge-langrow" style="display:none;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-      <span style="font-size:13px;color:var(--dim2,#666);font-weight:500">Pokaż dla języka:</span>
-      <select id="dash-bridge-lang" onchange="dashSetBridgeLang(this.value)" style="padding:6px 12px;border-radius:100px;border:1.5px solid var(--border);font-size:13px;background:var(--white,#fff);color:var(--navy);font-family:inherit;cursor:pointer">
-        <option value="all">Wszystkie języki</option>
-      </select>
-    </div>
-
-    <!-- ═══ BRIDGE CARDS ═══ -->
-    <div class="bridge-row">
-      <!-- Most #1: słowa wymagające rozmowy z Alexem -->
-      <div class="bridge-card bridge-1" id="bridge1-card" style="display:none">
-        <div class="bridge-eyebrow">Rekomendowane na dziś</div>
-        <h3 class="bridge-title" id="bridge1-title">Porozmawiaj o słowach, których jeszcze nie opanowałeś</h3>
-        <p class="bridge-text">Desktop pokazywał Ci ostatnio te słowa — utrwal je w swobodnej rozmowie:</p>
-        <div class="bridge-pills" id="bridge1-pills"></div>
-        <button class="btn btn-orange bridge-btn" id="bridge1-btn" onclick="startAlexSession(window._bridge1Words)">Zacznij rozmowę · 5 min</button>
-      </div>
-
-      <!-- Kolejka SRS: sugestia sesji powtórek -->
-      <div class="bridge-card bridge-2" id="bridge2-card" style="display:none">
-        <div class="bridge-eyebrow">Kolejka powtórek</div>
-        <h3 class="bridge-title"><span id="bridge2-count">0</span> słów czeka na powtórkę</h3>
-        <p class="bridge-text">Algorytm SM-2 uznał, że dziś warto je sobie przypomnieć. Krótka sesja wystarczy.</p>
-        <button class="btn btn-navy bridge-btn" onclick="startSrsSession()">Rozpocznij sesję</button>
-      </div>
-
-      <!-- Pusty stan: brak danych z mostów -->
-      <div class="bridge-card bridge-empty" id="bridge-empty" style="display:none">
-        <div class="bridge-eyebrow">Wszystko ogarnięte</div>
-        <h3 class="bridge-title">Brak słów do powtórki</h3>
-        <p class="bridge-text">Desktop dalej pracuje w tle. Wróć tu wieczorem — pojawią się nowe słowa do utrwalenia w rozmowie.</p>
-      </div>
-    </div>
+    <!-- Blok mostów (rekomendacje / kolejka / filtr języka) usunięty na życzenie — panel prostszy. -->
 
     <!-- ═══ WYKRES: ostatnie 7 dni ═══ -->
     <div class="dcard d7-card">
@@ -2852,16 +2819,13 @@ async function loadDashboard(){
   // Tabela desktop_daily_stats jest nowa (Logic Bible §7). Degradacja gdy pusta/brak.
   loadDesktopStats(user.id, seenTotal);
 
-  // ── Most #1: słowa wymagające rozmowy z Alexem (ostatnio ćwiczone, nieopanowane) ──
+  // ── Sync kanoniczny z srs_progress (zasila kafelki „due" i „opanowane") ──
   try{ await usrsSync(); }catch(e){}
-  var _bl=document.getElementById('dash-bridge-lang'); if(_bl) _bl.value=_dashBridgeLang;
-  loadBridge1(user.id, _dashBridgeLang);
 
   // ── Kolejka SRS: słowa due dziś (kanoniczne srs_progress przez usrs) ──
   loadSrsQueue(user.id);
-  // ── Opanowane (cross-surface) + filtr języka z realnych języków użytkownika ──
+  // ── Opanowane (cross-surface) ──
   loadDashboardMastered(user.id);
-  dashPopulateLangFilter(user.id);
 }
 
 function setText(id,val){const e=document.getElementById(id);if(e)e.textContent=val;}
