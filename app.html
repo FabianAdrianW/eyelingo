@@ -1290,7 +1290,7 @@ function extractAI(d){ try{
 async function lexProxy(prompt, maxTok){
   var tok=''; try{ tok=(await db.auth.getSession()).data.session.access_token||''; }catch(e){}
   var res=await fetch(LEX_PROXY,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},
-    body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:maxTok||3000})});
+    body:JSON.stringify({kind:'lex',messages:[{role:'user',content:prompt}],max_tokens:maxTok||3000})});
   if(!res.ok) throw new Error('proxy '+res.status);
   var d=await res.json();
   return ((extractAI(d))||'').replace(/```json|```/g,'').trim();
@@ -3005,6 +3005,7 @@ async function alexSend(){
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},
       body:JSON.stringify({ systemPrompt:systemPrompt, messages:_alexHistory.slice(-10), max_tokens:((cefr==='B2'||cefr==='C1'||cefr==='C2')?850:500) })
     });
+    if(res.status===429){ typing.remove(); alexAppend('ai','Limit rozmów na dziś wyczerpany. Wróć jutro albo odblokuj PRO — wtedy rozmawiasz bez limitów.'); return; }
     var data=await res.json();
     var rawReply=data?.candidates?.[0]?.content?.parts?.[0]?.text||'Sorry, something went wrong. Try again!';
 
