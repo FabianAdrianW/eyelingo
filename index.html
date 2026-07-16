@@ -10516,7 +10516,7 @@ function odkryjLoadKultura(){
           var res=await fetch(AI_PROXY_URL,{
             method:'POST',
             headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok2,'apikey':'sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8'},
-            body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:2000})
+            body:JSON.stringify({kind:'discover', messages:[{role:'user',content:prompt}],max_tokens:2000})
           });
           
           if(!res.ok) throw new Error('AI proxy error '+res.status);
@@ -11744,7 +11744,7 @@ async function fetchOdkryjArticle(topic, lang, level, tok){
     var langName=(typeof getLangName==='function'?getLangName(lang):lang);
     var lastErr='';
     async function _proxyText(pr, mt){
-      var r=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:pr}],max_tokens:mt||900})});
+      var r=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({kind:'discover', messages:[{role:'user',content:pr}],max_tokens:mt||900})});
       if(!r.ok) throw new Error('proxy '+r.status);
       var dd=await r.json();
       var t=(typeof extractAIText==='function'?extractAIText(dd):'')||'';
@@ -13418,7 +13418,7 @@ async function lexEvalAICall(prompt, maxTok){
     var pr = await fetch(AI_PROXY_URL, {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer ' + tok,'apikey':APIKEY_CONST},
-      body: JSON.stringify({messages:[{role:'user', content:prompt}], max_tokens:maxTok})
+      body: JSON.stringify({kind:'lex', messages:[{role:'user', content:prompt}], max_tokens:maxTok})
     });
     var d = await pr.json();
     return d && d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts && d.candidates[0].content.parts[0] && d.candidates[0].content.parts[0].text || null;
@@ -13831,7 +13831,7 @@ async function lexRequestNextCard(userAnswer, flashcardSets){
       var proxyRes = await fetch(AI_PROXY_URL, {
         method: 'POST',
         headers: {'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-        body: JSON.stringify({messages: proxyMsgs, max_tokens: Math.min(maxTok, 1500)})
+        body: JSON.stringify({kind:'lex', messages: proxyMsgs, max_tokens: Math.min(maxTok, 1500)})
       });
       var d = await proxyRes.json();
       fullResponse = d && d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts && d.candidates[0].content.parts[0] && d.candidates[0].content.parts[0].text || 'Let us continue the lesson.';
@@ -14448,7 +14448,7 @@ async function lexAutoTranslate(){
     var res = await fetch(AI_PROXY_URL, {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-      body: JSON.stringify({ messages:[{role:'user', content:prompt}], max_tokens: 700 })
+      body: JSON.stringify({kind:'lex',  messages:[{role:'user', content:prompt}], max_tokens: 700 })
     });
     var d = await res.json();
     var raw = (typeof extractAIText==='function' ? extractAIText(d) : '') || '';
@@ -14544,7 +14544,7 @@ async function lexTranslateSentence(sentence){
     var res = await fetch(AI_PROXY_URL, {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-      body: JSON.stringify({
+      body: JSON.stringify({kind:'lex', 
         messages:[{role:'user', content:'Przetłumacz na polski: "' + sentence.replace(/"/g,"'").slice(0,200) + '". Odpowiedz TYLKO tłumaczeniem.'}],
         max_tokens: 150
       })
@@ -14587,7 +14587,7 @@ async function lexTranslateWord(el){
     var res = await fetch(AI_PROXY_URL, {
       method: 'POST',
       headers: {'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-      body: JSON.stringify({
+      body: JSON.stringify({kind:'lex', 
         messages: [{role:'user', content: 'Translate the word "' + word + '" from ' + _lexLangNative + ' to Polish. Reply with ONLY the Polish translation, nothing else.'}],
         max_tokens: 30
       })
@@ -16001,7 +16001,7 @@ async function lexInit(){
         +'{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo w '+langName()+'","hint":"po '+L+'"}'
         +']}';
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
-      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:2000})});
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex', messages:[{role:'user',content:prompt}],max_tokens:2000})});
       if(!res.ok) return null;
       var d=await res.json();
       var raw=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
@@ -16170,7 +16170,7 @@ async function lexInit(){
       +'"exercises":['+_shape.map(function(_t){return lexxSpecFor(_t,L);}).join(',')+']}';
     try{
       var sess=(await db.auth.getSession()).data.session; var tok=sess?sess.access_token:'';
-      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:3000})});
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex', messages:[{role:'user',content:prompt}],max_tokens:3000})});
       if(!res.ok) throw new Error('proxy '+res.status);
       var d=await res.json();
       var raw=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
@@ -16762,7 +16762,7 @@ async function lexInit(){
         +'Komentarz pisz poprawnie i naturalnie po '+CL+'. NIE twórz hybryd polsko-angielskich (np. nigdy nie pisz "roastujesz", "forwardować") — używaj polskiego znaczenia słowa. '
         +'Trzymaj się tematu porcji; jeśli zdanie ucznia jest poprawne, ale poza tematem, zaakceptuj i delikatnie zaproponuj wersję w temacie. '
         +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po '+CL+': co dobrze, co poprawić","gap":"jeśli błąd — krótki temat braku, inaczej pusty"}';
-      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:300})});
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex', messages:[{role:'user',content:prompt}],max_tokens:300})});
       if(!res.ok) throw new Error('proxy '+res.status);
       var d=await res.json();
       var raw=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
@@ -16859,7 +16859,7 @@ async function lexInit(){
     var feedback='', gaps=[];
     try{
       var sess=(await db.auth.getSession()).data.session;
-      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:500})});
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex', messages:[{role:'user',content:prompt}],max_tokens:500})});
       var d=await res.json();
       var raw=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
       var a=raw.indexOf('{'), b=raw.lastIndexOf('}');
@@ -17806,7 +17806,7 @@ async function lexInit(){
         +' Uczeń na poziomie '+lvl+'. '+ctx
         +' Wygeneruj zwięzłe OMÓWIENIE mówione (100-160 słów, po polsku, słowa docelowe w języku uczonym wplecione naturalnie): najpierw po co ten temat (1 zdanie), potem każda reguła z przykładem, na końcu jedna pułapka, w którą wpadają Polacy. Mów bezpośrednio do ucznia, ciepło i konkretnie, bez wykrzykników typu Świetnie. Zwróć sam tekst, bez nagłówków i markdownu.';
       var sess=(await db.auth.getSession()).data.session;
-      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:500})});
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex', messages:[{role:'user',content:prompt}],max_tokens:500})});
       var d=await res.json();
       script=((typeof extractAIText==='function'?extractAIText(d):'')||'').trim();
     }catch(e){}
@@ -17885,7 +17885,7 @@ async function lexInit(){
     var answer='', board='';
     try{
       var sess=(await db.auth.getSession()).data.session;
-      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:400})});
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex', messages:[{role:'user',content:prompt}],max_tokens:400})});
       var d=await res.json();
       var raw=((typeof extractAIText==='function'?extractAIText(d):'')||'').replace(/```json|```/g,'').trim();
       var a=raw.indexOf('{'), b=raw.lastIndexOf('}');
