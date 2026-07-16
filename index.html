@@ -1814,7 +1814,7 @@ window.switchMatTab = function(tab){
         +'<div class="eylc-cfoot"><span class="eylc-cmeta">'+a.total+' fiszek'+(a.touched?(' \u00b7 '+a.mastered+' opanowanych'):'')+'</span>'+_pill(a)+'</div>'
         +_bar(a)+'</div>';
     }
-    var _gO='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">', _gC='</div>';
+    var _gO='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px">', _gC='</div>';
     var actIds=[], doneIds=[];
     orderedIds.forEach(function(cid){ (_agg(byCat[cid]||[]).status==='done'?doneIds:actIds).push(cid); });
     // „Materiały przerobione" NA GÓRZE — zwinięte (slim), aktywny materiał od razu widoczny pod spodem
@@ -7785,7 +7785,7 @@ function _trybBlockGate(reRender){
 }
 async function startSession(mode){
   showTrybView('session');
-  _trybSessionStats={correct:0,total:0,xpGained:0,startTime:Date.now()}; window._trybStruggling=[];
+  _trybSessionStats={correct:0,total:0,xpGained:0,startTime:Date.now()}; window._trybStruggling=[]; window._trybResumeIdx=null;
   window._trybKnowBefore={}; window._trybSessionActive=true;
   _trybIdx=0;_trybPerfectStreak=0;_trybSessionXPToday=0;
   var _preordered=!!window._trybPreordered; window._trybPreordered=false; window._trybBlockShown={};
@@ -8168,7 +8168,9 @@ function trybToggleDirection(){
 
 function startTrybMode(mode){
   _trybMode = mode;
-  _trybIdx = 0;
+  // B2: „Zmień tryb" wznawia od bieżącej pozycji (zrobione karty zostają); świeży start → 0.
+  var _ri = window._trybResumeIdx; window._trybResumeIdx = null;
+  _trybIdx = (_ri!=null && _ri>0 && typeof _trybCards!=='undefined' && _trybCards && _ri < _trybCards.length) ? _ri : 0;
   _trybFlipRevealed = false;
   var picker = document.getElementById('tryb-mode-picker');
   if(picker) picker.remove();
@@ -8196,6 +8198,7 @@ function startTrybMode(mode){
         var el = document.getElementById(id); if(el) el.remove();
       });
             var sc=document.getElementById('tryb-card-scene'); if(sc) sc.style.display='none';
+      window._trybResumeIdx = _trybIdx;   // B2: zachowaj pozycję — „Zmień tryb" nie kasuje postępu sesji
       showTrybModePicker();
     };
     // Insert back button into the header bar (before first button)
