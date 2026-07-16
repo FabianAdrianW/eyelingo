@@ -6,6 +6,21 @@
      Gdyby coś przestało działać — usuń tę jedną linię <meta> poniżej i zgłoś, co padło. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://images.pexels.com https://img.youtube.com https://i.ytimg.com https://sntlgkhktscezxpxrchl.supabase.co; media-src 'self' data: blob: https://sntlgkhktscezxpxrchl.supabase.co; connect-src 'self' https://sntlgkhktscezxpxrchl.supabase.co wss://sntlgkhktscezxpxrchl.supabase.co; frame-src https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<script>
+/* PWA: gdy index.html jest uruchomiony jako ZAINSTALOWANA apka na telefonie (standalone),
+   przekaż do mobilnej powłoki app.html. iOS „Dodaj do ekranu głównego" instaluje bieżącą
+   stronę (ignoruje start_url z manifestu), więc bez tego user widziałby panel web z navbarem.
+   Zwykła karta przeglądarki (nie-standalone) oraz desktop zostają na index.html. */
+(function(){
+  try{
+    var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (window.navigator && window.navigator.standalone === true);
+    var minDim = Math.min(screen.width||9999, screen.height||9999);
+    var phone = minDim <= 600;
+    var onApp = /app\.html/i.test(location.pathname);
+    if(standalone && phone && !onApp){ location.replace('app.html'); }
+  }catch(e){}
+})();
+</script>
 <title>Eyelingo — nauka języków w tle Twojej pracy</title>
 <meta name="description" content="Ucz się 14 języków bez dodatkowego czasu. Fiszki w tle pracy, powtórki SRS i trener AI — na komputerze, w przeglądarce i w telefonie.">
 <link rel="canonical" href="https://www.eyelingo.app/">
