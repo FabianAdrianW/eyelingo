@@ -266,6 +266,8 @@
   .eyl-tile.done{background:#eef5e6;border-color:#8fae5e}
   .eyl-flabel{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin:16px 0 8px}
   .eyl-chiprow{display:flex;gap:8px;flex-wrap:wrap}
+  .eyl-chiprow.lang{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .eyl-chiprow.lang .eyl-chip{width:100%;text-align:center;padding-left:8px;padding-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .eyl-chip{padding:8px 14px;border-radius:100px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;color:var(--navy);font-family:inherit;cursor:pointer}
   .eyl-chip.on{background:var(--orange);border-color:var(--orange);color:#fff}
   .eyl-chip.done{background:#eef5e6;border-color:#cfe3bf;color:#3b7d3b}
@@ -1658,7 +1660,7 @@ function lexGlossHtml(pl){
 }
 function exScene(src,txt,withAudio,sayTxt,glossPl){
   var _say=(sayTxt!=null&&sayTxt!=='')?sayTxt:txt;
-  var audio=withAudio?'<button type="button" class="lexx-sceneaudio" onclick="lexSceneSpeak(this.getAttribute(\'data-say\'))" data-say="'+esc(String(_say||''))+'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>':'';
+  var audio='';
   return '<div class="lexx-scene"><span class="lexx-scene-src">'+esc(src)+'</span><div class="lexx-scene-line"><p class="lexx-scene-txt">'+lexBoldKey(esc(txt))+'</p>'+audio+'</div>'+lexGlossHtml(glossPl)+'</div>';
 }
 // ── Dwujęzyczne TTS: narracja po polsku, słowa-cele (**…**) w języku uczonym ──
@@ -1741,7 +1743,7 @@ function lexShowStep(s){
     stage.appendChild(box);
     var st=document.createElement('button'); st.className='lexx-next'; st.textContent='Zaczynamy →'; st.onclick=function(){ lexShowStep(0); };
     stage.appendChild(st); w.appendChild(stage);
-    try{ if(data.intro && (typeof _lexSpeechOn==='undefined'||_lexSpeechOn)){ var _introSay=(_lexScript==='romaji'&&data.intro_say)?data.intro_say:data.intro; setTimeout(function(){ lexSceneSpeak(String(_introSay)); },300); } }catch(e){}
+    /* auto-czytanie intro wyłączone — odsłuch przez klik w słowo/chip */
     return;
   }
   var ex=(data.exercises||[])[s]; if(!ex) return;
@@ -1798,13 +1800,15 @@ function lexRenderExercise(ex,i){
     inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoja wersja…">';
   } else if(ex.type==='warmfire'){
     var _wfCue=lexWfCue(ex,(_lexData&&_lexData.items)||[]);
+    body+='<div style="font-size:12.5px;color:var(--dim2);margin-bottom:8px">Przypomnij sobie słowo z tej porcji i wpisz je po '+langAdv()+'.</div>';
     body+='<div class="lexx-prompt">'+(_wfCue?esc(_wfCue):('Poproś o nową porcję — to ćwiczenie było niekompletne.'))+'</div>';
-    inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="wpisz po '+langAdv()+'…" autocomplete="off">';
+    inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="wpisz jedno słowo po '+langAdv()+'…" autocomplete="off">';
   } else if(ex.type==='scenario'){
     body+=exScene(ex.role||'Sytuacja', ex.situation||ex.prompt||'', false);
+    body+='<div style="font-size:12.5px;color:var(--dim2);margin:8px 0 10px">Napisz własną reakcję po '+langAdv()+' (1–2 zdania). Użyj słów poniżej.</div>';
     var _mu=[].concat(ex.must_use||ex.target||[]).filter(Boolean);
-    if(_mu.length) body+='<div style="margin:8px 0 14px">Wpleć: '+_mu.map(function(w){return '<span class="lexx-target">'+esc(w)+'</span>';}).join(' ')+'</div>';
-    if(ex.skeleton) body+='<div class="lexx-hint" style="margin-bottom:10px">Szkielet: '+esc(ex.skeleton)+'</div>';
+    if(_mu.length) body+='<div style="margin:0 0 12px">Użyj tych słów: '+_mu.map(function(w){return '<span class="lexx-target">'+esc(w)+'</span>';}).join(' ')+'</div>';
+    if(ex.skeleton) body+='<div class="lexx-hint" style="margin-bottom:10px">Podpowiedź (możesz uzupełnić luki albo napisać po swojemu): '+esc(ex.skeleton)+'</div>';
     inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="3" placeholder="Twoja odpowiedź po '+langAdv()+'…"></textarea>';
   } else {
     if(ex.target) body+='<div style="margin-bottom:16px">Użyj: <span class="lexx-target">'+esc(ex.target)+'</span></div>';
@@ -1917,6 +1921,8 @@ async function lexRecordSM2(word,translation,quality,opts){
 }
 function lexRecordBeat(ex,correct,attempts){ try{ var q=lexBeatQuality(ex,!!correct,attempts||0); if(q==null) return; lexBeatTargets(ex).forEach(function(t){ lexRecordSM2(t.word,t.translation,q); }); }catch(e){} }
 
+/* poprawiona (minimalnie) wersja zdania ucznia — pod komentarzem oceny */
+function lexFixLine(v){ var f=String((v&&v.fix)||'').trim(); if(!f) return ''; return '<div style="margin-top:8px;font-size:13px;color:var(--navy)"><span style="color:var(--dim2)">Poprawiona wersja:</span> <strong>'+esc(f)+'</strong></div>'; }
 /* ── ocena AI wolnej produkcji (port lexxAIEval) ── */
 async function lexxAIEval(ex, answer){
   try{
@@ -1930,11 +1936,11 @@ async function lexxAIEval(ex, answer){
       +'Oceń odpowiedź ucznia. Bądź wyrozumiały dla drobnych literówek i alternatywnych poprawnych form. Komentarz pisz naturalnie po '+CL+'. '
       +'Jeśli zadanie dopuszcza wiele poprawnych słów lub realizacji, zaakceptuj KAŻDĄ poprawną gramatycznie i sensowną — nie wymagaj akurat wzorcowego słowa. '
       +'Trzymaj się tematu porcji; jeśli zdanie jest poprawne ale poza tematem, zaakceptuj i zaproponuj wersję w temacie. '
-      +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po '+CL+': co dobrze, co poprawić","gap":""}';
+      +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po '+CL+': co dobrze, co poprawić","gap":"","fix":"poprawiona wersja zdania ucznia po '+langName()+' — zmień TYLKO to, co błędne (gramatyka, przedimki, formy); zachowaj sens i dobór słów ucznia; jeśli zdanie jest już poprawne, przepisz je bez zmian"}';
     var raw=await lexProxy(prompt,500); var a=raw.indexOf('{'), b=raw.lastIndexOf('}');
-    if(a>=0&&b>a){ var j=JSON.parse(raw.slice(a,b+1)); return {ok:!!j.ok, comment:j.comment||'', gap:j.gap||''}; }
-    return {ok:true, comment:'Zapisane.', gap:''};
-  }catch(e){ return {ok:true, comment:'Zapisane. (Nie udało się pobrać oceny AI — sprawdź sam z wzorem.)', gap:''}; }
+    if(a>=0&&b>a){ var j=JSON.parse(raw.slice(a,b+1)); return {ok:!!j.ok, comment:j.comment||'', gap:j.gap||'', fix:j.fix||''}; }
+    return {ok:true, comment:'Zapisane.', gap:'', fix:''};
+  }catch(e){ return {ok:true, comment:'Zapisano Twoją odpowiedź. Ocena AI jest chwilowo niedostępna — spróbuj ponownie za chwilę.', gap:'', fix:''}; }
 }
 
 /* ── sprawdzanie (port lexxCheck) ── */
@@ -1994,14 +2000,14 @@ window.lexxCheck=async function(i){
     if(missing.length && triesS===0){ if(box) box.dataset.tries='1'; showFb(i,'neutral','Wpleć jeszcze: <strong>'+esc(missing.join(', '))+'</strong>'+(ex.skeleton?(' · szkielet: '+esc(ex.skeleton)):'')); return; }
     var chkS=document.getElementById('lexx-chk-'+i); if(chkS){ chkS.disabled=true; chkS.textContent='Sprawdzam…'; }
     var verdict=await lexxAIEval(ex, vs); var okSc=(verdict.ok && !missing.length);
-    showFb(i, okSc?'ok':'bad', esc(verdict.comment||(okSc?'Świetna integracja.':'Popraw wg wskazówki.'))+(ex.answer&&!okSc?' <span style="color:var(--dim2)">(wzór: '+esc(ex.answer)+')</span>':''));
+    showFb(i, okSc?'ok':'bad', esc(verdict.comment||(okSc?'Świetna integracja.':'Popraw wg wskazówki.'))+(ex.answer&&!okSc?' <span style="color:var(--dim2)">(wzór: '+esc(ex.answer)+')</span>':'')+lexFixLine(verdict));
     lexRecordBeat(ex,okSc,0); markDone(i); return;
   }
   // translate / produce → ocena AI
   var val=(document.getElementById('lexx-in-'+i)||{}).value||''; if(!val.trim()){ showFb(i,'neutral','Najpierw napisz odpowiedź.'); return; }
   var chk=document.getElementById('lexx-chk-'+i); if(chk){ chk.disabled=true; chk.textContent='Sprawdzam…'; }
   var verdict=await lexxAIEval(ex, val);
-  showFb(i, verdict.ok?'ok':'bad', esc(verdict.comment||(verdict.ok?'Zapamiętaj ten wzorzec.':'Spróbuj inaczej.'))+(ex.answer&&!verdict.ok?' <span style="color:var(--dim2)">(wzór: '+esc(ex.answer)+')</span>':''));
+  showFb(i, verdict.ok?'ok':'bad', esc(verdict.comment||(verdict.ok?'Zapamiętaj ten wzorzec.':'Spróbuj inaczej.'))+(ex.answer&&!verdict.ok?' <span style="color:var(--dim2)">(wzór: '+esc(ex.answer)+')</span>':'')+lexFixLine(verdict));
   lexRecordBeat(ex, verdict.ok, 0); markDone(i);
 };
 
@@ -2257,7 +2263,7 @@ async function eylRenderBrowse(){
   window._eylNavList=list; window._eylNavLevel=_eylState.level||null; window._eylNavLang=_eylState.lang;
 
   var html='<div class="eyl-h">Zestawy Eyelingo</div>';
-  html+='<div class="eyl-flabel">Język</div><div class="eyl-chiprow">'+langs.map(function(c){ return '<button class="eyl-chip'+(c===_eylState.lang?' on':'')+'" onclick="eylPickLang(\''+esc(c)+'\')">'+eylLangFlag(c)+' '+esc(eylLangLabel(c))+'</button>'; }).join('')+'</div>';
+  html+='<div class="eyl-flabel">Język</div><div class="eyl-chiprow lang">'+langs.map(function(c){ return '<button class="eyl-chip'+(c===_eylState.lang?' on':'')+'" onclick="eylPickLang(\''+esc(c)+'\')">'+eylLangFlag(c)+' '+esc(eylLangLabel(c))+'</button>'; }).join('')+'</div>';
   if(_lvlAggs.length){
     var _wk=_eylWorkingLevel(_lvlAggs);
     var _allDone=_lvlAggs.every(function(x){return x.agg.status==='done';});
