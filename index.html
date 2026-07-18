@@ -4856,7 +4856,6 @@ async function initToFixPage(){
           <span id="lex-phase" style="display:none;font-size:11px;padding:3px 10px;background:var(--paper);border:1px solid var(--border2);border-radius:100px;color:var(--dim);font-weight:500"></span>
           <div id="lex-eval-badge" style="display:none;font-size:11px;padding:3px 10px;background:#e0f2fe;border:1px solid #0ea5e9;border-radius:100px;color:#0369a1">Ocena poziomu</div>
           <span id="lex-score-badge" style="display:none"></span>
-          <button id="lex-speech-toggle" onclick="lexToggleSpeech()" style="font-size:16px;padding:4px 8px;background:transparent;border:1px solid var(--border2);border-radius:100px;cursor:pointer" title="Włącz/wyłącz czytanie"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg></button>
           <button id="lex-audiolang-btn" onclick="lexToggleAudioLang()" style="font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif">Lekcja: PL</button>
           <span id="lex-script-wrap" style="position:relative;display:inline-flex"><button id="lex-script-btn" onclick="lexToggleScript()" style="display:none;font-size:11px;padding:4px 10px;background:transparent;border:1px solid var(--border2);border-radius:100px;color:var(--navy);cursor:pointer;font-family:DM Sans,sans-serif" title="Przełącz pismo lekcji: transliteracja ↔ oryginalne">Pismo: transliteracja</button></span>
           <button onclick="lexAskOpen()" style="font-size:11px;padding:4px 12px;background:var(--orange);border:1px solid var(--orange);border-radius:100px;color:#fff;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-flex;align-items:center;gap:5px" title="Zadaj pytanie Ailexowi — głosem lub tekstem"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 11a7 7 0 0 1-14 0M12 18v4"></path></svg>Zapytaj</button>
@@ -4885,7 +4884,6 @@ async function initToFixPage(){
           </div>
           <!-- Audio replay button -->
           <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
-            <button onclick="lexReplayAudio()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:100px;border:1px solid var(--border2);background:var(--paper);font-size:12px;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s" onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border2)'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg>Odtwórz</button>
 
           </div>
           <!-- Sentence translation panel -->
@@ -15667,7 +15665,10 @@ async function lexInit(){
         var valid=['dash','community','strefa','teacher'];
         showPage(valid.indexOf(hash)>=0?hash:'dash');
       } else {
-        showPage('auth');   // zachowanie bez zmian — showPage sam zdejmie brame startowa
+        // Niezalogowany: pokaż landing (strona główna). Bezpośrednie linki do
+        // logowania/rejestracji (#auth) nadal prowadzą prosto do formularza.
+        var _h0=window.location.hash.replace('#','');
+        showPage(_h0==='auth' ? 'auth' : 'home');
       }
     });
   }
