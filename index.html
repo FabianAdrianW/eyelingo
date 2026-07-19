@@ -2693,23 +2693,32 @@ function eylWebForced(){
 }
 
 /* Deep-link (#cennik, #regulamin, #polityka…) = użytkownik chce KONKRETNE
-   miejsce na stronie, nie aplikację. Nie przechwytujemy. */
+   miejsce na stronie, nie aplikację.
+   UWAGA: showPage() nadpisuje location.hash przy KAŻDEJ zmianie ekranu
+   (history.replaceState), więc bieżący hash NIE jest informacją o intencji
+   użytkownika. Zamrażamy hash z momentu wejścia na stronę — tylko on się liczy. */
+var EYL_ENTRY_HASH = (function(){
+  try{ return (location.hash || '').replace('#',''); }catch(e){ return ''; }
+})();
 function eylDeepLinked(){
-  try{
-    var h = (location.hash || '').replace('#','');
-    return !!h && h !== 'home';
-  }catch(e){ return false; }
+  if(!EYL_ENTRY_HASH) return false;
+  if(EYL_ENTRY_HASH === 'home' || EYL_ENTRY_HASH === 'auth') return false;
+  return true;
 }
 
-function eylGoMobileApp(){
+/* opts.force = użytkownik WŁAŚNIE się zalogował na telefonie.
+   To jawna intencja „chcę korzystać", więc bramka deep-link nie obowiązuje.
+   Furtka ?web=1 obowiązuje zawsze — to jedyny świadomy wybór użytkownika. */
+function eylGoMobileApp(opts){
   try{
+    var force = !!(opts && opts.force);
     if(window._eylRouting) return false;
     if(!eylIsMobileUA()) return false;
     if(eylWebForced()) return false;
-    if(eylDeepLinked()) return false;
+    if(!force && eylDeepLinked()) return false;
     if(/app\.html$/i.test(location.pathname)) return false;
     window._eylRouting = true;
-    try{ if(typeof track === 'function') track('mobile_autoroute',{to:'app'}); }catch(_e){}
+    try{ if(typeof track === 'function') track('mobile_autoroute',{to:'app',trigger:(force?'login':'boot')}); }catch(_e){}
     location.replace('app.html');   // replace, nie href — inaczej „wstecz" zapętla
     return true;
   }catch(e){ return false; }
@@ -2744,7 +2753,7 @@ window.eylGoMobileApp = eylGoMobileApp;
           try{ window.location.reload(); return; }catch(e){}
         }
         reloadUserScopedState();
-        try{ if(event === 'SIGNED_IN' && session) eylGoMobileApp(); }catch(_e){}
+        try{ if(event === 'SIGNED_IN' && session) eylGoMobileApp({force:true}); }catch(_e){}
       });
     }catch(e){}
   }
@@ -2847,9 +2856,11 @@ async function submitAuth(){
           await db.from('profiles').upsert({user_id:res.data.user.id,username},{onConflict:'user_id'}).select();
           try{track('user_signup',{surface:'web'});}catch(_e){}
         }
+        if(typeof eylGoMobileApp === 'function' && eylGoMobileApp({force:true})) return;
         showPage('dash');
       }
     } else {
+      if(typeof eylGoMobileApp === 'function' && eylGoMobileApp({force:true})) return;
       showPage('dash');
     }
   }catch(e){
