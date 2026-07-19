@@ -2712,7 +2712,10 @@ function eylDeepLinked(){
 function eylGoMobileApp(opts){
   try{
     var force = !!(opts && opts.force);
-    if(window._eylRouting) return false;
+    // Przekierowanie JUŻ w locie (np. zdarzenie SIGNED_IN wyprzedziło zwrot
+    // z signInWithPassword). Zwracamy TRUE, żeby wywołujący przerwał swoją
+    // ścieżkę i nie odpalał showPage('dash') w trakcie trwającej nawigacji.
+    if(window._eylRouting) return true;
     if(!eylIsMobileUA()) return false;
     if(eylWebForced()) return false;
     if(!force && eylDeepLinked()) return false;
@@ -2720,6 +2723,10 @@ function eylGoMobileApp(opts){
     window._eylRouting = true;
     try{ if(typeof track === 'function') track('mobile_autoroute',{to:'app',trigger:(force?'login':'boot')}); }catch(_e){}
     location.replace('app.html');   // replace, nie href — inaczej „wstecz" zapętla
+    // Bezpiecznik: gdyby nawigacja została porzucona (service worker, blokada
+    // przeglądarki), próbujemy jeszcze raz. Jeśli replace zadziałał, dokument
+    // już nie istnieje i timer nigdy się nie wykona.
+    setTimeout(function(){ try{ location.href='app.html'; }catch(_e){} }, 1200);
     return true;
   }catch(e){ return false; }
 }
