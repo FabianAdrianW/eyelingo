@@ -1724,13 +1724,47 @@ function lexSpeakBilingual(text){
   });
   lexSpeakChain(segs);
 }
+/* ── EYELINGO: pregenerowane audio katalogu (statyczne MP3 z Supabase Storage) ── */
+window.EYL_TTS_STATIC_ON = true; // pregenerowane MP3 katalogu WŁĄCZONE
+window.EYL_TTS_STATIC_BASE = window.EYL_TTS_STATIC_BASE || 'https://sntlgkhktscezxpxrchl.supabase.co/storage/v1/object/public/tts-catalog';
+window.EYL_TTS_STATIC_LANGS = window.EYL_TTS_STATIC_LANGS || ['en','es','de','fr','ar','uk','ru','nl','sv','no','da'];
+window.eylCatalogAudioUrl = async function(word, langCode){
+  try{
+    if(!window.EYL_TTS_STATIC_ON) return null;
+    var code=String(langCode||'').slice(0,2).toLowerCase();
+    if(window.EYL_TTS_STATIC_LANGS.indexOf(code)<0) return null;
+    var norm=String(word||'').trim().toLowerCase();
+    if(!norm || norm.length>40) return null;
+    var buf=await crypto.subtle.digest('SHA-1', new TextEncoder().encode(norm));
+    var hex=Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+    return window.EYL_TTS_STATIC_BASE+'/'+code+'/'+hex+'.mp3';
+  }catch(e){ return null; }
+};
+window.eylTryPlayStatic = function(url){
+  return new Promise(function(resolve){
+    try{ var a=new Audio(url); window._eylStaticAudio=a; a.play().then(function(){ resolve(true); }).catch(function(){ resolve(false); }); }
+    catch(e){ resolve(false); }
+  });
+};
 window.lexSceneSpeak=function(text,code){
   if(!text) return;
   var s=String(text);
   // Tok dwujęzyczny: narracja PL + **słowa docelowe** → każdy fragment swoim głosem
   if(!code && s.indexOf('**')>=0){ lexSpeakBilingual(s); return; }
-  // Jednojęzyczny: przycisk wymowy słowa lub tekst bez markerów
-  lexSpeakChain([{ t:s.replace(/\*\*/g,'').replace(/<[^>]+>/g,' '), lang:(code||lexTtsCode()) }]);
+  // Jednojęzyczny: słowo/tekst bez markerów
+  var _single=s.replace(/\*\*/g,'').replace(/<[^>]+>/g,' ');
+  var _lang=(code||lexTtsCode());
+  // Pregenerowane audio katalogu — dla wszystkich; fallback: Web Speech (lexSpeakChain)
+  try{
+    if(window.EYL_TTS_STATIC_ON && typeof window.eylCatalogAudioUrl==='function'){
+      window.eylCatalogAudioUrl(_single, _lang).then(function(u){
+        if(u){ window.eylTryPlayStatic(u).then(function(ok){ if(!ok) lexSpeakChain([{ t:_single, lang:_lang }]); }); }
+        else { lexSpeakChain([{ t:_single, lang:_lang }]); }
+      });
+      return;
+    }
+  }catch(e){}
+  lexSpeakChain([{ t:_single, lang:_lang }]);
 };
 
 function lexSegHtml(){ var total=((_lexData&&_lexData.exercises)||[]).length, out=''; for(var k=0;k<total;k++){ var cls=_lexDone[k]?'done':(k===_lexStep?'cur':''); out+='<span class="'+cls+'"></span>'; } return '<div class="lexx-seg" id="lexx-seg">'+out+'</div>'; }

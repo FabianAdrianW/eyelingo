@@ -18663,6 +18663,28 @@ async function lexInit(){
 
   // Odsłuch POJEDYNCZEGO słowa: cloud (ElevenLabs) dla języków chmurowych; Web Speech dla ar/jp/zh/ko oraz jako fallback.
   window._elWordAudio=null;
+  /* ── EYELINGO: pregenerowane audio katalogu (statyczne MP3 z Supabase Storage) ── */
+  window.EYL_TTS_STATIC_ON = true; // pregenerowane MP3 katalogu WŁĄCZONE
+  window.EYL_TTS_STATIC_BASE = window.EYL_TTS_STATIC_BASE || 'https://sntlgkhktscezxpxrchl.supabase.co/storage/v1/object/public/tts-catalog';
+  window.EYL_TTS_STATIC_LANGS = window.EYL_TTS_STATIC_LANGS || ['en','es','de','fr','ar','uk','ru','nl','sv','no','da'];
+  window.eylCatalogAudioUrl = async function(word, langCode){
+    try{
+      if(!window.EYL_TTS_STATIC_ON) return null;
+      var code=String(langCode||'').slice(0,2).toLowerCase();
+      if(window.EYL_TTS_STATIC_LANGS.indexOf(code)<0) return null;
+      var norm=String(word||'').trim().toLowerCase();
+      if(!norm || norm.length>40) return null;
+      var buf=await crypto.subtle.digest('SHA-1', new TextEncoder().encode(norm));
+      var hex=Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+      return window.EYL_TTS_STATIC_BASE+'/'+code+'/'+hex+'.mp3';
+    }catch(e){ return null; }
+  };
+  window.eylTryPlayStatic = function(url){
+    return new Promise(function(resolve){
+      try{ var a=new Audio(url); window._eylStaticAudio=a; a.play().then(function(){ resolve(true); }).catch(function(){ resolve(false); }); }
+      catch(e){ resolve(false); }
+    });
+  };
   window.ttsPlayPause=async function(btn, text, langCode, rate, label){
     text=String(text||'').trim(); if(!text) return;
     try{ if(window._elWordAudio){ window._elWordAudio.pause(); window._elWordAudio=null; } }catch(e){}
@@ -18675,6 +18697,8 @@ async function lexInit(){
         window.speechSynthesis.speak(u);
       }catch(e){}
     }
+    // Pregenerowane audio katalogu — dla wszystkich, zero kosztu runtime
+    try{ var _su=(typeof window.eylCatalogAudioUrl==='function')?await window.eylCatalogAudioUrl(text, lc):null; if(_su && await window.eylTryPlayStatic(_su)) return; }catch(e){}
     if(webOnly){ webSpeak(); return; }
     try{
       var sess=(await db.auth.getSession()).data.session;
