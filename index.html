@@ -3597,7 +3597,7 @@ async function eylIsPremium(){
     if(r.error) return false;
     var p=r.data; if(!p) return false;
     var until=p.premium_until?new Date(p.premium_until):null;
-    return !!(p.is_premium && (!until || until>new Date()));
+    var _pro=!!(p.is_premium && (!until || until>new Date())); window._eylPro=_pro; return _pro;
   }catch(e){ return false; }
 }
 window.eylIsPremium=eylIsPremium;
@@ -6004,6 +6004,7 @@ function incrementChatUsage(){
   catch(e){return 1;}
 }
 function updateChatLimitUI(){
+  if(window._eylPro){ var _cl=document.getElementById('chat-limit-info'); if(_cl) _cl.textContent=''; return; }
   var used=getChatUsageToday();
   var left=Math.max(0,CHAT_DAILY_LIMIT-used);
   var el=document.getElementById('chat-limit-info');
@@ -6064,9 +6065,12 @@ async function chatSend(){
   var text=input.value.trim();
   if(!text)return;
   if(getChatUsageToday()>=CHAT_DAILY_LIMIT){
-    appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO. 🌟');
-    try{track('rozmowa_limit_reached',{surface:'web'});}catch(_e){}
-    return;
+    var _proChat=(typeof eylIsPremium==='function')?await eylIsPremium():(window._eylPro||false);
+    if(!_proChat){
+      appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO. 🌟');
+      try{track('rozmowa_limit_reached',{surface:'web'});}catch(_e){}
+      return;
+    }
   }
   var btn=document.getElementById('chat-send-btn');
   btn.disabled=true; input.value='';

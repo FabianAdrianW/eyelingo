@@ -2947,7 +2947,17 @@ function alexHints(){
 }
 function alexUseHint(t){ var i=document.getElementById('alex-input'); if(i){ i.value=t; i.focus(); } }
 
+async function eylProCheck(){
+  try{
+    if(!UID) return (window._eylPro=false);
+    var r=await db.from('profiles').select('is_premium,premium_until').eq('user_id',UID).maybeSingle();
+    if(r.error||!r.data) return (window._eylPro=false);
+    var u=r.data.premium_until?new Date(r.data.premium_until):null;
+    return (window._eylPro=!!(r.data.is_premium&&(!u||u>new Date())));
+  }catch(e){ return (window._eylPro=false); }
+}
 async function alexLoadUsage(){
+  try{ await eylProCheck(); }catch(e){}
   var today=new Date().toISOString().slice(0,10);
   try{ if(UID){ var r=await db.from('chat_usage').select('count').eq('user_id',UID).eq('day',today).limit(1);
     if(r && !r.error){ _alexUsageToday=(r.data&&r.data[0])?(+r.data[0].count||0):0; return; } } }catch(e){}
@@ -2961,6 +2971,7 @@ async function alexInc(){
 function alexLimitUI(){
   var left=Math.max(0,ALEX_DAILY_LIMIT-_alexUsageToday);
   var el=document.getElementById('alex-limit'); if(!el) return;
+  if(window._eylPro){ el.textContent=''; return; }
   el.textContent=left>0?(left+' z '+ALEX_DAILY_LIMIT+' wiadomości dziś'):'Limit dzienny wyczerpany — odblokuj PRO';
   el.style.color=left===0?'#dc2626':(left<=3?'var(--orange)':'var(--dim2)');
 }
@@ -2973,7 +2984,7 @@ function alexEndSession(){
 function alexIsStall(t){var s=String(t||'').trim().toLowerCase();if(s.length>0&&s.length<12)return true;return /nie wiem|wszystko jedno|cokolwiek|ty wybierz|ty zdecyduj|obojętn|bez różnicy|nudn|whatever|dunno|no idea|you (choose|decide|pick)/.test(s);}
 async function alexSend(){
   var input=document.getElementById('alex-input'); var text=(input.value||'').trim(); if(!text) return;
-  if(_alexUsageToday>=ALEX_DAILY_LIMIT){ try{track('rozmowa_limit_reached',{surface:'mobile'});}catch(_e){} alexAppend('ai','Osiągnąłeś dzienny limit '+ALEX_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO.'); return; }
+  if(_alexUsageToday>=ALEX_DAILY_LIMIT){ var _proA=window._eylPro||await eylProCheck(); if(!_proA){ try{track('rozmowa_limit_reached',{surface:'mobile'});}catch(_e){} alexAppend('ai','Osiągnąłeś dzienny limit '+ALEX_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO.'); return; } }
   var btn=document.getElementById('alex-send'); btn.disabled=true; input.value='';
   alexAppend('user',text); _alexHistory.push({role:'user',content:text});
   try{track('rozmowa_message',{surface:'mobile',chars:text.length});}catch(_e){}
