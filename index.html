@@ -2982,7 +2982,7 @@ async function loadDashboard(){
   if(p?.username){ document.getElementById('dash-name').textContent=p.username; if(typeof updateNav==='function') updateNav(true,p.username); }
   const now=new Date();
   const until=p?.premium_until?new Date(p.premium_until):null;
-  const isPremium=p?.is_premium&&until&&until>now;
+  const isPremium=!!(p?.is_premium&&(!until||until>now));
   const pc=document.getElementById('premium-card');
   if(pc) pc.style.display=isPremium?'none':'';
 
@@ -3597,7 +3597,7 @@ async function eylIsPremium(){
     if(r.error) return false;
     var p=r.data; if(!p) return false;
     var until=p.premium_until?new Date(p.premium_until):null;
-    return !!(p.is_premium && until && until>new Date());
+    return !!(p.is_premium && (!until || until>new Date()));
   }catch(e){ return false; }
 }
 window.eylIsPremium=eylIsPremium;

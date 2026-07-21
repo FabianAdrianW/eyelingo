@@ -3266,7 +3266,7 @@ async function alexSend(){
       var r=await db.from('profiles').select('is_premium,premium_until').eq('user_id',sess.user.id).maybeSingle();
       if(r.error || !r.data) return false;
       var until=r.data.premium_until?new Date(r.data.premium_until):null;
-      return !!(r.data.is_premium && until && until>new Date());
+      return !!(r.data.is_premium && (!until || until>new Date()));
     }catch(e){ return false; }
   }
 
