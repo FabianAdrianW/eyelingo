@@ -15821,7 +15821,10 @@ async function lexInit(){
         // loadDashboard() dla 'dash' i trzyma brame do jego zakonczenia.
         var hash=window.location.hash.replace('#','');
         var valid=['dash','community','strefa','teacher'];
-        showPage(valid.indexOf(hash)>=0?hash:'dash');
+        try{ if(typeof window.eylEnsureNav==='function') window.eylEnsureNav(); }catch(_e){}
+        var _tgt=valid.indexOf(hash)>=0?hash:'dash';
+        showPage(_tgt);
+        try{ if(typeof setActiveTab==='function' && (_tgt==='community'||_tgt==='teacher')) setActiveTab(_tgt); }catch(_e){}
       } else {
         // Niezalogowany: pokaż landing (strona główna). Bezpośrednie linki do
         // logowania/rejestracji (#auth) nadal prowadzą prosto do formularza.
@@ -20131,8 +20134,21 @@ if ('serviceWorker' in navigator) {
 })();
 </script>
 <script>
+/* Navbar zalogowanego usera zależy od SESJI, a nie od tego, na której stronie wylądujemy.
+   Dotąd updateNav(true) odpalało się wyłącznie w loadDashboard(), czyli tylko na ekranie 'dash'. */
+window.eylEnsureNav=async function(){
+  try{
+    if(typeof db==='undefined'||!db) return;
+    var r=await db.auth.getUser();
+    var u=r&&r.data&&r.data.user; if(!u) return;
+    var nm=(u.user_metadata&&u.user_metadata.username)||(u.email?String(u.email).split('@')[0]:'');
+    if(typeof updateNav==='function') updateNav(true,nm);
+  }catch(e){}
+};
 window.eylAfterLogin=function(){
   try{
+    if(typeof window.eylEnsureNav==='function') window.eylEnsureNav();          // navbar od razu
+    if(typeof loadDashboard==='function'){ try{ Promise.resolve(loadDashboard()).catch(function(){}); }catch(_e){} } // statystyki/profil jak dotąd
     if(typeof showPage==='function') showPage('community');
     if(typeof setActiveTab==='function') setActiveTab('community');
   }catch(e){ try{ if(typeof showPage==='function') showPage('dash'); }catch(_e){} }
