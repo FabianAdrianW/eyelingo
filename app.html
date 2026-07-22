@@ -6,6 +6,9 @@
      Gdyby coś przestało działać — usuń tę jedną linię <meta> poniżej i zgłoś, co padło. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://images.pexels.com https://sntlgkhktscezxpxrchl.supabase.co; media-src 'self' data: blob: https://sntlgkhktscezxpxrchl.supabase.co; connect-src 'self' https://sntlgkhktscezxpxrchl.supabase.co wss://sntlgkhktscezxpxrchl.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<!-- SEO-F1: PWA duplikuje tresc landingu — poza indeksem, link equity idzie na / -->
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://www.eyelingo.app/">
 <meta name="theme-color" content="#1a2340">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -245,8 +248,7 @@
   .lexx-items{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
   .lexx-chip{display:inline-flex;align-items:center;gap:6px;background:var(--paper2);border-radius:100px;padding:8px 14px;font-size:14px;font-weight:600;color:var(--navy);cursor:pointer}
   .lexx-chip .tr{font-size:12px;font-weight:400;color:var(--dim2)}
-  .lexx-target{display:inline-flex;align-items:center;gap:5px;background:rgba(201,106,42,.12);color:var(--orange);border-radius:6px;padding:2px 9px;font-weight:600;font-size:14px}
-  .lexx-tspk{border:none;background:transparent;color:var(--orange);opacity:.75;cursor:pointer;padding:0;display:inline-flex;align-items:center;line-height:0}
+  .lexx-target{display:inline-block;background:rgba(201,106,42,.12);color:var(--orange);border-radius:6px;padding:2px 9px;font-weight:600;font-size:14px}
   .lexx-tilezone{min-height:48px;display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start;padding:12px;background:var(--paper2);border-radius:10px;margin-bottom:12px}
   .lexx-tilepool{display:flex;flex-wrap:wrap;gap:8px}
   .lexx-tile{border:1px solid var(--line2);background:#fff;border-radius:8px;padding:9px 13px;font-family:inherit;font-size:15px;color:var(--navy);cursor:pointer;transition:.12s}
@@ -724,11 +726,15 @@ async function askLogout(){
   bDelete.textContent='Usuń konto';
   bDelete.style.cssText='padding:13px;border-radius:12px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer';
   bDelete.onclick=function(){ ov.remove(); eylDeleteAccountMobile(); };
+  var bWeb=document.createElement('button');
+  bWeb.textContent='Otwórz pełną wersję strony';
+  bWeb.style.cssText='padding:13px;border-radius:12px;border:1.5px solid rgba(26,35,64,.18);background:#fff;color:#1a2340;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer';
+  bWeb.onclick=function(){ ov.remove(); location.href='index.html?web=1'; };
   var bCancel=document.createElement('button');
   bCancel.textContent='Anuluj';
   bCancel.style.cssText='padding:12px;border:none;background:transparent;color:rgba(107,115,148,.9);font-size:14px;font-family:Inter,sans-serif;cursor:pointer';
   bCancel.onclick=function(){ ov.remove(); };
-  sheet.appendChild(bLogout); sheet.appendChild(bDelete); sheet.appendChild(bCancel);
+  sheet.appendChild(bWeb); sheet.appendChild(bLogout); sheet.appendChild(bDelete); sheet.appendChild(bCancel);
   ov.appendChild(sheet); document.body.appendChild(ov);
 }
 async function eylDeleteAccountMobile(){
@@ -1145,8 +1151,20 @@ function brNav(d){ var n=bi+d; if(n<0||n>=CARDS.length)return; bi=n; renderCard(
 function speakCard(){
   try{
     var c=CARDS[bi]; if(!c||!c.word) return;
-    if(window.speechSynthesis){ window.speechSynthesis.cancel();
-      var u=new SpeechSynthesisUtterance(c.word); u.lang=lexTtsCode(curSetLang); u.rate=.95; window.speechSynthesis.speak(u); }
+    var _lang=lexTtsCode(curSetLang);
+    var _web=function(){
+      try{ if(window.speechSynthesis){ window.speechSynthesis.cancel();
+        var u=new SpeechSynthesisUtterance(c.word); u.lang=_lang; u.rate=.95; window.speechSynthesis.speak(u); } }catch(e){}
+    };
+    // Pregenerowane audio katalogu (ElevenLabs) — dla wszystkich; fallback: Web Speech
+    if(window.EYL_TTS_STATIC_ON && typeof window.eylCatalogAudioUrl==='function'){
+      try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+      window.eylCatalogAudioUrl(c.word, _lang).then(function(u2){
+        if(u2){ window.eylTryPlayStatic(u2).then(function(ok){ if(!ok) _web(); }); } else { _web(); }
+      }).catch(function(){ _web(); });
+      return;
+    }
+    _web();
   }catch(e){}
 }
 
@@ -1161,14 +1179,7 @@ function lexBoardItems(){
   });
   return out.reverse(); // najnowsze na górze
 }
-function lexTargetHTML(w){
-  var t=String(w||'');
-  return '<span class="lexx-target">'+esc(t)
-    +'<button type="button" class="lexx-tspk" aria-label="Wymowa" onclick="event.stopPropagation();window.lexWordSpeak(this.getAttribute(\'data-w\'))" data-w="'+esc(t)+'">'
-    +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg>'
-    +'</button></span>';
-}
-function lexBoardSpeak(w){ if(w&&typeof window.lexWordSpeak==='function') window.lexWordSpeak(w); }
+function lexBoardSpeak(w){ if(w&&typeof lexSceneSpeak==='function') lexSceneSpeak(w); }
 function lexBoardRender(){
   var list=document.getElementById('lex-board-list'), badge=document.getElementById('lex-board-badge');
   var items=lexBoardItems();
@@ -1683,40 +1694,6 @@ function lexPickVoice(langCode){
       ||voices.find(function(v){return String(v.lang).toLowerCase().indexOf(base)===0;})||null;
   }catch(e){ return null; }
 }
-// Odsluch POJEDYNCZEGO slowa: czysci interpunkcje; gdy urzadzenie nie ma glosu dla
-// danego jezyka (czeste dla ja/zh/ko/ar) — zamiast ciszy schodzi do chmurowego TTS.
-window.lexCleanWord=function(t){
-  var w=String(t||'').replace(/\*\*/g,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-  return w.replace(/^[^\p{L}\p{N}]+/u,'').replace(/[^\p{L}\p{N}]+$/u,'');
-};
-window.lexHasVoice=function(lc){
-  try{
-    var vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
-    if(!vs.length) return false;
-    var base=String(lc||'').split('-')[0].toLowerCase();
-    return vs.some(function(v){ return String(v.lang||'').toLowerCase().indexOf(base)===0; });
-  }catch(e){ return false; }
-};
-window._lexWordAudio=null; window._lexWordCache=window._lexWordCache||{};
-window.lexWordSpeak=async function(word, code){
-  var w=window.lexCleanWord(word); if(!w) return;
-  var lc=code||lexTtsCode(_lexLang);
-  try{ if(window._lexWordAudio){ window._lexWordAudio.pause(); window._lexWordAudio=null; } }catch(e){}
-  if(window.lexHasVoice(lc)){ lexSpeakChain([{t:w, lang:lc}]); return; }
-  try{
-    var ck=lc+'|'+w, url=window._lexWordCache[ck];
-    if(!url){
-      var tok=''; try{ tok=(await db.auth.getSession()).data.session.access_token||''; }catch(e){}
-      var r=await fetch(SUPABASE_URL+'/functions/v1/tts',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},body:JSON.stringify({text:w, language_code:lc, voice_id:'JBFqnCBsd6RMkjVDRZzb'})});
-      if(!r.ok) throw new Error('tts '+r.status);
-      url=URL.createObjectURL(await r.blob()); window._lexWordCache[ck]=url;
-    }
-    var a=new Audio(url); window._lexWordAudio=a;
-    a.onended=function(){ window._lexWordAudio=null; };
-    await a.play();
-  }catch(e){ lexSpeakChain([{t:w, lang:lc}]); }
-};
-
 function lexSpeakChain(segs){
   if(!window.speechSynthesis||!segs||!segs.length) return;
   var myTok=(++_lexSpkToken);
@@ -1759,13 +1736,47 @@ function lexSpeakBilingual(text){
   });
   lexSpeakChain(segs);
 }
+/* ── EYELINGO: pregenerowane audio katalogu (statyczne MP3 z Supabase Storage) ── */
+window.EYL_TTS_STATIC_ON = true; // pregenerowane MP3 katalogu WŁĄCZONE
+window.EYL_TTS_STATIC_BASE = window.EYL_TTS_STATIC_BASE || 'https://sntlgkhktscezxpxrchl.supabase.co/storage/v1/object/public/tts-catalog';
+window.EYL_TTS_STATIC_LANGS = window.EYL_TTS_STATIC_LANGS || ['en','es','de','fr','ar','uk','ru','nl','sv','no','da'];
+window.eylCatalogAudioUrl = async function(word, langCode){
+  try{
+    if(!window.EYL_TTS_STATIC_ON) return null;
+    var code=String(langCode||'').slice(0,2).toLowerCase();
+    if(window.EYL_TTS_STATIC_LANGS.indexOf(code)<0) return null;
+    var norm=String(word||'').trim().toLowerCase();
+    if(!norm || norm.length>40) return null;
+    var buf=await crypto.subtle.digest('SHA-1', new TextEncoder().encode(norm));
+    var hex=Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+    return window.EYL_TTS_STATIC_BASE+'/'+code+'/'+hex+'.mp3';
+  }catch(e){ return null; }
+};
+window.eylTryPlayStatic = function(url){
+  return new Promise(function(resolve){
+    try{ var a=new Audio(url); window._eylStaticAudio=a; a.play().then(function(){ resolve(true); }).catch(function(){ resolve(false); }); }
+    catch(e){ resolve(false); }
+  });
+};
 window.lexSceneSpeak=function(text,code){
   if(!text) return;
   var s=String(text);
   // Tok dwujęzyczny: narracja PL + **słowa docelowe** → każdy fragment swoim głosem
   if(!code && s.indexOf('**')>=0){ lexSpeakBilingual(s); return; }
-  // Jednojęzyczny: przycisk wymowy słowa lub tekst bez markerów
-  lexSpeakChain([{ t:s.replace(/\*\*/g,'').replace(/<[^>]+>/g,' '), lang:(code||lexTtsCode()) }]);
+  // Jednojęzyczny: słowo/tekst bez markerów
+  var _single=s.replace(/\*\*/g,'').replace(/<[^>]+>/g,' ');
+  var _lang=(code||lexTtsCode());
+  // Pregenerowane audio katalogu — dla wszystkich; fallback: Web Speech (lexSpeakChain)
+  try{
+    if(window.EYL_TTS_STATIC_ON && typeof window.eylCatalogAudioUrl==='function'){
+      window.eylCatalogAudioUrl(_single, _lang).then(function(u){
+        if(u){ window.eylTryPlayStatic(u).then(function(ok){ if(!ok) lexSpeakChain([{ t:_single, lang:_lang }]); }); }
+        else { lexSpeakChain([{ t:_single, lang:_lang }]); }
+      });
+      return;
+    }
+  }catch(e){}
+  lexSpeakChain([{ t:_single, lang:_lang }]);
 };
 
 function lexSegHtml(){ var total=((_lexData&&_lexData.exercises)||[]).length, out=''; for(var k=0;k<total;k++){ var cls=_lexDone[k]?'done':(k===_lexStep?'cur':''); out+='<span class="'+cls+'"></span>'; } return '<div class="lexx-seg" id="lexx-seg">'+out+'</div>'; }
@@ -1849,11 +1860,11 @@ function lexRenderExercise(ex,i){
     body+=exScene(ex.role||'Sytuacja', ex.situation||ex.prompt||'', false);
     body+='<div style="font-size:12.5px;color:var(--dim2);margin:8px 0 10px">Napisz własną reakcję po '+langAdv()+' (1–2 zdania). Użyj słów poniżej.</div>';
     var _mu=[].concat(ex.must_use||ex.target||[]).filter(Boolean);
-    if(_mu.length) body+='<div style="margin:0 0 12px">Użyj tych słów: '+_mu.map(lexTargetHTML).join(' ')+'</div>';
+    if(_mu.length) body+='<div style="margin:0 0 12px">Użyj tych słów: '+_mu.map(function(w){return '<span class="lexx-target">'+esc(w)+'</span>';}).join(' ')+'</div>';
     if(ex.skeleton) body+='<div class="lexx-hint" style="margin-bottom:10px">Podpowiedź (możesz uzupełnić luki albo napisać po swojemu): '+esc(ex.skeleton)+'</div>';
     inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="3" placeholder="Twoja odpowiedź po '+langAdv()+'…"></textarea>';
   } else {
-    if(ex.target) body+='<div style="margin-bottom:16px">Użyj: '+lexTargetHTML(ex.target)+'</div>';
+    if(ex.target) body+='<div style="margin-bottom:16px">Użyj: <span class="lexx-target">'+esc(ex.target)+'</span></div>';
     if(ex.hint) body+='<div class="lexx-hint" style="margin-bottom:10px">'+esc(ex.hint)+'</div>';
     inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="3" placeholder="Napisz własne zdanie po '+langAdv()+'…"></textarea>';
   }
@@ -2706,7 +2717,22 @@ function pwReveal(){
     +'<button class="pw-g q4" onclick="pwGrade(4)">Łatwe<span class="ph">dłuższa przerwa</span></button>';
 }
 function pwSpeak(){
-  try{ var r=_pwQueue[_pwIdx]; if(!r||!r.word) return; if(window.speechSynthesis){ speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(r.word); u.lang=lexTtsCode(r.lang||'en'); u.rate=.95; speechSynthesis.speak(u); } }catch(e){}
+  try{
+    var r=_pwQueue[_pwIdx]; if(!r||!r.word) return;
+    var _lang=lexTtsCode(r.lang||'en');
+    var _web=function(){
+      try{ if(window.speechSynthesis){ speechSynthesis.cancel();
+        var u=new SpeechSynthesisUtterance(r.word); u.lang=_lang; u.rate=.95; speechSynthesis.speak(u); } }catch(e){}
+    };
+    if(window.EYL_TTS_STATIC_ON && typeof window.eylCatalogAudioUrl==='function'){
+      try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
+      window.eylCatalogAudioUrl(r.word, _lang).then(function(u2){
+        if(u2){ window.eylTryPlayStatic(u2).then(function(ok){ if(!ok) _web(); }); } else { _web(); }
+      }).catch(function(){ _web(); });
+      return;
+    }
+    _web();
+  }catch(e){}
 }
 async function pwGrade(q){
   var r=_pwQueue[_pwIdx]; if(!r) return;
@@ -2982,7 +3008,17 @@ function alexHints(){
 }
 function alexUseHint(t){ var i=document.getElementById('alex-input'); if(i){ i.value=t; i.focus(); } }
 
+async function eylProCheck(){
+  try{
+    if(!UID) return (window._eylPro=false);
+    var r=await db.from('profiles').select('is_premium,premium_until').eq('user_id',UID).maybeSingle();
+    if(r.error||!r.data) return (window._eylPro=false);
+    var u=r.data.premium_until?new Date(r.data.premium_until):null;
+    return (window._eylPro=!!(r.data.is_premium&&(!u||u>new Date())));
+  }catch(e){ return (window._eylPro=false); }
+}
 async function alexLoadUsage(){
+  try{ await eylProCheck(); }catch(e){}
   var today=new Date().toISOString().slice(0,10);
   try{ if(UID){ var r=await db.from('chat_usage').select('count').eq('user_id',UID).eq('day',today).limit(1);
     if(r && !r.error){ _alexUsageToday=(r.data&&r.data[0])?(+r.data[0].count||0):0; return; } } }catch(e){}
@@ -2996,6 +3032,7 @@ async function alexInc(){
 function alexLimitUI(){
   var left=Math.max(0,ALEX_DAILY_LIMIT-_alexUsageToday);
   var el=document.getElementById('alex-limit'); if(!el) return;
+  if(window._eylPro){ el.textContent=''; return; }
   el.textContent=left>0?(left+' z '+ALEX_DAILY_LIMIT+' wiadomości dziś'):'Limit dzienny wyczerpany — odblokuj PRO';
   el.style.color=left===0?'#dc2626':(left<=3?'var(--orange)':'var(--dim2)');
 }
@@ -3008,7 +3045,7 @@ function alexEndSession(){
 function alexIsStall(t){var s=String(t||'').trim().toLowerCase();if(s.length>0&&s.length<12)return true;return /nie wiem|wszystko jedno|cokolwiek|ty wybierz|ty zdecyduj|obojętn|bez różnicy|nudn|whatever|dunno|no idea|you (choose|decide|pick)/.test(s);}
 async function alexSend(){
   var input=document.getElementById('alex-input'); var text=(input.value||'').trim(); if(!text) return;
-  if(_alexUsageToday>=ALEX_DAILY_LIMIT){ try{track('rozmowa_limit_reached',{surface:'mobile'});}catch(_e){} alexAppend('ai','Osiągnąłeś dzienny limit '+ALEX_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO.'); return; }
+  if(_alexUsageToday>=ALEX_DAILY_LIMIT){ var _proA=window._eylPro||await eylProCheck(); if(!_proA){ try{track('rozmowa_limit_reached',{surface:'mobile'});}catch(_e){} alexAppend('ai','Osiągnąłeś dzienny limit '+ALEX_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO.'); return; } }
   var btn=document.getElementById('alex-send'); btn.disabled=true; input.value='';
   alexAppend('user',text); _alexHistory.push({role:'user',content:text});
   try{track('rozmowa_message',{surface:'mobile',chars:text.length});}catch(_e){}
@@ -3301,7 +3338,7 @@ async function alexSend(){
       var r=await db.from('profiles').select('is_premium,premium_until').eq('user_id',sess.user.id).maybeSingle();
       if(r.error || !r.data) return false;
       var until=r.data.premium_until?new Date(r.data.premium_until):null;
-      return !!(r.data.is_premium && until && until>new Date());
+      return !!(r.data.is_premium && (!until || until>new Date()));
     }catch(e){ return false; }
   }
 

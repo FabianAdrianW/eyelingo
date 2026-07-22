@@ -23,18 +23,98 @@
 </script>
 <title>Eyelingo — nauka języków w tle Twojej pracy</title>
 <meta name="description" content="Ucz się 14 języków bez dodatkowego czasu. Fiszki w tle pracy, powtórki SRS i trener AI — na komputerze, w przeglądarce i w telefonie.">
+<!-- SEO-F1: dyrektywa dla robotow -->
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <link rel="canonical" href="https://www.eyelingo.app/">
+<!-- SEO-F1: dane strukturalne (schema.org). Nie wplywaja na dzialanie aplikacji. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://www.eyelingo.app/#organization",
+      "name": "Eyelingo",
+      "url": "https://www.eyelingo.app/",
+      "logo": "https://www.eyelingo.app/icon512.png",
+      "email": "eyelingo.app@gmail.com",
+      "areaServed": "PL",
+      "description": "Eyelingo to narzędzie do nauki języków dla dorosłych: fiszki w tle pracy, powtórki interwałowe SM-2 i trener AI. Bez gamifikacji."
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://www.eyelingo.app/#website",
+      "url": "https://www.eyelingo.app/",
+      "name": "Eyelingo",
+      "inLanguage": "pl-PL",
+      "publisher": { "@id": "https://www.eyelingo.app/#organization" }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://www.eyelingo.app/#app",
+      "name": "Eyelingo",
+      "url": "https://www.eyelingo.app/",
+      "applicationCategory": "EducationalApplication",
+      "applicationSubCategory": "Nauka języków obcych",
+      "operatingSystem": "Windows, macOS, Android, iOS, przeglądarka internetowa",
+      "inLanguage": "pl-PL",
+      "image": "https://www.eyelingo.app/og-image.png",
+      "publisher": { "@id": "https://www.eyelingo.app/#organization" },
+      "description": "Nauka 14 języków od A1 do C2 bez dodatkowego czasu. Fiszki wyświetlane w rogu ekranu podczas pracy, powtórki interwałowe w algorytmie SM-2 oraz trener AI prowadzący lekcje utrwalające.",
+      "featureList": [
+        "Fiszki ambient w rogu ekranu (aplikacja desktopowa)",
+        "Powtórki interwałowe w algorytmie SM-2",
+        "Trener AI prowadzący lekcje utrwalające",
+        "Swobodne rozmowy z partnerem AI",
+        "14 języków na poziomach A1–C2",
+        "Ponad 56 000 gotowych fiszek",
+        "Własne zestawy fiszek",
+        "Synchronizacja: komputer, przeglądarka, telefon"
+      ],
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Free",
+          "price": "0",
+          "priceCurrency": "PLN",
+          "description": "Poziom A1 we wszystkich 14 językach, fiszki ambient, własne zestawy (do 5), rozmowy z limitem 15 wiadomości dziennie.",
+          "availability": "https://schema.org/InStock"
+        },
+        {
+          "@type": "Offer",
+          "name": "PRO miesięcznie",
+          "price": "39",
+          "priceCurrency": "PLN",
+          "description": "Wszystkie poziomy A1–C2 i wszystkie języki, lekcje z trenerem AI, rozmowy bez limitu.",
+          "availability": "https://schema.org/InStock"
+        },
+        {
+          "@type": "Offer",
+          "name": "PRO rocznie",
+          "price": "329",
+          "priceCurrency": "PLN",
+          "description": "Pełne PRO w rozliczeniu rocznym, około 30 procent taniej niż plan miesięczny.",
+          "availability": "https://schema.org/InStock"
+        }
+      ]
+    }
+  ]
+}
+</script>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Eyelingo">
 <meta property="og:locale" content="pl_PL">
 <meta property="og:url" content="https://www.eyelingo.app/">
 <meta property="og:title" content="Eyelingo — nauka języków w tle Twojej pracy">
 <meta property="og:description" content="Ucz się 14 języków bez dodatkowego czasu. Fiszki w tle pracy, powtórki SRS i trener AI — na komputerze, w przeglądarce i w telefonie.">
-<meta property="og:image" content="https://www.eyelingo.app/icon512.png">
+<meta property="og:image" content="https://www.eyelingo.app/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Eyelingo — nauka języków w tle Twojej pracy">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Eyelingo — nauka języków w tle Twojej pracy">
 <meta name="twitter:description" content="Ucz się 14 języków bez dodatkowego czasu. Fiszki w tle pracy, powtórki SRS i trener AI.">
-<meta name="twitter:image" content="https://www.eyelingo.app/icon512.png">
+<meta name="twitter:image" content="https://www.eyelingo.app/og-image.png">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
 <link rel="apple-touch-icon" href="appletouchicon180.png">
 <link rel="manifest" href="manifest.json">
@@ -2664,6 +2744,74 @@ function killLegacyLeakKeys(){
 function reloadUserScopedState(){
   try{ if(typeof loadLangLevels==='function'){ loadLangLevels(); if(typeof syncLevelSelector==='function') syncLevelSelector(); } }catch(e){}
 }
+/* ═══ EYL · ROUTING MOBILNY (QR / wizytówka → app.html po zalogowaniu) ═══
+   index.html i app.html stoją na TYM SAMYM originie, więc sesja Supabase
+   w localStorage jest wspólna. Nie przekazujemy tokenu w URL.
+   Furtka: ?web=1 (zapamiętywana w localStorage) oraz każdy #deep-link. */
+var EYL_FORCE_WEB_KEY = 'eyl_force_web';
+
+function eylIsMobileUA(){
+  try{
+    var ua = navigator.userAgent || '';
+    if(/Android|iPhone|iPod|IEMobile|Opera Mini/i.test(ua)) return true;
+    if(/iPad/.test(ua)) return true;
+    // iPadOS 13+ podaje się za Macintosha — rozpoznajemy po dotyku
+    if(/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true;
+    return window.matchMedia('(max-width:820px)').matches
+        && window.matchMedia('(pointer:coarse)').matches;
+  }catch(e){ return false; }
+}
+
+function eylWebForced(){
+  try{
+    if(new URLSearchParams(location.search).has('web')){
+      localStorage.setItem(EYL_FORCE_WEB_KEY,'1');
+      return true;
+    }
+    return localStorage.getItem(EYL_FORCE_WEB_KEY) === '1';
+  }catch(e){ return false; }
+}
+
+/* Deep-link (#cennik, #regulamin, #polityka…) = użytkownik chce KONKRETNE
+   miejsce na stronie, nie aplikację.
+   UWAGA: showPage() nadpisuje location.hash przy KAŻDEJ zmianie ekranu
+   (history.replaceState), więc bieżący hash NIE jest informacją o intencji
+   użytkownika. Zamrażamy hash z momentu wejścia na stronę — tylko on się liczy. */
+var EYL_ENTRY_HASH = (function(){
+  try{ return (location.hash || '').replace('#',''); }catch(e){ return ''; }
+})();
+function eylDeepLinked(){
+  if(!EYL_ENTRY_HASH) return false;
+  if(EYL_ENTRY_HASH === 'home' || EYL_ENTRY_HASH === 'auth') return false;
+  return true;
+}
+
+/* opts.force = użytkownik WŁAŚNIE się zalogował na telefonie.
+   To jawna intencja „chcę korzystać", więc bramka deep-link nie obowiązuje.
+   Furtka ?web=1 obowiązuje zawsze — to jedyny świadomy wybór użytkownika. */
+function eylGoMobileApp(opts){
+  try{
+    var force = !!(opts && opts.force);
+    // Przekierowanie JUŻ w locie (np. zdarzenie SIGNED_IN wyprzedziło zwrot
+    // z signInWithPassword). Zwracamy TRUE, żeby wywołujący przerwał swoją
+    // ścieżkę i nie odpalał showPage('dash') w trakcie trwającej nawigacji.
+    if(window._eylRouting) return true;
+    if(!eylIsMobileUA()) return false;
+    if(eylWebForced()) return false;
+    if(!force && eylDeepLinked()) return false;
+    if(/app\.html$/i.test(location.pathname)) return false;
+    window._eylRouting = true;
+    try{ if(typeof track === 'function') track('mobile_autoroute',{to:'app',trigger:(force?'login':'boot')}); }catch(_e){}
+    location.replace('app.html');   // replace, nie href — inaczej „wstecz" zapętla
+    // Bezpiecznik: gdyby nawigacja została porzucona (service worker, blokada
+    // przeglądarki), próbujemy jeszcze raz. Jeśli replace zadziałał, dokument
+    // już nie istnieje i timer nigdy się nie wykona.
+    setTimeout(function(){ try{ location.href='app.html'; }catch(_e){} }, 1200);
+    return true;
+  }catch(e){ return false; }
+}
+window.eylGoMobileApp = eylGoMobileApp;
+
 (function initDB(){
   if(typeof supabase !== 'undefined'){
     var _c=supabase.createClient||supabase.default&&supabase.default.createClient;
@@ -2676,6 +2824,7 @@ function reloadUserScopedState(){
         try{ window._uid = (r&&r.data&&r.data.session) ? r.data.session.user.id : null; }catch(e){}
         killLegacyLeakKeys();
         reloadUserScopedState();
+        try{ if(r && r.data && r.data.session) eylGoMobileApp(); }catch(_e){}
       });
       db.auth.onAuthStateChange(function(event, session){ try{window._eylTok=session&&session.access_token;}catch(_e){}
         var _prev = window._uid;
@@ -2691,6 +2840,7 @@ function reloadUserScopedState(){
           try{ window.location.reload(); return; }catch(e){}
         }
         reloadUserScopedState();
+        try{ if(event === 'SIGNED_IN' && session) eylGoMobileApp({force:true}); }catch(_e){}
       });
     }catch(e){}
   }
@@ -2793,9 +2943,11 @@ async function submitAuth(){
           await db.from('profiles').upsert({user_id:res.data.user.id,username},{onConflict:'user_id'}).select();
           try{track('user_signup',{surface:'web'});}catch(_e){}
         }
+        if(typeof eylGoMobileApp === 'function' && eylGoMobileApp({force:true})) return;
         showPage('dash');
       }
     } else {
+      if(typeof eylGoMobileApp === 'function' && eylGoMobileApp({force:true})) return;
       showPage('dash');
     }
   }catch(e){
@@ -2830,7 +2982,7 @@ async function loadDashboard(){
   if(p?.username){ document.getElementById('dash-name').textContent=p.username; if(typeof updateNav==='function') updateNav(true,p.username); }
   const now=new Date();
   const until=p?.premium_until?new Date(p.premium_until):null;
-  const isPremium=p?.is_premium&&until&&until>now;
+  const isPremium=!!(p?.is_premium&&(!until||until>now));
   const pc=document.getElementById('premium-card');
   if(pc) pc.style.display=isPremium?'none':'';
 
@@ -3445,7 +3597,7 @@ async function eylIsPremium(){
     if(r.error) return false;
     var p=r.data; if(!p) return false;
     var until=p.premium_until?new Date(p.premium_until):null;
-    return !!(p.is_premium && until && until>new Date());
+    var _pro=!!(p.is_premium && (!until || until>new Date())); window._eylPro=_pro; return _pro;
   }catch(e){ return false; }
 }
 window.eylIsPremium=eylIsPremium;
@@ -5852,6 +6004,7 @@ function incrementChatUsage(){
   catch(e){return 1;}
 }
 function updateChatLimitUI(){
+  if(window._eylPro){ var _cl=document.getElementById('chat-limit-info'); if(_cl) _cl.textContent=''; return; }
   var used=getChatUsageToday();
   var left=Math.max(0,CHAT_DAILY_LIMIT-used);
   var el=document.getElementById('chat-limit-info');
@@ -5912,9 +6065,12 @@ async function chatSend(){
   var text=input.value.trim();
   if(!text)return;
   if(getChatUsageToday()>=CHAT_DAILY_LIMIT){
-    appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO. 🌟');
-    try{track('rozmowa_limit_reached',{surface:'web'});}catch(_e){}
-    return;
+    var _proChat=(typeof eylIsPremium==='function')?await eylIsPremium():(window._eylPro||false);
+    if(!_proChat){
+      appendChatMsg('ai','Osiągnąłeś dzienny limit '+CHAT_DAILY_LIMIT+' wiadomości w rozmowie. W PRO rozmawiasz bez limitów — wróć jutro albo odblokuj PRO. 🌟');
+      try{track('rozmowa_limit_reached',{surface:'web'});}catch(_e){}
+      return;
+    }
   }
   var btn=document.getElementById('chat-send-btn');
   btn.disabled=true; input.value='';
@@ -15647,7 +15803,7 @@ async function lexInit(){
     db.auth.onAuthStateChange(function(event,session){
       if(event==='SIGNED_OUT'){
         _appInitialized=false;
-        showPage('home');   // po wylogowaniu wracamy na landing, nie na formularz
+        showPage('auth');
       }
       // Do NOT redirect on SIGNED_IN from onAuthStateChange - 
       // this fires on tab focus and would always go to dash
@@ -15721,9 +15877,7 @@ async function lexInit(){
 .lexx-next[disabled]{opacity:.45;cursor:default}
 .lexx-items{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
 .lexx-chip{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--border);border-radius:100px;padding:8px 15px;font-size:14px;box-shadow:0 2px 8px rgba(26,35,64,.05)}
-.lexx-target{display:inline-flex;align-items:center;gap:6px;background:var(--navy);color:#fff;font-family:DM Sans,sans-serif;font-weight:500;padding:4px 12px;border-radius:8px;font-size:15px}
-.lexx-tspk{border:none;background:transparent;color:#fff;opacity:.72;cursor:pointer;padding:0;display:inline-flex;align-items:center;line-height:0}
-.lexx-tspk:hover{opacity:1}
+.lexx-target{display:inline-block;background:var(--navy);color:#fff;font-family:DM Sans,sans-serif;font-weight:500;padding:4px 12px;border-radius:8px;font-size:15px}
 .lexx-scene-line{display:flex;align-items:flex-start;gap:10px}
 .lexx-scene-line .lexx-scene-txt{flex:1;margin:0}
 .lexx-sceneaudio{flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid var(--border2);background:#fff;color:var(--navy);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s;margin-top:2px}
@@ -16339,22 +16493,6 @@ async function lexInit(){
       speechSynthesis.speak(u);
     }catch(e){}
   };
-  // Slowo-cel z ikona odsluchu (dotad .lexx-target bylo czystym tekstem, bez audio).
-  function lexxTargetHTML(w){
-    var t=String(w||'');
-    var code=(typeof window.ttsLangCode==='function')?window.ttsLangCode(lang()):'en-US';
-    return '<span class="lexx-target">'+esc(t)
-      +'<button type="button" class="lexx-tspk" title="Posłuchaj słowa" data-w="'+esc(t)+'" data-lc="'+esc(code)+'">'
-      +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg>'
-      +'</button></span>';
-  }
-  document.addEventListener('click', function(e){
-    var b=e.target && e.target.closest && e.target.closest('.lexx-tspk');
-    if(!b) return;
-    e.preventDefault(); e.stopPropagation();
-    if(typeof window.ttsPlayPause==='function') window.ttsPlayPause(b, b.getAttribute('data-w'), b.getAttribute('data-lc'), 0.75, 'Słowo');
-  }, true);
-
   function lexxRenderExercise(ex,i){
     var box=document.createElement('div'); box.className='lexx-ex'; box.dataset.i=i;
     var head='<div class="lexx-ex-head"><span class="lexx-eyebrow">'+exEyebrow(ex.type)+'</span></div>'
@@ -16446,11 +16584,11 @@ async function lexInit(){
       body+=exScene(ex.role||'Sytuacja', ex.situation||ex.prompt||'');
       body+='<div style="font-size:12.5px;color:var(--dim2);margin:8px 0 10px">Napisz własną reakcję po '+lexxAdv(lang())+' (1–2 zdania). Użyj słów poniżej.</div>';
       var _mu=[].concat(ex.must_use||ex.target||[]).filter(Boolean);
-      if(_mu.length) body+='<div style="margin:0 0 12px">Użyj tych słów: '+_mu.map(lexxTargetHTML).join(' ')+'</div>';
+      if(_mu.length) body+='<div style="margin:0 0 12px">Użyj tych słów: '+_mu.map(function(w){return '<span class="lexx-target">'+esc(w)+'</span>';}).join(' ')+'</div>';
       if(ex.skeleton) body+='<div class="lexx-hint" style="margin-bottom:10px">Podpowiedź (możesz uzupełnić luki albo napisać po swojemu): '+esc(ex.skeleton)+'</div>';
       inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="3" placeholder="Twoja odpowiedź po '+lexxAdv(lang())+'…"></textarea>';
     } else { // produce
-      if(ex.target) body+='<div style="margin-bottom:16px">Użyj: '+lexxTargetHTML(ex.target)+'</div>';
+      if(ex.target) body+='<div style="margin-bottom:16px">Użyj: <span class="lexx-target">'+esc(ex.target)+'</span></div>';
       if(ex.hint) body+='<div class="lexx-hint" style="margin-bottom:10px">'+esc(ex.hint)+'</div>';
       inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="3" placeholder="Napisz własne zdanie po '+lexxAdv(lang())+'…"></textarea>';
     }
@@ -18525,80 +18663,52 @@ async function lexInit(){
 
   // Odsłuch POJEDYNCZEGO słowa: cloud (ElevenLabs) dla języków chmurowych; Web Speech dla ar/jp/zh/ko oraz jako fallback.
   window._elWordAudio=null;
-
-  // Oczyszczenie tokenu: tlBuildHTML tnie tekst po spacjach, wiec do slowa przykleja sie
-  // interpunkcja („Czesc," / world. / — ). Zdejmujemy ja; jesli nie zostaje nic — brak audio.
-  window.ttsCleanWord=function(t){
-    var w=String(t||'').replace(/\s+/g,' ').trim();
-    w=w.replace(/^[^\p{L}\p{N}]+/u,'').replace(/[^\p{L}\p{N}]+$/u,'');
-    return w;
-  };
-  // Czy Web Speech ma glos dla tego jezyka? Brak glosu = cisza bez bledu (czeste
-  // dla ja/zh/ko/ar na desktopie) — wtedy schodzimy do chmury zamiast milczec.
-  window.ttsHasLocalVoice=function(lc){
+  /* ── EYELINGO: pregenerowane audio katalogu (statyczne MP3 z Supabase Storage) ── */
+  window.EYL_TTS_STATIC_ON = true; // pregenerowane MP3 katalogu WŁĄCZONE
+  window.EYL_TTS_STATIC_BASE = window.EYL_TTS_STATIC_BASE || 'https://sntlgkhktscezxpxrchl.supabase.co/storage/v1/object/public/tts-catalog';
+  window.EYL_TTS_STATIC_LANGS = window.EYL_TTS_STATIC_LANGS || ['en','es','de','fr','ar','uk','ru','nl','sv','no','da'];
+  window.eylCatalogAudioUrl = async function(word, langCode){
     try{
-      var vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
-      if(!vs.length) return false;
-      var base=String(lc||'').split('-')[0].toLowerCase();
-      return vs.some(function(v){ return String(v.lang||'').toLowerCase().indexOf(base)===0; });
-    }catch(e){ return false; }
+      if(!window.EYL_TTS_STATIC_ON) return null;
+      var code=String(langCode||'').slice(0,2).toLowerCase();
+      if(window.EYL_TTS_STATIC_LANGS.indexOf(code)<0) return null;
+      var norm=String(word||'').trim().toLowerCase();
+      if(!norm || norm.length>40) return null;
+      var buf=await crypto.subtle.digest('SHA-1', new TextEncoder().encode(norm));
+      var hex=Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+      return window.EYL_TTS_STATIC_BASE+'/'+code+'/'+hex+'.mp3';
+    }catch(e){ return null; }
   };
-
+  window.eylTryPlayStatic = function(url){
+    return new Promise(function(resolve){
+      try{ var a=new Audio(url); window._eylStaticAudio=a; a.play().then(function(){ resolve(true); }).catch(function(){ resolve(false); }); }
+      catch(e){ resolve(false); }
+    });
+  };
   window.ttsPlayPause=async function(btn, text, langCode, rate, label){
-    var word=window.ttsCleanWord(text);
-    var setState=function(msg){
-      if(!btn) return;
-      try{
-        if(btn._ttsOrig==null) btn._ttsOrig=btn.innerHTML;
-        btn.innerHTML=msg;
-        clearTimeout(btn._ttsT);
-        btn._ttsT=setTimeout(function(){ try{ btn.innerHTML=btn._ttsOrig; }catch(e){} },1800);
-      }catch(e){}
-    };
-    if(!word){ setState('Brak audio'); return; }
-
+    text=String(text||'').trim(); if(!text) return;
     try{ if(window._elWordAudio){ window._elWordAudio.pause(); window._elWordAudio=null; } }catch(e){}
     try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
-
     var lc=String(langCode||'en-US');
-    // Routing z jedynego zrodla prawdy (LEX_LANG_MAP.tts), nie ze zgadywania po kodzie.
-    var prefWeb=false;
-    try{
-      if(typeof LEX_LANG_MAP!=='undefined'){
-        for(var k in LEX_LANG_MAP){
-          if(LEX_LANG_MAP[k] && LEX_LANG_MAP[k].bcp47===lc){ prefWeb=(LEX_LANG_MAP[k].tts==='web'); break; }
-        }
-      }
-    }catch(e){}
-
+    var webOnly=/^(ar|ja|zh|ko)/i.test(lc);
     function webSpeak(){
-      try{
-        if(!window.speechSynthesis) return false;
-        var u=new SpeechSynthesisUtterance(word); u.lang=lc; u.rate=(rate||0.8);
+      try{ var u=new SpeechSynthesisUtterance(text); u.lang=lc; u.rate=(rate||0.8);
         var bv=(typeof window.lexvBestVoice==='function')?window.lexvBestVoice(lc):null; if(bv) u.voice=bv;
-        window.speechSynthesis.speak(u); return true;
-      }catch(e){ return false; }
+        window.speechSynthesis.speak(u);
+      }catch(e){}
     }
-    async function cloudSpeak(){
-      // Cache wspoldzielony z lekcja — ten sam wyraz nie jest kupowany dwa razy.
-      window._lexTtsCache=window._lexTtsCache||{};
-      var ck=lc+'|'+word;
-      var url=window._lexTtsCache[ck];
-      if(!url){
-        var sess=(await db.auth.getSession()).data.session;
-        var r=await fetch('https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/tts',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},body:JSON.stringify({text:word, language_code:lc, voice_id:(typeof window.LEX_TTS_VOICE!=='undefined'&&window.LEX_TTS_VOICE)?window.LEX_TTS_VOICE:'JBFqnCBsd6RMkjVDRZzb'})});
-        if(!r.ok){ var e=new Error('tts '+r.status); e.status=r.status; try{ window._ttsLastError={httpStatus:r.status, path:'word'}; }catch(_e){} throw e; }
-        var blob=await r.blob(); url=URL.createObjectURL(blob);
-        window._lexTtsCache[ck]=url;
-      }
+    // Pregenerowane audio katalogu — dla wszystkich, zero kosztu runtime
+    try{ var _su=(typeof window.eylCatalogAudioUrl==='function')?await window.eylCatalogAudioUrl(text, lc):null; if(_su && await window.eylTryPlayStatic(_su)) return; }catch(e){}
+    if(webOnly){ webSpeak(); return; }
+    try{
+      var sess=(await db.auth.getSession()).data.session;
+      var r=await fetch('https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/tts',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},body:JSON.stringify({text:text, language_code:lc, voice_id:(typeof window.LEX_TTS_VOICE!=='undefined'&&window.LEX_TTS_VOICE)?window.LEX_TTS_VOICE:'JBFqnCBsd6RMkjVDRZzb'})});
+      if(!r.ok) throw new Error('tts '+r.status);
+      var blob=await r.blob(); var url=URL.createObjectURL(blob);
       var a=new Audio(url); window._elWordAudio=a;
-      a.onended=function(){ window._elWordAudio=null; };
+      a.onended=function(){ try{URL.revokeObjectURL(url);}catch(e){} window._elWordAudio=null; };
       await a.play();
-    }
-
-    if(prefWeb && window.ttsHasLocalVoice(lc)){ if(webSpeak()) return; }
-    try{ await cloudSpeak(); }
-    catch(e){ if(!webSpeak()) setState('Brak audio'); }
+    }catch(e){ webSpeak(); }
   };
 
   window.tlClosePopover = function(){ if(window._tlPop){ try{window._tlPop.remove();}catch(e){} window._tlPop=null; } };
