@@ -1151,8 +1151,20 @@ function brNav(d){ var n=bi+d; if(n<0||n>=CARDS.length)return; bi=n; renderCard(
 function speakCard(){
   try{
     var c=CARDS[bi]; if(!c||!c.word) return;
-    if(window.speechSynthesis){ window.speechSynthesis.cancel();
-      var u=new SpeechSynthesisUtterance(c.word); u.lang=lexTtsCode(curSetLang); u.rate=.95; window.speechSynthesis.speak(u); }
+    var _lang=lexTtsCode(curSetLang);
+    var _web=function(){
+      try{ if(window.speechSynthesis){ window.speechSynthesis.cancel();
+        var u=new SpeechSynthesisUtterance(c.word); u.lang=_lang; u.rate=.95; window.speechSynthesis.speak(u); } }catch(e){}
+    };
+    // Pregenerowane audio katalogu (ElevenLabs) — dla wszystkich; fallback: Web Speech
+    if(window.EYL_TTS_STATIC_ON && typeof window.eylCatalogAudioUrl==='function'){
+      try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+      window.eylCatalogAudioUrl(c.word, _lang).then(function(u2){
+        if(u2){ window.eylTryPlayStatic(u2).then(function(ok){ if(!ok) _web(); }); } else { _web(); }
+      }).catch(function(){ _web(); });
+      return;
+    }
+    _web();
   }catch(e){}
 }
 
@@ -2705,7 +2717,22 @@ function pwReveal(){
     +'<button class="pw-g q4" onclick="pwGrade(4)">Łatwe<span class="ph">dłuższa przerwa</span></button>';
 }
 function pwSpeak(){
-  try{ var r=_pwQueue[_pwIdx]; if(!r||!r.word) return; if(window.speechSynthesis){ speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(r.word); u.lang=lexTtsCode(r.lang||'en'); u.rate=.95; speechSynthesis.speak(u); } }catch(e){}
+  try{
+    var r=_pwQueue[_pwIdx]; if(!r||!r.word) return;
+    var _lang=lexTtsCode(r.lang||'en');
+    var _web=function(){
+      try{ if(window.speechSynthesis){ speechSynthesis.cancel();
+        var u=new SpeechSynthesisUtterance(r.word); u.lang=_lang; u.rate=.95; speechSynthesis.speak(u); } }catch(e){}
+    };
+    if(window.EYL_TTS_STATIC_ON && typeof window.eylCatalogAudioUrl==='function'){
+      try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
+      window.eylCatalogAudioUrl(r.word, _lang).then(function(u2){
+        if(u2){ window.eylTryPlayStatic(u2).then(function(ok){ if(!ok) _web(); }); } else { _web(); }
+      }).catch(function(){ _web(); });
+      return;
+    }
+    _web();
+  }catch(e){}
 }
 async function pwGrade(q){
   var r=_pwQueue[_pwIdx]; if(!r) return;
