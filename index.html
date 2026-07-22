@@ -1951,7 +1951,9 @@ window.switchMatTab = function(tab){
       rows=rows.filter(function(c){return c.word||c.translation;});
       if(!body) return;
       if(!rows.length){ body.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Brak słów do podglądu.</div>'; return; }
-      body.innerHTML='<div class="eylc-prevlist">'+rows.map(function(c){ return '<div class="eylc-prow"><span class="w">'+_eEsc(c.word||'')+'</span><span class="t">'+_eEsc(c.translation||'')+'</span></div>'; }).join('')+'</div>';
+      var _sayCss='flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid var(--border2);background:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--navy);margin-left:8px';
+      var _sayIco='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path></svg>';
+      body.innerHTML='<div class="eylc-prevlist">'+rows.map(function(c){ var _w=_eEsc(c.word||''); return '<div class="eylc-prow"><span class="w">'+_w+'</span><span class="t">'+_eEsc(c.translation||'')+'</span><button title="Posłuchaj" style="'+_sayCss+'" data-w="'+_w+'" data-l="'+_eEsc(code)+'" onclick="event.stopPropagation();if(window.eylSpeakWord)window.eylSpeakWord(this.getAttribute(\'data-w\'),this.getAttribute(\'data-l\'))">'+_sayIco+'</button></div>'; }).join('')+'</div>';
     }catch(e){ if(body) body.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Nie udało się wczytać słów.</div>'; }
   }
 
@@ -2944,11 +2946,11 @@ async function submitAuth(){
           try{track('user_signup',{surface:'web'});}catch(_e){}
         }
         if(typeof eylGoMobileApp === 'function' && eylGoMobileApp({force:true})) return;
-        showPage('dash');
+        eylAfterLogin();
       }
     } else {
       if(typeof eylGoMobileApp === 'function' && eylGoMobileApp({force:true})) return;
-      showPage('dash');
+      eylAfterLogin();
     }
   }catch(e){
     const m=e.message||'';
@@ -18663,28 +18665,6 @@ async function lexInit(){
 
   // Odsłuch POJEDYNCZEGO słowa: cloud (ElevenLabs) dla języków chmurowych; Web Speech dla ar/jp/zh/ko oraz jako fallback.
   window._elWordAudio=null;
-  /* ── EYELINGO: pregenerowane audio katalogu (statyczne MP3 z Supabase Storage) ── */
-  window.EYL_TTS_STATIC_ON = true; // pregenerowane MP3 katalogu WŁĄCZONE
-  window.EYL_TTS_STATIC_BASE = window.EYL_TTS_STATIC_BASE || 'https://sntlgkhktscezxpxrchl.supabase.co/storage/v1/object/public/tts-catalog';
-  window.EYL_TTS_STATIC_LANGS = window.EYL_TTS_STATIC_LANGS || ['en','es','de','fr','ar','uk','ru','nl','sv','no','da'];
-  window.eylCatalogAudioUrl = async function(word, langCode){
-    try{
-      if(!window.EYL_TTS_STATIC_ON) return null;
-      var code=String(langCode||'').slice(0,2).toLowerCase();
-      if(window.EYL_TTS_STATIC_LANGS.indexOf(code)<0) return null;
-      var norm=String(word||'').trim().toLowerCase();
-      if(!norm || norm.length>40) return null;
-      var buf=await crypto.subtle.digest('SHA-1', new TextEncoder().encode(norm));
-      var hex=Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
-      return window.EYL_TTS_STATIC_BASE+'/'+code+'/'+hex+'.mp3';
-    }catch(e){ return null; }
-  };
-  window.eylTryPlayStatic = function(url){
-    return new Promise(function(resolve){
-      try{ var a=new Audio(url); window._eylStaticAudio=a; a.play().then(function(){ resolve(true); }).catch(function(){ resolve(false); }); }
-      catch(e){ resolve(false); }
-    });
-  };
   window.ttsPlayPause=async function(btn, text, langCode, rate, label){
     text=String(text||'').trim(); if(!text) return;
     try{ if(window._elWordAudio){ window._elWordAudio.pause(); window._elWordAudio=null; } }catch(e){}
@@ -18697,8 +18677,11 @@ async function lexInit(){
         window.speechSynthesis.speak(u);
       }catch(e){}
     }
-    // Pregenerowane audio katalogu — dla wszystkich, zero kosztu runtime
-    try{ var _su=(typeof window.eylCatalogAudioUrl==='function')?await window.eylCatalogAudioUrl(text, lc):null; if(_su && await window.eylTryPlayStatic(_su)) return; }catch(e){}
+    // Pregenerowane audio katalogu — synchroniczny URL (gest użytkownika zachowany)
+    try{ var _su=(typeof window.eylWordAudioUrl==='function')?window.eylWordAudioUrl(text, lc):null;
+      if(_su){ var _sa=new Audio(_su); window._elWordAudio=_sa;
+        var _ok=await _sa.play().then(function(){return true;}).catch(function(){return false;});
+        if(_ok) return; } }catch(e){}
     if(webOnly){ webSpeak(); return; }
     try{
       var sess=(await db.auth.getSession()).data.session;
@@ -20033,4 +20016,125 @@ if ('serviceWorker' in navigator) {
     return _origLexStart.apply(self, args);
   };
 })();
+</script>
+<script>
+/* ═══ EYELINGO — AUDIO SŁÓWEK (wspólny moduł; identyczny web/mobile — Logic Bible §0.4.6) ═══
+   Kolejność odtwarzania:
+     1) pregenerowane MP3 z Supabase Storage  (zero kosztu runtime, dla KAŻDEGO usera)
+     2) żywy ElevenLabs przez Edge Function `tts`  (słowa jeszcze niewygenerowane)
+     3) Web Speech przeglądarki  (ostatnia deska ratunku)
+   SHA-1 liczony SYNCHRONICZNIE — po `await` iOS/Safari blokuje odtwarzanie (utrata gestu). */
+(function(){
+  if(window.eylSpeakWord) return;
+  if(typeof window.EYL_TTS_STATIC_ON==='undefined') window.EYL_TTS_STATIC_ON = true;
+  window.EYL_TTS_STATIC_BASE  = window.EYL_TTS_STATIC_BASE  || 'https://sntlgkhktscezxpxrchl.supabase.co/storage/v1/object/public/tts-catalog';
+  window.EYL_TTS_STATIC_LANGS = window.EYL_TTS_STATIC_LANGS || ['en','es','de','fr','ar','uk','ru','nl','sv','no','da'];
+  window.EYL_TTS_ENDPOINT     = window.EYL_TTS_ENDPOINT     || 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/tts';
+  window.EYL_TTS_VOICE_ID     = window.EYL_TTS_VOICE_ID     || 'JBFqnCBsd6RMkjVDRZzb'; /* George */
+
+  function sha1hex(str){
+    var b=new TextEncoder().encode(str), n=b.length;
+    var buf=new Uint8Array((((n+8)>>6)+1)<<6);
+    buf.set(b); buf[n]=0x80;
+    var dv=new DataView(buf.buffer);
+    dv.setUint32(buf.length-4, (n*8)>>>0, false);
+    dv.setUint32(buf.length-8, Math.floor(n*8/4294967296), false);
+    var h0=0x67452301|0,h1=0xEFCDAB89|0,h2=0x98BADCFE|0,h3=0x10325476|0,h4=0xC3D2E1F0|0,w=new Int32Array(80),j;
+    for(var i=0;i<buf.length;i+=64){
+      for(j=0;j<16;j++) w[j]=dv.getInt32(i+j*4,false);
+      for(j=16;j<80;j++){ var t2=w[j-3]^w[j-8]^w[j-14]^w[j-16]; w[j]=(t2<<1)|(t2>>>31); }
+      var a=h0,b1=h1,c=h2,d=h3,e=h4;
+      for(j=0;j<80;j++){
+        var f,k;
+        if(j<20){ f=(b1&c)|((~b1)&d); k=0x5A827999; }
+        else if(j<40){ f=b1^c^d; k=0x6ED9EBA1; }
+        else if(j<60){ f=(b1&c)|(b1&d)|(c&d); k=0x8F1BBCDC; }
+        else { f=b1^c^d; k=0xCA62C1D6; }
+        var t=(((a<<5)|(a>>>27))+f+e+k+w[j])|0;
+        e=d; d=c; c=(b1<<30)|(b1>>>2); b1=a; a=t;
+      }
+      h0=(h0+a)|0; h1=(h1+b1)|0; h2=(h2+c)|0; h3=(h3+d)|0; h4=(h4+e)|0;
+    }
+    return [h0,h1,h2,h3,h4].map(function(x){ return ('00000000'+((x>>>0).toString(16))).slice(-8); }).join('');
+  }
+
+  function clean(s){ return String(s==null?'':s).replace(/<[^>]+>/g,' ').replace(/\*\*/g,'').replace(/\s+/g,' ').trim(); }
+
+  window.eylWordAudioUrl=function(word, langCode){
+    try{
+      if(!window.EYL_TTS_STATIC_ON) return null;
+      var code=String(langCode||'').slice(0,2).toLowerCase();
+      if(window.EYL_TTS_STATIC_LANGS.indexOf(code)<0) return null;
+      var norm=clean(word).toLowerCase();
+      if(!norm || norm.length>60) return null;
+      return window.EYL_TTS_STATIC_BASE+'/'+code+'/'+sha1hex(norm)+'.mp3';
+    }catch(e){ return null; }
+  };
+
+  window.eylAudioStop=function(){
+    try{ if(window._eylAudio){ window._eylAudio.pause(); window._eylAudio=null; } }catch(e){}
+    try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  };
+
+  function webSpeak(text, lc, rate){
+    try{
+      if(!window.speechSynthesis) return;
+      var u=new SpeechSynthesisUtterance(text);
+      u.lang=lc||'en-US'; u.rate=rate||0.92;
+      var bv=(typeof window.lexvBestVoice==='function')?window.lexvBestVoice(u.lang):null; if(bv) u.voice=bv;
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+
+  var _live={};
+  function apiKey(){ try{ if(typeof SUPABASE_KEY!=='undefined') return SUPABASE_KEY; }catch(e){}
+                     try{ if(typeof APIKEY_CONST!=='undefined') return APIKEY_CONST; }catch(e){} return ''; }
+  async function liveTTS(text, lc){
+    var key=lc+'|'+text;
+    if(_live[key]) return _live[key];
+    var tok='';
+    try{ var s=await db.auth.getSession(); tok=(s&&s.data&&s.data.session)?s.data.session.access_token:''; }catch(e){}
+    var r=await fetch(window.EYL_TTS_ENDPOINT,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':apiKey()},
+      body:JSON.stringify({ text:text, language_code:String(lc||'en').slice(0,2).toLowerCase(), voice_id:window.EYL_TTS_VOICE_ID })
+    });
+    if(!r.ok) throw new Error('tts '+r.status);
+    var url=URL.createObjectURL(await r.blob());
+    _live[key]=url; return url;
+  }
+
+  /* Główna funkcja: użyj jej wszędzie tam, gdzie odsłuchiwane jest SŁOWO. */
+  window.eylSpeakWord=function(word, langCode, rate){
+    var text=clean(word); if(!text) return;
+    var lc=String(langCode||'en-US');
+    window.eylAudioStop();
+    var done=false;
+    function fallbackLive(){
+      if(done) return; done=true;
+      liveTTS(text, lc).then(function(u){
+        var a2=new Audio(u); window._eylAudio=a2;
+        a2.play().catch(function(){ webSpeak(text, lc, rate); });
+      }).catch(function(){ webSpeak(text, lc, rate); });
+    }
+    var su=window.eylWordAudioUrl(text, lc);
+    if(su){
+      try{
+        var a=new Audio(su); window._eylAudio=a;
+        a.onerror=function(){ fallbackLive(); };
+        a.play().then(function(){ done=true; }).catch(function(){ fallbackLive(); });
+        return;
+      }catch(e){}
+    }
+    fallbackLive();
+  };
+})();
+</script>
+<script>
+window.eylAfterLogin=function(){
+  try{
+    if(typeof showPage==='function') showPage('community');
+    if(typeof setActiveTab==='function') setActiveTab('community');
+  }catch(e){ try{ if(typeof showPage==='function') showPage('dash'); }catch(_e){} }
+};
 </script>
