@@ -17176,6 +17176,28 @@ async function lexInit(){
 
   async function loadLangCats(langCode){
     if(_catCache[langCode]) return _catCache[langCode];
+    // ── Szybka ścieżka: agregacja po stronie bazy (1–2 zapytania zamiast N stron po 1000).
+    //    Gdy RPC nie istnieje lub zwróci pustkę — leci stara pętla poniżej (bez regresji).
+    try{
+      var _rpc=await db.rpc('catalog_categories',{p_lang:langCode});
+      var _rd=(_rpc&&_rpc.data)||null;
+      if(_rd&&_rd.length){
+        var _out=_rd.map(function(r){
+          return {id:r.id, label:r.label, level:r.level||null,
+                  count:Number(r.cnt)||0, allLevels:r.all_levels||[], keys:r.keys||[]};
+        });
+        var _lk={};
+        try{
+          var _rl=await db.rpc('catalog_level_keys',{p_lang:langCode});
+          ((_rl&&_rl.data)||[]).forEach(function(x){ if(x.lvl) _lk[x.lvl]=x.keys||[]; });
+        }catch(_e2){}
+        _out.sort(function(a,b){ var na=+a.id, nb=+b.id;
+          if(!isNaN(na)&&!isNaN(nb)) return na-nb;
+          return String(a.id).localeCompare(String(b.id)); });
+        _lvlKeyCache[langCode]=_lk;
+        _catCache[langCode]=_out; return _out;
+      }
+    }catch(_e1){ /* brak RPC → stara ścieżka */ }
     var out=[];
     try{
       var lr=await db.from('languages').select('id').eq('code',langCode).single();
