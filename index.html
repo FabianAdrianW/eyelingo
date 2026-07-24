@@ -20204,7 +20204,10 @@ window.eylAfterLogin=function(){
   }
 
   function ensure(){
-    var host=document.getElementById('tryb-card-scene'); if(!host) return null;
+    /* Przycisk mieszka WEWNĄTRZ flippera, nie w scenie — dzięki temu bierze udział
+       w animacji wjazdu karty (cardRiseIn) i jest jej integralną częścią. */
+    var host=document.getElementById('tryb-card-flipper')
+          || document.getElementById('tryb-card-scene'); if(!host) return null;
     var b=document.getElementById(BTN);
     if(!b){
       b=document.createElement('button');
@@ -20235,6 +20238,8 @@ window.eylAfterLogin=function(){
   function refresh(){
     try{
       var b=ensure(); if(!b) return;
+      var fl=document.getElementById('tryb-card-flipper');
+      if(fl && b.parentNode!==fl){ fl.appendChild(b); }
       var c=cur();
       b.style.display=(c&&c.word)?'flex':'none';
     }catch(e){}
