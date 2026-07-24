@@ -4065,13 +4065,15 @@ function setCard(s){
   // Badge języka zestawu
   const langCode = s.lang||null;
   const langInfo = (langCode && typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[langCode])||null;
+  // Flaga języka (parytet z app.html) — nazwa języka zostaje w atrybucie title.
+  const langTitle = langInfo ? (langInfo.label || langCode) : (langCode || '');
   const langBadge = isOwn
     ? (langInfo
-        ? `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'${langCode}')" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
+        ? `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'${langCode}')" title="${langTitle} — kliknij, aby zmienić język zestawu" style="font-size:16px;line-height:1;vertical-align:middle;margin-left:5px;cursor:pointer">${langInfo.flag||'🌐'}</span>`
         : `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'')" title="Ustaw język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(201,106,42,.10);color:var(--orange);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer;border:1px dashed rgba(201,106,42,.45)">+ język</span>`)
     : (langInfo
-        ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
-        : (langCode ? `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langCode.toUpperCase()}</span>` : ''));
+        ? `<span title="${langTitle}" style="font-size:16px;line-height:1;vertical-align:middle;margin-left:5px">${langInfo.flag||'🌐'}</span>`
+        : (langCode ? `<span title="${langCode.toUpperCase()}" style="font-size:16px;line-height:1;vertical-align:middle;margin-left:5px">🌐</span>` : ''));
   const delBtn = (isOwn && isMineTab)
     ? `<span title="Usuń zestaw" onclick="event.stopPropagation();deleteSetConfirm(${s.id})" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500" onmouseover="this.style.opacity=1;this.style.color='#c0392b'" onmouseout="this.style.opacity=.5;this.style.color='var(--dim2)'">&times;</span>`
     : '';
@@ -5575,8 +5577,9 @@ function strefaSetCardLangBadge(s){
   var code=s.lang||null;
   var info=(code&&typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[code])||null;
   if(info){
-    var nm=(info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
-    return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;'+code+'&#39;)" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">'+(info.flag||'')+' '+esc(nm)+'</span>';
+    var nm=(info.label||info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
+    // Flaga zamiast pigułki z nazwą (parytet z app.html); nazwa języka w title.
+    return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;'+code+'&#39;)" title="'+esc(nm)+' — kliknij, aby zmienić język zestawu" style="font-size:16px;line-height:1;vertical-align:middle;margin-left:5px;cursor:pointer">'+(info.flag||'🌐')+'</span>';
   }
   return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;&#39;)" title="Ustaw język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(201,106,42,.10);color:var(--orange);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer;border:1px dashed rgba(201,106,42,.45)">+ język</span>';
 }
@@ -8964,6 +8967,9 @@ async function rateCard(btnRating, declare){
 
   var isTypo=document.getElementById('tryb-result-icon')&&document.getElementById('tryb-result-icon').textContent.includes('⚠️');
   var eff=isTypo?Math.min(btnRating,3):btnRating;
+  // Statystyki sesji — tryb 'flip' oceniany jest przyciskami, a nie przez revealTrybAnswer.
+  // Bez tego licznika podsumowanie pokazywało 0 powtórzonych i 0%.
+  _trybSessionStats.total++; if(eff>=3) _trybSessionStats.correct++;
   if(eff<=2 && card && card.id){
     if(!window._trybStruggling) window._trybStruggling=[];
     if(!_trybStruggling.some(function(c){return c.id===card.id;}))
@@ -9157,6 +9163,10 @@ async function showTrybSessionSummary(){
   var sc=document.getElementById('sum-cards');var sp=document.getElementById('sum-pct');var st=document.getElementById('sum-time');
   if(sc)sc.textContent=stats.total;
   if(sp)sp.textContent=pct+'%';
+  // Nazwa metryki zależy od trybu: w Fiszkach ocena jest deklaratywna (znałem/nie znałem),
+  // w Multiwyborze/Wpisywaniu — obiektywna (odpowiedź poprawna lub nie).
+  var spl=document.getElementById('sum-pct-label');
+  if(spl) spl.textContent=(_trybMode==='flip')?'Znane':'Poprawne';
   if(st)st.textContent=Math.floor(timeS/60)+':'+String(timeS%60).padStart(2,'0');
   // Cicha księgowość (bez XP/złota/odznak w UI)
   try{ RewardSystem.load(); RewardSystem._state.totalCards+=stats.total; RewardSystem._state.totalSessions++; RewardSystem.save(); }catch(e){}
@@ -9945,7 +9955,7 @@ function injectTrybPage(){
     +'<p style="color:var(--dim2);margin-bottom:28px" id="tryb-summary-sub">Świetna robota!</p>'
     +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px">'
     +'<div class="dstat"><div class="dstat-l">Powtórzonych</div><div class="dstat-v" id="sum-cards">0</div></div>'
-    +'<div class="dstat"><div class="dstat-l">Trafność</div><div class="dstat-v green" id="sum-pct">0%</div></div>'
+    +'<div class="dstat"><div class="dstat-l" id="sum-pct-label">Poprawne</div><div class="dstat-v green" id="sum-pct">0%</div></div>'
     +'<div class="dstat"><div class="dstat-l">Czas</div><div class="dstat-v" id="sum-time">0:00</div></div>'
     +'</div>'
     +'<div id="tryb-mastery" style="text-align:left;margin-bottom:22px"></div>'
@@ -17112,6 +17122,7 @@ async function lexInit(){
 .lexcat-tile .nm{font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy);line-height:1.3;padding-right:26px}
 .lexcat-tile .mt{font-size:11px;color:var(--dim2)}
 .lexcat-ic{width:30px;height:30px;border-radius:9px;background:var(--paper2);display:flex;align-items:center;justify-content:center;color:var(--navy);flex-shrink:0}
+.lexcat-flag{display:inline-block;font-size:13px;line-height:1;vertical-align:-1px}
 .lexcat-langbadge{display:inline-block;font-size:9.5px;font-weight:600;letter-spacing:.05em;color:var(--navy);background:var(--paper2);border:.5px solid var(--border);border-radius:5px;padding:1px 5px;text-transform:uppercase}
 .lexcat-learn{margin-top:8px;align-self:flex-start;font-size:11.5px;font-weight:500;color:#fff;background:var(--navy);border:none;border-radius:100px;padding:5px 14px;cursor:pointer;font-family:DM Sans,sans-serif}
 .lexcat-learn:hover{background:var(--orange)}
@@ -17237,7 +17248,7 @@ async function lexInit(){
   function tileUserSet(st){
     var tok='u'+st.id;
     _picks[tok]={kind:'user',id:st.id,label:st.label,level:null,lang:st.lang||null};
-    var badge=st.lang?'<span class="lexcat-langbadge">'+esc(langBadge(st.lang))+'</span>':'<span class="lexcat-langbadge" style="opacity:.6">?</span>';
+    var badge=st.lang?'<span class="lexcat-flag" title="'+esc(langName(st.lang))+'">'+(langInfo(st.lang).flag||'🌐')+'</span>':'<span class="lexcat-flag" style="opacity:.5" title="Brak języka">🌐</span>';
     _picks[tok].count=st.count;
     return '<div class="lexcat-tile'+(isSel('user',st.id)?' sel':'')+'" data-pick="'+tok+'">'
       +'<button class="lexcat-eye" data-eye="'+tok+'" title="Podejrzyj słowa"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="2.6"></circle></svg></button>'
@@ -17535,7 +17546,9 @@ async function lexInit(){
     host.innerHTML='<div style="font-size:12px;color:var(--dim2);padding:10px 0">Sprawdzam, co ostatnio przerabiałeś…</div>';
     var src=await lexLoadStudySources();
     var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
-    function badgeOf(code){ return code?('<span class="lexcat-langbadge" style="margin-right:6px">'+esc(String(code).toUpperCase())+'</span>'):''; }
+    function badgeOf(code){ if(!code) return '';
+      var _i=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[String(code).toLowerCase()])||null;
+      return '<span class="lexcat-flag" style="margin-right:5px" title="'+esc((_i&&_i.label)||String(code).toUpperCase())+'">'+((_i&&_i.flag)||'🌐')+'</span>'; }
     var chips=[];
     src.eyelingo.forEach(function(c){
       chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, recent:(c.recent||''), sub:((c.lang&&typeof getLangName==='function')?getLangName(c.lang)+' · ':'')+(c.level?c.level+' · ':'')+c.count+' słów'});
@@ -19211,7 +19224,7 @@ if ('serviceWorker' in navigator) {
     }catch(e){}
     if(!sets.length){ b.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--dim2);font-size:14px">Nie masz jeszcze własnych zestawów. Dodaj je w zakładce Fiszki → Moje zestawy.</div>'; return; }
     b.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'+sets.map(function(s){
-      var badge=s.lang?(String(s.lang).toUpperCase()+' · '):'';
+      var badge=s.lang?(((typeof getLangFlag==='function'?getLangFlag(s.lang):'')||'🌐')+' · '):'';
       var args="'user',"+JSON.stringify(String(s.id))+","+JSON.stringify(s.label||'')+","+JSON.stringify(s.lang||'')+",''";
       return '<div class="eylc-cat" onclick="lexTrenerStart('+args.replace(/"/g,'&quot;')+')">'
         +'<div class="eylc-cnm">'+esc(s.label)+'</div>'
@@ -20153,4 +20166,92 @@ window.eylAfterLogin=function(){
     if(typeof setActiveTab==='function') setActiveTab('community');
   }catch(e){ try{ if(typeof showPage==='function') showPage('dash'); }catch(_e){} }
 };
+</script>
+
+<script>
+/* ═══ EYELINGO — AUDIO W TRYBIE NAUKI ═══
+   Przycisk „Posłuchaj" na karcie we WSZYSTKICH trybach (Fiszki / Multiwybór /
+   Wpisywanie / Zapamiętywanie). Jedno źródło dźwięku: window.eylSpeakWord
+   (MP3 ze Storage → ElevenLabs → Web Speech) — parytet z app.html (Logic Bible §0.4.6).
+   Zawsze wymawiane jest słowo OBCOJĘZYCZNE (card.word), niezależnie od kierunku nauki. */
+(function(){
+  if(window._eylTrybAudioOn) return; window._eylTrybAudioOn=true;
+  var BTN='tryb-say-btn';
+
+  function cur(){ try{ return (window._trybCards||[])[window._trybIdx]; }catch(e){ return null; } }
+
+  function langOf(c){
+    var l='';
+    try{ l=(typeof _eylNormLang==='function')
+            ? (_eylNormLang(c&&c.lang)||_eylNormLang(window._trybStudyLang))
+            : ((c&&c.lang)||window._trybStudyLang||''); }
+    catch(e){ l=(c&&c.lang)||window._trybStudyLang||''; }
+    try{ if(typeof _eylTrueLang==='function') l=_eylTrueLang({word:(c&&c.word)||'',lang:l})||l; }catch(e){}
+    return l||'en';
+  }
+
+  function ensure(){
+    var host=document.getElementById('tryb-card-scene'); if(!host) return null;
+    var b=document.getElementById(BTN);
+    if(!b){
+      b=document.createElement('button');
+      b.id=BTN; b.type='button'; b.title='Posłuchaj wymowy';
+      b.setAttribute('aria-label','Posłuchaj wymowy');
+      b.style.cssText='position:absolute;top:12px;right:12px;z-index:6;width:36px;height:36px;'
+        +'border-radius:50%;border:1px solid var(--border2,#D8D2C0);background:#fff;'
+        +'color:var(--navy,#1a2340);display:flex;align-items:center;justify-content:center;'
+        +'cursor:pointer;padding:0;transition:border-color .15s,color .15s';
+      b.innerHTML='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        +'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+        +'<path d="M11 5 6 9H3v6h3l5 4z"></path>'
+        +'<path d="M15.5 8.5a5 5 0 0 1 0 7"></path>'
+        +'<path d="M18.5 5.5a9 9 0 0 1 0 13"></path></svg>';
+      b.onmouseover=function(){ this.style.borderColor='var(--orange,#c96a2a)'; this.style.color='var(--orange,#c96a2a)'; };
+      b.onmouseout =function(){ this.style.borderColor='var(--border2,#D8D2C0)'; this.style.color='var(--navy,#1a2340)'; };
+      b.onclick=function(ev){
+        try{ ev.stopPropagation(); ev.preventDefault(); }catch(e){}
+        var c=cur(); if(!c||!c.word) return;
+        try{ if(window.eylSpeakWord) window.eylSpeakWord(c.word, langOf(c)); }catch(e){}
+      };
+      try{ if(getComputedStyle(host).position==='static') host.style.position='relative'; }catch(e){}
+      host.appendChild(b);
+    }
+    return b;
+  }
+
+  function refresh(){
+    try{
+      var b=ensure(); if(!b) return;
+      var c=cur();
+      b.style.display=(c&&c.word)?'flex':'none';
+    }catch(e){}
+  }
+  window.eylTrybAudioRefresh=refresh;
+
+  /* Każdy renderer karty odświeża przycisk (wrapper poza kodem silnika). */
+  ['loadTrybFlipCard','loadTrybMCCard','loadTrybCard','loadTrybMemorizeCard',
+   'loadTrybMemorizeMCPhase','trybFlipReveal','revealTrybAnswer'].forEach(function(fn){
+    var o=window[fn]; if(typeof o!=='function') return;
+    window[fn]=function(){ var r=o.apply(this,arguments); try{ setTimeout(refresh,0); }catch(e){} return r; };
+  });
+
+  /* Koniec sesji → zatrzymaj dźwięk i schowaj przycisk. */
+  ['showTrybSessionSummary','endSession'].forEach(function(fn){
+    var o=window[fn]; if(typeof o!=='function') return;
+    window[fn]=function(){
+      try{ if(window.eylAudioStop) window.eylAudioStop(); }catch(e){}
+      var b=document.getElementById(BTN); if(b) b.style.display='none';
+      return o.apply(this,arguments);
+    };
+  });
+
+  /* Skrót klawiszowy: S — posłuchaj (nie koliduje ze Spacją/strzałkami/1-3). */
+  document.addEventListener('keydown', function(e){
+    if(e.code!=='KeyS') return;
+    var t=e.target||{}; var tag=(t.tagName||'').toLowerCase();
+    if(tag==='input'||tag==='textarea'||t.isContentEditable) return;
+    var b=document.getElementById(BTN);
+    if(b && b.style.display!=='none'){ e.preventDefault(); b.click(); }
+  }, true);
+})();
 </script>
