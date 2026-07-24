@@ -4065,15 +4065,13 @@ function setCard(s){
   // Badge języka zestawu
   const langCode = s.lang||null;
   const langInfo = (langCode && typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[langCode])||null;
-  // Flaga języka (parytet z app.html) — nazwa języka zostaje w atrybucie title.
-  const langTitle = langInfo ? (langInfo.label || langCode) : (langCode || '');
   const langBadge = isOwn
     ? (langInfo
-        ? `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'${langCode}')" title="${langTitle} — kliknij, aby zmienić język zestawu" style="font-size:16px;line-height:1;vertical-align:middle;margin-left:5px;cursor:pointer">${langInfo.flag||'🌐'}</span>`
+        ? `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'${langCode}')" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
         : `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'')" title="Ustaw język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(201,106,42,.10);color:var(--orange);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer;border:1px dashed rgba(201,106,42,.45)">+ język</span>`)
     : (langInfo
-        ? `<span title="${langTitle}" style="font-size:16px;line-height:1;vertical-align:middle;margin-left:5px">${langInfo.flag||'🌐'}</span>`
-        : (langCode ? `<span title="${langCode.toUpperCase()}" style="font-size:16px;line-height:1;vertical-align:middle;margin-left:5px">🌐</span>` : ''));
+        ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
+        : (langCode ? `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langCode.toUpperCase()}</span>` : ''));
   const delBtn = (isOwn && isMineTab)
     ? `<span title="Usuń zestaw" onclick="event.stopPropagation();deleteSetConfirm(${s.id})" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500" onmouseover="this.style.opacity=1;this.style.color='#c0392b'" onmouseout="this.style.opacity=.5;this.style.color='var(--dim2)'">&times;</span>`
     : '';
@@ -5577,9 +5575,8 @@ function strefaSetCardLangBadge(s){
   var code=s.lang||null;
   var info=(code&&typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[code])||null;
   if(info){
-    var nm=(info.label||info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
-    // Flaga zamiast pigułki z nazwą (parytet z app.html); nazwa języka w title.
-    return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;'+code+'&#39;)" title="'+esc(nm)+' — kliknij, aby zmienić język zestawu" style="font-size:16px;line-height:1;vertical-align:middle;margin-left:5px;cursor:pointer">'+(info.flag||'🌐')+'</span>';
+    var nm=(info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
+    return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;'+code+'&#39;)" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">'+(info.flag||'')+' '+esc(nm)+'</span>';
   }
   return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;&#39;)" title="Ustaw język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(201,106,42,.10);color:var(--orange);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer;border:1px dashed rgba(201,106,42,.45)">+ język</span>';
 }
@@ -8967,8 +8964,7 @@ async function rateCard(btnRating, declare){
 
   var isTypo=document.getElementById('tryb-result-icon')&&document.getElementById('tryb-result-icon').textContent.includes('⚠️');
   var eff=isTypo?Math.min(btnRating,3):btnRating;
-  // Statystyki sesji — tryb 'flip' oceniany jest przyciskami, a nie przez revealTrybAnswer.
-  // Bez tego licznika podsumowanie pokazywało 0 powtórzonych i 0%.
+  // Statystyki sesji — tryb 'flip' oceniany jest przyciskami, nie przez revealTrybAnswer.
   _trybSessionStats.total++; if(eff>=3) _trybSessionStats.correct++;
   if(eff<=2 && card && card.id){
     if(!window._trybStruggling) window._trybStruggling=[];
@@ -9163,8 +9159,6 @@ async function showTrybSessionSummary(){
   var sc=document.getElementById('sum-cards');var sp=document.getElementById('sum-pct');var st=document.getElementById('sum-time');
   if(sc)sc.textContent=stats.total;
   if(sp)sp.textContent=pct+'%';
-  // Nazwa metryki zależy od trybu: w Fiszkach ocena jest deklaratywna (znałem/nie znałem),
-  // w Multiwyborze/Wpisywaniu — obiektywna (odpowiedź poprawna lub nie).
   var spl=document.getElementById('sum-pct-label');
   if(spl) spl.textContent=(_trybMode==='flip')?'Znane':'Poprawne';
   if(st)st.textContent=Math.floor(timeS/60)+':'+String(timeS%60).padStart(2,'0');
@@ -17122,7 +17116,6 @@ async function lexInit(){
 .lexcat-tile .nm{font-family:DM Sans,sans-serif;font-size:14px;font-weight:500;color:var(--navy);line-height:1.3;padding-right:26px}
 .lexcat-tile .mt{font-size:11px;color:var(--dim2)}
 .lexcat-ic{width:30px;height:30px;border-radius:9px;background:var(--paper2);display:flex;align-items:center;justify-content:center;color:var(--navy);flex-shrink:0}
-.lexcat-flag{display:inline-block;font-size:13px;line-height:1;vertical-align:-1px}
 .lexcat-langbadge{display:inline-block;font-size:9.5px;font-weight:600;letter-spacing:.05em;color:var(--navy);background:var(--paper2);border:.5px solid var(--border);border-radius:5px;padding:1px 5px;text-transform:uppercase}
 .lexcat-learn{margin-top:8px;align-self:flex-start;font-size:11.5px;font-weight:500;color:#fff;background:var(--navy);border:none;border-radius:100px;padding:5px 14px;cursor:pointer;font-family:DM Sans,sans-serif}
 .lexcat-learn:hover{background:var(--orange)}
@@ -17248,7 +17241,7 @@ async function lexInit(){
   function tileUserSet(st){
     var tok='u'+st.id;
     _picks[tok]={kind:'user',id:st.id,label:st.label,level:null,lang:st.lang||null};
-    var badge=st.lang?'<span class="lexcat-flag" title="'+esc(langName(st.lang))+'">'+(langInfo(st.lang).flag||'🌐')+'</span>':'<span class="lexcat-flag" style="opacity:.5" title="Brak języka">🌐</span>';
+    var badge=st.lang?'<span class="lexcat-langbadge">'+esc(langBadge(st.lang))+'</span>':'<span class="lexcat-langbadge" style="opacity:.6">?</span>';
     _picks[tok].count=st.count;
     return '<div class="lexcat-tile'+(isSel('user',st.id)?' sel':'')+'" data-pick="'+tok+'">'
       +'<button class="lexcat-eye" data-eye="'+tok+'" title="Podejrzyj słowa"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="2.6"></circle></svg></button>'
@@ -17546,9 +17539,7 @@ async function lexInit(){
     host.innerHTML='<div style="font-size:12px;color:var(--dim2);padding:10px 0">Sprawdzam, co ostatnio przerabiałeś…</div>';
     var src=await lexLoadStudySources();
     var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
-    function badgeOf(code){ if(!code) return '';
-      var _i=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[String(code).toLowerCase()])||null;
-      return '<span class="lexcat-flag" style="margin-right:5px" title="'+esc((_i&&_i.label)||String(code).toUpperCase())+'">'+((_i&&_i.flag)||'🌐')+'</span>'; }
+    function badgeOf(code){ return code?('<span class="lexcat-langbadge" style="margin-right:6px">'+esc(String(code).toUpperCase())+'</span>'):''; }
     var chips=[];
     src.eyelingo.forEach(function(c){
       chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, recent:(c.recent||''), sub:((c.lang&&typeof getLangName==='function')?getLangName(c.lang)+' · ':'')+(c.level?c.level+' · ':'')+c.count+' słów'});
@@ -19224,7 +19215,7 @@ if ('serviceWorker' in navigator) {
     }catch(e){}
     if(!sets.length){ b.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--dim2);font-size:14px">Nie masz jeszcze własnych zestawów. Dodaj je w zakładce Fiszki → Moje zestawy.</div>'; return; }
     b.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'+sets.map(function(s){
-      var badge=s.lang?(((typeof getLangFlag==='function'?getLangFlag(s.lang):'')||'🌐')+' · '):'';
+      var badge=s.lang?(String(s.lang).toUpperCase()+' · '):'';
       var args="'user',"+JSON.stringify(String(s.id))+","+JSON.stringify(s.label||'')+","+JSON.stringify(s.lang||'')+",''";
       return '<div class="eylc-cat" onclick="lexTrenerStart('+args.replace(/"/g,'&quot;')+')">'
         +'<div class="eylc-cnm">'+esc(s.label)+'</div>'
