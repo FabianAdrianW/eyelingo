@@ -1947,7 +1947,7 @@ window.switchMatTab = function(tab){
     var body=document.getElementById('eylc-pbody');
     try{
       var rows=[],from=0,pg=1000;
-      while(true){ var q=db.from('flashcards').select('word,translation').eq('language_id',langId).eq('category_id',catId); if(lvlId!=null) q=q.eq('level_id',lvlId); var r=await q.order('id',{ascending:true}).range(from,from+pg-1); var d=(r&&r.data)||[]; rows=rows.concat(d); if(d.length<pg) break; from+=pg; if(from>8000) break; }
+      while(true){ var q=db.from('flashcards').select('word,translation').eq('language_id',langId).eq('category_id',catId).eq('active',true); if(lvlId!=null) q=q.eq('level_id',lvlId); var r=await q.order('id',{ascending:true}).range(from,from+pg-1); var d=(r&&r.data)||[]; rows=rows.concat(d); if(d.length<pg) break; from+=pg; if(from>8000) break; }
       rows=rows.filter(function(c){return c.word||c.translation;});
       if(!body) return;
       if(!rows.length){ body.innerHTML='<div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Brak słów do podglądu.</div>'; return; }
@@ -1967,7 +1967,7 @@ window.switchMatTab = function(tab){
     try{
       var from=0, pg=1000;
       while(true){
-        var q=db.from('flashcards').select('id,word,translation').eq('language_id',langId).eq('category_id',catId);
+        var q=db.from('flashcards').select('id,word,translation').eq('language_id',langId).eq('category_id',catId).eq('active',true);
         if(lvlId!=null) q=q.eq('level_id',lvlId);
         var r=await q.range(from,from+pg-1);
         var d=(r&&r.data)||[];
@@ -17417,7 +17417,7 @@ async function lexInit(){
         rows=(ur&&ur.data)||[];
       } else {
         var lid=await _catLangId(p.lang||window._lexLang||'en');
-        var q=db.from('flashcards').select('word,translation').eq('category_id',p.id);
+        var q=db.from('flashcards').select('word,translation').eq('category_id',p.id).eq('active',true);
         if(lid) q=q.eq('language_id',lid);
         var fr=await q.order('id',{ascending:true}).limit(400);
         rows=(fr&&fr.data)||[];
