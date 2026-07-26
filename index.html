@@ -2829,18 +2829,21 @@ window.eylGoMobileApp = eylGoMobileApp;
         try{
           if(r && r.data && r.data.session){
             if(eylGoMobileApp()) return;   // mobile → redirect do app.html (przerywa)
-            // Naprawa „wylogowania po odświeżeniu": z utrwalonej sesji przywróć navbar
-            // i widok apki (dotąd boot nie odtwarzał zalogowanego UI na desktopie).
-            if(typeof window.eylEnsureNav==='function') window.eylEnsureNav();
-            var _h=(EYL_ENTRY_HASH||'').toLowerCase();
-            var _mkt=['cennik','regulamin','polityka','prywatnosc','kontakt','faq','onas','o-nas'];
-            if(_mkt.indexOf(_h)>=0){ /* marketingowy deep-link — zostaw landing */ }
-            else if(_h && _h!=='home' && _h!=='auth' && typeof showPage==='function'){
-              try{ showPage(_h==='trener'?'teacher':_h); if(typeof loadDashboard==='function') loadDashboard(); }
-              catch(_e2){ if(typeof window.eylAfterLogin==='function') window.eylAfterLogin(); }
-            } else {
-              if(typeof window.eylAfterLogin==='function') window.eylAfterLogin();
-            }
+            // Naprawa wylogowania po odświeżeniu: token dostępu mógł wygasnąć, a auto-refresh nie
+            // zdążył. Wymuszamy refresh PRZED odbudową UI — eylEnsureNav/loadDashboard używają
+            // getUser(), który waliduje token SIECIOWO; bez świeżego tokenu navbar zostaje „wylogowany".
+            Promise.resolve().then(function(){ return db.auth.refreshSession().catch(function(){ return null; }); }).then(function(){
+              if(typeof window.eylEnsureNav==='function') window.eylEnsureNav();
+              var _h=(EYL_ENTRY_HASH||'').toLowerCase();
+              var _mkt=['cennik','regulamin','polityka','prywatnosc','kontakt','faq','onas','o-nas'];
+              if(_mkt.indexOf(_h)>=0){ /* marketingowy deep-link — zostaw landing */ }
+              else if(_h && _h!=='home' && _h!=='auth' && typeof showPage==='function'){
+                try{ showPage(_h==='trener'?'teacher':_h); if(typeof loadDashboard==='function') loadDashboard(); }
+                catch(_e2){ if(typeof window.eylAfterLogin==='function') window.eylAfterLogin(); }
+              } else {
+                if(typeof window.eylAfterLogin==='function') window.eylAfterLogin();
+              }
+            });
           }
         }catch(_e){}
       });
@@ -18205,10 +18208,9 @@ async function lexInit(){
   if(window.sbContinueTile) return;
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   window.sbContinueTile=function(o){ o=o||{}; var accent=!!o.accent;
-    return '<button onclick="'+(o.onclick||'')+'" title="Wróć do przerwanej lekcji" style="width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;cursor:pointer;border:1px solid '+(accent?'var(--orange)':'var(--border)')+';background:'+(accent?'rgba(201,106,42,.05)':'var(--paper2)')+';box-shadow:0 1px 2px rgba(26,35,64,.05);margin-bottom:9px;font-family:DM Sans,sans-serif">'
-      +'<span style="width:38px;height:38px;border-radius:50%;background:'+(accent?'var(--orange)':'rgba(201,106,42,.12)')+';color:'+(accent?'#fff':'var(--orange)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 20 12 7 20"></polygon></svg></span>'
-      +'<span style="flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3">'+esc(o.title||'Lekcja')+'</span><span style="display:block;font-size:11.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">'+esc(o.sub||'')+'</span></span>'
-      +'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"></polyline></svg>'
+    return '<button onclick="'+(o.onclick||'')+'" title="Wróć do przerwanej lekcji" style="width:100%;text-align:left;display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:10px;cursor:pointer;border:1.5px solid '+(accent?'var(--orange)':'var(--border)')+';background:'+(accent?'var(--paper2)':'var(--white)')+';margin-bottom:6px;font-family:DM Sans,sans-serif">'
+      +'<div style="width:28px;height:28px;border-radius:7px;background:'+(accent?'var(--navy)':'rgba(26,35,64,.08)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="'+(accent?'#fff':'var(--navy)')+'"><polygon points="7 4 20 12 7 20"></polygon></svg></div>'
+      +'<div style="flex:1;min-width:0"><div style="font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.title||'Lekcja')+'</div><div style="font-size:10.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.sub||'')+'</div></div>'
       +'</button>';
   };
   window.sbContinueBlock=function(items){ if(!items||!items.length) return '';
@@ -19120,6 +19122,9 @@ if ('serviceWorker' in navigator) {
     if(typeof lexStartLesson==='function') lexStartLesson();
   };
   window.lexResumeLang=function(lang, kind){ window._lexResumeKindHint=kind||null;
+    // Wyczyść źródła bieżącej lekcji, by klucz wznawiania użył kind z KLIKNIĘTEGO kafla
+    // (_lexResumeKindHint), a nie kind aktualnie otwartej lekcji → przełączanie Kontynuuj działa.
+    window._lexSources=[]; window._lexSourceWords=[];
     try{ if(lang){ window._lexLang=lang; var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[lang])||null; if(info){ window._lexLangName=info.name; window._lexLangNative=info.native; } } }catch(e){}
     try{ var h=host(); if(h){ h.style.display='none'; h.innerHTML=''; } }catch(e){}
     if(typeof lexxResume==='function') lexxResume();
