@@ -2826,7 +2826,15 @@ window.eylGoMobileApp = eylGoMobileApp;
         try{ window._uid = (r&&r.data&&r.data.session) ? r.data.session.user.id : null; }catch(e){}
         killLegacyLeakKeys();
         reloadUserScopedState();
-        try{ if(r && r.data && r.data.session) eylGoMobileApp(); }catch(_e){}
+        try{
+          if(r && r.data && r.data.session){
+            if(eylGoMobileApp()) return;   // mobile → redirect do app.html (przerywa)
+            // Naprawa „wylogowania po odświeżeniu": z utrwalonej sesji przywróć navbar
+            // i widok apki (dotąd boot nie odtwarzał zalogowanego UI na desktopie).
+            if(typeof window.eylEnsureNav==='function') window.eylEnsureNav();
+            if(!eylDeepLinked() && typeof window.eylAfterLogin==='function') window.eylAfterLogin();
+          }
+        }catch(_e){}
       });
       db.auth.onAuthStateChange(function(event, session){ try{window._eylTok=session&&session.access_token;}catch(_e){}
         var _prev = window._uid;
@@ -18671,17 +18679,21 @@ async function lexInit(){
   function esc(s){ return (typeof escH==='function')?escH(s):String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
   // Tłumaczenie tekstu na polski (z cache) przez AI proxy
-  window.tlTranslate = async function(text, lang){
+  window.tlTranslate = async function(text, lang, context){
     text=(text||'').trim();
     if(!text) return '';
-    var key=lang+'::'+text;
+    context=(context||'').trim();
+    var useCtx = context && context!==text;
+    var key=lang+'::'+text+'::'+(useCtx?context:'');
     if(window._tlCache[key]) return window._tlCache[key];
     try{
       var sess=(await db.auth.getSession()).data.session;
       var tok=sess?sess.access_token:'';
       var langName=LANG_NAMES[lang]||'English';
-      var prompt='Translate this '+langName+' text to Polish. Return ONLY the Polish translation, no quotes, nothing else.\nText: "'+text+'"';
-      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({messages:[{role:'user',content:prompt}],max_tokens:200})});
+      var prompt = useCtx
+        ? ('Zdanie ('+langName+'): "'+context+'"\nW tym zdaniu użyto słowa: "'+text+'".\nPodaj polskie znaczenie tego słowa DOKŁADNIE tak, jak jest użyte w tym zdaniu. Jeśli w tym kontekście znaczy co innego niż zwykle (słownikowo), odpowiedz w formacie:\n<polskie znaczenie w kontekście> ||| <krótko po polsku, na czym polega różnica>\nW przeciwnym razie odpowiedz TYLKO polskim tłumaczeniem słowa, bez niczego więcej.')
+        : ('Translate this '+langName+' text to Polish. Return ONLY the Polish translation, no quotes, nothing else.\nText: "'+text+'"');
+      var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex',messages:[{role:'user',content:prompt}],max_tokens:220})});
       if(!res.ok) throw new Error('HTTP '+res.status);
       var d=await res.json();
       var tr=((typeof extractAIText==='function'?extractAIText(d):'')||'').trim().replace(/^["'`]+|["'`]+$/g,'');
@@ -18767,9 +18779,14 @@ async function lexInit(){
         btnRow.appendChild(tg);
       }
       var rid=(pop._req=(pop._req||0)+1);
-      window.tlTranslate(original, lang).then(function(tr){
+      window.tlTranslate(original, lang, isSent?null:ctx.sentence).then(function(tr){
         if(window._tlPop!==pop || pop._req!==rid) return;
-        var t=bodyEl.querySelector('.tl-pop-tr'); if(t) t.textContent=tr;
+        var t=bodyEl.querySelector('.tl-pop-tr'); if(!t) return;
+        var _parts=String(tr||'').split('|||');
+        if(_parts.length>1){
+          var _main=_parts[0].trim(), _note=_parts.slice(1).join('|||').trim();
+          t.innerHTML='<span style="color:var(--orange);font-weight:500">'+esc(_main)+'</span><div style="margin-top:5px;font-size:12px;font-style:italic;color:var(--dim2);line-height:1.4">w tym kontekście: '+esc(_note)+'</div>';
+        } else { t.textContent=tr; }
       });
     }
     window._tlPop=pop;
