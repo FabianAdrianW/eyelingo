@@ -1797,6 +1797,7 @@ window.switchMatTab = function(tab){
   function _ck(w,tr){ return String(w||'').trim().toLowerCase()+'|'+String(tr||'').trim().toLowerCase(); }
   function _today(){ return new Date().toISOString().slice(0,10); }
   function _langInfo(code){ return (typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[code]) || {label:code, flag:'🌐'}; }
+  window.lexFlagBadge=function(c){ try{ var m=(typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP[c]:null; var f=m&&m.flag; return f?('<span style="font-size:14px;line-height:1;vertical-align:middle" title="'+((m&&m.label)||c||'')+'">'+f+'</span>'):((c||'').toUpperCase()); }catch(e){ return (c||'').toUpperCase(); } };
 
   // Termin powrotu karty (globalny — używany też przez tryb Przeglądanie)
   window.trybFmtNext = function(days){
@@ -12522,7 +12523,7 @@ function lexHeroMaterialHTML(s,esc){
     +'<div style="flex:1;min-width:240px">'
     +'<div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--orange);margin-bottom:10px"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Kontynuuj naukę</div>'
     +'<div style="font-size:22px;font-weight:500;color:var(--navy);letter-spacing:-.3px;margin-bottom:8px">'+esc(s.label)+'</div>'
-    +'<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim2);margin-bottom:12px">'+(s.lang?'<span style="font-weight:500;background:var(--navy);color:#fff;padding:2px 7px;border-radius:4px;font-size:10px">'+esc(String(s.lang).toUpperCase())+'</span>':'')+'<span>'+meta.join(' · ')+'</span></div>'
+    +'<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim2);margin-bottom:12px">'+(s.lang?window.lexFlagBadge(s.lang):'')+'<span>'+meta.join(' · ')+'</span></div>'
     +'<div data-mastery="'+s.kind+'|'+s.id+'" style="max-width:340px"></div>'
     +'</div>'
     +'<button onclick="lexQuickGo()" style="flex-shrink:0;min-width:200px;padding:15px 28px;background:var(--orange);color:#fff;border:none;border-radius:100px;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif">Zacznij lekcję →</button>'
@@ -12551,7 +12552,7 @@ function lexRenderEntryList(listEl, listChips, allChips, esc){
     return '<div onclick="lexEntryPick('+idx+')" style="display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--border2);border-radius:12px;padding:14px 16px;cursor:pointer;transition:.15s" onmouseover="this.style.borderColor=\'var(--orange)\'" onmouseout="this.style.borderColor=\'var(--border2)\'">'
       +'<span style="width:7px;height:7px;border-radius:50%;background:'+dot+';flex-shrink:0"></span>'
       +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(c.lang?'<span style="font-weight:500;color:var(--dim2);font-size:10px;margin-right:6px">'+esc(String(c.lang).toUpperCase())+'</span>':'')+esc(c.label)+'</div>'
+      +'<div style="font-size:14px;font-weight:500;color:var(--navy);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(c.lang?('<span style="margin-right:6px">'+window.lexFlagBadge(c.lang)+'</span>'):'')+esc(c.label)+'</div>'
       +'<div data-mastery="'+key+'" data-mastery-sm="1"><div style="font-size:11px;color:var(--dim2)">'+(c.count||0)+' słów</div></div>'
       +'</div>'
       +(rec?'<span style="font-size:11px;color:var(--dim2);white-space:nowrap;flex-shrink:0">'+rec+'</span>':'')+'</div>';
@@ -17282,7 +17283,7 @@ async function lexInit(){
   function tileUserSet(st){
     var tok='u'+st.id;
     _picks[tok]={kind:'user',id:st.id,label:st.label,level:null,lang:st.lang||null};
-    var badge=st.lang?'<span class="lexcat-langbadge">'+esc(langBadge(st.lang))+'</span>':'<span class="lexcat-langbadge" style="opacity:.6">?</span>';
+    var badge=st.lang?window.lexFlagBadge(st.lang):'<span class="lexcat-langbadge" style="opacity:.6">?</span>';
     _picks[tok].count=st.count;
     return '<div class="lexcat-tile'+(isSel('user',st.id)?' sel':'')+'" data-pick="'+tok+'">'
       +'<button class="lexcat-eye" data-eye="'+tok+'" title="Podejrzyj słowa"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="2.6"></circle></svg></button>'
@@ -17580,7 +17581,7 @@ async function lexInit(){
     host.innerHTML='<div style="font-size:12px;color:var(--dim2);padding:10px 0">Sprawdzam, co ostatnio przerabiałeś…</div>';
     var src=await lexLoadStudySources();
     var lvlUser=(typeof lexCurrentLevel==='function'?lexCurrentLevel():'B1');
-    function badgeOf(code){ return code?('<span class="lexcat-langbadge" style="margin-right:6px">'+esc(String(code).toUpperCase())+'</span>'):''; }
+    function badgeOf(code){ return code?('<span style="margin-right:6px">'+window.lexFlagBadge(code)+'</span>'):''; }
     var chips=[];
     src.eyelingo.forEach(function(c){
       chips.push({kind:'eyelingo', id:c.id, label:c.label, level:c.level||lvlUser, count:c.count, lang:c.lang||null, recent:(c.recent||''), sub:((c.lang&&typeof getLangName==='function')?getLangName(c.lang)+' · ':'')+(c.level?c.level+' · ':'')+c.count+' słów'});
@@ -19121,11 +19122,20 @@ if ('serviceWorker' in navigator) {
     try{ var h=host(); if(h){ h.style.display='none'; h.innerHTML=''; } }catch(e){}
     if(typeof lexStartLesson==='function') lexStartLesson();
   };
-  window.lexResumeLang=function(lang, kind){ window._lexResumeKindHint=kind||null;
-    // Wyczyść źródła bieżącej lekcji, by klucz wznawiania użył kind z KLIKNIĘTEGO kafla
-    // (_lexResumeKindHint), a nie kind aktualnie otwartej lekcji → przełączanie Kontynuuj działa.
+  window.lexResumeLang=function(lang, kind){
+    // Wyczyść źródła bieżącej lekcji, by klucz wznawiania użył kind z KLIKNIĘTEGO kafla.
     window._lexSources=[]; window._lexSourceWords=[];
     try{ if(lang){ window._lexLang=lang; var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[lang])||null; if(info){ window._lexLangName=info.name; window._lexLangNative=info.native; } } }catch(e){}
+    // Ustal właściwy kind: spróbuj podanego; jeśli pod tym kluczem nie ma wznowienia — spróbuj drugiego
+    // (eyelingo↔user). Naprawa: drugi kafel „Kontynuuj" wznawia właściwą lekcję niezależnie od kind.
+    window._lexResumeKindHint = kind || 'eyelingo';
+    try{
+      if(typeof lexxHasResume==='function' && !lexxHasResume()){
+        var _alt=(window._lexResumeKindHint==='user')?'eyelingo':'user';
+        window._lexResumeKindHint=_alt;
+        if(!lexxHasResume()){ window._lexResumeKindHint = kind || 'eyelingo'; }
+      }
+    }catch(_e){}
     try{ var h=host(); if(h){ h.style.display='none'; h.innerHTML=''; } }catch(e){}
     if(typeof lexxResume==='function') lexxResume();
   };
@@ -19304,7 +19314,7 @@ if ('serviceWorker' in navigator) {
     var items=resumeItems().filter(function(it){ return seg==='user'?(it.kind==='user'):(it.kind!=='user'); });
     if(!items.length) return;
     box.style.display='block';
-    if(typeof window.sbContinueBlock==='function'){ box.innerHTML=window.sbContinueBlock(items.map(function(it){ return {onclick:"lexResumeLang('"+it.lang+"','"+(it.kind||'')+"')", title:it.label, sub:String(it.lang||'').toUpperCase()+' · porcja '+it.pn+' z '+it.pt}; })); return; }
+    if(typeof window.sbContinueBlock==='function'){ box.innerHTML=window.sbContinueBlock(items.map(function(it){ return {onclick:"lexResumeLang('"+it.lang+"','"+(it.kind||'')+"')", title:it.label, sub:(window.lexFlagBadge?window.lexFlagBadge(it.lang):String(it.lang||'').toUpperCase())+' · porcja '+it.pn+' z '+it.pt}; })); return; }
     var head='<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px 2px">Kontynuuj</div>';
     box.innerHTML=head+items.map(function(it,idx){
       var accent=(idx===0), meta='porcja '+it.pn+' z '+it.pt;
