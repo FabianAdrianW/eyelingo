@@ -16578,16 +16578,18 @@ async function lexInit(){
         }).join('');
       }
       var clLang=lang();
+      // kontekst zdania dla tap-to-translate (luki → …), bezpieczny do atrybutu data-s
+      var clSentAttr=String(sentRaw).replace(/_{2,}|\[\.\.\.\]|\.\.\./g,'\u2026').replace(/\s+/g,' ').trim().replace(/&/g,'&amp;').replace(/"/g,'&quot;');
       if(re.test(sentRaw)){
         re.lastIndex=0;
         while((mm=re.exec(sentRaw))!==null){
-          html+='<span class="tl" data-tl-lang="'+clLang+'">'+clozeTlTokens(sentRaw.slice(last, mm.index), clLang)+'</span>';
+          html+='<span class="tl tl-s" data-tl-lang="'+clLang+'" data-s="'+clSentAttr+'">'+clozeTlTokens(sentRaw.slice(last, mm.index), clLang)+'</span>';
           html+=lexxGapInputHtml(i, gi, answers[gi]||'');
           gi++; last=mm.index+mm[0].length;
         }
-        html+='<span class="tl" data-tl-lang="'+clLang+'">'+clozeTlTokens(sentRaw.slice(last), clLang)+'</span>';
+        html+='<span class="tl tl-s" data-tl-lang="'+clLang+'" data-s="'+clSentAttr+'">'+clozeTlTokens(sentRaw.slice(last), clLang)+'</span>';
       } else {
-        html='<span class="tl" data-tl-lang="'+clLang+'">'+clozeTlTokens(sentRaw, clLang)+'</span> '+lexxGapInputHtml(i,0,answers[0]||''); gi=1;
+        html='<span class="tl tl-s" data-tl-lang="'+clLang+'" data-s="'+clSentAttr+'">'+clozeTlTokens(sentRaw, clLang)+'</span> '+lexxGapInputHtml(i,0,answers[0]||''); gi=1;
       }
       window._lexxGapN=window._lexxGapN||{}; window._lexxGapN[i]=gi||1;
       body+='<p class="lexx-q lexx-cloze">'+html+'</p>'
@@ -19088,6 +19090,22 @@ if ('serviceWorker' in navigator) {
   }
 
   function resumeItems(){
+    function _tnum(x){ var n=Number(x); return isFinite(n)?n:0; }
+    // Źródło kanoniczne: migawki per ZESTAW z chmury (mobile_lesson_state) — parytet z apką.
+    try{
+      var snaps=(window._eylLessonSnaps||[]).filter(function(st){ return st && st.portionNum>0 && st.portionNum<st.portionTarget; });
+      if(snaps.length){
+        var out=snaps.map(function(st){
+          var src=(st.sources&&st.sources[0])||{};
+          var kind=src.kind||(String(st._setId||'').indexOf('eyl:')===0?'eyelingo':(String(st._setId||'').indexOf('multi:')===0?'eyelingo':'user'));
+          var nm=src.label?String(src.label).replace(/^[^\w]+\s*/,''):(st.focus||'lekcja');
+          return {lang:st.lang||'en',label:nm,kind:kind,pn:st.portionNum,pt:st.portionTarget,ts:st.ts||'',setId:(st._setId!=null?String(st._setId):null)};
+        });
+        out.sort(function(a,b){ return _tnum(b.ts)-_tnum(a.ts); });
+        return out;
+      }
+    }catch(e){}
+    // Fallback (offline / brak chmury): stary odczyt localStorage per (kind,lang).
     var items=[];
     try{
       var suffix='_'+(window._uid||'anon'), prefix='lex_resume_portion_';
@@ -19104,7 +19122,7 @@ if ('serviceWorker' in navigator) {
         var src=(st.sources&&st.sources[0])||{};
         var kind=src.kind||kkind||'eyelingo';
         var nm=src.label?String(src.label).replace(/^[^\w]+\s*/,''):(st.focus||'lekcja');
-        items.push({lang:lang,label:nm,kind:kind,pn:st.portionNum,pt:st.portionTarget,ts:st.ts||''});
+        items.push({lang:lang,label:nm,kind:kind,pn:st.portionNum,pt:st.portionTarget,ts:st.ts||'',setId:(st._setId!=null?String(st._setId):null)});
       }
       items.sort(function(a,b){ return String(b.ts||'').localeCompare(String(a.ts||'')); });
     }catch(e){}
@@ -19137,6 +19155,26 @@ if ('serviceWorker' in navigator) {
       }
     }catch(_e){}
     try{ var h=host(); if(h){ h.style.display='none'; h.innerHTML=''; } }catch(e){}
+    if(typeof lexxResume==='function') lexxResume();
+  };
+
+  // Wznów konkretny zestaw (per setId) — parytet z apką: każdy kafel wznawia swoją lekcję.
+  window.lexResumeSet=function(setId){
+    window._lexSources=[]; window._lexSourceWords=[];
+    var snap=null;
+    try{ snap=(window._eylLessonSnaps||[]).filter(function(x){ return String(x._setId)===String(setId); })[0]||null; }catch(e){}
+    if(!snap){
+      // brak migawki chmurowej — spróbuj starą ścieżką po języku z listy
+      try{ var it=resumeItems().filter(function(x){ return String(x.setId)===String(setId); })[0]; if(it){ return window.lexResumeLang(it.lang, it.kind); } }catch(e){}
+      return;
+    }
+    window._lexResumeWant=snap;
+    try{
+      window._lexLang=snap.lang||window._lexLang||'en';
+      var info=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[window._lexLang])||null;
+      if(info){ window._lexLangName=info.name; window._lexLangNative=info.native; }
+    }catch(e){}
+    try{ var h2=host(); if(h2){ h2.style.display='none'; h2.innerHTML=''; } }catch(e){}
     if(typeof lexxResume==='function') lexxResume();
   };
 
@@ -19314,11 +19352,14 @@ if ('serviceWorker' in navigator) {
     var items=resumeItems().filter(function(it){ return seg==='user'?(it.kind==='user'):(it.kind!=='user'); });
     if(!items.length) return;
     box.style.display='block';
-    if(typeof window.sbContinueBlock==='function'){ box.innerHTML=window.sbContinueBlock(items.map(function(it){ return {onclick:"lexResumeLang('"+it.lang+"','"+(it.kind||'')+"')", title:it.label, sub:(window.lexFlagBadge?window.lexFlagBadge(it.lang):String(it.lang||'').toUpperCase())+' · porcja '+it.pn+' z '+it.pt}; })); return; }
+    var _flagEmoji=function(c){ try{ var m=(typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP[c]:null; return (m&&m.flag)?m.flag:String(c||'').toUpperCase(); }catch(e){ return String(c||'').toUpperCase(); } };
+    var _resumeCall=function(it){ return it.setId ? ("lexResumeSet('"+String(it.setId).replace(/'/g,'')+"')") : ("lexResumeLang('"+it.lang+"','"+(it.kind||'')+"')"); };
+    if(typeof window.sbContinueBlock==='function'){ box.innerHTML=window.sbContinueBlock(items.map(function(it){ return {onclick:_resumeCall(it), title:it.label, sub:_flagEmoji(it.lang)+' · porcja '+it.pn+' z '+it.pt}; })); return; }
     var head='<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px 2px">Kontynuuj</div>';
     box.innerHTML=head+items.map(function(it,idx){
       var accent=(idx===0), meta='porcja '+it.pn+' z '+it.pt;
-      return '<button onclick="lexResumeLang(\''+it.lang+'\',\''+(it.kind||'')+'\')" style="width:100%;text-align:left;background:var(--paper2);border:'+(accent?'2px solid var(--orange)':'.5px solid var(--border)')+';border-radius:12px;padding:11px 13px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+      var _oc=it.setId ? ('lexResumeSet(\''+String(it.setId).replace(/'/g,'')+'\')') : ('lexResumeLang(\''+it.lang+'\',\''+(it.kind||'')+'\')');
+      return '<button onclick="'+_oc+'" style="width:100%;text-align:left;background:var(--paper2);border:'+(accent?'2px solid var(--orange)':'.5px solid var(--border)')+';border-radius:12px;padding:11px 13px;cursor:pointer;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:10px;margin-bottom:8px">'
         +'<svg viewBox="0 0 24 24" fill="none" stroke="'+(accent?'var(--orange)':'var(--dim2)')+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex-shrink:0"><polygon points="6 4 20 12 6 20"/></svg>'
         +'<span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.label)+' <span style="font-weight:500;color:var(--dim2);font-size:10px">'+String(it.lang||'').toUpperCase()+'</span></span>'
         +'<span style="display:block;font-size:11px;color:var(--dim2)">'+esc(meta)+'</span></span></button>';
@@ -19907,7 +19948,8 @@ if ('serviceWorker' in navigator) {
   var _origResume=window.lexxResume;
   window.lexxResume=async function(){
     try{
-      var st=(typeof window.lexxHasResume==='function')?window.lexxHasResume():null;
+      var st=window._lexResumeWant || ((typeof window.lexxHasResume==='function')?window.lexxHasResume():null);
+      try{ window._lexResumeWant=null; }catch(_e){}
       if(st){
         if(st._setId && (!st.sourceWords || !st.sourceWords.length)){
           var w=await S.wordsBySetId(st._setId);
