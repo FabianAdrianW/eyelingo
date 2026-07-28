@@ -18700,7 +18700,7 @@ async function lexInit(){
       var tok=sess?sess.access_token:'';
       var langName=LANG_NAMES[lang]||'English';
       var prompt = useCtx
-        ? ('Zdanie ('+langName+'): "'+context+'"\nW tym zdaniu użyto słowa: "'+text+'".\nPodaj polskie znaczenie tego słowa DOKŁADNIE tak, jak jest użyte w tym zdaniu. Jeśli w tym kontekście znaczy co innego niż zwykle (słownikowo), odpowiedz w formacie:\n<polskie znaczenie w kontekście> ||| <krótko po polsku, na czym polega różnica>\nW przeciwnym razie odpowiedz TYLKO polskim tłumaczeniem słowa, bez niczego więcej.')
+        ? ('Zdanie ('+langName+'): "'+context+'"\nSłowo do wyjaśnienia: "'+text+'".\nOdpowiedz PO POLSKU dokładnie w formacie:\nznaczenie ||| nota\ngdzie „znaczenie" = polskie tłumaczenie słowa tak, jak użyto go w tym zdaniu (zwięźle, 1–3 słowa), a „nota" = krótkie (do ~10 słów) wyjaśnienie, co to słowo znaczy w tym kontekście. Zawsze podaj OBIE części oddzielone |||. Nie dodawaj nic poza tym.')
         : ('Translate this '+langName+' text to Polish. Return ONLY the Polish translation, no quotes, nothing else.\nText: "'+text+'"');
       var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex',messages:[{role:'user',content:prompt}],max_tokens:220})});
       if(!res.ok) throw new Error('HTTP '+res.status);
@@ -19352,7 +19352,7 @@ if ('serviceWorker' in navigator) {
     var items=resumeItems().filter(function(it){ return seg==='user'?(it.kind==='user'):(it.kind!=='user'); });
     if(!items.length) return;
     box.style.display='block';
-    var _flagEmoji=function(c){ try{ var m=(typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP[c]:null; return (m&&m.flag)?m.flag:String(c||'').toUpperCase(); }catch(e){ return String(c||'').toUpperCase(); } };
+    var _flagEmoji=function(c){ try{ var m=(typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP[c]:null; return (m&&m.label)?m.label:String(c||'').toUpperCase(); }catch(e){ return String(c||'').toUpperCase(); } };
     var _resumeCall=function(it){ return it.setId ? ("lexResumeSet('"+String(it.setId).replace(/'/g,'')+"')") : ("lexResumeLang('"+it.lang+"','"+(it.kind||'')+"')"); };
     if(typeof window.sbContinueBlock==='function'){ box.innerHTML=window.sbContinueBlock(items.map(function(it){ return {onclick:_resumeCall(it), title:it.label, sub:_flagEmoji(it.lang)+' · porcja '+it.pn+' z '+it.pt}; })); return; }
     var head='<div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 8px 2px">Kontynuuj</div>';
@@ -19934,6 +19934,7 @@ if ('serviceWorker' in navigator) {
   // (bez tego lekcja rozpoczęta w apce byłaby niewidoczna na webie, gdy język/segment się różni)
   var _origHas=window.lexxHasResume;
   window.lexxHasResume=function(){
+    if(window._lexResumeWant) return window._lexResumeWant;   // kliknięty kafel Kontynuuj ma pierwszeństwo nad „najświeższą"
     var local=null, cloud=null;
     try{ local=(typeof _origHas==='function')?_origHas.apply(this,arguments):null; }catch(e){}
     try{
@@ -19949,7 +19950,6 @@ if ('serviceWorker' in navigator) {
   window.lexxResume=async function(){
     try{
       var st=window._lexResumeWant || ((typeof window.lexxHasResume==='function')?window.lexxHasResume():null);
-      try{ window._lexResumeWant=null; }catch(_e){}
       if(st){
         if(st._setId && (!st.sourceWords || !st.sourceWords.length)){
           var w=await S.wordsBySetId(st._setId);
@@ -19974,7 +19974,9 @@ if ('serviceWorker' in navigator) {
         }catch(e){}
       }
     }catch(e){}
-    return (typeof _origResume==='function')?_origResume.apply(this,arguments):undefined;
+    var _rr=(typeof _origResume==='function')?_origResume.apply(this,arguments):undefined;
+    try{ window._lexResumeWant=null; }catch(_e){}
+    return _rr;
   };
 
   // Pull wznowień przed renderem ekranu wejścia Lexa i sidebaru
