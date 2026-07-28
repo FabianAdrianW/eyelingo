@@ -165,7 +165,7 @@
   #lex-stage{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 18px calc(var(--safe-bot) + 20px)}
   #lex-stage::-webkit-scrollbar{display:none}
   /* Tablica lekcji — pływający przycisk (lewy dół) + dolny arkusz */
-  #lex-board-fab{display:none;position:absolute;left:18px;bottom:24px;z-index:42;width:52px;height:52px;border-radius:50%;border:1px solid rgba(26,35,64,.12);background:rgba(255,255,255,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 6px 20px rgba(26,35,64,.16);color:var(--navy);align-items:center;justify-content:center;cursor:pointer;opacity:.62;transition:opacity .2s,transform .15s}
+  #lex-board-fab{display:none;position:absolute;right:18px;bottom:24px;z-index:42;width:52px;height:52px;border-radius:50%;border:1px solid rgba(26,35,64,.12);background:rgba(255,255,255,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 6px 20px rgba(26,35,64,.16);color:var(--navy);align-items:center;justify-content:center;cursor:pointer;opacity:.62;transition:opacity .2s,transform .15s}
   #lex-board-fab:active{transform:scale(.94);opacity:1}
   #lex-board-badge{position:absolute;top:-5px;right:-5px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--orange);color:#fff;font-size:11px;font-weight:600;display:none;align-items:center;justify-content:center;line-height:20px}
   #lex-board-backdrop{display:none;position:absolute;inset:0;background:rgba(26,35,64,.28);z-index:43;animation:fade .2s ease}
@@ -3329,6 +3329,9 @@ async function alexSend(){
   if(window._lexWordTrInstalled) return; window._lexWordTrInstalled = true;
   var _cache = {};
   var _pop = null;
+  // parytet z web (index.html) — nazwy języków w promcie tłumaczenia
+  var LANG_NAMES={en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French',it:'Italian',pt:'Portuguese'};
+  function _esc(x){ return String(x==null?'':x).replace(/[<>&]/g,function(c){return c==='<'?'&lt;':c==='>'?'&gt;':'&amp;';}); }
 
   function _closePop(){ if(_pop){ _pop.remove(); _pop=null; } }
 
@@ -3355,10 +3358,18 @@ async function alexSend(){
     while(a>0 && isW(text[a-1])) a--;
     while(b<text.length && isW(text[b])) b++;
     var w=text.slice(a,b).trim().replace(/^[\-'\u2019]+|[\-'\u2019]+$/g,'');
-    return (w && w.length>=2) ? w : null;
+    if(!(w && w.length>=2)) return null;
+    // kontekst: zdanie z tego węzła, w którym pada słowo (granice po .!?…\n)
+    var isEnd=function(ch){ return ch==='.'||ch==='!'||ch==='?'||ch==='\u2026'||ch==='\n'; };
+    var sa=a, sb=b;
+    while(sa>0 && !isEnd(text[sa-1])) sa--;
+    while(sb<text.length && !isEnd(text[sb])) sb++;
+    if(sb<text.length) sb++;
+    var sent=text.slice(sa,sb).replace(/\s+/g,' ').trim();
+    return { word:w, sentence:sent };
   }
 
-  async function _showPop(word, x, y){
+  async function _showPop(word, ctx, x, y){
     _closePop();
     var pop=document.createElement('div');
     pop.style.cssText='position:fixed;z-index:100000;max-width:260px;background:#1a2340;color:#fff;border-radius:12px;padding:10px 12px;box-shadow:0 8px 28px rgba(26,35,64,.4);font-family:Inter,sans-serif;font-size:14px;line-height:1.4;display:flex;align-items:center;gap:10px';
@@ -3377,13 +3388,29 @@ async function alexSend(){
     try{ lexSceneSpeak(word, _ttsCode()); }catch(e){}   // odtwórz audio od razu
 
     var trEl=pop.querySelector('._tr');
-    if(_cache[word]!=null){ if(trEl) trEl.textContent=_cache[word]; return; }
+    var _ck=word+'::'+(ctx||'');
+    function _renderTr(tr){
+      if(!trEl) return;
+      var parts=String(tr||'').split('|||');
+      if(parts.length>1){
+        var _main=parts[0].trim(), _note=parts.slice(1).join('|||').trim();
+        trEl.innerHTML='<span style="color:#fff">'+_esc(_main)+'</span>'
+          +'<div style="margin-top:4px;font-size:11px;font-style:italic;color:#9aa4bd;line-height:1.35">w tym kontekście: '+_esc(_note)+'</div>';
+      } else { trEl.textContent=tr; }
+    }
+    if(_cache[_ck]!=null){ _renderTr(_cache[_ck]); return; }
     try{
-      var tr=await lexProxy('Przetłumacz słowo "'+word+'" na polski. Odpowiedz TYLKO polskim tłumaczeniem, bez niczego więcej, bez cudzysłowów.', 30);
-      tr=(tr||'').split('\n')[0].replace(/["'.]/g,'').trim();
+      var _lc=''; try{ _lc=_lexLang; }catch(_e){}
+      var _langName=LANG_NAMES[_lc]||'English';
+      var _useCtx = ctx && ctx!==word;
+      var _prompt = _useCtx
+        ? ('Zdanie ('+_langName+'): "'+ctx+'"\nW tym zdaniu użyto słowa: "'+word+'".\nPodaj polskie znaczenie tego słowa DOKŁADNIE tak, jak jest użyte w tym zdaniu. Jeśli w tym kontekście znaczy co innego niż zwykle (słownikowo), odpowiedz w formacie:\n<polskie znaczenie w kontekście> ||| <krótko po polsku, na czym polega różnica>\nW przeciwnym razie odpowiedz TYLKO polskim tłumaczeniem słowa, bez niczego więcej.')
+        : ('Przetłumacz słowo "'+word+'" na polski. Odpowiedz TYLKO polskim tłumaczeniem, bez niczego więcej, bez cudzysłowów.');
+      var tr=await lexProxy(_prompt, 220);
+      tr=(tr||'').replace(/```json|```/g,'').trim().replace(/^["'`]+|["'`]+$/g,'');
       if(!tr) tr='—';
-      _cache[word]=tr;
-      if(_pop===pop && trEl) trEl.textContent=tr;
+      _cache[_ck]=tr;
+      if(_pop===pop) _renderTr(tr);
     }catch(e){ if(_pop===pop && trEl) trEl.textContent='(brak tłumaczenia)'; }
   }
 
@@ -3393,10 +3420,12 @@ async function alexSend(){
     if(e.target.closest('button, input, textarea, a, .lexx-chip, ._spk')) return;
     var host=e.target.closest('.lexx-q, .lexx-scene-txt');
     if(!host) return;
-    var word=_wordAtPoint(e.clientX, e.clientY);
-    if(!word) return;
+    var hit=_wordAtPoint(e.clientX, e.clientY);
+    if(!hit || !hit.word) return;
     e.stopPropagation();
-    _showPop(word, e.clientX, e.clientY);
+    var ctx=hit.sentence || '';
+    if(!ctx || ctx.length<4){ try{ ctx=(host.textContent||'').replace(/\s+/g,' ').trim(); }catch(e2){ ctx=''; } }
+    _showPop(hit.word, ctx, e.clientX, e.clientY);
   });
 })();
 </script>
