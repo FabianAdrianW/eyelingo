@@ -1797,7 +1797,7 @@ window.switchMatTab = function(tab){
   function _ck(w,tr){ return String(w||'').trim().toLowerCase()+'|'+String(tr||'').trim().toLowerCase(); }
   function _today(){ return new Date().toISOString().slice(0,10); }
   function _langInfo(code){ return (typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[code]) || {label:code, flag:'🌐'}; }
-  window.lexFlagBadge=function(c){ try{ var m=(typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP[c]:null; var f=m&&m.flag; return f?('<span style="font-size:14px;line-height:1;vertical-align:middle" title="'+((m&&m.label)||c||'')+'">'+f+'</span>'):((c||'').toUpperCase()); }catch(e){ return (c||'').toUpperCase(); } };
+  window.lexFlagBadge=function(c){ try{ var m=(typeof LEX_LANG_MAP!=='undefined')?LEX_LANG_MAP[c]:null; if(!m) return (c||'').toUpperCase(); return '<span title="'+((m&&m.label)||c||'')+'" style="line-height:0">'+(window.eylFlagSvg?window.eylFlagSvg(c,17):(m.flag||''))+'</span>'; }catch(e){ return (c||'').toUpperCase(); } };
 
   // Termin powrotu karty (globalny — używany też przez tryb Przeglądanie)
   window.trybFmtNext = function(days){
@@ -1895,7 +1895,7 @@ window.switchMatTab = function(tab){
     var orderedIds=Object.keys(meta).length?Object.keys(meta):catIds;
 
     var html='';
-    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow eylc-langrow">'+codes.map(function(c){ var info=_langInfo(c); return '<button class="eylc-chip'+(c===code?' on':'')+'" onclick="eylPickLang('+JSON.stringify(c).replace(/"/g,'&quot;')+')">'+info.flag+' '+_eEsc(info.label)+'</button>'; }).join('')+'</div>';
+    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow eylc-langrow">'+codes.map(function(c){ var info=_langInfo(c); return '<button class="eylc-chip'+(c===code?' on':'')+'" onclick="eylPickLang('+JSON.stringify(c).replace(/"/g,'&quot;')+')">'+(window.eylFlagSvg?window.eylFlagSvg(c,16):info.flag)+' '+_eEsc(info.label)+'</button>'; }).join('')+'</div>';
     if(levels.length){
       html+='<div class="eylc-flabel" style="margin-top:16px">Poziom</div><div class="eylc-chiprow"><button class="eylc-chip'+(!_eylSeg.level?' on':'')+'" onclick="eylPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eylc-chip'+(_eylSeg.level===lv?' on':'')+'" onclick="eylPickLvl('+JSON.stringify(lv).replace(/"/g,'&quot;')+')">'+lv+'</button>'; }).join('')+'</div>';
     }
@@ -4270,7 +4270,7 @@ window.matCardLexModal = function(setId, setName, langCode){
   }).join('');
   // Flaga + nazwa języka
   var lInfo=(langCode&&typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[langCode])||null;
-  var lBadge=lInfo?('<span style="font-size:12px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:3px 10px;border-radius:100px">'+(lInfo.flag||'')+' '+(lInfo.name||langCode)+'</span>'):'';
+  var lBadge=lInfo?('<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:3px 10px;border-radius:100px">'+(window.eylFlagSvg?window.eylFlagSvg(langCode,17):(lInfo.flag||''))+' '+(lInfo.name||langCode)+'</span>'):'';
   var cleanName=window.stripEmoji?window.stripEmoji(setName||''):(setName||'');
   m.innerHTML='<div style="background:#fff;border-radius:20px;padding:28px;width:min(440px,94vw);box-shadow:0 28px 70px rgba(26,35,64,.28)">'
     +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px">'
@@ -4345,7 +4345,7 @@ window.matSetLangPicker=function(setId, currentLang){
     var on=String(code)===String(currentLang||'');
     var b=document.createElement('button');
     b.style.cssText='display:flex;flex-direction:column;align-items:center;gap:6px;border:'+(on?'2px solid var(--orange)':'1.5px solid var(--border2)')+';background:'+(on?'#fff8f3':'#fff')+';border-radius:14px;padding:16px;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s';
-    b.innerHTML='<span style="font-size:24px">'+(info.flag||'🌐')+'</span><span style="font-size:13px;font-weight:600;color:var(--navy)">'+nm+'</span>';
+    b.innerHTML='<span style="line-height:0">'+(window.eylFlagSvg?window.eylFlagSvg(code,30):(info.flag||''))+'</span><span style="font-size:13px;font-weight:600;color:var(--navy)">'+nm+'</span>';
     b.onclick=function(){ window.matSetLangApply(setId, code); };
     grid.appendChild(b);
   });
@@ -5673,7 +5673,7 @@ function strefaSetCardLangBadge(s){
   var info=(code&&typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[code])||null;
   if(info){
     var nm=(info.name||code); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
-    return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;'+code+'&#39;)" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">'+(info.flag||'')+' '+esc(nm)+'</span>';
+    return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;'+code+'&#39;)" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">'+(window.eylFlagSvg?window.eylFlagSvg(code,15):(info.flag||''))+' '+esc(nm)+'</span>';
   }
   return '<span onclick="event.stopPropagation();matSetLangPicker('+s.id+',&#39;&#39;)" title="Ustaw język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(201,106,42,.10);color:var(--orange);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer;border:1px dashed rgba(201,106,42,.45)">+ język</span>';
 }
@@ -5740,7 +5740,7 @@ async function strefaLoadEyelingoLangsList(mode){
   LANGS.forEach(function(l){
     var div=document.createElement('div');
     div.style.cssText='padding:8px 10px;border-radius:10px;background:#fff;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px';
-    div.innerHTML='<span style="font-size:16px">'+l.flag+'</span><div style="font-size:13px;font-weight:500;color:var(--navy)">'+l.label+'</div>';
+    div.innerHTML='<span style="line-height:0">'+(window.eylFlagSvg?window.eylFlagSvg(l.code,20):l.flag)+'</span><div style="font-size:13px;font-weight:500;color:var(--navy)">'+l.label+'</div>';
     div.onmouseover=function(){this.style.borderColor='var(--orange)';};
     div.onmouseout=function(){this.style.borderColor='var(--border)';};
     div.onclick=(function(lc,ll,lf,m){ return function(){ strefaSelectLang(lc,ll,lf,m); }; })(l.code,l.label,l.flag,mode);
@@ -9700,7 +9700,7 @@ async function showTrybEyelingoSets(){
     // Language header button
     var langBtn = document.createElement('button');
     langBtn.style.cssText = 'width:100%;padding:12px 14px;border:1.5px solid var(--border2);border-radius:12px;background:var(--paper);font-size:14px;font-weight:500;color:var(--navy);cursor:pointer;text-align:left;margin-bottom:6px;display:flex;align-items:center;gap:8px;font-family:DM Sans,sans-serif;transition:.15s';
-    langBtn.innerHTML = '<span style="font-size:20px">' + lang.flag + '</span>' + lang.label + '<span style="margin-left:auto;font-size:12px;color:var(--dim2)">▶</span>';
+    langBtn.innerHTML = '<span style="line-height:0;display:inline-flex">' + (window.eylFlagSvg?window.eylFlagSvg(lang.code,24):lang.flag) + '</span>' + lang.label + '<span style="margin-left:auto;font-size:12px;color:var(--dim2)">▶</span>';
     langBtn.dataset.expanded = '0';
 
     var levelContainer = document.createElement('div');
@@ -11252,7 +11252,7 @@ function strefaShowEyelingoLangs(){
   LANGS.forEach(function(l){
     var div = document.createElement('div');
     div.style.cssText = 'background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:20px;cursor:pointer;text-align:center;transition:all .2s';
-    div.innerHTML = '<div style="font-size:32px;margin-bottom:8px">'+l.flag+'</div><div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">'+l.label+'</div>';
+    div.innerHTML = '<div style="margin-bottom:10px;line-height:0">'+(window.eylFlagSvg?window.eylFlagSvg(l.code,46):l.flag)+'</div><div style="font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy)">'+l.label+'</div>';
     div.onmouseover = function(){ this.style.borderColor='var(--orange)'; this.style.transform='translateY(-2px)'; };
     div.onmouseout = function(){ this.style.borderColor='var(--border)'; this.style.transform='none'; };
     div.onclick = (function(lc,ll,lf){ return function(){ strefaShowEyelingoLevels(lc,ll,lf); }; })(l.code,l.label,l.flag);
@@ -19350,7 +19350,7 @@ if ('serviceWorker' in navigator) {
     var actIds=[], doneIds=[];
     orderedIds.forEach(function(cid){ (_agg(byKeys[cid]||[]).status==='done'?doneIds:actIds).push(cid); });
     var html='';
-    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow eylc-langrow">'+codes.map(function(c){ var info=langInfo(c); return '<button class="eylc-chip'+(c===_lang?' on':'')+'" onclick="lexTrenerPickLang(\''+c+'\')">'+info.flag+' '+esc(langName(c))+'</button>'; }).join('')+'</div>';
+    html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow eylc-langrow">'+codes.map(function(c){ var info=langInfo(c); return '<button class="eylc-chip'+(c===_lang?' on':'')+'" onclick="lexTrenerPickLang(\''+c+'\')">'+(window.eylFlagSvg?window.eylFlagSvg(c,16):info.flag)+' '+esc(langName(c))+'</button>'; }).join('')+'</div>';
     if(levels.length){ html+='<div class="eylc-flabel" style="margin-top:16px">Poziom</div><div class="eylc-chiprow"><button class="eylc-chip'+(!_level?' on':'')+'" onclick="lexTrenerPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ return '<button class="eylc-chip'+(_level===lv?' on':'')+'" onclick="lexTrenerPickLvl(\''+lv+'\')">'+lv+'</button>'; }).join('')+'</div>'; }
     if(!orderedIds.length){ html+='<div class="eylc-secth" style="margin-top:20px">Kategorie (0)</div><div style="text-align:center;padding:40px 20px;color:var(--dim2);font-size:14px">Brak kategorii'+(_level?(' na poziomie '+esc(_level)):'')+'.</div>'; b.innerHTML=html; return; }
     if(doneIds.length){
@@ -19381,11 +19381,12 @@ if ('serviceWorker' in navigator) {
       }
     }catch(e){}
     if(!sets.length){ b.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--dim2);font-size:14px">Nie masz jeszcze własnych zestawów. Dodaj je w zakładce Fiszki → Moje zestawy.</div>'; return; }
-    b.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'+sets.map(function(s){
-      var badge=s.lang?(String(s.lang).toUpperCase()+' · '):'';
+    b.innerHTML='<div class="eylc-grid">'+sets.map(function(s){
+      var _fl=(s.lang&&window.eylFlagSvg)?window.eylFlagSvg(s.lang,24):'';
+      var badge=s.lang?((window.eylLangPl?window.eylLangPl(s.lang):String(s.lang).toUpperCase())+' · '):'';
       var args="'user',"+JSON.stringify(String(s.id))+","+JSON.stringify(s.label||'')+","+JSON.stringify(s.lang||'')+",''";
-      return '<div class="eylc-cat" onclick="lexTrenerStart('+args.replace(/"/g,'&quot;')+')">'
-        +'<div class="eylc-cnm">'+esc(s.label)+'</div>'
+      return '<div class="eylc-cat eylc-set" title="'+esc(s.label||'')+'" onclick="lexTrenerStart('+args.replace(/"/g,'&quot;')+')">'
+        +'<div class="eylc-shd">'+_fl+'<div class="eylc-cnm">'+esc(s.label)+'</div></div>'
         +'<div class="eylc-cfoot"><span class="eylc-cmeta">'+badge+s.count+' fiszek</span>'
         +'<svg viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex:0 0 auto"><polygon points="6 4 20 12 6 20"/></svg></div></div>';
     }).join('')+'</div>';
@@ -20422,5 +20423,176 @@ window.eylAfterLogin=function(){
     var b=document.getElementById(BTN);
     if(b && b.style.display!=='none'){ e.preventDefault(); b.click(); }
   }, true);
+})();
+</script>
+
+
+<!-- ═══ EYELINGO — Flagi SVG + kanoniczny kafel zestawu ═══════════════════════
+     PROBLEM 1: emoji flag (🇬🇧) nie renderuja sie na Windows — brak glifow
+       regional indicator w Segoe UI Emoji. Uzytkownik widzial "GB", "ES".
+       Rozwiazanie: inline SVG (zero CDN, zero zmian w CSP, zero requestow
+       do trzeciej strony, dziala offline w PWA).
+     PROBLEM 2: kafle w „Moje zestawy" rosly wraz z dlugoscia nazwy — nazwa
+       dzielila kontener flex z badge'ami, brak clampa, brak limitu wysokosci.
+       Rozwiazanie: grid-auto-rows:1fr + clamp 2 linie + stopka margin-top:auto.
+     Wycofanie: usun ten blok w calosci.
+     ══════════════════════════════════════════════════════════════════════ -->
+<style id="el-settile">
+/* ── Flaga ── */
+.eyl-flag{display:inline-block;vertical-align:-.18em;border-radius:2.5px;box-shadow:0 0 0 .5px rgba(26,35,64,.20);flex:0 0 auto}
+.eyl-flag--n{border-radius:3px;background:rgba(26,35,64,.08);box-shadow:none}
+
+/* ── Kanoniczny kafel zestawu (Fiszki → Moje zestawy / Spolecznosc) ── */
+.mat-grid{grid-auto-rows:1fr}
+.mat-card.ms-card{height:100%;box-sizing:border-box;gap:0}
+.ms-head{display:flex;align-items:flex-start;gap:11px}
+.ms-flag{width:30px;height:20px;flex:0 0 auto;margin-top:3px;padding:0;border:none;background:transparent;line-height:0;display:block;border-radius:3px}
+button.ms-flag{cursor:pointer}
+button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-radius:3px}
+.ms-flag--empty{display:flex;align-items:center;justify-content:center;border:1px dashed rgba(201,106,42,.5);background:rgba(201,106,42,.06);color:var(--orange);font-size:14px;line-height:1;font-family:DM Sans,sans-serif;border-radius:4px}
+.ms-body{flex:1;min-width:0;padding-right:16px}
+.ms-name{font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy);line-height:1.32;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.ms-meta{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim2);margin-top:5px;min-width:0}
+.ms-meta .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ms-chip{flex:0 0 auto;font-size:9px;font-weight:500;letter-spacing:.5px;padding:2px 6px;border-radius:6px;color:#fff;line-height:1.5}
+.ms-auth{font-size:11.5px;color:var(--dim2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-actions{display:flex;gap:7px;margin-top:auto;padding-top:12px}
+
+/* ── Normalizacja starszego producenta kafli (strefaSetCard w Strefie Nauki):
+      nazwa ma tam inline display:flex;flex-wrap:wrap, wiec clamp wymaga !important.
+      Bez tego dlugie nazwy nadal rozciagaja rzad. ── */
+.mat-grid>.mat-card{height:100%;box-sizing:border-box}
+.mat-card .mat-card-name{display:-webkit-box!important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.mat-card .mat-card-count{margin-top:4px}
+
+/* ── Kafel zestawu w Trenerze AI (wariant .eylc-cat) ── */
+.eylc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;grid-auto-rows:1fr}
+.eylc-grid>.eylc-cat{height:100%;box-sizing:border-box}
+.eylc-cat.eylc-set .eylc-shd{display:flex;align-items:flex-start;gap:9px}
+.eylc-cat.eylc-set .eylc-cnm{padding-right:0;flex:1;min-width:0}
+.eylc-cat.eylc-set .eyl-flag{margin-top:2px}
+
+/* ── Kafelek wyboru jezyka: flaga zamiast emoji ── */
+.eylc-chip .eyl-flag{margin-right:5px}
+</style>
+
+<script id="el-flags">
+/* Flagi jako inline SVG — jedno zrodlo prawdy dla calego web-a. */
+(function(){
+  var F = {
+    en: '<rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="9"/><path d="M0 0L60 40M60 0L0 40" stroke="#C8102E" stroke-width="4.5"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="14"/><path d="M30 0V40M0 20H60" stroke="#C8102E" stroke-width="8"/>',
+    es: '<rect width="60" height="40" fill="#AA151B"/><rect y="10" width="60" height="20" fill="#F1BF00"/>',
+    de: '<rect width="60" height="40" fill="#000"/><rect y="13.33" width="60" height="13.34" fill="#D00"/><rect y="26.67" width="60" height="13.33" fill="#FFCE00"/>',
+    fr: '<rect width="60" height="40" fill="#fff"/><rect width="20" height="40" fill="#002395"/><rect x="40" width="20" height="40" fill="#ED2939"/>',
+    it: '<rect width="60" height="40" fill="#F4F5F0"/><rect width="20" height="40" fill="#008C45"/><rect x="40" width="20" height="40" fill="#CD212A"/>',
+    nl: '<rect width="60" height="40" fill="#fff"/><rect width="60" height="13.33" fill="#AE1C28"/><rect y="26.67" width="60" height="13.33" fill="#21468B"/>',
+    pt: '<rect width="60" height="40" fill="#F00"/><rect width="24" height="40" fill="#060"/><circle cx="24" cy="20" r="8" fill="#FFE900"/><circle cx="24" cy="20" r="5.4" fill="#fff"/><circle cx="24" cy="20" r="4" fill="#C60B1E"/>',
+    no: '<rect width="60" height="40" fill="#BA0C2F"/><path d="M22 0V40M0 20H60" stroke="#fff" stroke-width="10"/><path d="M22 0V40M0 20H60" stroke="#00205B" stroke-width="5"/>',
+    ru: '<rect width="60" height="40" fill="#fff"/><rect y="13.33" width="60" height="13.34" fill="#0039A6"/><rect y="26.67" width="60" height="13.33" fill="#D52B1E"/>',
+    uk: '<rect width="60" height="40" fill="#FFD500"/><rect width="60" height="20" fill="#0057B7"/>',
+    ar: '<rect width="60" height="40" fill="#165D31"/><rect x="12" y="13" width="36" height="3.4" rx="1.7" fill="#fff"/><rect x="16" y="19" width="28" height="2.2" rx="1.1" fill="#fff"/><rect x="13" y="26" width="34" height="2.4" rx="1.2" fill="#fff"/><circle cx="47" cy="27.2" r="2.4" fill="#fff"/>',
+    jp: '<rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="11.5" fill="#BC002D"/>',
+    zh: '<rect width="60" height="40" fill="#DE2910"/><polygon points="11.00,3.50 12.46,7.99 17.18,7.99 13.36,10.77 14.82,15.26 11.00,12.48 7.18,15.26 8.64,10.77 4.82,7.99 9.54,7.99" fill="#FFDE00"/><polygon points="21.79,1.84 21.73,3.51 23.30,4.08 21.69,4.54 21.63,6.21 20.70,4.83 19.09,5.29 20.12,3.97 19.19,2.58 20.76,3.16" fill="#FFDE00"/><polygon points="24.80,6.71 25.45,8.25 27.12,8.10 25.86,9.20 26.51,10.74 25.08,9.88 23.82,10.97 24.19,9.34 22.76,8.48 24.42,8.34" fill="#FFDE00"/><polygon points="24.03,12.92 25.17,14.14 26.68,13.43 25.87,14.89 27.01,16.12 25.37,15.80 24.56,17.26 24.36,15.60 22.72,15.28 24.23,14.57" fill="#FFDE00"/><polygon points="19.24,17.52 20.79,18.15 21.86,16.87 21.75,18.53 23.29,19.16 21.67,19.56 21.56,21.23 20.67,19.81 19.05,20.22 20.12,18.94" fill="#FFDE00"/>',
+    ko: '<rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="9.5" fill="#0047A0"/><path d="M20.5 20A9.5 9.5 0 0 1 39.5 20A4.75 4.75 0 0 1 30 20A4.75 4.75 0 0 0 20.5 20Z" fill="#CD2E3A"/><g fill="#000"><rect x="7.5" y="8.2" width="9" height="1.5" transform="rotate(33 12 9)"/><rect x="7.5" y="11.2" width="9" height="1.5" transform="rotate(33 12 12)"/><rect x="7.5" y="14.2" width="9" height="1.5" transform="rotate(33 12 15)"/><rect x="43.5" y="8.2" width="9" height="1.5" transform="rotate(-33 48 9)"/><rect x="43.5" y="11.2" width="9" height="1.5" transform="rotate(-33 48 12)"/><rect x="43.5" y="14.2" width="9" height="1.5" transform="rotate(-33 48 15)"/><rect x="7.5" y="25.3" width="9" height="1.5" transform="rotate(-33 12 26)"/><rect x="7.5" y="28.3" width="9" height="1.5" transform="rotate(-33 12 29)"/><rect x="7.5" y="31.3" width="9" height="1.5" transform="rotate(-33 12 32)"/><rect x="43.5" y="25.3" width="9" height="1.5" transform="rotate(33 48 26)"/><rect x="43.5" y="28.3" width="9" height="1.5" transform="rotate(33 48 29)"/><rect x="43.5" y="31.3" width="9" height="1.5" transform="rotate(33 48 32)"/></g>'
+  };
+  var ALIAS = { ja:'jp', gb:'en', us:'en', uk_:'uk' };
+  function norm(c){
+    c = String(c||'').toLowerCase().trim().split('-')[0];
+    return ALIAS[c] || c;
+  }
+  window.eylFlagSvg = function(code, w){
+    var c = norm(code);
+    w = w || 20;
+    var h = Math.round(w * 2 / 3);
+    var d = F[c];
+    if(!d) return '<span class="eyl-flag eyl-flag--n" style="width:'+w+'px;height:'+h+'px"></span>';
+    return '<svg class="eyl-flag" width="'+w+'" height="'+h+'" viewBox="0 0 60 40" '
+      + 'role="img" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">' + d + '</svg>';
+  };
+  window.eylLangPl = function(code){
+    var c = norm(code);
+    var m = (typeof LEX_LANG_MAP !== 'undefined') && LEX_LANG_MAP[c];
+    if(!m) return c ? c.toUpperCase() : '';
+    return m.label || ((m.name||c).charAt(0).toUpperCase() + (m.name||c).slice(1));
+  };
+})();
+</script>
+
+<script id="el-settile-js">
+/* Kanoniczny kafel zestawu — nadpisanie setCard() poza strefa chroniona.
+   Geometria niezalezna od dlugosci nazwy: nazwa = wlasny wiersz, clamp 2 linie,
+   pelna nazwa w title=; stopka akcji dociagnieta do dolu (margin-top:auto);
+   wysokosc rzedow wyrownana przez grid-auto-rows:1fr. */
+(function(){
+  function E(x){
+    return (typeof esc === 'function') ? esc(x)
+      : String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  window.setCard = function(s){
+    var isOwn     = s.user_id === (typeof _matMyUid !== 'undefined' ? _matMyUid : null);
+    var isMineTab = (window._matTab || 'mine') === 'mine';
+    var cards     = s.user_set_cards || [];
+    var rawName   = s.name || '';
+    var cleanName = window.stripEmoji ? window.stripEmoji(rawName) : rawName;
+    var nmA       = E(String(rawName).replace(/['"\\<>]/g, ''));
+    var langCode  = s.lang || '';
+    var LM        = (typeof LEX_LANG_MAP !== 'undefined') ? LEX_LANG_MAP : {};
+    var hasLang   = !!(langCode && LM[langCode]);
+    var langName  = hasLang ? window.eylLangPl(langCode) : '';
+
+    /* Slot flagi zastepuje generyczna ikone folderu: folder byl identyczny na
+       kazdym kaflu (zero informacji w punkcie pierwszej fiksacji), flaga rozniczkuje. */
+    var flagSlot;
+    if(isOwn && isMineTab){
+      flagSlot = hasLang
+        ? '<button type="button" class="ms-flag" title="Zmien jezyk zestawu — ' + E(langName) + '" aria-label="Jezyk: ' + E(langName) + '" onclick="event.stopPropagation();matSetLangPicker(' + s.id + ',&#39;' + langCode + '&#39;)">' + window.eylFlagSvg(langCode, 30) + '</button>'
+        : '<button type="button" class="ms-flag ms-flag--empty" title="Ustaw jezyk zestawu" aria-label="Ustaw jezyk zestawu" onclick="event.stopPropagation();matSetLangPicker(' + s.id + ',&#39;&#39;)">+</button>';
+    } else {
+      flagSlot = '<span class="ms-flag">' + (hasLang ? window.eylFlagSvg(langCode, 30) : '') + '</span>';
+    }
+
+    var srcChip = s.source === 'lex'
+      ? '<span class="ms-chip" style="background:var(--orange)">AILEX</span>'
+      : s.source === 'alex'
+        ? '<span class="ms-chip" style="background:var(--navy)">ROZMOWA</span>'
+        : '';
+
+    var delBtn = (isOwn && isMineTab)
+      ? '<span title="Usun zestaw" onclick="event.stopPropagation();deleteSetConfirm(' + s.id + ')" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500;z-index:2" onmouseover="this.style.opacity=1;this.style.color=\'#c0392b\'" onmouseout="this.style.opacity=.5;this.style.color=\'var(--dim2)\'">&times;</span>'
+      : '';
+
+    var liked = (typeof _likedSets !== 'undefined' && _likedSets && _likedSets.has) ? _likedSets.has(s.id) : false;
+    var likeBtn = !isMineTab
+      ? '<span onclick="event.stopPropagation();toggleLike(' + s.id + ')" style="position:absolute;top:8px;right:10px;cursor:pointer;font-size:12px;color:var(--dim2);display:flex;align-items:center;gap:4px;z-index:2" title="Polub"><svg width="14" height="14" viewBox="0 0 24 24" fill="' + (liked?'#c0392b':'none') + '" stroke="' + (liked?'#c0392b':'var(--dim2)') + '" stroke-width="1.6"><path d="M12 21s-7-4.5-9.5-9C0.5 8 2 4.5 5.5 4.5c2 0 3.3 1.2 4.5 3 1.2-1.8 2.5-3 4.5-3C18 4.5 19.5 8 17.5 12 15 16.5 12 21 12 21z"></path></svg>' + (s.likes_count||0) + '</span>'
+      : '';
+
+    var authorLine = (!isOwn && s.username) ? '<div class="ms-auth">' + E(s.username) + '</div>' : '';
+
+    var metaTxt = (langName ? E(langName) + ' · ' : '') + cards.length + ' fiszek';
+
+    var actions = '<div class="ms-actions" onclick="event.stopPropagation()">'
+      + '<button onclick="event.stopPropagation();eylPreviewSet(' + s.id + ')" title="Podejrzyj slowa" style="display:inline-flex;align-items:center;justify-content:center;padding:6px 11px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;color:var(--dim2);cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s" onmouseover="this.style.borderColor=\'var(--navy)\';this.style.color=\'var(--navy)\'" onmouseout="this.style.borderColor=\'var(--border2)\';this.style.color=\'var(--dim2)\'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>'
+      + '<button onclick="matCardStartSRS(' + s.id + ',&#39;' + nmA + '&#39;)" title="Tryb fiszek SRS" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--navy);background:transparent;color:var(--navy);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.background=\'var(--navy)\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'var(--navy)\'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Ucz sie</button>'
+      + '<button onclick="matCardLexModal(' + s.id + ',&#39;' + nmA + '&#39;,&#39;' + (langCode||'') + '&#39;)" title="Utrwal z Ailexem" style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid var(--orange);background:transparent;color:var(--orange);font-size:11.5px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif;transition:.15s;white-space:nowrap" onmouseover="this.style.background=\'var(--orange)\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'var(--orange)\'"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg>Utrwal z Ailexem</button>'
+      + '</div>';
+
+    return '<div class="mat-card ms-card" onclick="openSet(' + s.id + ')" style="cursor:pointer;position:relative"'
+      + ' draggable="true" ondragstart="matCardDragStart(event,' + s.id + ',\'' + E(String(rawName).replace(/'/g,'')) + '\')" ondragend="matCardDragEnd(event)">'
+      + delBtn + likeBtn
+      + '<div class="ms-head">' + flagSlot
+      + '<div class="ms-body">'
+      + '<div class="mat-card-name ms-name" title="' + E(cleanName) + '">' + E(cleanName) + '</div>'
+      + '<div class="ms-meta"><span class="t">' + metaTxt + '</span>' + srcChip + '</div>'
+      + authorLine
+      + '</div></div>'
+      + (isMineTab ? actions : '')
+      + '</div>';
+  };
+
+  /* Odswiez juz wyrenderowana siatke, jesli patch zaladowal sie po pierwszym renderze. */
+  try{
+    if(typeof matRenderMine === 'function' && document.getElementById('mat-grid')
+       && (window._matTab || 'mine') === 'mine') matRenderMine();
+  }catch(e){}
 })();
 </script>

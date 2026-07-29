@@ -857,7 +857,7 @@ function renderContinue(){
   var single=items.length===1;
   var cards=items.map(function(o){
     var r=o.r,a=o.a,eyl=(r.kind==='eyl');
-    var flag=(typeof lexLangFlag==='function')?lexLangFlag(r.lang||'en'):'';
+    var flag=(typeof eylFlagSvg==='function')?eylFlagSvg(r.lang||'en',18):((typeof lexLangFlag==='function')?lexLangFlag(r.lang||'en'):'');
     var meta=(a.status==='prog')?('W toku \u00b7 '+a.pct+'% \u00b7 '+a.mastered+' / '+a.total):('Wr\u00f3\u0107 do nauki \u00b7 0 / '+a.total);
     return '<button class="cont-card'+(single?' solo':'')+'" onclick="openRecent('+o.i+')">'
       +'<div class="cont-top"><span class="cont-eyebrow '+(eyl?'eyl':'mine')+'">'+(eyl?'Zestawy Eyelingo':'Moje zestawy')+'</span><span class="rz-flag">'+flag+'</span></div>'
@@ -1062,7 +1062,7 @@ async function loadMine(){
       var cnt=(s.user_set_cards&&s.user_set_cards[0]&&s.user_set_cards[0].count)||0;
       var nm=escapeHtml(s.name||'Bez nazwy');
       var lg=s.lang||'en';
-      var badge='<span class="lang-badge">'+lexLangFlag(lg)+' '+lg.toUpperCase()+'</span>';
+      var badge='<span class="lang-badge">'+(typeof eylFlagSvg==='function'?eylFlagSvg(lg,14):lexLangFlag(lg))+' '+lg.toUpperCase()+'</span>';
       return '<div class="row" onclick="openSet(\''+s.id+'\',\''+nm.replace(/'/g,"\\'")+'\','+cnt+',\''+lg+'\')">'
         +'<div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg></div>'
         +'<div class="body"><div class="t">'+nm+'</div><div class="m">'+cnt+' '+plural(cnt,'fiszka','fiszki','fiszek')+' '+badge+'</div></div>'
@@ -1582,7 +1582,7 @@ function lexRenderResumeCarousel(wrap, snaps){
   var cards=snaps.map(function(s,i){
     var tot=s.portionTarget||1; var cur=Math.min((s.portionNum||0)+1, tot);
     var pct=Math.max(6, Math.round(((s.portionNum||0))/tot*100));
-    var flag=(typeof lexLangFlag==='function')?lexLangFlag(s.lang||'en'):'';
+    var flag=(typeof eylFlagSvg==='function')?eylFlagSvg(s.lang||'en',18):((typeof lexLangFlag==='function')?lexLangFlag(s.lang||'en'):'');
     return '<button class="rz-card'+(single?' solo':'')+'" onclick="lexResumeBy('+i+')">'
       +'<div class="rz-top"><span class="rz-eyebrow"><svg width="11" height="11" viewBox="0 0 24 24" fill="var(--orange)" style="vertical-align:-1px;margin-right:5px"><polygon points="6 4 20 12 6 20"/></svg>Wznów lekcję</span><span class="rz-flag">'+flag+'</span></div>'
       +'<div class="rz-name">'+esc(s.set_name||'Twój zestaw')+'</div>'
@@ -3560,6 +3560,37 @@ async function alexSend(){
       }catch(e){}
     }
     fallbackLive();
+  };
+})();
+</script>
+<script id="el-flags-m">
+/* Flagi SVG — parity z web-em (Logic Bible §0.4.6). lexLangFlag() zostaje bez zmian,
+   bo jest uzywane takze przez textContent. */
+(function(){
+  var F = {
+    en: '<rect width="60" height="40" fill="#012169"/><path d="M0 0L60 40M60 0L0 40" stroke="#fff" stroke-width="9"/><path d="M0 0L60 40M60 0L0 40" stroke="#C8102E" stroke-width="4.5"/><path d="M30 0V40M0 20H60" stroke="#fff" stroke-width="14"/><path d="M30 0V40M0 20H60" stroke="#C8102E" stroke-width="8"/>',
+    es: '<rect width="60" height="40" fill="#AA151B"/><rect y="10" width="60" height="20" fill="#F1BF00"/>',
+    de: '<rect width="60" height="40" fill="#000"/><rect y="13.33" width="60" height="13.34" fill="#D00"/><rect y="26.67" width="60" height="13.33" fill="#FFCE00"/>',
+    fr: '<rect width="60" height="40" fill="#fff"/><rect width="20" height="40" fill="#002395"/><rect x="40" width="20" height="40" fill="#ED2939"/>',
+    it: '<rect width="60" height="40" fill="#F4F5F0"/><rect width="20" height="40" fill="#008C45"/><rect x="40" width="20" height="40" fill="#CD212A"/>',
+    nl: '<rect width="60" height="40" fill="#fff"/><rect width="60" height="13.33" fill="#AE1C28"/><rect y="26.67" width="60" height="13.33" fill="#21468B"/>',
+    pt: '<rect width="60" height="40" fill="#F00"/><rect width="24" height="40" fill="#060"/><circle cx="24" cy="20" r="8" fill="#FFE900"/><circle cx="24" cy="20" r="5.4" fill="#fff"/><circle cx="24" cy="20" r="4" fill="#C60B1E"/>',
+    no: '<rect width="60" height="40" fill="#BA0C2F"/><path d="M22 0V40M0 20H60" stroke="#fff" stroke-width="10"/><path d="M22 0V40M0 20H60" stroke="#00205B" stroke-width="5"/>',
+    ru: '<rect width="60" height="40" fill="#fff"/><rect y="13.33" width="60" height="13.34" fill="#0039A6"/><rect y="26.67" width="60" height="13.33" fill="#D52B1E"/>',
+    uk: '<rect width="60" height="40" fill="#FFD500"/><rect width="60" height="20" fill="#0057B7"/>',
+    ar: '<rect width="60" height="40" fill="#165D31"/><rect x="12" y="13" width="36" height="3.4" rx="1.7" fill="#fff"/><rect x="16" y="19" width="28" height="2.2" rx="1.1" fill="#fff"/><rect x="13" y="26" width="34" height="2.4" rx="1.2" fill="#fff"/><circle cx="47" cy="27.2" r="2.4" fill="#fff"/>',
+    jp: '<rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="11.5" fill="#BC002D"/>',
+    zh: '<rect width="60" height="40" fill="#DE2910"/><polygon points="11.00,3.50 12.46,7.99 17.18,7.99 13.36,10.77 14.82,15.26 11.00,12.48 7.18,15.26 8.64,10.77 4.82,7.99 9.54,7.99" fill="#FFDE00"/><polygon points="21.79,1.84 21.73,3.51 23.30,4.08 21.69,4.54 21.63,6.21 20.70,4.83 19.09,5.29 20.12,3.97 19.19,2.58 20.76,3.16" fill="#FFDE00"/><polygon points="24.80,6.71 25.45,8.25 27.12,8.10 25.86,9.20 26.51,10.74 25.08,9.88 23.82,10.97 24.19,9.34 22.76,8.48 24.42,8.34" fill="#FFDE00"/><polygon points="24.03,12.92 25.17,14.14 26.68,13.43 25.87,14.89 27.01,16.12 25.37,15.80 24.56,17.26 24.36,15.60 22.72,15.28 24.23,14.57" fill="#FFDE00"/><polygon points="19.24,17.52 20.79,18.15 21.86,16.87 21.75,18.53 23.29,19.16 21.67,19.56 21.56,21.23 20.67,19.81 19.05,20.22 20.12,18.94" fill="#FFDE00"/>',
+    ko: '<rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="9.5" fill="#0047A0"/><path d="M20.5 20A9.5 9.5 0 0 1 39.5 20A4.75 4.75 0 0 1 30 20A4.75 4.75 0 0 0 20.5 20Z" fill="#CD2E3A"/><g fill="#000"><rect x="7.5" y="8.2" width="9" height="1.5" transform="rotate(33 12 9)"/><rect x="7.5" y="11.2" width="9" height="1.5" transform="rotate(33 12 12)"/><rect x="7.5" y="14.2" width="9" height="1.5" transform="rotate(33 12 15)"/><rect x="43.5" y="8.2" width="9" height="1.5" transform="rotate(-33 48 9)"/><rect x="43.5" y="11.2" width="9" height="1.5" transform="rotate(-33 48 12)"/><rect x="43.5" y="14.2" width="9" height="1.5" transform="rotate(-33 48 15)"/><rect x="7.5" y="25.3" width="9" height="1.5" transform="rotate(-33 12 26)"/><rect x="7.5" y="28.3" width="9" height="1.5" transform="rotate(-33 12 29)"/><rect x="7.5" y="31.3" width="9" height="1.5" transform="rotate(-33 12 32)"/><rect x="43.5" y="25.3" width="9" height="1.5" transform="rotate(33 48 26)"/><rect x="43.5" y="28.3" width="9" height="1.5" transform="rotate(33 48 29)"/><rect x="43.5" y="31.3" width="9" height="1.5" transform="rotate(33 48 32)"/></g>'
+  };
+  var ALIAS = { ja:'jp' };
+  window.eylFlagSvg = function(code, w){
+    var c = String(code||'').toLowerCase().trim().split('-')[0]; c = ALIAS[c] || c;
+    w = w || 20; var h = Math.round(w * 2 / 3); var d = F[c];
+    if(!d) return '<span style="display:inline-block;vertical-align:-.18em;width:'+w+'px;height:'+h+'px;border-radius:3px;background:rgba(26,35,64,.08)"></span>';
+    return '<svg width="'+w+'" height="'+h+'" viewBox="0 0 60 40" role="img" aria-hidden="true" focusable="false" '
+      + 'style="display:inline-block;vertical-align:-.18em;border-radius:2.5px;box-shadow:0 0 0 .5px rgba(26,35,64,.20);flex:0 0 auto" '
+      + 'xmlns="http://www.w3.org/2000/svg">' + d + '</svg>';
   };
 })();
 </script>
