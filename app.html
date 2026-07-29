@@ -4200,36 +4200,51 @@ async function alexSend(){
 })();
 </script>
 
-<!-- ═══ EYELINGO — Katalogi zestawów na mobile (user_collections) ═══
+<!-- ═══ EYELINGO — Katalogi zestawów na mobile (user_collections) · v2 ═══
      Te same tabele co www: user_collections + user_collection_sets.
-     Świadoma różnica wobec www: na mobile katalogi NIE są folderami do wchodzenia,
-     tylko filtrami na miejscu (Flow §RZ-7: wybór wielowymiarowy na jednym ekranie,
-     nie sekwencja ekranów). Zero nowych poziomów nawigacji.
-     Zapisy są punktowe (jedno powiązanie), NIGDY pełnym stanem — inaczej nieświeży
-     telefon nadpisałby porządek zrobiony na stronie.
-     REVERT = usuń cały blok (do </script>). Nadpisuje: loadMine, openSet (wrappery). -->
+     Świadoma różnica wobec www: katalogi to filtry na miejscu, nie foldery do
+     wchodzenia (Flow §RZ-7). Zapisy punktowe, NIGDY pełnym stanem.
+     v2: naprawiony layout wiersza „Katalogi" (etykieta i wartość nachodziły na
+         siebie) · przypinany pasek chipów · przytrzymaj-i-przeciągnij (Pointer
+         Events, bo HTML5 DnD nie istnieje na dotyku) · coachmark „powiedz raz".
+     REVERT = usuń cały blok (do </script>). Nadpisuje: loadMine, openSet, eylOpenCat. -->
 <style id="el-collections-m">
-  .nsc-bar{display:flex;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 18px 14px;margin:0 -18px;scrollbar-width:none}
+  /* Pasek przypięty do góry listy: dzięki temu katalogi są celem upuszczenia
+     nawet gdy użytkownik zjechał na dół listy — bez autoscrollowania. */
+  .nsc-bar{position:sticky;top:0;z-index:6;display:flex;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:8px 20px 12px;margin:0 -20px;background:var(--paper);scrollbar-width:none}
   .nsc-bar::-webkit-scrollbar{display:none}
-  .nsc-chip{flex:0 0 auto;border:1.5px solid var(--line2);background:#fff;border-radius:100px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:500;color:var(--dim);cursor:pointer;transition:.15s;white-space:nowrap}
+  .nsc-bar.dragging{box-shadow:0 6px 18px rgba(26,35,64,.10)}
+  .nsc-chip{flex:0 0 auto;border:1.5px solid var(--line2);background:#fff;border-radius:100px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:500;color:var(--dim);cursor:pointer;transition:border-color .15s,background .15s,color .15s,transform .12s;white-space:nowrap}
   .nsc-chip.on{border-color:var(--navy);background:var(--navy);color:#fff}
   .nsc-chip .n{opacity:.6;margin-left:5px;font-weight:400}
-  .nsc-link{display:flex;align-items:center;gap:12px;width:100%;background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:14px 16px;cursor:pointer;font-family:inherit;text-align:left;margin-top:12px}
+  /* Cele upuszczenia podświetlamy dopiero w trakcie chwytu — poza nim to zwykłe filtry. */
+  .nsc-bar.dragging .nsc-chip[data-drop="1"]{border-color:rgba(201,106,42,.45);border-style:dashed}
+  .nsc-bar.dragging .nsc-chip[data-drop="0"]{opacity:.35}
+  .nsc-chip.over{border-color:var(--orange)!important;border-style:solid!important;background:var(--orange)!important;color:#fff!important;transform:scale(1.06)}
+  .nsc-hint{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim2);line-height:1.45;padding:0 2px 12px}
+  .nsc-hint b{font-weight:600;color:var(--dim)}
+  .nsc-hint.ok{color:var(--success)}
+  #mine-list .row{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  #mine-list .row.nsc-src{opacity:.32}
+  .nsc-ghost{position:fixed;z-index:9999;pointer-events:none;border-radius:var(--r);box-shadow:0 14px 34px rgba(26,35,64,.26);opacity:.97;transform-origin:center;will-change:transform}
+  /* Wiersz „Katalogi" w ekranie zestawu — etykieta i wartość MUSZĄ być blokowe,
+     inaczej lądują w jednej linii i nachodzą na siebie (bug z v1). */
+  .nsc-link{display:flex;align-items:flex-start;gap:12px;width:100%;background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:14px 14px;cursor:pointer;font-family:inherit;text-align:left;margin-top:12px}
   .nsc-link:active{transform:scale(.99)}
-  .nsc-link .ic{width:34px;height:34px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--paper2);color:var(--navy)}
-  .nsc-link .bd{flex:1;min-width:0}
-  .nsc-link .lb{font-size:10.5px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2)}
-  .nsc-link .vl{font-size:14px;color:var(--navy);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nsc-link>.ic{width:34px;height:34px;border-radius:10px;flex:0 0 34px;display:flex;align-items:center;justify-content:center;background:var(--paper2);color:var(--navy);margin-top:1px}
+  .nsc-link>.bd{flex:1 1 auto;min-width:0}
+  .nsc-link .lb{display:block;font-size:10px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);line-height:1.3}
+  .nsc-link .vl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:14px;color:var(--navy);line-height:1.4;margin-top:3px;word-break:break-word;overflow-wrap:anywhere}
   .nsc-link .vl.none{color:var(--dim2)}
+  .nsc-link>.cv{flex:0 0 18px;margin-top:9px;color:var(--dim2)}
   #nsc-backdrop{display:none;position:absolute;inset:0;background:rgba(26,35,64,.28);z-index:43;animation:fade .2s ease}
   #nsc-sheet{position:absolute;left:0;right:0;bottom:0;z-index:44;background:#fff;border-top:.5px solid var(--line);border-radius:22px 22px 0 0;box-shadow:0 -12px 34px rgba(26,35,64,.14);display:flex;flex-direction:column;max-height:76%;transform:translateY(110%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
   #nsc-sheet.open{transform:translateY(0)}
-  .nsc-opt{display:flex;align-items:center;gap:12px;padding:13px 13px;border-radius:11px;background:var(--paper);border:.5px solid var(--line);margin-bottom:8px;cursor:pointer;transition:.15s}
+  .nsc-opt{display:flex;align-items:center;gap:12px;padding:13px;border-radius:11px;background:var(--paper);border:.5px solid var(--line);margin-bottom:8px;cursor:pointer;transition:.15s}
   .nsc-opt.on{background:#fffaf6;border-color:rgba(201,106,42,.32)}
   .nsc-opt .bx{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--line2);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;background:#fff}
   .nsc-opt.on .bx{background:var(--orange);border-color:var(--orange)}
   .nsc-opt .nm{flex:1;font-size:14.5px;color:var(--navy);min-width:0;word-break:break-word}
-  .nsc-opt .ct{font-size:11.5px;color:var(--dim2);flex-shrink:0}
   .nsc-new{display:flex;gap:8px;margin-top:4px}
   .nsc-new input{flex:1;min-width:0;border:.5px solid var(--line2);border-radius:var(--r-sm);padding:13px;font-family:inherit;font-size:14px;color:var(--navy);background:#fff;outline:none}
   .nsc-new input:focus{border-color:var(--navy)}
@@ -4238,16 +4253,19 @@ async function alexSend(){
 </style>
 <script>
 (function(){
+  var LP=380, CANCEL_PX=10;           /* próg przytrzymania i próg „to był scroll" */
   var cols=[], links={}, cur='all', sheetSet=null, loaded=false;
+  var pend=null, drag=null, swallow=0;
   function $(id){ return document.getElementById(id); }
   function ico(p,sz){ return '<svg width="'+(sz||18)+'" height="'+(sz||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; }
   var I_FOLD='<path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>';
   var I_CHK='<path d="M20 6L9 17l-5-5"/>';
+  var I_HAND='<path d="M9 11V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M12 11V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15 11.5V8a1.5 1.5 0 0 1 3 0v6a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6v-2.5a1.5 1.5 0 0 1 3 0"/>';
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function curKey(){ try{ return 'eyl_col_filter_'+(UID||'anon'); }catch(e){ return 'eyl_col_filter'; } }
+  function fKey(){ try{ return 'eyl_col_filter_'+(UID||'anon'); }catch(e){ return 'eyl_col_filter'; } }
+  function hKey(){ try{ return 'eyl_col_draghint_'+(UID||'anon'); }catch(e){ return 'eyl_col_draghint'; } }
+  function num(v){ return isNaN(+v)?v:+v; }
 
-  /* Czytamy oba źródła równolegle. Fail-open: gdy katalogów nie da się wczytać,
-     funkcja po prostu nie istnieje w UI, a lista zestawów działa jak dotąd. */
   async function load(){
     cols=[]; links={};
     if(!UID) return;
@@ -4260,10 +4278,7 @@ async function alexSend(){
     try{
       var ids=cols.map(function(c){ return c.id; });
       var rl=await db.from('user_collection_sets').select('collection_id,set_id').in('collection_id',ids);
-      ((rl&&rl.data)||[]).forEach(function(l){
-        var k=String(l.set_id);
-        (links[k]=links[k]||[]).push(l.collection_id);
-      });
+      ((rl&&rl.data)||[]).forEach(function(l){ var k=String(l.set_id); (links[k]=links[k]||[]).push(l.collection_id); });
     }catch(e){ links={}; }
     loaded=true;
   }
@@ -4271,17 +4286,11 @@ async function alexSend(){
     var a=links[String(setId)]||[];
     return cols.filter(function(c){ return a.indexOf(c.id)>=0; });
   }
+  function colName(id){ for(var i=0;i<cols.length;i++) if(cols[i].id===id) return cols[i].name; return 'katalog'; }
 
-  /* ── Filtry na ekranie „Moje zestawy" ──
-     Identyfikator zestawu odczytujemy z onclick wiersza (format z loadMine).
-     Gdyby format kiedyś się zmienił, parsowanie zwróci null → chipy się nie
-     pojawią, a lista zostanie nietknięta. Awaria jest cicha i nieszkodliwa. */
+  /* ── Filtry ── */
   function rowSid(row){
-    try{
-      var h=row.getAttribute('onclick')||'';
-      var m=h.match(/openSet\(\s*'([^']*)'/);
-      return m?m[1]:null;
-    }catch(e){ return null; }
+    try{ var m=(row.getAttribute('onclick')||'').match(/openSet\(\s*'([^']*)'/); return m?m[1]:null; }catch(e){ return null; }
   }
   function rows(){
     var box=$('mine-list'); if(!box) return [];
@@ -4297,50 +4306,222 @@ async function alexSend(){
       r.style.display=show?'':'none';
       if(show) shown++;
     });
-    var e=$('nsc-empty');
-    if(e) e.style.display=(shown||!rs.length)?'none':'block';
+    var e=$('nsc-empty'); if(e) e.style.display=(shown||!rs.length)?'none':'block';
     var bar=$('nsc-bar');
     if(bar) bar.querySelectorAll('.nsc-chip').forEach(function(c){ c.classList.toggle('on', c.dataset.v===String(cur)); });
-    try{ localStorage.setItem(curKey(), String(cur)); }catch(e2){}
+    try{ localStorage.setItem(fKey(), String(cur)); }catch(e2){}
   }
-  window._nscPick=function(v){ cur=(v==='all'||v==='none')?v:(isNaN(+v)?v:+v); apply(); };
+  window._nscPick=function(v){ cur=(v==='all'||v==='none')?v:num(v); apply(); };
+
+  function counts(){
+    var c={}, orphan=0;
+    rows().forEach(function(r){
+      var a=links[String(r.dataset.sid)]||[];
+      if(!a.length) orphan++; else a.forEach(function(id){ c[id]=(c[id]||0)+1; });
+    });
+    return {c:c, orphan:orphan, total:rows().length};
+  }
+  function barHtml(){
+    var k=counts();
+    var h='<button class="nsc-chip" data-v="all" data-drop="0" onclick="_nscPick(\'all\')">Wszystkie<span class="n">'+k.total+'</span></button>';
+    cols.forEach(function(c){
+      h+='<button class="nsc-chip" data-v="'+c.id+'" data-drop="1" onclick="_nscPick(\''+c.id+'\')">'+esc(c.name)+'<span class="n">'+(k.c[c.id]||0)+'</span></button>';
+    });
+    h+='<button class="nsc-chip" data-v="none" data-drop="1" onclick="_nscPick(\'none\')">Bez katalogu<span class="n">'+k.orphan+'</span></button>';
+    return h;
+  }
+  function refreshBar(){ var b=$('nsc-bar'); if(b){ b.innerHTML=barHtml(); apply(); } }
 
   function mountChips(){
     var box=$('mine-list'); if(!box) return;
-    var old=$('nsc-bar'); if(old) old.remove();
-    var oldE=$('nsc-empty'); if(oldE) oldE.remove();
+    rows().forEach(function(r){ var s=rowSid(r); if(s!=null) r.dataset.sid=s; });
     var rs=rows();
-    rs.forEach(function(r){ var s=rowSid(r); if(s!=null) r.dataset.sid=s; });
-    /* Bez katalogów nie wprowadzamy pojęcia „katalog" (Flow §RZ-10 — zero
-       konceptów, których użytkownik nie potrzebuje). Poniżej 2 zestawów też nie:
-       filtr 1 elementu to koszt bez korzyści. */
-    if(!cols.length || rs.length<2) return;
-    var counts={};
-    rs.forEach(function(r){ (links[String(r.dataset.sid)]||[]).forEach(function(id){ counts[id]=(counts[id]||0)+1; }); });
-    var orphan=rs.filter(function(r){ return !(links[String(r.dataset.sid)]||[]).length; }).length;
-    var bar=document.createElement('div'); bar.className='nsc-bar'; bar.id='nsc-bar';
-    var html='<button class="nsc-chip" data-v="all" onclick="_nscPick(\'all\')">Wszystkie<span class="n">'+rs.length+'</span></button>';
-    cols.forEach(function(c){
-      html+='<button class="nsc-chip" data-v="'+c.id+'" onclick="_nscPick(\''+c.id+'\')">'+esc(c.name)+'<span class="n">'+(counts[c.id]||0)+'</span></button>';
-    });
-    if(orphan) html+='<button class="nsc-chip" data-v="none" onclick="_nscPick(\'none\')">Bez katalogu<span class="n">'+orphan+'</span></button>';
-    bar.innerHTML=html;
-    box.parentNode.insertBefore(bar, box);
-    var em=document.createElement('div');
-    em.id='nsc-empty'; em.className='empty'; em.style.display='none'; em.style.padding='36px 20px';
-    em.innerHTML='<div class="h2">Pusty katalog</div><div class="sub">Ten katalog nie ma jeszcze zestawów. Przypiszesz je, otwierając zestaw i wybierając „Katalogi".</div>';
-    box.parentNode.insertBefore(em, box.nextSibling);
-    /* Pamięć wyboru (Flow §RZ-13) — powrót na ekran nie resetuje filtra. */
-    var saved=null; try{ saved=localStorage.getItem(curKey()); }catch(e){}
+    var bar=$('nsc-bar'), hint=$('nsc-hint'), em=$('nsc-empty');
+    /* Bez katalogów ani przy jednym zestawie nie wprowadzamy pojęcia „katalog"
+       (Flow §RZ-10 — zero konceptów, których użytkownik jeszcze nie potrzebuje). */
+    if(!cols.length || rs.length<2){
+      if(bar) bar.remove(); if(hint) hint.remove(); if(em) em.remove();
+      rs.forEach(function(r){ r.style.display=''; });
+      return;
+    }
+    if(!bar){
+      bar=document.createElement('div'); bar.className='nsc-bar'; bar.id='nsc-bar';
+      box.parentNode.insertBefore(bar, box);
+    }
+    bar.innerHTML=barHtml();
+    if(!em){
+      em=document.createElement('div'); em.id='nsc-empty'; em.className='empty';
+      em.style.cssText='display:none;padding:36px 20px';
+      em.innerHTML='<div class="h2">Pusty katalog</div><div class="sub">Przeciągnij tu zestaw — przytrzymaj go na liście i upuść na katalog.</div>';
+      box.parentNode.insertBefore(em, box.nextSibling);
+    }
+    mountHint(bar);
+    var saved=null; try{ saved=localStorage.getItem(fKey()); }catch(e){}
     if(saved==='all'||saved==='none') cur=saved;
-    else if(saved!=null && cols.some(function(c){ return String(c.id)===saved; })) cur=isNaN(+saved)?saved:+saved;
+    else if(saved!=null && cols.some(function(c){ return String(c.id)===saved; })) cur=num(saved);
     else cur='all';
     apply();
   }
 
-  /* ── Przypisanie: wiersz w ekranie zestawu + dolny arkusz ──
-     Świadomie NIE na wierszu listy: przy 402 px czwarta kontrolka w wierszu to
-     tłok, a przynależność do katalogu jest cechą zestawu, nie listy. */
+  /* Coachmark „powiedz raz" (Flow §RZ-13/§RZ-17): gest jest niewidoczny, więc
+     trzeba o nim powiedzieć — ale tylko raz, i znika po pierwszym udanym użyciu. */
+  function mountHint(bar){
+    var done=false; try{ done=localStorage.getItem(hKey())==='1'; }catch(e){}
+    var h=$('nsc-hint');
+    if(done){ if(h) h.remove(); return; }
+    if(!h){
+      h=document.createElement('div'); h.className='nsc-hint'; h.id='nsc-hint';
+      bar.parentNode.insertBefore(h, bar.nextSibling);
+    }
+    h.innerHTML='<span style="flex-shrink:0;color:var(--dim2)">'+ico(I_HAND,15)+'</span>'
+      +'<span><b>Przytrzymaj zestaw</b> i przeciągnij go na katalog, żeby przypisać.</span>';
+  }
+  function hintDone(txt){
+    try{ localStorage.setItem(hKey(),'1'); }catch(e){}
+    var h=$('nsc-hint');
+    if(!h){ /* po pierwszym razie i tak informujemy o skutku akcji */
+      var bar=$('nsc-bar'); if(!bar) return;
+      h=document.createElement('div'); h.className='nsc-hint'; h.id='nsc-hint';
+      bar.parentNode.insertBefore(h, bar.nextSibling);
+    }
+    h.className='nsc-hint ok'; h.style.color='';
+    h.innerHTML='<span style="flex-shrink:0">'+ico(I_CHK,15)+'</span><span>'+esc(txt)+'</span>';
+    clearTimeout(h._t);
+    h._t=setTimeout(function(){ var x=$('nsc-hint'); if(x) x.remove(); },2600);
+  }
+  function hintFail(txt){
+    var bar=$('nsc-bar'); if(!bar) return;
+    var h=$('nsc-hint');
+    if(!h){ h=document.createElement('div'); h.id='nsc-hint'; bar.parentNode.insertBefore(h, bar.nextSibling); }
+    h.className='nsc-hint'; h.style.color='var(--error)';
+    h.innerHTML='<span>'+esc(txt)+'</span>';
+    clearTimeout(h._t);
+    h._t=setTimeout(function(){ var x=$('nsc-hint'); if(x){ x.remove(); } },4000);
+  }
+
+  /* ══════════ PRZYTRZYMAJ I PRZECIĄGNIJ ══════════
+     HTML5 drag&drop nie istnieje na dotyku, więc Pointer Events. Kluczowe:
+     dopóki nie minie próg przytrzymania, palec należy do przewijania listy —
+     ruch większy niż CANCEL_PX anuluje chwyt. Po chwycie blokujemy scroll
+     przez preventDefault na touchmove (listener nie-pasywny). */
+  function clearPend(){
+    if(!pend) return;
+    clearTimeout(pend.t);
+    document.removeEventListener('pointermove', preMove, true);
+    document.removeEventListener('pointerup', preUp, true);
+    document.removeEventListener('pointercancel', preUp, true);
+    pend=null;
+  }
+  function preMove(e){
+    if(!pend) return;
+    if(Math.abs(e.clientX-pend.x)>CANCEL_PX || Math.abs(e.clientY-pend.y)>CANCEL_PX) clearPend();
+  }
+  function preUp(){ clearPend(); }
+
+  function onDown(e){
+    if(drag) return;
+    if(e.pointerType==='mouse' && e.button!==0) return;
+    if(!cols.length) return;
+    var t=e.target, row=(t&&t.closest)?t.closest('.row'):null;
+    if(!row || !row.dataset.sid) return;
+    if(t.closest('.row-eye')) return;                 /* oko ma swoje zadanie */
+    clearPend();
+    pend={row:row, sid:row.dataset.sid, x:e.clientX, y:e.clientY, pid:e.pointerId};
+    pend.t=setTimeout(function(){ var p=pend; clearPend(); if(p) grab(p); }, LP);
+    document.addEventListener('pointermove', preMove, true);
+    document.addEventListener('pointerup', preUp, true);
+    document.addEventListener('pointercancel', preUp, true);
+  }
+
+  function blockTouch(e){ e.preventDefault(); }
+
+  function grab(p){
+    var row=p.row; if(!row||!row.parentNode) return;
+    var r=row.getBoundingClientRect();
+    var g=row.cloneNode(true);
+    g.className='row nsc-ghost';
+    g.style.cssText+=';left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;margin:0;display:flex';
+    document.body.appendChild(g);
+    row.classList.add('nsc-src');
+    var bar=$('nsc-bar'); if(bar) bar.classList.add('dragging');
+    drag={sid:p.sid, row:row, ghost:g, gx:r.left, gy:r.top, dx:p.x-r.left, dy:p.y-r.top, over:null, pid:p.pid};
+    move(p.x,p.y);
+    try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){}
+    document.addEventListener('pointermove', onMove, true);
+    document.addEventListener('pointerup', onUp, true);
+    document.addEventListener('pointercancel', onUp, true);
+    document.addEventListener('touchmove', blockTouch, {passive:false});
+  }
+  function move(x,y){
+    if(!drag) return;
+    drag.ghost.style.transform='translate('+(x-drag.dx-drag.gx)+'px,'+(y-drag.dy-drag.gy)+'px) scale(1.02)';
+    var el=document.elementFromPoint(x,y);
+    var chip=(el&&el.closest)?el.closest('.nsc-chip'):null;
+    if(chip && chip.dataset.drop!=='1') chip=null;
+    if(chip!==drag.over){
+      if(drag.over) drag.over.classList.remove('over');
+      if(chip) chip.classList.add('over');
+      drag.over=chip;
+    }
+  }
+  function onMove(e){ if(drag){ e.preventDefault(); move(e.clientX,e.clientY); } }
+  function onUp(e){
+    if(!drag) return;
+    var d=drag, target=d.over;
+    drag=null;
+    document.removeEventListener('pointermove', onMove, true);
+    document.removeEventListener('pointerup', onUp, true);
+    document.removeEventListener('pointercancel', onUp, true);
+    document.removeEventListener('touchmove', blockTouch, {passive:false});
+    if(target) target.classList.remove('over');
+    try{ d.ghost.remove(); }catch(e2){}
+    d.row.classList.remove('nsc-src');
+    var bar=$('nsc-bar'); if(bar) bar.classList.remove('dragging');
+    swallow=Date.now();                                /* nie otwieraj zestawu po upuszczeniu */
+    if(!target) return;
+    var v=target.dataset.v;
+    if(v==='none') unassign(d.sid);
+    else assign(d.sid, num(v));
+  }
+  /* Kliknięcie po upuszczeniu palca musi zostać zjedzone, inaczej wiersz
+     otworzyłby zestaw. Jeden raz, w fazie przechwytywania. */
+  function onClickCapture(e){
+    if(Date.now()-swallow<400){ e.preventDefault(); e.stopPropagation(); swallow=0; }
+  }
+
+  /* Zapis punktowy: jedno powiązanie. Widok aktualizujemy od razu, a przy błędzie
+     cofamy do stanu bazy — nie udajemy, że się udało. */
+  async function assign(sid, cid){
+    var k=String(sid), have=(links[k]=links[k]||[]);
+    if(have.indexOf(cid)>=0){ hintDone('Ten zestaw jest już w „'+colName(cid)+'".'); return; }
+    have.push(cid); refreshBar();
+    try{
+      var r=await db.from('user_collection_sets').insert({collection_id:cid, set_id:sid});
+      if(r&&r.error) throw r.error;
+      hintDone('Dodano do „'+colName(cid)+'".');
+      if(String(curSetId)===k){ try{ paintLink(); }catch(e){} }
+    }catch(e){
+      var j=have.indexOf(cid); if(j>=0) have.splice(j,1); refreshBar();
+      hintFail('Nie udało się przypisać: '+((e&&e.message)||e));
+    }
+  }
+  async function unassign(sid){
+    var k=String(sid), had=(links[k]||[]).slice();
+    if(!had.length){ hintDone('Ten zestaw nie jest w żadnym katalogu.'); return; }
+    links[k]=[]; refreshBar();
+    try{
+      var r=await db.from('user_collection_sets').delete().eq('set_id',sid).in('collection_id',had);
+      if(r&&r.error) throw r.error;
+      hintDone('Wyjęto z '+(had.length===1?('„'+colName(had[0])+'"'):(had.length+' katalogów'))+'.');
+      if(String(curSetId)===k){ try{ paintLink(); }catch(e){} }
+    }catch(e){
+      links[k]=had; refreshBar();
+      hintFail('Nie udało się wyjąć: '+((e&&e.message)||e));
+    }
+  }
+
+  /* ── Arkusz przypisania: ścieżka dostępna zawsze. Gest jest skrótem dla
+        pewnych, arkusz jest jedyną drogą, gdy katalogów jeszcze nie ma. ── */
   function ensureSheet(){
     if($('nsc-sheet')) return;
     var host=($('imm-browse')||{}).parentNode; if(!host) return;
@@ -4356,7 +4537,6 @@ async function alexSend(){
   window.nscClose=function(){
     var s=$('nsc-sheet'), b=$('nsc-backdrop');
     if(s) s.classList.remove('open'); if(b) b.style.display='none';
-    /* Lista mogła się zmienić — odświeżamy chipy przy powrocie. */
     try{ mountChips(); }catch(e){}
     try{ paintLink(); }catch(e){}
   };
@@ -4387,20 +4567,17 @@ async function alexSend(){
         +'<span class="nm">'+esc(c.name)+'</span></div>';
     }).join('');
   }
-  /* Zapis punktowy: jedno powiązanie w jedną stronę. Nigdy pełny stan — telefon
-     nie zna zmian zrobionych właśnie na stronie i nadpisałby je. */
   window.nscToggle=async function(cid){
-    cid=isNaN(+cid)?cid:+cid;
+    cid=num(cid);
     var k=String(sheetSet), have=(links[k]=links[k]||[]);
     var i=have.indexOf(cid), on=i<0, msg=$('nsc-msg');
     if(on) have.push(cid); else have.splice(i,1);
     paintSheet();
     if(msg) msg.textContent='';
     try{
-      if(on) { var r=await db.from('user_collection_sets').insert({collection_id:cid, set_id:sheetSet}); if(r&&r.error) throw r.error; }
-      else   { var d=await db.from('user_collection_sets').delete().eq('collection_id',cid).eq('set_id',sheetSet); if(d&&d.error) throw d.error; }
+      if(on){ var r=await db.from('user_collection_sets').insert({collection_id:cid, set_id:sheetSet}); if(r&&r.error) throw r.error; }
+      else  { var d=await db.from('user_collection_sets').delete().eq('collection_id',cid).eq('set_id',sheetSet); if(d&&d.error) throw d.error; }
     }catch(e){
-      /* Cofamy widok do stanu bazy — nie udajemy, że się udało. */
       if(on){ var j=have.indexOf(cid); if(j>=0) have.splice(j,1); } else have.push(cid);
       paintSheet();
       if(msg) msg.textContent='Nie udało się zapisać zmiany: '+((e&&e.message)||e)+'.';
@@ -4419,14 +4596,12 @@ async function alexSend(){
       if(r.error||!r.data) throw r.error||new Error('zapis');
       cols.push({id:r.data.id, name:nm});
       if(inp) inp.value='';
-      /* Nowy katalog od razu z tym zestawem — po to go tworzysz (RZ-2). */
       if(msg) msg.textContent='';
       await window.nscToggle(r.data.id);
     }catch(e){ if(msg) msg.textContent='Nie udało się utworzyć katalogu: '+((e&&e.message)||e)+'.'; }
   };
 
-  /* Wiersz „Katalogi" w ekranie zestawu — pokazuje przypisanie bez wchodzenia
-     nigdzie głębiej (rozpoznawanie zamiast przypominania, Flow §RZ-6). */
+  /* ── Wiersz „Katalogi" w ekranie zestawu ── */
   function mountLink(){
     var anchor=document.querySelector('#s-set .action.know'); if(!anchor) return;
     if(!$('nsc-link')){
@@ -4434,30 +4609,35 @@ async function alexSend(){
       b.className='nsc-link'; b.id='nsc-link'; b.type='button';
       b.onclick=function(){ window.nscOpen(); };
       b.innerHTML='<span class="ic">'+ico(I_FOLD,18)+'</span>'
-        +'<span class="bd"><span class="lb">Katalogi</span><span class="vl" id="nsc-val">—</span></span>'
-        +'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
+        +'<span class="bd"><span class="lb">Katalogi</span><span class="vl" id="nsc-val">\u2014</span></span>'
+        +'<svg class="cv" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
       anchor.parentNode.insertBefore(b, anchor);
     }
     paintLink();
   }
   function paintLink(){
     var b=$('nsc-link'), v=$('nsc-val'); if(!b||!v) return;
-    /* Katalogi dotyczą tylko własnych zestawów — kategorie Eyelingo mają swoją
-       strukturę i nie da się ich przypisać. */
     if(curSetKind!=='set'){ b.style.display='none'; return; }
     b.style.display='flex';
     var mine=colsOf(curSetId);
+    /* Krótko: wiersz ma dwie linie, nie akapit. Instrukcję niesie chevron. */
     if(mine.length){ v.textContent=mine.map(function(c){ return c.name; }).join(', '); v.classList.remove('none'); }
-    else { v.textContent=cols.length?'Bez katalogu — dotknij, aby przypisać':'Dotknij, aby utworzyć pierwszy katalog'; v.classList.add('none'); }
+    else { v.textContent=cols.length?'Bez katalogu':'Utwórz pierwszy katalog'; v.classList.add('none'); }
   }
 
   /* ── Wrappery ── */
+  function wireList(){
+    var box=$('mine-list'); if(!box || box.dataset.nscWired) return;
+    box.dataset.nscWired='1';
+    box.addEventListener('pointerdown', onDown, true);
+    box.addEventListener('click', onClickCapture, true);
+  }
   var _lm=window.loadMine;
   if(typeof _lm==='function'){
     window.loadMine=function(){
       var r=_lm.apply(this,arguments);
-      var after=function(){ load().then(function(){ try{ mountChips(); }catch(e){} }); };
-      if(r&&r.then) r.then(after); else after();
+      var after=function(){ load().then(function(){ try{ mountChips(); wireList(); }catch(e){} }); };
+      if(r&&r.then) r.then(after,after); else after();
       return r;
     };
   }
@@ -4470,7 +4650,6 @@ async function alexSend(){
       return r;
     };
   }
-  /* Kategorie Eyelingo też trafiają na ekran zestawu — wtedy wiersz musi zniknąć. */
   var _oc=window.eylOpenCat;
   if(typeof _oc==='function'){
     /* eylOpenCat jest async — curSetKind ustawia się PO awaitach, więc czekamy
