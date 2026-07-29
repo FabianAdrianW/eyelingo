@@ -20596,3 +20596,350 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   }catch(e){}
 })();
 </script>
+
+<!-- ═══ EYELINGO — Fiszki ze zdjęcia (vision) · nadpisuje modal „Stwórz zestaw z AI" ═══
+     Blok samodzielny, doklejony na końcu pliku. REVERT = usuń cały ten blok
+     (od komentarza wyżej do </script> na dole) — wraca poprzednia wersja modala.
+     Nadpisuje: openCreateSetAI, _aiSetModeUI, aiGenerateSetPreview, _aiGenerateFromImage.
+     Nie dotyka: _aiRenderSetEditor, addNewSetRow, saveNewSet, elImg* (Pexels). -->
+<style id="el-photoset">
+.aisrc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px}
+@media(max-width:600px){.aisrc-grid{grid-template-columns:repeat(2,1fr)}}
+.aisrc{display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:12px 12px 11px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left;transition:.15s;color:var(--dim2)}
+.aisrc:hover{border-color:var(--navy);color:var(--navy)}
+.aisrc .t{font-size:13px;font-weight:500;color:var(--navy);line-height:1.2}
+.aisrc[aria-pressed="true"]{border-color:var(--navy);background:var(--navy);color:#fff}
+.aisrc[aria-pressed="true"] .t{color:#fff}
+.aiph-hint{font-size:12.5px;color:var(--dim2);line-height:1.55;margin-bottom:12px}
+.aiph-acts{display:flex;gap:8px;flex-wrap:wrap}
+.aiph-btn{display:inline-flex;align-items:center;gap:8px;padding:13px 18px;border-radius:12px;border:1.5px solid var(--border2);background:#fff;color:var(--navy);font-size:13.5px;font-weight:500;font-family:DM Sans,sans-serif;cursor:pointer;transition:.15s}
+.aiph-btn:hover{border-color:var(--navy)}
+.aiph-btn.pri{background:var(--orange);border-color:var(--orange);color:#fff;box-shadow:0 4px 14px rgba(201,106,42,.18)}
+.aiph-btn.pri:hover{border-color:var(--orange)}
+.aiph-drop{border:1.5px dashed var(--border-strong);border-radius:12px;padding:22px 16px;text-align:center;cursor:pointer;transition:.15s;background:var(--paper);margin-top:10px}
+.aiph-strip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.aiph-thumb{position:relative;width:76px;height:76px;border-radius:11px;overflow:hidden;border:.5px solid var(--border);background:var(--paper2)}
+.aiph-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.aiph-x{position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(26,35,64,.72);color:#fff;font-size:12px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.aiph-cnt{font-size:11.5px;color:var(--dim2);margin-top:9px}
+.aiph-note{display:flex;gap:9px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border2);border-radius:11px;background:var(--paper);margin-bottom:14px}
+.aiph-note .txt{font-size:12.5px;color:var(--navy);line-height:1.5}
+</style>
+<script>
+(function(){
+  var MAXP=3, MAXDIM=1600, JPEGQ=0.82, MAXB64=4200000;
+  var LN={en:'English',es:'Spanish',de:'German',fr:'French',it:'Italian',nl:'Dutch',pt:'Portuguese',no:'Norwegian',ru:'Russian',uk:'Ukrainian',ar:'Arabic',jp:'Japanese',zh:'Chinese (Mandarin)',ko:'Korean'};
+  function val(id){ var e=document.getElementById(id); return e?(e.value||''):''; }
+  function el(id){ return document.getElementById(id); }
+  function langNameOf(c){ return LN[c]||LN.en; }
+  function isTouch(){ try{ return ('ontouchstart' in window)||(navigator.maxTouchPoints>0); }catch(e){ return false; } }
+  function ico(p){ return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; }
+  var IC={
+    topic:'<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V18h8v-3.3A7 7 0 0 0 12 2z"/>',
+    image:'<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.2"/>',
+    paste:'<path d="M8 4h8M8 12h8M8 20h8"/><path d="M4 4h.01M4 12h.01M4 20h.01"/>',
+    text:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/>'
+  };
+  function srcBtn(m,label){
+    return '<button type="button" class="aisrc" data-m="'+m+'" aria-pressed="false" onclick="_aiSetModeUI(\''+m+'\')">'
+      +ico(IC[m])+'<span class="t">'+label+'</span></button>';
+  }
+
+  /* ── Normalizacja zdjęcia: skalowanie + JPEG. Cel: (1) rozmiar payloadu z ~5 MB
+        do ~250 kB, (2) HEIC z iPhone'a → JPEG (Safari dekoduje natywnie),
+        (3) usunięcie EXIF (prywatność — brak GPS w danych wysyłanych do modelu). ── */
+  function normalizePhoto(file){
+    return new Promise(function(res,rej){
+      if(!file || !/^image\//i.test(file.type||'')){ rej(new Error('type')); return; }
+      var url=URL.createObjectURL(file), im=new Image();
+      im.onload=function(){
+        try{
+          var w=im.naturalWidth||im.width, h=im.naturalHeight||im.height;
+          if(!w||!h){ URL.revokeObjectURL(url); rej(new Error('decode')); return; }
+          var s=Math.min(1, MAXDIM/Math.max(w,h));
+          var cw=Math.max(1,Math.round(w*s)), ch=Math.max(1,Math.round(h*s));
+          var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+          var cx=cv.getContext('2d');
+          cx.fillStyle='#fff'; cx.fillRect(0,0,cw,ch);
+          cx.drawImage(im,0,0,cw,ch);
+          URL.revokeObjectURL(url);
+          res(cv.toDataURL('image/jpeg',JPEGQ));
+        }catch(e){ URL.revokeObjectURL(url); rej(e); }
+      };
+      im.onerror=function(){ URL.revokeObjectURL(url); rej(new Error('decode')); };
+      im.src=url;
+    });
+  }
+
+  window._aiPhotos=[];
+  function renderStrip(){
+    var strip=el('ai-ph-strip'), cnt=el('ai-ph-cnt'), btn=el('ai-gen-btn');
+    if(strip){
+      strip.innerHTML=window._aiPhotos.map(function(p,i){
+        return '<div class="aiph-thumb"><img src="'+p+'" alt=""><button type="button" class="aiph-x" aria-label="Usuń" onclick="_aiPhotoDrop('+i+')">\u2715</button></div>';
+      }).join('');
+    }
+    if(cnt) cnt.textContent = window._aiPhotos.length ? (window._aiPhotos.length+' z '+MAXP+' zdjęć') : '';
+    var add=el('ai-ph-add'), cam=el('ai-ph-cambtn'), drop=el('ai-ph-drop');
+    var full=window._aiPhotos.length>=MAXP;
+    if(add) add.style.display=full?'none':'';
+    if(cam) cam.style.display=full?'none':'';
+    if(drop) drop.style.display=full?'none':'';
+    if(btn && window._aiSetMode==='image'){ btn.disabled=!window._aiPhotos.length; btn.style.opacity=window._aiPhotos.length?'':'0.5'; }
+  }
+  window._aiPhotoDrop=function(i){ window._aiPhotos.splice(i,1); renderStrip(); var m=el('ai-gen-msg'); if(m) m.textContent=''; };
+  window._aiPhotoPick=async function(files){
+    var msg=el('ai-gen-msg');
+    var list=Array.prototype.slice.call(files||[]);
+    if(!list.length) return;
+    var free=MAXP-window._aiPhotos.length;
+    if(free<=0){ if(msg) msg.textContent='Maksymalnie '+MAXP+' zdjęcia na jeden zestaw.'; return; }
+    if(list.length>free){ list=list.slice(0,free); if(msg) msg.textContent='Dodaję pierwsze '+free+' — limit to '+MAXP+' zdjęcia.'; }
+    else if(msg) msg.textContent='Przygotowuję zdjęcie…';
+    for(var i=0;i<list.length;i++){
+      try{ var d=await normalizePhoto(list[i]); window._aiPhotos.push(d); }
+      catch(e){ if(msg) msg.textContent='Nie udało się odczytać pliku. Spróbuj JPG lub PNG.'; }
+      renderStrip();
+    }
+    if(msg && /Przygotowuję/.test(msg.textContent)) msg.textContent='';
+  };
+  function wireDrop(){
+    var d=el('ai-ph-drop'); if(!d||d.dataset.wired) return; d.dataset.wired='1';
+    ['dragenter','dragover'].forEach(function(ev){ d.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); d.style.borderColor='var(--orange)'; d.style.background='#fffaf7'; }); });
+    ['dragleave','drop'].forEach(function(ev){ d.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); d.style.borderColor='var(--border-strong)'; d.style.background='var(--paper)'; }); });
+    d.addEventListener('drop',function(e){ var dt=e.dataTransfer; if(dt&&dt.files&&dt.files.length) window._aiPhotoPick(dt.files); });
+  }
+
+  function langOptions(){
+    var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','de','fr','nl','jp'];
+    var last=''; try{ last=localStorage.getItem('eyl_aiset_lang')||''; }catch(e){}
+    if(!last||codes.indexOf(last)<0) last='en';
+    return codes.map(function(c){
+      var inf=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[c])||{name:c};
+      var nm=(inf.name||c); nm=nm.charAt(0).toUpperCase()+nm.slice(1);
+      return '<option value="'+c+'"'+(c===last?' selected':'')+'>'+nm+'</option>';
+    }).join('');
+  }
+
+  window._aiSetMode='topic';
+
+  window.openCreateSetAI=function(){
+    if(!window._eylAiGateChecked){
+      eylIsPremium().then(function(pro){
+        if(pro){ window._eylAiGateChecked=true; window.openCreateSetAI(); window._eylAiGateChecked=false; }
+        else { eylUpgradeModal('Tworzenie z AI to funkcja PRO','Generowanie zestawów przez AI — także ze zdjęcia — jest dostępne w PRO. Przejdź na PRO, aby z niego korzystać.'); }
+      });
+      return;
+    }
+    var modal=el('mat-modal'), title=el('mat-modal-title'), body=el('mat-modal-body');
+    if(!modal||!body) return;
+    if(title) title.textContent='Stwórz zestaw z AI';
+    window._aiPhotos=[];
+    var touch=isTouch();
+    body.innerHTML=''
+     +'<div class="aisrc-grid">'+srcBtn('topic','Z tematu')+srcBtn('image','Ze zdjęcia')+srcBtn('paste','Wklej słowa')+srcBtn('text','Z tekstu')+'</div>'
+     +'<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
+       +'<div style="flex:1;min-width:140px"><label class="ai-lab">Język</label><select id="ai-set-lang" class="fi" style="width:100%" onchange="try{localStorage.setItem(\'eyl_aiset_lang\',this.value)}catch(e){}">'+langOptions()+'</select></div>'
+       +'<div id="ai-level-wrap" style="flex:1;min-width:110px"><label class="ai-lab">Poziom</label><select id="ai-set-level" class="fi" style="width:100%"><option>A1</option><option>A2</option><option selected>B1</option><option>B2</option><option>C1</option></select></div>'
+       +'<div id="ai-count-wrap" style="width:118px"><label class="ai-lab" id="ai-count-lab">Liczba słów</label><input id="ai-set-count" class="fi" type="number" min="3" max="40" value="15" style="width:100%;box-sizing:border-box"></div>'
+     +'</div>'
+     +'<div id="ai-mode-topic"><label class="ai-lab">Temat</label><input id="ai-set-topic" class="fi" placeholder="np. słownictwo w restauracji, rozmowa o pracę" style="width:100%;box-sizing:border-box"></div>'
+     +'<div id="ai-mode-paste" style="display:none"><label class="ai-lab">Słowa (po polsku lub w języku docelowym, jedno na linię)</label><textarea id="ai-set-paste" class="fi" rows="6" placeholder="kot&#10;pies&#10;dzień dobry" style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>'
+     +'<div id="ai-mode-text" style="display:none"><label class="ai-lab">Tekst — AI wybierze najważniejsze słowa</label><textarea id="ai-set-text" class="fi" rows="6" placeholder="Wklej fragment tekstu lub artykułu..." style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>'
+     +'<div id="ai-mode-image" style="display:none">'
+       +'<div class="aiph-hint">Sfotografuj <b style="font-weight:500;color:var(--navy)">stronę podręcznika, listę słówek, notatki z lekcji, menu lub tablicę</b> — przeczytamy tekst i wybierzemy z niego słowa na Twoim poziomie. Zadziała też zwykłe zdjęcie scenerii: nazwiemy to, co na nim widać.</div>'
+       +'<div id="ai-ph-strip" class="aiph-strip"></div>'
+       +'<div class="aiph-acts">'
+         +(touch?'<button type="button" id="ai-ph-cambtn" class="aiph-btn pri" onclick="document.getElementById(\'ai-ph-cam\').click()">'+ico(IC.image)+'Zrób zdjęcie</button>':'')
+         +'<button type="button" id="ai-ph-add" class="aiph-btn'+(touch?'':' pri')+'" onclick="document.getElementById(\'ai-ph-file\').click()">'
+           +ico('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5"/><path d="M12 5v12"/>')
+           +(touch?'Z galerii lub plików':'Wybierz zdjęcia')+'</button>'
+       +'</div>'
+       +'<div id="ai-ph-drop" class="aiph-drop" onclick="document.getElementById(\'ai-ph-file\').click()">'
+         +'<div style="font-size:12.5px;color:var(--dim2)">…albo przeciągnij tu pliki (JPG, PNG, HEIC — do '+MAXP+' zdjęć)</div>'
+       +'</div>'
+       +'<input id="ai-ph-cam" type="file" accept="image/*" capture="environment" style="display:none" onchange="_aiPhotoPick(this.files);this.value=\'\'">'
+       +'<input id="ai-ph-file" type="file" accept="image/*" multiple style="display:none" onchange="_aiPhotoPick(this.files);this.value=\'\'">'
+       +'<div id="ai-ph-cnt" class="aiph-cnt"></div>'
+     +'</div>'
+     +'<div style="display:flex;align-items:center;gap:9px;margin-top:14px;padding:11px 13px;border:1px solid var(--border2);border-radius:11px;background:var(--paper)">'
+       +'<input id="ai-set-images" type="checkbox" '+((window._elImgEnabled!==false)?'checked':'')+' style="width:17px;height:17px;accent-color:var(--orange);cursor:pointer;flex-shrink:0" onchange="_aiImgToggle(this.checked)">'
+       +'<label for="ai-set-images" style="font-size:13px;color:var(--navy);cursor:pointer;line-height:1.4">Dodaj zdjęcia do fiszek <span style="color:var(--dim2)">— tylko dla słów konkretnych (Pexels)</span></label>'
+     +'</div>'
+     +'<div id="ai-gen-msg" style="font-size:12px;color:var(--dim2);min-height:16px;margin-top:10px"></div>'
+     +'<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">'
+       +'<button onclick="closeMatModal()" style="padding:10px 20px;border-radius:10px;border:1.5px solid var(--border2);background:transparent;cursor:pointer;font-family:DM Sans,sans-serif">Anuluj</button>'
+       +'<button id="ai-gen-btn" class="btn btn-navy" onclick="aiGenerateSetPreview()">Generuj zestaw</button>'
+     +'</div>';
+    modal.style.display='flex';
+    window._aiSetModeUI('topic');
+  };
+
+  window._aiSetModeUI=function(m){
+    window._aiSetMode=m;
+    ['topic','paste','text','image'].forEach(function(x){ var e=el('ai-mode-'+x); if(e) e.style.display=(x===m?'block':'none'); });
+    document.querySelectorAll('.aisrc').forEach(function(t){ t.setAttribute('aria-pressed', t.dataset.m===m ? 'true':'false'); });
+    var lvl=el('ai-level-wrap'); if(lvl) lvl.style.display=(m==='topic'||m==='image')?'block':'none';
+    var cnt=el('ai-count-wrap'); if(cnt) cnt.style.display=(m==='paste')?'none':'block';
+    var lab=el('ai-count-lab'); if(lab) lab.textContent=(m==='image')?'Maks. fiszek':'Liczba słów';
+    var ci=el('ai-set-count');
+    if(ci && m==='image'){ ci.max='25'; if((+ci.value||0)>25) ci.value='20'; } else if(ci){ ci.max='40'; }
+    var btn=el('ai-gen-btn');
+    if(btn){
+      btn.textContent=(m==='image')?'Utwórz fiszki ze zdjęcia':'Generuj zestaw';
+      btn.disabled=(m==='image') && !window._aiPhotos.length;
+      btn.style.opacity=btn.disabled?'0.5':'';
+    }
+    if(m==='image'){ wireDrop(); renderStrip(); }
+  };
+
+  /* ── Wspólny parser odpowiedzi: obiekt {kind,note,title,cards} lub goła tablica ── */
+  function parseCards(raw){
+    var out={kind:'',note:'',title:'',cards:[]};
+    var t=String(raw||'').replace(/```json|```/g,'').trim();
+    var o1=t.indexOf('{'), o2=t.lastIndexOf('}');
+    if(o1>=0&&o2>o1){
+      try{
+        var o=JSON.parse(t.slice(o1,o2+1));
+        if(o&&Array.isArray(o.cards)){ out.kind=String(o.kind||''); out.note=String(o.note||''); out.title=String(o.title||''); out.cards=o.cards; }
+      }catch(e){}
+    }
+    if(!out.cards.length){
+      var a1=t.indexOf('['), a2=t.lastIndexOf(']');
+      if(a1>=0&&a2>a1){ try{ var arr=JSON.parse(t.slice(a1,a2+1)); if(Array.isArray(arr)) out.cards=arr; }catch(e){} }
+    }
+    if(!out.cards.length){
+      /* Ratunek dla uciętej odpowiedzi (limit tokenów): wyciągamy pary
+         "word"/"translation" regexem — lepiej 18 fiszek niż komunikat o błędzie. */
+      var re=/"word"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"translation"\s*:\s*"((?:[^"\\]|\\.)*)"/g, mm;
+      while((mm=re.exec(t))){
+        try{ out.cards.push({word:JSON.parse('"'+mm[1]+'"'), translation:JSON.parse('"'+mm[2]+'"')}); }catch(e){}
+      }
+    }
+    var seen={};
+    out.cards=out.cards.map(function(c){
+      return { word:String((c&&(c.word||c.term))||'').trim(),
+               translation:String((c&&(c.translation||c.tr||c.pl))||'').trim(),
+               concrete:(c&&(c.concrete===true||c.concrete==='true')),
+               image_query:String((c&&(c.image_query||c.imageQuery))||'').trim() };
+    }).filter(function(c){
+      if(!c.word||!c.translation) return false;
+      var k=c.word.toLowerCase()+'|'+c.translation.toLowerCase();
+      if(seen[k]) return false; seen[k]=1; return true;
+    });
+    return out;
+  }
+
+  async function proxy(messages,maxTok){
+    var sess=(await db.auth.getSession()).data.session, tok=sess?sess.access_token:'';
+    var res=await fetch(AI_PROXY_URL,{method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+      body:JSON.stringify({messages:messages,max_tokens:maxTok||1600})});
+    if(res.status===429) throw new Error('429');
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    var d=await res.json();
+    return (typeof extractAIText==='function'?extractAIText(d):'')||'';
+  }
+  function errMsg(e){
+    var s=String((e&&e.message)||e||'');
+    if(s==='429') return 'Za dużo zapytań w krótkim czasie — spróbuj za chwilę.';
+    if(/HTTP 41[0-9]|HTTP 400/.test(s)) return 'Zdjęcie było za duże lub w nieobsługiwanym formacie. Usuń jedno zdjęcie i spróbuj ponownie.';
+    return 'Nie udało się połączyć z AI. Sprawdź internet i spróbuj ponownie.';
+  }
+
+  var CARD_RULES='\n\nDla KAŻDEJ fiszki dodaj też: "concrete" (true jeśli słowo da się pokazać na zdjęciu — konkretny obiekt, miejsce, jedzenie, zwierzę, narzędzie, ubranie, zawód, albo czynność dającą się sfotografować (np. ołówek, most, jabłko, lotnisko, lekarz, biegać, jeść, pływać, pisać); false TYLKO dla pojęć abstrakcyjnych, emocji, czasowników abstrakcyjnych, przyimków i spójników) oraz "image_query" (1–3 angielskie słowa do zdjęcia; dla rzeczy nazwa obiektu, np. "pencil", "wooden bridge"; dla czynności z osobą, np. "person running"; pomiń przy abstraktach).';
+
+  async function afterCards(cards, msg){
+    var n=cards.filter(function(c){return c.concrete&&c.image_query;}).length;
+    if(n && window.elImgAutoAttach && window._elImgEnabled!==false){
+      if(msg) msg.textContent='Dobieram zdjęcia (0/'+n+')…';
+      try{ await window.elImgAutoAttach(cards,function(dn,tt){ if(msg) msg.textContent='Dobieram zdjęcia ('+dn+'/'+tt+')…'; }); }catch(e){}
+    }
+  }
+
+  window.aiGenerateSetPreview=async function(){
+    var lang=val('ai-set-lang'), mode=window._aiSetMode;
+    if(mode==='image') return window._aiGenerateFromImage();
+    var count=Math.max(3,Math.min(40,parseInt(val('ai-set-count')||'15',10)||15));
+    var msg=el('ai-gen-msg'), btn=el('ai-gen-btn'), langName=langNameOf(lang);
+    var prompt='', defaultName='';
+    if(mode==='topic'){
+      var topic=val('ai-set-topic').trim(); if(!topic){ msg.textContent='Podaj temat.'; return; }
+      var level=val('ai-set-level');
+      prompt='Wygeneruj dokładnie '+count+' przydatnych słów lub krótkich wyrażeń w języku '+langName+' na poziomie '+level+' na temat: "'+topic+'". Pole "word" = słowo/wyrażenie w języku '+langName+'. Pole "translation" = ZAWSZE polskie tłumaczenie (po polsku), nigdy w żadnym innym języku.';
+      defaultName=topic.charAt(0).toUpperCase()+topic.slice(1,40);
+    } else if(mode==='paste'){
+      var raw=val('ai-set-paste').trim(); if(!raw){ msg.textContent='Wklej słowa.'; return; }
+      prompt='Użytkownik podał listę słów (mogą być po polsku lub po '+langName+'):\n'+raw+'\nDla każdego utwórz parę: "word" w języku '+langName+', "translation" po polsku. Jeśli słowo jest po polsku, przetłumacz je na '+langName+' (jako "word"), a "translation" to polski oryginał.';
+      defaultName=langName+' — moje słowa';
+    } else {
+      var text=val('ai-set-text').trim(); if(!text){ msg.textContent='Wklej tekst.'; return; }
+      prompt='Z poniższego tekstu wybierz '+count+' najważniejszych lub najtrudniejszych słów/wyrażeń w języku '+langName+' i podaj ich polskie tłumaczenia.\nTekst:\n'+text.slice(0,2000);
+      defaultName=langName+' — z tekstu';
+    }
+    prompt+=CARD_RULES+'\n\nOdpowiedz WYŁĄCZNIE tablicą JSON, bez backticków i komentarzy, w formacie: [{"word":"...","translation":"...","concrete":true,"image_query":"..."}]';
+    btn.disabled=true; var oldT=btn.textContent; btn.textContent='Generuję…'; msg.textContent='AI tworzy fiszki…';
+    try{
+      var r=parseCards(await proxy([{role:'user',content:prompt}],1600));
+      if(!r.cards.length){ msg.textContent='Nie udało się wygenerować. Spróbuj ponownie.'; btn.disabled=false; btn.textContent=oldT; return; }
+      await afterCards(r.cards,msg);
+      _aiRenderSetEditor(defaultName, r.cards, lang);
+    }catch(e){ msg.textContent=errMsg(e); btn.disabled=false; btn.textContent=oldT; }
+  };
+
+  /* ── Ze zdjęcia: jedno wywołanie vision, model sam rozpoznaje typ materiału
+        (tekst vs sceneria) — użytkownik nie musi klasyfikować własnego zdjęcia. ── */
+  window._aiGenerateFromImage=async function(){
+    var lang=val('ai-set-lang'), level=val('ai-set-level')||'B1';
+    var count=Math.max(3,Math.min(25,parseInt(val('ai-set-count')||'20',10)||20));
+    var msg=el('ai-gen-msg'), btn=el('ai-gen-btn'), langName=langNameOf(lang);
+    var ph=window._aiPhotos||[];
+    if(!ph.length){ if(msg) msg.textContent='Najpierw dodaj zdjęcie.'; return; }
+    var total=ph.reduce(function(a,b){return a+b.length;},0);
+    if(total>MAXB64){ if(msg) msg.textContent='Zdjęcia są za duże. Usuń jedno i spróbuj ponownie.'; return; }
+    var prompt='Na obrazach jest materiał do nauki języka '+langName+' (uczy się go dorosły Polak).\n'
+      +'KROK 1 — rozpoznaj typ materiału: "text" = zdjęcie tekstu (strona podręcznika, lista słówek, notatki, menu, tablica, zrzut ekranu); "scene" = fotografia scenerii lub obiektów.\n'
+      +'KROK 2 — zbuduj maksymalnie '+count+' fiszek:\n'
+      +'  • jeśli "text": przeczytaj CAŁY widoczny tekst i wybierz z niego najbardziej wartościowe do nauki słowa i wyrażenia na poziomie '+level+'. Jeśli na obrazie są gotowe pary (słowo — tłumaczenie), przenieś je dokładnie tak, jak są. Jeśli tekst jest po polsku, przetłumacz go na '+langName+'. NIE dodawaj słów, których nie ma na obrazie.\n'
+      +'  • jeśli "scene": nazwij wyraźnie widoczne obiekty i czynności. Pomiń rzeczy niejednoznaczne lub ledwo widoczne.\n'
+      +'ZASADY: "word" = ZAWSZE w języku '+langName+'; "translation" = ZAWSZE po polsku. Bez duplikatów. Pomiń nazwy własne, numery stron, nagłówki organizacyjne (np. "Unit 3", "Ćwiczenie 2") i pojedyncze litery.'
+      +CARD_RULES
+      +'\n\nOdpowiedz WYŁĄCZNIE obiektem JSON, bez backticków i komentarzy:\n'
+      +'{"kind":"text|scene","note":"po polsku, maks. 12 słów: co widzisz na obrazie","title":"nazwa zestawu po polsku, 2–4 słowa","cards":[{"word":"...","translation":"...","concrete":true,"image_query":"..."}]}';
+    var content=[{type:'text',text:prompt}];
+    ph.forEach(function(d){ content.push({type:'image_url',image_url:{url:d}}); });
+    btn.disabled=true; var oldT=btn.textContent; btn.textContent='Czytam zdjęcie…';
+    if(msg) msg.textContent=(ph.length>1?('Analizuję '+ph.length+' zdjęcia…'):'Analizuję zdjęcie…');
+    try{
+      var r=parseCards(await proxy([{role:'user',content:content}],2400));
+      if(!r.cards.length){
+        if(msg) msg.textContent='Nie udało się nic odczytać. Zrób zdjęcie z bliska, w lepszym świetle i prosto na stronę.';
+        btn.disabled=false; btn.textContent=oldT; return;
+      }
+      await afterCards(r.cards,msg);
+      var nm=r.title || ((r.kind==='scene'?'Ze zdjęcia':'Z podręcznika')+' — '+new Date().toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit'}));
+      _aiRenderSetEditor(nm, r.cards, lang);
+      showRecognizedNote(r);
+    }catch(e){ if(msg) msg.textContent=errMsg(e); btn.disabled=false; btn.textContent=oldT; }
+  };
+
+  /* Przejrzystość (Flow §RZ-17 L1): jednym zdaniem mówimy, co AI zobaczyło,
+     zanim użytkownik zacznie sprawdzać fiszki. Buduje zaufanie do wyniku. */
+  function showRecognizedNote(r){
+    var body=el('mat-modal-body'); if(!body||!body.firstChild) return;
+    var what = r.kind==='scene' ? 'Rozpoznałem zdjęcie scenerii' : 'Rozpoznałem tekst na zdjęciu';
+    var note=String(r.note||'').slice(0,90);
+    var box=document.createElement('div');
+    box.className='aiph-note';
+    var s=document.createElement('span');
+    s.style.cssText='color:var(--dim2);flex-shrink:0;margin-top:1px';
+    s.innerHTML=ico('<circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/>');
+    box.appendChild(s);
+    var t=document.createElement('span'); t.className='txt';
+    t.textContent=what+(note?(' — '+note):'')+'.';
+    box.appendChild(t);
+    var host=body.firstElementChild||body;
+    host.insertBefore(box, host.firstChild);
+  }
+})();
+</script>

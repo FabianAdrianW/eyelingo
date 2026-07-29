@@ -3594,5 +3594,349 @@ async function alexSend(){
   };
 })();
 </script>
+
+<!-- ═══ EYELINGO — Nowy zestaw ze zdjęcia (mobile, parytet z www · Flow §RZ-15) ═══
+     Blok samodzielny. REVERT = usuń cały blok (od tego komentarza do </script>).
+     Dodaje: ekran imm-photoset + kafel wejścia w „Moje zestawy".
+     Nadpisuje wyłącznie loadMine (wrapper, oryginał wołany w środku). -->
+<style id="el-photoset-m">
+  .ps-hint{font-size:13px;color:var(--dim);line-height:1.55;margin-bottom:16px}
+  .ps-strip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .ps-thumb{position:relative;width:84px;height:84px;border-radius:12px;overflow:hidden;border:.5px solid var(--line);background:var(--paper2)}
+  .ps-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .ps-x{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(26,35,64,.72);color:#fff;font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .ps-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:9px;border-radius:var(--r-sm);font-family:inherit;font-size:15px;font-weight:600;padding:15px;cursor:pointer;transition:.15s;margin-bottom:10px;border:none}
+  .ps-btn:active{transform:scale(.98)}
+  .ps-btn.pri{background:var(--orange);color:#fff}
+  .ps-btn.sec{background:#fff;border:.5px solid var(--line2);color:var(--navy)}
+  .ps-btn.go{background:var(--navy);color:#fff}
+  .ps-btn:disabled{opacity:.45}
+  .ps-cnt{font-size:11.5px;color:var(--dim2);text-align:center;margin:-2px 0 14px}
+  .ps-more{background:none;border:none;color:var(--dim);font-family:inherit;font-size:12.5px;font-weight:500;padding:10px 0;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line2);width:100%}
+  .ps-chips{display:flex;gap:7px;flex-wrap:wrap}
+  .ps-chip{border:1.5px solid var(--line2);background:#fff;border-radius:100px;padding:9px 15px;font-family:inherit;font-size:13px;color:var(--dim);cursor:pointer;transition:.15s}
+  .ps-chip.on{border-color:var(--navy);background:var(--navy);color:#fff}
+  .ps-note{display:flex;gap:9px;align-items:flex-start;padding:12px 13px;border:.5px solid var(--line);border-radius:var(--r-sm);background:#fff;margin-bottom:16px}
+  .ps-note .t{font-size:12.5px;color:var(--navy);line-height:1.5}
+  .ps-row{display:grid;grid-template-columns:1fr 1fr 30px;gap:7px;align-items:center;margin-bottom:7px}
+  .ps-row input{width:100%;box-sizing:border-box;border:.5px solid var(--line2);border-radius:9px;padding:11px 10px;font-family:inherit;font-size:13.5px;color:var(--navy);background:#fff;outline:none}
+  .ps-row input:focus{border-color:var(--navy)}
+  .ps-del{background:none;border:none;color:var(--error);font-size:19px;cursor:pointer;padding:0;line-height:1}
+  .ps-add{width:100%;background:transparent;border:1.5px dashed var(--line2);border-radius:var(--r-sm);padding:11px;font-family:inherit;font-size:13px;color:var(--dim2);cursor:pointer;margin-bottom:16px}
+  .ps-msg{font-size:12.5px;color:var(--dim);min-height:17px;line-height:1.5;margin-bottom:10px}
+  .ps-lab{font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:9px}
+</style>
+<script>
+(function(){
+  var MAXP=3, MAXDIM=1600, JPEGQ=0.82;
+  var LN={en:'English',es:'Spanish',de:'German',fr:'French',it:'Italian',nl:'Dutch',pt:'Portuguese',no:'Norwegian',ru:'Russian',uk:'Ukrainian',ar:'Arabic',jp:'Japanese',zh:'Chinese (Mandarin)',ko:'Korean'};
+  var photos=[], lvl='B1', maxCards=20, note=null;
+  function $(id){ return document.getElementById(id); }
+  function ico(p,sz){ return '<svg width="'+(sz||18)+'" height="'+(sz||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; }
+  var I_CAM='<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.2"/>';
+  var I_GAL='<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.8"/><path d="m21 15-4.5-4.5L6 21"/>';
+  var I_INFO='<circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/>';
+
+  /* Skalowanie + JPEG: payload z ~5 MB do ~250 kB, HEIC z iPhone'a → JPEG,
+     EXIF (w tym GPS) nie opuszcza telefonu. Bez tego zdjęcie z telefonu nie przejdzie. */
+  function normalize(file){
+    return new Promise(function(res,rej){
+      if(!file||!/^image\//i.test(file.type||'')){ rej(new Error('type')); return; }
+      var url=URL.createObjectURL(file), im=new Image();
+      im.onload=function(){
+        try{
+          var w=im.naturalWidth||im.width, h=im.naturalHeight||im.height;
+          if(!w||!h){ URL.revokeObjectURL(url); rej(new Error('decode')); return; }
+          var s=Math.min(1,MAXDIM/Math.max(w,h));
+          var cw=Math.max(1,Math.round(w*s)), ch=Math.max(1,Math.round(h*s));
+          var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+          var cx=cv.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,cw,ch); cx.drawImage(im,0,0,cw,ch);
+          URL.revokeObjectURL(url); res(cv.toDataURL('image/jpeg',JPEGQ));
+        }catch(e){ URL.revokeObjectURL(url); rej(e); }
+      };
+      im.onerror=function(){ URL.revokeObjectURL(url); rej(new Error('decode')); };
+      im.src=url;
+    });
+  }
+
+  function langOpts(){
+    var last='en'; try{ last=localStorage.getItem('eyl_aiset_lang')||(curSetLang||'en'); }catch(e){}
+    if(!LEX_LANGS[last]) last='en';
+    return Object.keys(LEX_LANGS).map(function(c){
+      var nm=LEX_LANGS[c].name; nm=nm.charAt(0).toUpperCase()+nm.slice(1);
+      return '<option value="'+c+'"'+(c===last?' selected':'')+'>'+nm+'</option>';
+    }).join('');
+  }
+
+  function ensureScreen(){
+    if($('imm-photoset')) return;
+    var host=($('imm-browse')||{}).parentNode; if(!host) return;
+    var d=document.createElement('div');
+    d.className='immersive'; d.id='imm-photoset';
+    d.innerHTML='<div class="imm-bar">'
+      +'<button class="icon-btn" onclick="eylPhotoSetClose()" aria-label="Zamknij">'+ico('<path d="M18 6L6 18M6 6l12 12"/>',22)+'</button>'
+      +'<div class="imm-title" id="ps-title">Zestaw ze zdjęcia</div><div style="width:36px"></div></div>'
+      +'<div class="scroll" id="ps-body" style="padding:4px 18px calc(var(--safe-bot) + 24px)"></div>';
+    host.appendChild(d);
+  }
+
+  window.eylPhotoSetClose=function(){ var e=$('imm-photoset'); if(e) e.classList.remove('active'); };
+
+  window.eylPhotoSetOpen=async function(){
+    ensureScreen();
+    var scr=$('imm-photoset'); if(!scr) return;
+    scr.classList.add('active');
+    photos=[]; note=null;
+    var b=$('ps-body'); b.innerHTML='<div style="padding:30px 0"><div data-eyl-spin="40"></div></div>';
+    try{ if(typeof eylInitSpinners==='function') eylInitSpinners(); }catch(e){}
+    var pro=false; try{ pro=await eylProCheck(); }catch(e){ pro=true; }   /* fail-open */
+    if(!pro){ renderPro(); return; }
+    renderCapture();
+  };
+
+  function renderPro(){
+    $('ps-title').textContent='Zestaw ze zdjęcia';
+    $('ps-body').innerHTML=''
+      +'<div style="padding-top:14px"><div class="h1" style="font-size:22px;margin-bottom:10px">Fiszki ze zdjęcia</div>'
+      +'<div class="ps-hint">Sfotografuj stronę podręcznika albo listę słówek — Eyelingo przeczyta tekst i zrobi z niego zestaw fiszek. Ta funkcja jest częścią PRO.</div>'
+      +'<div class="ps-note">'+'<span style="color:var(--dim2);flex-shrink:0;margin-top:1px">'+ico(I_INFO,17)+'</span>'
+      +'<span class="t">PRO włączysz na stronie eyelingo.app — konto jest wspólne, więc funkcja pojawi się tutaj od razu.</span></div>'
+      +'<button class="ps-btn sec" onclick="eylPhotoSetClose()">Wróć</button></div>';
+  }
+
+  function renderCapture(){
+    $('ps-title').textContent='Zestaw ze zdjęcia';
+    $('ps-body').innerHTML=''
+      +'<div style="padding-top:14px"><div class="h1" style="font-size:22px;margin-bottom:10px">Fiszki ze zdjęcia</div>'
+      +'<div class="ps-hint">Sfotografuj <b style="font-weight:600;color:var(--navy)">stronę podręcznika, listę słówek, notatki lub menu</b> — przeczytamy tekst i wybierzemy z niego słowa na Twoim poziomie. Zwykłe zdjęcie też zadziała: nazwiemy to, co na nim widać.</div>'
+      +'<div class="ps-strip" id="ps-strip"></div>'
+      +'<button class="ps-btn pri" id="ps-cam" onclick="document.getElementById(\'ps-f-cam\').click()">'+ico(I_CAM,19)+'Zrób zdjęcie</button>'
+      +'<button class="ps-btn sec" id="ps-gal" onclick="document.getElementById(\'ps-f-gal\').click()">'+ico(I_GAL,19)+'Wybierz z galerii</button>'
+      +'<div class="ps-cnt" id="ps-cnt"></div>'
+      +'<input id="ps-f-cam" type="file" accept="image/*" capture="environment" style="display:none">'
+      +'<input id="ps-f-gal" type="file" accept="image/*" multiple style="display:none">'
+      +'<div class="field" style="margin-top:6px"><div class="ps-lab">Język zestawu</div>'
+        +'<select class="inp" id="ps-lang" style="margin-bottom:0" onchange="try{localStorage.setItem(\'eyl_aiset_lang\',this.value)}catch(e){}">'+langOpts()+'</select></div>'
+      +'<button class="ps-more" id="ps-more" onclick="_psToggleMore()">Dostosuj — poziom słów, ile fiszek</button>'
+      +'<div id="ps-adv" style="display:none;padding-bottom:6px">'
+        +'<div class="ps-lab">Poziom słów</div><div class="ps-chips" id="ps-lvl"></div>'
+        +'<div class="ps-lab" style="margin-top:18px">Maks. fiszek</div>'
+        +'<input class="inp" id="ps-max" type="number" min="5" max="25" value="'+maxCards+'" style="margin-bottom:0">'
+      +'</div>'
+      +'<div class="ps-msg" id="ps-msg"></div>'
+      +'<button class="ps-btn go" id="ps-go" disabled onclick="_psGenerate()">Utwórz fiszki</button></div>';
+    $('ps-f-cam').addEventListener('change',function(){ pick(this.files); this.value=''; });
+    $('ps-f-gal').addEventListener('change',function(){ pick(this.files); this.value=''; });
+    ['A1','A2','B1','B2','C1'].forEach(function(L){
+      var b=document.createElement('button');
+      b.className='ps-chip'+(L===lvl?' on':''); b.type='button'; b.textContent=L;
+      b.onclick=function(){ lvl=L; $('ps-lvl').querySelectorAll('.ps-chip').forEach(function(c){ c.classList.toggle('on', c.textContent===L); }); };
+      $('ps-lvl').appendChild(b);
+    });
+    strip();
+  }
+  window._psToggleMore=function(){
+    var a=$('ps-adv'), m=$('ps-more'); if(!a) return;
+    var open=a.style.display!=='none';
+    a.style.display=open?'none':'block';
+    m.textContent=open?'Dostosuj — poziom słów, ile fiszek':'Ukryj ustawienia';
+  };
+
+  function strip(){
+    var s=$('ps-strip'); if(!s) return;
+    s.innerHTML=photos.map(function(p,i){
+      return '<div class="ps-thumb"><img src="'+p+'" alt=""><button type="button" class="ps-x" aria-label="Usuń" onclick="_psDrop('+i+')">\u2715</button></div>';
+    }).join('');
+    var full=photos.length>=MAXP, has=photos.length>0;
+    var cam=$('ps-cam'), gal=$('ps-gal'), cnt=$('ps-cnt'), go=$('ps-go');
+    if(cam){ cam.style.display=full?'none':''; cam.className='ps-btn '+(has?'sec':'pri'); cam.innerHTML=ico(I_CAM,19)+(has?'Dodaj kolejne zdjęcie':'Zrób zdjęcie'); }
+    if(gal) gal.style.display=full?'none':'';
+    if(cnt) cnt.textContent=has?(photos.length+' z '+MAXP+' zdjęć'):'';
+    /* Akcent wędruje: dopóki nie ma zdjęcia, główną akcją jest jego zrobienie
+       (Flow §RZ-9 — jeden pomarańcz = jedna główna akcja na ekranie). */
+    if(go){ go.disabled=!has; go.className='ps-btn '+(has?'pri':'go'); }
+  }
+  window._psDrop=function(i){ photos.splice(i,1); strip(); var m=$('ps-msg'); if(m) m.textContent=''; };
+
+  async function pick(files){
+    var list=Array.prototype.slice.call(files||[]), m=$('ps-msg');
+    if(!list.length) return;
+    var free=MAXP-photos.length;
+    if(free<=0){ if(m) m.textContent='Maksymalnie '+MAXP+' zdjęcia na jeden zestaw.'; return; }
+    if(list.length>free){ list=list.slice(0,free); if(m) m.textContent='Dodaję pierwsze '+free+' — limit to '+MAXP+' zdjęcia.'; }
+    else if(m) m.textContent='Przygotowuję zdjęcie…';
+    for(var i=0;i<list.length;i++){
+      try{ photos.push(await normalize(list[i])); }
+      catch(e){ if(m) m.textContent='Nie udało się odczytać tego pliku. Spróbuj JPG lub PNG.'; }
+      strip();
+    }
+    if(m && /Przygotowuję/.test(m.textContent)) m.textContent='';
+  }
+
+  function parseOut(raw){
+    var out={kind:'',note:'',title:'',cards:[]};
+    var t=String(raw||'').replace(/```json|```/g,'').trim();
+    var o1=t.indexOf('{'), o2=t.lastIndexOf('}');
+    if(o1>=0&&o2>o1){ try{ var o=JSON.parse(t.slice(o1,o2+1));
+      if(o&&Array.isArray(o.cards)){ out.kind=String(o.kind||''); out.note=String(o.note||''); out.title=String(o.title||''); out.cards=o.cards; }
+    }catch(e){} }
+    if(!out.cards.length){ var a1=t.indexOf('['), a2=t.lastIndexOf(']');
+      if(a1>=0&&a2>a1){ try{ var arr=JSON.parse(t.slice(a1,a2+1)); if(Array.isArray(arr)) out.cards=arr; }catch(e){} } }
+    if(!out.cards.length){
+      /* Ratunek dla uciętej odpowiedzi (limit tokenów): wyciągamy pary
+         "word"/"translation" regexem — lepiej 18 fiszek niż komunikat o błędzie. */
+      var re=/"word"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"translation"\s*:\s*"((?:[^"\\]|\\.)*)"/g, mm;
+      while((mm=re.exec(t))){
+        try{ out.cards.push({word:JSON.parse('"'+mm[1]+'"'), translation:JSON.parse('"'+mm[2]+'"')}); }catch(e){}
+      }
+    }
+    var seen={};
+    out.cards=out.cards.map(function(c){
+      return { word:String((c&&(c.word||c.term))||'').trim(), translation:String((c&&(c.translation||c.tr||c.pl))||'').trim() };
+    }).filter(function(c){
+      if(!c.word||!c.translation) return false;
+      var k=c.word.toLowerCase()+'|'+c.translation.toLowerCase();
+      if(seen[k]) return false; seen[k]=1; return true;
+    });
+    return out;
+  }
+
+  window._psGenerate=async function(){
+    var lang=($('ps-lang')||{}).value||'en';
+    var mx=Math.max(5,Math.min(25,parseInt(($('ps-max')||{}).value||maxCards,10)||maxCards));
+    maxCards=mx;
+    var langName=LN[lang]||LN.en, m=$('ps-msg'), go=$('ps-go');
+    if(!photos.length){ if(m) m.textContent='Najpierw dodaj zdjęcie.'; return; }
+    var prompt='Na obrazach jest materiał do nauki języka '+langName+' (uczy się go dorosły Polak).\n'
+      +'KROK 1 — rozpoznaj typ materiału: "text" = zdjęcie tekstu (strona podręcznika, lista słówek, notatki, menu, tablica, zrzut ekranu); "scene" = fotografia scenerii lub obiektów.\n'
+      +'KROK 2 — zbuduj maksymalnie '+mx+' fiszek:\n'
+      +'  • jeśli "text": przeczytaj CAŁY widoczny tekst i wybierz z niego najbardziej wartościowe do nauki słowa i wyrażenia na poziomie '+lvl+'. Jeśli na obrazie są gotowe pary (słowo — tłumaczenie), przenieś je dokładnie tak, jak są. Jeśli tekst jest po polsku, przetłumacz go na '+langName+'. NIE dodawaj słów, których nie ma na obrazie.\n'
+      +'  • jeśli "scene": nazwij wyraźnie widoczne obiekty i czynności. Pomiń rzeczy niejednoznaczne lub ledwo widoczne.\n'
+      +'ZASADY: "word" = ZAWSZE w języku '+langName+'; "translation" = ZAWSZE po polsku. Bez duplikatów. Pomiń nazwy własne, numery stron, nagłówki organizacyjne (np. "Unit 3") i pojedyncze litery.\n\n'
+      +'Odpowiedz WYŁĄCZNIE obiektem JSON, bez backticków i komentarzy:\n'
+      +'{"kind":"text|scene","note":"po polsku, maks. 12 słów: co widzisz na obrazie","title":"nazwa zestawu po polsku, 2–4 słowa","cards":[{"word":"...","translation":"..."}]}';
+    var content=[{type:'text',text:prompt}];
+    photos.forEach(function(d){ content.push({type:'image_url',image_url:{url:d}}); });
+    go.disabled=true; go.textContent='Czytam zdjęcie…';
+    if(m) m.textContent=(photos.length>1?('Analizuję '+photos.length+' zdjęcia…'):'Analizuję zdjęcie…');
+    try{
+      var tok=''; try{ tok=(await db.auth.getSession()).data.session.access_token||''; }catch(e){}
+      var res=await fetch(LEX_PROXY,{method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},
+        body:JSON.stringify({messages:[{role:'user',content:content}],max_tokens:2400})});
+      if(res.status===429) throw new Error('429');
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      var r=parseOut(extractAI(await res.json()));
+      if(!r.cards.length){
+        if(m) m.textContent='Nie udało się nic odczytać. Zrób zdjęcie z bliska, w lepszym świetle i prosto na stronę.';
+        go.disabled=false; go.textContent='Utwórz fiszki'; return;
+      }
+      note=r;
+      renderReview(r,lang);
+    }catch(e){
+      var s=String((e&&e.message)||e||'');
+      if(m) m.textContent = s==='429' ? 'Za dużo zapytań w krótkim czasie — spróbuj za chwilę.'
+        : (/HTTP 4/.test(s) ? 'Zdjęcie było za duże lub w nieobsługiwanym formacie. Usuń jedno zdjęcie i spróbuj ponownie.'
+        : 'Nie udało się połączyć z AI. Sprawdź internet i spróbuj ponownie.');
+      go.disabled=false; go.textContent='Utwórz fiszki';
+    }
+  };
+
+  function addRow(w,t){
+    var box=$('ps-rows'); if(!box) return;
+    var row=document.createElement('div'); row.className='ps-row';
+    var a=document.createElement('input'); a.placeholder='słowo'; a.value=w||'';
+    var b=document.createElement('input'); b.placeholder='tłumaczenie'; b.value=t||'';
+    var x=document.createElement('button'); x.className='ps-del'; x.type='button'; x.textContent='\u00d7';
+    x.onclick=function(){ row.remove(); recount(); };
+    row.appendChild(a); row.appendChild(b); row.appendChild(x);
+    box.appendChild(row);
+  }
+  function recount(){
+    var n=$('ps-rows')?$('ps-rows').children.length:0;
+    var t=$('ps-title'); if(t) t.textContent='Podgląd — '+n+' '+plural(n,'fiszka','fiszki','fiszek');
+  }
+
+  function renderReview(r,lang){
+    var kindTxt = r.kind==='scene' ? 'Rozpoznałem zdjęcie scenerii' : 'Rozpoznałem tekst na zdjęciu';
+    var nm = r.title || ((r.kind==='scene'?'Ze zdjęcia':'Z podręcznika')+' — '+new Date().toLocaleDateString('pl-PL',{day:'2-digit',month:'2-digit'}));
+    $('ps-body').innerHTML=''
+      +'<div style="padding-top:14px">'
+      +'<div class="ps-note"><span style="color:var(--dim2);flex-shrink:0;margin-top:1px">'+ico(I_INFO,17)+'</span>'
+        +'<span class="t" id="ps-kind"></span></div>'
+      +'<div class="ps-lab">Nazwa zestawu</div><input class="inp" id="ps-name">'
+      +'<div class="ps-lab" style="margin-top:6px">Fiszki — popraw, co trzeba</div>'
+      +'<div id="ps-rows"></div>'
+      +'<button class="ps-add" onclick="_psAddRow()">+ Dodaj wiersz</button>'
+      +'<div class="ps-msg" id="ps-msg2"></div>'
+      +'<button class="ps-btn pri" id="ps-save" onclick="_psSave(\''+lang+'\')">Zapisz zestaw</button>'
+      +'<button class="ps-btn sec" onclick="eylPhotoSetOpen()">Zrób inne zdjęcie</button></div>';
+    $('ps-kind').textContent = kindTxt + (r.note?(' — '+r.note.slice(0,80)):'') + '.';
+    $('ps-name').value=nm;
+    r.cards.forEach(function(c){ addRow(c.word,c.translation); });
+    recount();
+  }
+  window._psAddRow=function(){ addRow('',''); recount(); };
+
+  window._psSave=async function(lang){
+    var nameEl=$('ps-name'), m=$('ps-msg2'), btn=$('ps-save');
+    var name=(nameEl?nameEl.value:'').trim();
+    if(!name){ if(m) m.textContent='Podaj nazwę zestawu.'; if(nameEl) nameEl.focus(); return; }
+    var cards=[];
+    Array.prototype.forEach.call($('ps-rows').children,function(row){
+      var i=row.querySelectorAll('input');
+      var w=(i[0]?i[0].value:'').trim(), t=(i[1]?i[1].value:'').trim();
+      if(w&&t) cards.push({word:w,translation:t});
+    });
+    if(!cards.length){ if(m) m.textContent='Zestaw musi mieć co najmniej jedną fiszkę.'; return; }
+    btn.disabled=true; btn.textContent='Zapisuję…'; if(m) m.textContent='';
+    try{
+      if(!UID) throw new Error('brak sesji');
+      var ins=await db.from('user_sets').insert({name:name,user_id:UID,is_public:false,lang:lang}).select().single();
+      if(ins.error){ ins=await db.from('user_sets').insert({name:name,user_id:UID,is_public:false}).select().single(); }
+      if(ins.error||!ins.data) throw ins.error||new Error('zapis');
+      var sid=ins.data.id;
+      var cr=await db.from('user_set_cards').insert(cards.map(function(c){ return {set_id:sid,word:c.word,translation:c.translation}; }));
+      if(cr.error) throw cr.error;
+      eylPhotoSetClose();
+      go('mine'); loadMine();
+    }catch(e){
+      if(m) m.textContent='Nie udało się zapisać: '+((e&&e.message)||e)+'. Spróbuj ponownie.';
+      btn.disabled=false; btn.textContent='Zapisz zestaw';
+    }
+  };
+
+  /* ── Wejście: kafel nad listą w „Moje zestawy" + poprawiony stan pusty ──
+     Dotąd pusty stan odsyłał na stronę www — teraz tworzenie jest tutaj. */
+  function mountEntry(){
+    var scroll=document.querySelector('#s-mine .scroll'); if(!scroll) return;
+    if(!$('ps-entry')){
+      var e=document.createElement('div');
+      e.className='row'; e.id='ps-entry'; e.style.cssText='margin-bottom:18px';
+      e.onclick=function(){ eylPhotoSetOpen(); };
+      e.innerHTML='<div class="ic" style="background:#fff3e9;color:var(--orange)">'+ico(I_CAM,20)+'</div>'
+        +'<div class="body"><div class="t">Nowy zestaw ze zdjęcia</div>'
+        +'<div class="m">Sfotografuj stronę podręcznika albo listę słówek</div></div>'
+        +'<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
+      var list=$('mine-list');
+      if(list&&list.parentNode) list.parentNode.insertBefore(e,list); else scroll.appendChild(e);
+    }
+    var empty=document.querySelector('#mine-list .empty .sub');
+    if(empty && /na stronie Eyelingo/.test(empty.textContent)){
+      empty.textContent='Zrób zdjęcie strony podręcznika albo listy słówek — zrobimy z tego zestaw. Zestawy z konta www i desktopu pojawią się tu automatycznie.';
+    }
+  }
+  var _origLoadMine=window.loadMine;
+  if(typeof _origLoadMine==='function'){
+    window.loadMine=function(){
+      var r=_origLoadMine.apply(this,arguments);
+      if(r&&r.then) r.then(function(){ try{ mountEntry(); }catch(e){} });
+      else { try{ mountEntry(); }catch(e){} }
+      return r;
+    };
+  }
+  document.addEventListener('DOMContentLoaded',function(){ setTimeout(function(){ try{ mountEntry(); }catch(e){} },1200); });
+})();
+</script>
 </body>
 </html>
