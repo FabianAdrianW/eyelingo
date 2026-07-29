@@ -3878,14 +3878,8 @@ async function alexSend(){
       +'<input id="ns-f-gal" type="file" accept="image/*" multiple style="display:none">'
       +'<div class="ns-lab" style="margin-top:6px">Język zestawu</div>'
       +'<select class="inp" id="ns-lang" onchange="try{localStorage.setItem(\'eyl_aiset_lang\',this.value)}catch(e){}">'+langOpts()+'</select>'
-      +'<button class="ns-more" id="ns-more" onclick="_nsMore()">Dostosuj — poziom słów</button>'
-      +'<div id="ns-adv" style="display:none;padding-bottom:6px">'
-        +'<div class="ns-lab">Poziom słów</div><div class="ns-chips" id="ns-lvl"></div>'
-        +'<div class="ns-hint" style="margin:12px 0 0;font-size:12px">Dotyczy tylko tekstu ciągłego — z gotowej listy słówek bierzemy wszystko, niezależnie od poziomu.</div>'
-      +'</div>'
       +'<div class="ns-msg" id="ns-msg"></div>'
       +'<button class="ns-btn go" id="ns-go" disabled onclick="_nsGenPhoto()">Utwórz fiszki</button></div>';
-    chips('ns-lvl', lvl, function(L){ lvl=L; });
     $('ns-f-cam').addEventListener('change',function(){ pick(this.files); this.value=''; });
     $('ns-f-gal').addEventListener('change',function(){ pick(this.files); this.value=''; });
     strip();
@@ -3999,8 +3993,8 @@ async function alexSend(){
       +'  "text"  = tekst ciągły (proza, artykuł, notatki, menu, tablica, zrzut ekranu),\n'
       +'  "scene" = fotografia scenerii lub obiektów, bez istotnego tekstu.\n\n'
       +'KROK 2 — zbuduj fiszki. BEZ LIMITU LICZBY. Nie skracaj wyniku, nie wybieraj „najlepszych", nie zatrzymuj się na okrągłej liczbie:\n'
-      +'  • "list": przenieś KAŻDĄ pozycję z listy, dokładnie tak, jak jest zapisana — także pozycje wyglądające na łatwe. Jeśli są gotowe pary słowo–tłumaczenie, zachowaj je bez zmian. Poziom '+lvl+' NIE ma tu znaczenia: liczy się kompletność.\n'
-      +'  • "text": wypisz WSZYSTKIE słowa i wyrażenia widoczne na obrazie, które są warte nauki dla ucznia na poziomie '+lvl+'. Pomiń tylko to, co uczeń na tym poziomie z pewnością już zna (podstawowe zaimki, przyimki, spójniki, liczebniki).\n'
+      +'  • "list": przenieś KAŻDĄ pozycję z listy, dokładnie tak, jak jest zapisana — także pozycje wyglądające na łatwe. Jeśli są gotowe pary słowo–tłumaczenie, zachowaj je bez zmian. Nie filtruj po trudności: liczy się kompletność.\n'
+      +'  • "text": wypisz WSZYSTKIE słowa i wyrażenia widoczne na obrazie, które mają wartość słownikową. Pomiń tylko wyrazy funkcyjne z pierwszych lekcji (podstawowe zaimki, przyimki, spójniki, liczebniki, formy „być" i „mieć"). Nie oceniaj poziomu uczącego się — trudność dyktuje sam materiał, a nadmiar użytkownik usunie w podglądzie.\n'
       +'  • "scene": nazwij WSZYSTKIE wyraźnie widoczne obiekty, materiały i czynności. Pomiń tylko rzeczy niejednoznaczne lub ledwo widoczne.\n'
       +'NIE dodawaj słów, których nie ma na obrazie (wyjątek: typ "scene"). Pomiń nazwy własne, numery stron, nagłówki organizacyjne (np. „Unit 3") i pojedyncze litery.\n\n'
       +'ZASADY TREŚCI: "word" = ZAWSZE w języku '+langName+'; "translation" = ZAWSZE po polsku. Bez duplikatów.'+CARD_RULES
@@ -4203,6 +4197,291 @@ async function alexSend(){
     };
   }
   document.addEventListener('DOMContentLoaded',function(){ setTimeout(function(){ try{ mountEntry(); }catch(e){} },1200); });
+})();
+</script>
+
+<!-- ═══ EYELINGO — Katalogi zestawów na mobile (user_collections) ═══
+     Te same tabele co www: user_collections + user_collection_sets.
+     Świadoma różnica wobec www: na mobile katalogi NIE są folderami do wchodzenia,
+     tylko filtrami na miejscu (Flow §RZ-7: wybór wielowymiarowy na jednym ekranie,
+     nie sekwencja ekranów). Zero nowych poziomów nawigacji.
+     Zapisy są punktowe (jedno powiązanie), NIGDY pełnym stanem — inaczej nieświeży
+     telefon nadpisałby porządek zrobiony na stronie.
+     REVERT = usuń cały blok (do </script>). Nadpisuje: loadMine, openSet (wrappery). -->
+<style id="el-collections-m">
+  .nsc-bar{display:flex;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 18px 14px;margin:0 -18px;scrollbar-width:none}
+  .nsc-bar::-webkit-scrollbar{display:none}
+  .nsc-chip{flex:0 0 auto;border:1.5px solid var(--line2);background:#fff;border-radius:100px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:500;color:var(--dim);cursor:pointer;transition:.15s;white-space:nowrap}
+  .nsc-chip.on{border-color:var(--navy);background:var(--navy);color:#fff}
+  .nsc-chip .n{opacity:.6;margin-left:5px;font-weight:400}
+  .nsc-link{display:flex;align-items:center;gap:12px;width:100%;background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:14px 16px;cursor:pointer;font-family:inherit;text-align:left;margin-top:12px}
+  .nsc-link:active{transform:scale(.99)}
+  .nsc-link .ic{width:34px;height:34px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--paper2);color:var(--navy)}
+  .nsc-link .bd{flex:1;min-width:0}
+  .nsc-link .lb{font-size:10.5px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2)}
+  .nsc-link .vl{font-size:14px;color:var(--navy);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nsc-link .vl.none{color:var(--dim2)}
+  #nsc-backdrop{display:none;position:absolute;inset:0;background:rgba(26,35,64,.28);z-index:43;animation:fade .2s ease}
+  #nsc-sheet{position:absolute;left:0;right:0;bottom:0;z-index:44;background:#fff;border-top:.5px solid var(--line);border-radius:22px 22px 0 0;box-shadow:0 -12px 34px rgba(26,35,64,.14);display:flex;flex-direction:column;max-height:76%;transform:translateY(110%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
+  #nsc-sheet.open{transform:translateY(0)}
+  .nsc-opt{display:flex;align-items:center;gap:12px;padding:13px 13px;border-radius:11px;background:var(--paper);border:.5px solid var(--line);margin-bottom:8px;cursor:pointer;transition:.15s}
+  .nsc-opt.on{background:#fffaf6;border-color:rgba(201,106,42,.32)}
+  .nsc-opt .bx{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--line2);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;background:#fff}
+  .nsc-opt.on .bx{background:var(--orange);border-color:var(--orange)}
+  .nsc-opt .nm{flex:1;font-size:14.5px;color:var(--navy);min-width:0;word-break:break-word}
+  .nsc-opt .ct{font-size:11.5px;color:var(--dim2);flex-shrink:0}
+  .nsc-new{display:flex;gap:8px;margin-top:4px}
+  .nsc-new input{flex:1;min-width:0;border:.5px solid var(--line2);border-radius:var(--r-sm);padding:13px;font-family:inherit;font-size:14px;color:var(--navy);background:#fff;outline:none}
+  .nsc-new input:focus{border-color:var(--navy)}
+  .nsc-new button{flex:0 0 auto;border:none;border-radius:var(--r-sm);background:var(--navy);color:#fff;font-family:inherit;font-size:14px;font-weight:600;padding:0 18px;cursor:pointer}
+  .nsc-msg{font-size:12.5px;color:var(--dim);line-height:1.5;padding:2px 2px 10px;min-height:16px}
+</style>
+<script>
+(function(){
+  var cols=[], links={}, cur='all', sheetSet=null, loaded=false;
+  function $(id){ return document.getElementById(id); }
+  function ico(p,sz){ return '<svg width="'+(sz||18)+'" height="'+(sz||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; }
+  var I_FOLD='<path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>';
+  var I_CHK='<path d="M20 6L9 17l-5-5"/>';
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function curKey(){ try{ return 'eyl_col_filter_'+(UID||'anon'); }catch(e){ return 'eyl_col_filter'; } }
+
+  /* Czytamy oba źródła równolegle. Fail-open: gdy katalogów nie da się wczytać,
+     funkcja po prostu nie istnieje w UI, a lista zestawów działa jak dotąd. */
+  async function load(){
+    cols=[]; links={};
+    if(!UID) return;
+    try{
+      var r=await db.from('user_collections').select('id,name,position,created_at')
+        .eq('user_id',UID).order('position',{ascending:true}).order('created_at',{ascending:true});
+      cols=((r&&r.data)||[]).map(function(c){ return {id:c.id, name:String(c.name||'Katalog')}; });
+    }catch(e){ cols=[]; }
+    if(!cols.length){ loaded=true; return; }
+    try{
+      var ids=cols.map(function(c){ return c.id; });
+      var rl=await db.from('user_collection_sets').select('collection_id,set_id').in('collection_id',ids);
+      ((rl&&rl.data)||[]).forEach(function(l){
+        var k=String(l.set_id);
+        (links[k]=links[k]||[]).push(l.collection_id);
+      });
+    }catch(e){ links={}; }
+    loaded=true;
+  }
+  function colsOf(setId){
+    var a=links[String(setId)]||[];
+    return cols.filter(function(c){ return a.indexOf(c.id)>=0; });
+  }
+
+  /* ── Filtry na ekranie „Moje zestawy" ──
+     Identyfikator zestawu odczytujemy z onclick wiersza (format z loadMine).
+     Gdyby format kiedyś się zmienił, parsowanie zwróci null → chipy się nie
+     pojawią, a lista zostanie nietknięta. Awaria jest cicha i nieszkodliwa. */
+  function rowSid(row){
+    try{
+      var h=row.getAttribute('onclick')||'';
+      var m=h.match(/openSet\(\s*'([^']*)'/);
+      return m?m[1]:null;
+    }catch(e){ return null; }
+  }
+  function rows(){
+    var box=$('mine-list'); if(!box) return [];
+    return Array.prototype.filter.call(box.children,function(r){ return r.classList&&r.classList.contains('row'); });
+  }
+  function apply(){
+    var rs=rows(), shown=0;
+    rs.forEach(function(r){
+      var sid=r.dataset.sid, show;
+      if(cur==='all') show=true;
+      else if(cur==='none') show=!(links[String(sid)]||[]).length;
+      else show=(links[String(sid)]||[]).indexOf(cur)>=0;
+      r.style.display=show?'':'none';
+      if(show) shown++;
+    });
+    var e=$('nsc-empty');
+    if(e) e.style.display=(shown||!rs.length)?'none':'block';
+    var bar=$('nsc-bar');
+    if(bar) bar.querySelectorAll('.nsc-chip').forEach(function(c){ c.classList.toggle('on', c.dataset.v===String(cur)); });
+    try{ localStorage.setItem(curKey(), String(cur)); }catch(e2){}
+  }
+  window._nscPick=function(v){ cur=(v==='all'||v==='none')?v:(isNaN(+v)?v:+v); apply(); };
+
+  function mountChips(){
+    var box=$('mine-list'); if(!box) return;
+    var old=$('nsc-bar'); if(old) old.remove();
+    var oldE=$('nsc-empty'); if(oldE) oldE.remove();
+    var rs=rows();
+    rs.forEach(function(r){ var s=rowSid(r); if(s!=null) r.dataset.sid=s; });
+    /* Bez katalogów nie wprowadzamy pojęcia „katalog" (Flow §RZ-10 — zero
+       konceptów, których użytkownik nie potrzebuje). Poniżej 2 zestawów też nie:
+       filtr 1 elementu to koszt bez korzyści. */
+    if(!cols.length || rs.length<2) return;
+    var counts={};
+    rs.forEach(function(r){ (links[String(r.dataset.sid)]||[]).forEach(function(id){ counts[id]=(counts[id]||0)+1; }); });
+    var orphan=rs.filter(function(r){ return !(links[String(r.dataset.sid)]||[]).length; }).length;
+    var bar=document.createElement('div'); bar.className='nsc-bar'; bar.id='nsc-bar';
+    var html='<button class="nsc-chip" data-v="all" onclick="_nscPick(\'all\')">Wszystkie<span class="n">'+rs.length+'</span></button>';
+    cols.forEach(function(c){
+      html+='<button class="nsc-chip" data-v="'+c.id+'" onclick="_nscPick(\''+c.id+'\')">'+esc(c.name)+'<span class="n">'+(counts[c.id]||0)+'</span></button>';
+    });
+    if(orphan) html+='<button class="nsc-chip" data-v="none" onclick="_nscPick(\'none\')">Bez katalogu<span class="n">'+orphan+'</span></button>';
+    bar.innerHTML=html;
+    box.parentNode.insertBefore(bar, box);
+    var em=document.createElement('div');
+    em.id='nsc-empty'; em.className='empty'; em.style.display='none'; em.style.padding='36px 20px';
+    em.innerHTML='<div class="h2">Pusty katalog</div><div class="sub">Ten katalog nie ma jeszcze zestawów. Przypiszesz je, otwierając zestaw i wybierając „Katalogi".</div>';
+    box.parentNode.insertBefore(em, box.nextSibling);
+    /* Pamięć wyboru (Flow §RZ-13) — powrót na ekran nie resetuje filtra. */
+    var saved=null; try{ saved=localStorage.getItem(curKey()); }catch(e){}
+    if(saved==='all'||saved==='none') cur=saved;
+    else if(saved!=null && cols.some(function(c){ return String(c.id)===saved; })) cur=isNaN(+saved)?saved:+saved;
+    else cur='all';
+    apply();
+  }
+
+  /* ── Przypisanie: wiersz w ekranie zestawu + dolny arkusz ──
+     Świadomie NIE na wierszu listy: przy 402 px czwarta kontrolka w wierszu to
+     tłok, a przynależność do katalogu jest cechą zestawu, nie listy. */
+  function ensureSheet(){
+    if($('nsc-sheet')) return;
+    var host=($('imm-browse')||{}).parentNode; if(!host) return;
+    var bd=document.createElement('div'); bd.id='nsc-backdrop'; bd.onclick=function(){ window.nscClose(); };
+    var sh=document.createElement('div'); sh.id='nsc-sheet';
+    sh.innerHTML='<div class="lbsh-grab"></div>'
+      +'<div class="lbsh-head"><div><div class="lbsh-eyebrow">Porządek</div><div class="lbsh-title">Katalogi</div></div>'
+      +'<button class="lbsh-eye" onclick="nscClose()" aria-label="Zamknij"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg><span>Gotowe</span></button></div>'
+      +'<div class="lbsh-list"><div class="nsc-msg" id="nsc-msg"></div><div id="nsc-list"></div>'
+      +'<div class="nsc-new"><input id="nsc-nn" maxlength="40" placeholder="Nazwa nowego katalogu"><button onclick="nscCreate()">Dodaj</button></div></div>';
+    host.appendChild(bd); host.appendChild(sh);
+  }
+  window.nscClose=function(){
+    var s=$('nsc-sheet'), b=$('nsc-backdrop');
+    if(s) s.classList.remove('open'); if(b) b.style.display='none';
+    /* Lista mogła się zmienić — odświeżamy chipy przy powrocie. */
+    try{ mountChips(); }catch(e){}
+    try{ paintLink(); }catch(e){}
+  };
+  window.nscOpen=async function(){
+    if(curSetKind!=='set' || curSetId==null) return;
+    ensureSheet();
+    sheetSet=curSetId;
+    var s=$('nsc-sheet'), b=$('nsc-backdrop');
+    if(b) b.style.display='block';
+    if(s) requestAnimationFrame(function(){ s.classList.add('open'); });
+    $('nsc-msg').textContent='';
+    $('nsc-list').innerHTML='<div style="padding:16px 0"><div data-eyl-spin="34"></div></div>';
+    try{ if(typeof eylInitSpinners==='function') eylInitSpinners(); }catch(e){}
+    await load();
+    paintSheet();
+  };
+  function paintSheet(){
+    var box=$('nsc-list'); if(!box) return;
+    if(!cols.length){
+      box.innerHTML='<div class="lbsh-empty">Nie masz jeszcze katalogów. Utwórz pierwszy poniżej — te same katalogi zobaczysz na stronie.</div>';
+      return;
+    }
+    var mine=(links[String(sheetSet)]||[]);
+    box.innerHTML=cols.map(function(c){
+      var on=mine.indexOf(c.id)>=0;
+      return '<div class="nsc-opt'+(on?' on':'')+'" onclick="nscToggle(\''+c.id+'\')">'
+        +'<span class="bx">'+(on?ico(I_CHK,14):'')+'</span>'
+        +'<span class="nm">'+esc(c.name)+'</span></div>';
+    }).join('');
+  }
+  /* Zapis punktowy: jedno powiązanie w jedną stronę. Nigdy pełny stan — telefon
+     nie zna zmian zrobionych właśnie na stronie i nadpisałby je. */
+  window.nscToggle=async function(cid){
+    cid=isNaN(+cid)?cid:+cid;
+    var k=String(sheetSet), have=(links[k]=links[k]||[]);
+    var i=have.indexOf(cid), on=i<0, msg=$('nsc-msg');
+    if(on) have.push(cid); else have.splice(i,1);
+    paintSheet();
+    if(msg) msg.textContent='';
+    try{
+      if(on) { var r=await db.from('user_collection_sets').insert({collection_id:cid, set_id:sheetSet}); if(r&&r.error) throw r.error; }
+      else   { var d=await db.from('user_collection_sets').delete().eq('collection_id',cid).eq('set_id',sheetSet); if(d&&d.error) throw d.error; }
+    }catch(e){
+      /* Cofamy widok do stanu bazy — nie udajemy, że się udało. */
+      if(on){ var j=have.indexOf(cid); if(j>=0) have.splice(j,1); } else have.push(cid);
+      paintSheet();
+      if(msg) msg.textContent='Nie udało się zapisać zmiany: '+((e&&e.message)||e)+'.';
+    }
+  };
+  window.nscCreate=async function(){
+    var inp=$('nsc-nn'), msg=$('nsc-msg');
+    var nm=String(inp?inp.value:'').replace(/\s+/g,' ').trim().slice(0,40);
+    if(!nm){ if(msg) msg.textContent='Podaj nazwę katalogu.'; if(inp) inp.focus(); return; }
+    if(cols.some(function(c){ return c.name.toLowerCase()===nm.toLowerCase(); })){
+      if(msg) msg.textContent='Katalog o tej nazwie już istnieje.'; return;
+    }
+    if(msg) msg.textContent='Tworzę katalog…';
+    try{
+      var r=await db.from('user_collections').insert({user_id:UID, name:nm, position:cols.length}).select('id').single();
+      if(r.error||!r.data) throw r.error||new Error('zapis');
+      cols.push({id:r.data.id, name:nm});
+      if(inp) inp.value='';
+      /* Nowy katalog od razu z tym zestawem — po to go tworzysz (RZ-2). */
+      if(msg) msg.textContent='';
+      await window.nscToggle(r.data.id);
+    }catch(e){ if(msg) msg.textContent='Nie udało się utworzyć katalogu: '+((e&&e.message)||e)+'.'; }
+  };
+
+  /* Wiersz „Katalogi" w ekranie zestawu — pokazuje przypisanie bez wchodzenia
+     nigdzie głębiej (rozpoznawanie zamiast przypominania, Flow §RZ-6). */
+  function mountLink(){
+    var anchor=document.querySelector('#s-set .action.know'); if(!anchor) return;
+    if(!$('nsc-link')){
+      var b=document.createElement('button');
+      b.className='nsc-link'; b.id='nsc-link'; b.type='button';
+      b.onclick=function(){ window.nscOpen(); };
+      b.innerHTML='<span class="ic">'+ico(I_FOLD,18)+'</span>'
+        +'<span class="bd"><span class="lb">Katalogi</span><span class="vl" id="nsc-val">—</span></span>'
+        +'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
+      anchor.parentNode.insertBefore(b, anchor);
+    }
+    paintLink();
+  }
+  function paintLink(){
+    var b=$('nsc-link'), v=$('nsc-val'); if(!b||!v) return;
+    /* Katalogi dotyczą tylko własnych zestawów — kategorie Eyelingo mają swoją
+       strukturę i nie da się ich przypisać. */
+    if(curSetKind!=='set'){ b.style.display='none'; return; }
+    b.style.display='flex';
+    var mine=colsOf(curSetId);
+    if(mine.length){ v.textContent=mine.map(function(c){ return c.name; }).join(', '); v.classList.remove('none'); }
+    else { v.textContent=cols.length?'Bez katalogu — dotknij, aby przypisać':'Dotknij, aby utworzyć pierwszy katalog'; v.classList.add('none'); }
+  }
+
+  /* ── Wrappery ── */
+  var _lm=window.loadMine;
+  if(typeof _lm==='function'){
+    window.loadMine=function(){
+      var r=_lm.apply(this,arguments);
+      var after=function(){ load().then(function(){ try{ mountChips(); }catch(e){} }); };
+      if(r&&r.then) r.then(after); else after();
+      return r;
+    };
+  }
+  var _os=window.openSet;
+  if(typeof _os==='function'){
+    window.openSet=function(){
+      var r=_os.apply(this,arguments);
+      try{ mountLink(); }catch(e){}
+      if(!loaded) load().then(function(){ try{ paintLink(); }catch(e){} });
+      return r;
+    };
+  }
+  /* Kategorie Eyelingo też trafiają na ekran zestawu — wtedy wiersz musi zniknąć. */
+  var _oc=window.eylOpenCat;
+  if(typeof _oc==='function'){
+    /* eylOpenCat jest async — curSetKind ustawia się PO awaitach, więc czekamy
+       na promisę, inaczej wiersz mrugnąłby na kategorii Eyelingo. */
+    window.eylOpenCat=function(){
+      var r=_oc.apply(this,arguments);
+      if(r&&r.then) r.then(function(){ try{ mountLink(); }catch(e){} },function(){});
+      else { try{ mountLink(); }catch(e){} }
+      return r;
+    };
+  }
 })();
 </script>
 </body>
