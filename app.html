@@ -666,6 +666,17 @@ function onAuthed(session){
   try{window._eylTok=session&&session.access_token;}catch(_e){}
   try{track('session_start',{surface:'mobile'});}catch(_e){}
   UID=session.user.id; USER_EMAIL=session.user.email||'';
+  // Parytet z web: przy confirm-email pseudonim nie trafił do profiles przy signUp (brak sesji).
+  // Uzupełniamy z metadanych przy pierwszym zalogowaniu (idempotentnie, fire-and-forget, fail-open).
+  try{
+    var _mun=(session.user.user_metadata&&session.user.user_metadata.username)||'';
+    if(_mun){
+      db.from('profiles').select('username').eq('user_id',UID).maybeSingle().then(function(r){
+        var cur=r&&r.data&&r.data.username;
+        if(!cur){ try{ db.from('profiles').upsert({user_id:UID,username:_mun},{onConflict:'user_id'}); }catch(_e){} }
+      }).catch(function(){});
+    }
+  }catch(_e){}
   document.getElementById('s-login').style.display='none';
   document.getElementById('app-main').classList.remove('hide');
   var ini=(USER_EMAIL||'U').slice(0,2).toUpperCase();
@@ -695,10 +706,20 @@ async function doAuth(){
   try{
     var res = authMode==='login'
       ? await db.auth.signInWithPassword({email,password:pass})
-      : await db.auth.signUp({email,password:pass,options:{data:{username:name||email.split('@')[0]}}});
+      : await db.auth.signUp({email,password:pass,options:{data:{username:name||email.split('@')[0]},emailRedirectTo:'https://www.eyelingo.app/'}});
     if(res.error){ showLoginErr(translateAuthErr(res.error.message)); btn.disabled=false; btn.textContent=authMode==='login'?'Zaloguj się':'Załóż konto'; return; }
+    // Confirm-email ON: Supabase zaciemnia „już zarejestrowany" (user z pustym identities, bez błędu).
+    if(authMode==='signup' && res.data && res.data.user && Array.isArray(res.data.user.identities) && res.data.user.identities.length===0){
+      toggleAuthMode(); // → tryb logowania (UI); czyści komunikat, więc błąd ustawiamy po nim
+      showLoginErr('To konto już istnieje — zaloguj się.');
+      btn.disabled=false; btn.textContent='Zaloguj się'; return;
+    }
     var session=res.data && res.data.session;
-    if(!session){ showLoginErr('Sprawdź skrzynkę — potwierdź e-mail, potem zaloguj się.'); btn.disabled=false; btn.textContent='Zaloguj się'; return; }
+    if(!session){
+      if(authMode==='signup') toggleAuthMode();
+      showLoginErr('Konto założone. Kliknij link, który wysłaliśmy na '+email+', aby je aktywować, potem zaloguj się.');
+      btn.disabled=false; btn.textContent='Zaloguj się'; return;
+    }
     try{ if(authMode==='signup') track('user_signup',{surface:'mobile'}); }catch(_e){}
     onAuthed(session);
   }catch(e){ showLoginErr('Coś poszło nie tak. Spróbuj ponownie.'); btn.disabled=false; btn.textContent='Zaloguj się'; }

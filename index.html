@@ -2781,8 +2781,55 @@ function eylWebForced(){
    (history.replaceState), więc bieżący hash NIE jest informacją o intencji
    użytkownika. Zamrażamy hash z momentu wejścia na stronę — tylko on się liczy. */
 var EYL_ENTRY_HASH = (function(){
-  try{ return (location.hash || '').replace('#',''); }catch(e){ return ''; }
+  try{
+    var h=(location.hash || '').replace('#','');
+    // Powrot z linku potwierdzajacego e-mail / reset hasla NIE jest trasa aplikacji.
+    if(/access_token|refresh_token|error_description|(^|&)error=|type=signup|type=recovery|type=magiclink|type=invite/.test(h)) return '';
+    return h;
+  }catch(e){ return ''; }
 })();
+// ── Powrot z linku potwierdzajacego e-mail (Supabase) ──
+// Klient tworzony jest z detectSessionInUrl:false (zeby nie kolidowac z routingiem hash),
+// wiec token z linku musimy skonsumowac recznie i ustanowic sesje.
+window._eylJustConfirmed=false;
+async function eylHandleAuthCallback(){
+  try{
+    if(typeof db==='undefined'||!db) return {handled:false};
+    var hash=(location.hash||'').replace(/^#/,'');
+    var qs=(location.search||'').replace(/^\?/,'');
+    var hp=new URLSearchParams(hash), sp=new URLSearchParams(qs);
+    var err=hp.get('error_description')||sp.get('error_description')||hp.get('error')||sp.get('error');
+    var atok=hp.get('access_token'), rtok=hp.get('refresh_token'), code=sp.get('code');
+    var type=hp.get('type')||sp.get('type')||'';
+    if(err){ try{ history.replaceState(null,'',location.pathname); }catch(_e){} return {handled:true,error:err}; }
+    if(atok && rtok){
+      try{ await db.auth.setSession({access_token:atok,refresh_token:rtok}); }
+      catch(_e){ return {handled:true,error:'setSession'}; }
+      try{ history.replaceState(null,'',location.pathname); }catch(_e){}
+      if(type==='signup'||type==='') window._eylJustConfirmed=true;
+      return {handled:true,type:type};
+    }
+    if(code){
+      try{ await db.auth.exchangeCodeForSession(code); }
+      catch(_e){ return {handled:true,error:'code'}; }
+      try{ history.replaceState(null,'',location.pathname); }catch(_e){}
+      window._eylJustConfirmed=true;
+      return {handled:true,type:type||'signup'};
+    }
+    return {handled:false};
+  }catch(e){ return {handled:false}; }
+}
+// Samowystarczalny toast (klasa .toast juz istnieje w CSS) — showToast bywa niezdefiniowany.
+function eylAuthToast(text, ok){
+  try{
+    var t=document.createElement('div');
+    t.className='toast '+(ok?'toast-success':'toast-error');
+    t.textContent=text;
+    document.body.appendChild(t);
+    requestAnimationFrame(function(){ t.classList.add('show'); });
+    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ try{t.remove();}catch(_e){} },350); }, 5200);
+  }catch(e){ try{ alert(text); }catch(_e){} }
+}
 function eylDeepLinked(){
   if(!EYL_ENTRY_HASH) return false;
   if(EYL_ENTRY_HASH === 'home' || EYL_ENTRY_HASH === 'auth') return false;
@@ -2823,6 +2870,7 @@ window.eylGoMobileApp = eylGoMobileApp;
   if(db && !window._authHooked){
     window._authHooked = true;
     try{
+      window._eylBoot=function(){
       db.auth.getSession().then(function(r){
         try{ window._uid = (r&&r.data&&r.data.session) ? r.data.session.user.id : null; }catch(e){}
         killLegacyLeakKeys();
@@ -2848,6 +2896,19 @@ window.eylGoMobileApp = eylGoMobileApp;
           }
         }catch(_e){}
       });
+      };
+      // Najpierw obsluz ewentualny powrot z linku potwierdzenia e-maila,
+      // dopiero potem zwykle wznowienie sesji (getSession wyscignelby setSession).
+      Promise.resolve((typeof eylHandleAuthCallback==='function')?eylHandleAuthCallback():{handled:false})
+        .then(function(_cb){ window._eylAuthCb=_cb||{}; }, function(){ window._eylAuthCb={}; })
+        .then(function(){
+          try{ window._eylBoot(); }catch(_e){}
+          try{
+            var _c=window._eylAuthCb||{};
+            if(_c.error){ setTimeout(function(){ if(typeof eylAuthToast==='function') eylAuthToast('Link wygasł lub został już użyty. Zaloguj się lub poproś o nowy.', false); }, 300); }
+            else if(window._eylJustConfirmed){ setTimeout(function(){ if(typeof eylAuthToast==='function') eylAuthToast('E-mail potwierdzony \u2713 Witaj w Eyelingo!', true); }, 600); }
+          }catch(_e){}
+        });
       db.auth.onAuthStateChange(function(event, session){ try{window._eylTok=session&&session.access_token;}catch(_e){}
         var _prev = window._uid;
         var _new = session ? session.user.id : null;
@@ -2954,11 +3015,18 @@ async function submitAuth(){
   try{
     let res=authMode==='login'
       ?await db.auth.signInWithPassword({email,password:pass})
-      :await db.auth.signUp({email,password:pass,options:{data:{username}}});
+      :await db.auth.signUp({email,password:pass,options:{data:{username},emailRedirectTo:'https://www.eyelingo.app/'}});
     if(res.error)throw res.error;
     if(authMode==='register'){
+      // Confirm-email ON: Supabase zaciemnia „już zarejestrowany" (user z pustym identities, bez błędu).
+      if(res.data&&res.data.user&&Array.isArray(res.data.user.identities)&&res.data.user.identities.length===0){
+        authMode='login'; if(typeof updateAuthUI==='function') updateAuthUI();
+        showMsg('auth-msg','Ten e-mail jest już zarejestrowany. Zaloguj się.','error');
+        btn.disabled=false; return;
+      }
       if(!res.data.session){
-        showMsg('auth-msg','Sprawdź e-mail i potwierdź konto.','success');
+        authMode='login'; if(typeof updateAuthUI==='function') updateAuthUI();
+        showMsg('auth-msg','Konto założone. Kliknij link, który wysłaliśmy na '+email+', aby aktywować konto.','success');
       } else {
         // Zapisz pseudonim - upsert żeby nie było błędu jeśli trigger już stworzył wiersz
         if(username&&res.data.user){
@@ -3002,6 +3070,15 @@ async function loadDashboard(){
   // ── Pseudonim + status premium (profiles) ──
   const{data:p}=await db.from('profiles').select('is_premium,premium_until,username').eq('user_id',user.id).maybeSingle();
   if(p?.username){ document.getElementById('dash-name').textContent=p.username; if(typeof updateNav==='function') updateNav(true,p.username); }
+  // Fallback (confirm-email): przy signUp bez sesji upsert username się nie wykonał.
+  // Uzupełniamy pseudonim z metadanych przy pierwszym zalogowaniu (idempotentnie, fail-open).
+  try{
+    var _mun=(user.user_metadata&&user.user_metadata.username)||'';
+    if(_mun && (!p || !p.username)){
+      await db.from('profiles').upsert({user_id:user.id,username:_mun},{onConflict:'user_id'});
+      document.getElementById('dash-name').textContent=_mun; if(typeof updateNav==='function') updateNav(true,_mun);
+    }
+  }catch(_e){}
   const now=new Date();
   const until=p?.premium_until?new Date(p.premium_until):null;
   const isPremium=!!(p?.is_premium&&(!until||until>now));
