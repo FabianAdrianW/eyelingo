@@ -712,6 +712,74 @@ function toggleAuthMode(){
   showLoginErr('');
 }
 function showLoginErr(m){ document.getElementById('li-err').textContent=m||''; }
+
+/* ── Diagnostyka błędów auth (naprawa „Błąd: {}") ─────────────────────────────
+   supabase-js buduje komunikat jako err.msg || err.message || err.error_description
+   || err.error || JSON.stringify(err). Gdy serwer odda błąd bez żadnego z tych pól
+   (albo fetch zostanie odrzucony obiektem bez .message — typowe dla przeglądarek
+   wbudowanych w Messenger/Instagram), message === "{}". Ten mapper:
+   (1) nigdy nie pokazuje surowego obiektu, (2) loguje pełny zrzut do konsoli,
+   (3) wysyła zdarzenie 'auth_error' do analityki — żeby dało się zdiagnozować
+   awarię, której nie widzimy na własnym telefonie. */
+function eylIsInAppBrowser(){
+  try{
+    var u = navigator.userAgent || '';
+    return /FBAN|FBAV|FB_IAB|FBIOS|Messenger|Instagram|MicroMessenger|Line\/|TikTok|BytedanceWebview|Snapchat|Twitter|LinkedInApp|Pinterest/i.test(u);
+  }catch(e){ return false; }
+}
+window.eylIsInAppBrowser = eylIsInAppBrowser;
+
+function eylAuthErrText(e, mode){
+  var raw = (e && (e.message || e.msg || e.error_description || e.error)) || '';
+  if(typeof raw !== 'string') raw = '';
+  var code  = (e && (e.code || e.error_code)) || '';
+  var st    = (e && (e.status || e.statusCode)) || 0;
+  var nm    = (e && e.name) || '';
+  var low   = raw.toLowerCase();
+  var empty = (!raw || raw === '{}' || raw === '[object Object]' || raw === 'null');
+  var inapp = eylIsInAppBrowser();
+
+  try{ console.error('[auth] '+(mode||'')+' →', {status:st, code:String(code), name:nm, message:raw, inapp:inapp, err:e}); }catch(_e){}
+  try{
+    track('auth_error', {mode:String(mode||''), status:st, code:String(code), name:nm,
+                         message:raw.slice(0,180), inapp:inapp});
+    eylFlush();
+  }catch(_e){}
+
+  if(code==='over_email_send_rate_limit' || code==='over_request_rate_limit' || st===429)
+    return 'Za dużo prób w krótkim czasie. Odczekaj minutę i spróbuj ponownie.';
+  if(code==='invalid_credentials' || low.indexOf('invalid login')>=0)
+    return 'Nieprawidłowy e-mail lub hasło.';
+  if(code==='user_already_exists' || code==='email_exists' || low.indexOf('already registered')>=0 || low.indexOf('already exists')>=0)
+    return 'Ten e-mail jest już zarejestrowany. Zaloguj się.';
+  if(code==='email_not_confirmed')
+    return 'Konto istnieje, ale nie jest potwierdzone. Kliknij link z e-maila, który Ci wysłaliśmy.';
+  if(code==='email_address_invalid' || low.indexOf('invalid email')>=0 || low.indexOf('unable to validate email')>=0)
+    return 'Ten adres e-mail wygląda na nieprawidłowy — sprawdź pisownię.';
+  if(code==='weak_password' || low.indexOf('password should be')>=0 || low.indexOf('password is too')>=0)
+    return 'Hasło jest za słabe. Użyj co najmniej 8 znaków.';
+  if(code==='signup_disabled' || low.indexOf('signups not allowed')>=0)
+    return 'Rejestracja jest chwilowo wyłączona. Napisz do nas: eyelingo.app@gmail.com';
+  if(low.indexOf('error sending')>=0 || low.indexOf('confirmation email')>=0)
+    return 'Konto powstało, ale nie udało się wysłać e-maila potwierdzającego. Napisz do nas: eyelingo.app@gmail.com — aktywujemy je ręcznie.';
+  if(String(code)==='23505' || low.indexOf('duplicate key')>=0 || low.indexOf('unique constraint')>=0)
+    return 'To imię jest już używane w bazie. Wpisz trochę inne (np. z pierwszą literą nazwiska) i spróbuj ponownie.';
+  if(low.indexOf('database error')>=0)
+    return 'Konta nie udało się zapisać po naszej stronie. To nasz błąd, nie Twój — napisz: eyelingo.app@gmail.com';
+  if(nm==='AuthRetryableFetchError' || low.indexOf('failed to fetch')>=0 || low.indexOf('load failed')>=0 || low.indexOf('networkerror')>=0 || low.indexOf('network request failed')>=0)
+    return inapp
+      ? 'Nie udało się połączyć z serwerem. Przeglądarka wbudowana w Messenger/Instagram często blokuje logowanie — otwórz www.eyelingo.app w Chrome lub Safari.'
+      : 'Brak połączenia z serwerem. Sprawdź internet i spróbuj ponownie.';
+  if(empty)
+    return inapp
+      ? 'Nie udało się dokończyć rejestracji w przeglądarce wbudowanej w Messenger/Instagram. Otwórz www.eyelingo.app w Chrome lub Safari i spróbuj ponownie.'
+      : 'Nie udało się dokończyć operacji' + (st ? ' (kod '+st+')' : '') + '. Spróbuj ponownie za chwilę, a jeśli błąd wróci — napisz: eyelingo.app@gmail.com';
+  if(st>=500)
+    return 'Serwer chwilowo nie odpowiada (kod '+st+'). Spróbuj ponownie za chwilę.';
+  return 'Nie udało się: ' + raw;
+}
+window.eylAuthErrText = eylAuthErrText;
+
 async function doAuth(){
   var email=(document.getElementById('li-email').value||'').trim();
   var pass=document.getElementById('li-pass').value||'';
@@ -723,7 +791,7 @@ async function doAuth(){
     var res = authMode==='login'
       ? await db.auth.signInWithPassword({email,password:pass})
       : await db.auth.signUp({email,password:pass,options:{data:{username:name||email.split('@')[0]},emailRedirectTo:'https://www.eyelingo.app/'}});
-    if(res.error){ showLoginErr(translateAuthErr(res.error.message)); btn.disabled=false; btn.textContent=authMode==='login'?'Zaloguj się':'Załóż konto'; return; }
+    if(res.error){ showLoginErr(eylAuthErrText(res.error,authMode)); btn.disabled=false; btn.textContent=authMode==='login'?'Zaloguj się':'Załóż konto'; return; }
     // Confirm-email ON: Supabase zaciemnia „już zarejestrowany" (user z pustym identities, bez błędu).
     if(authMode==='signup' && res.data && res.data.user && Array.isArray(res.data.user.identities) && res.data.user.identities.length===0){
       toggleAuthMode(); // → tryb logowania (UI); czyści komunikat, więc błąd ustawiamy po nim
@@ -738,13 +806,14 @@ async function doAuth(){
     }
     try{ if(authMode==='signup') track('user_signup',{surface:'mobile'}); }catch(_e){}
     onAuthed(session);
-  }catch(e){ showLoginErr('Coś poszło nie tak. Spróbuj ponownie.'); btn.disabled=false; btn.textContent='Zaloguj się'; }
+  }catch(e){ showLoginErr(eylAuthErrText(e,authMode)); btn.disabled=false; btn.textContent='Zaloguj się'; }
 }
 function translateAuthErr(m){
   m=(m||'').toLowerCase();
   if(m.indexOf('invalid login')>=0) return 'Błędny e-mail lub hasło.';
   if(m.indexOf('already registered')>=0) return 'To konto już istnieje — zaloguj się.';
   if(m.indexOf('password')>=0) return 'Hasło musi mieć min. 6 znaków.';
+  if(!m || m==='{}' || m==='[object object]') return 'Nie udało się dokończyć operacji. Spróbuj ponownie za chwilę.';
   return 'Nie udało się: '+m;
 }
 async function askLogout(){
