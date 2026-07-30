@@ -21019,3 +21019,265 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   }
 })();
 </script>
+
+<!-- ═══ EYELINGO — Świadomość PRO + parytet bramek freemium (v1) ═══
+     CO ROBI:
+       1. Trwała, cicha potwierdzenie statusu PRO: plakietka w pasku nawigacji
+          (widoczna na każdym ekranie) + karta „PRO aktywne" w panelu, która mówi
+          KONKRETNIE co jest odblokowane i do kiedy.
+       2. Parytet z apką mobilną: oczekiwania PRZED kliknięciem, nie ściana po nim.
+          — plakietka PRO na „Stwórz z AI" dla konta darmowego,
+          — licznik „własne zestawy: N z 5" przy akcjach tworzenia.
+       3. Naprawa: activateCode() pisał do #dash-status, którego nie ma w DOM —
+          po UDANEJ aktywacji kodu użytkownik widział komunikat błędu.
+
+     DLACZEGO TAK (Design Bible §upsell + anti-gamifikacja):
+       — Bursztyn (--premium) na jasnych powierzchniach, złoto (--gold) na navy
+         pasku — to już istniejąca konwencja (.badge-pro, .iso-badge). Pomarańcz
+         zostaje WYŁĄCZNIE kolorem akcji, więc status nigdy nie udaje przycisku.
+       — Plakietki PRO widzi tylko konto darmowe (są ustawiaczem oczekiwań).
+         Konto PRO widzi jedną plakietkę statusu i zero zamków — mniej szumu.
+       — Żadnych liczników serii ani nagród; licznik zestawów to ujawnienie
+         limitu planu, nie progres do zdobycia.
+
+     REVERT = usuń cały ten blok (od komentarza do </script>). Nic poza nim nie
+     jest ruszane. Nadpisuje: window.activateCode, window.updateNav (wrapper),
+     window.showPage (wrapper).
+-->
+<script>
+(function(){
+  'use strict';
+  var FREE_SETS = 5;   /* kanon wspólny z app.html (FREE_SETS) */
+
+  /* ── Styl ── */
+  var css = ''
+    + '.eyl-pro-pill{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:600;'
+    +   'letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:100px;'
+    +   'background:rgba(245,200,66,.13);border:1px solid rgba(245,200,66,.28);color:var(--gold);'
+    +   'flex-shrink:0;cursor:default;line-height:1}'
+    + '.eyl-pro-tag{display:inline-flex;align-items:center;font-size:9px;font-weight:600;letter-spacing:.8px;'
+    +   'padding:2px 6px;border-radius:100px;background:var(--premium-bg);color:var(--premium);'
+    +   'margin-left:7px;line-height:1.3;flex-shrink:0}'
+    + '.eyl-pro-card .dcard-t{display:flex;align-items:center;gap:9px}'
+    + '.eyl-pro-mark{width:26px;height:26px;border-radius:8px;background:var(--premium-bg);color:var(--premium);'
+    +   'display:flex;align-items:center;justify-content:center;flex-shrink:0}'
+    + '.eyl-pro-list{list-style:none;padding:0;margin:12px 0 0;font-size:13px;color:var(--dim2);line-height:1.5}'
+    + '.eyl-pro-list li{display:flex;gap:9px;align-items:flex-start;margin-bottom:7px}'
+    + '.eyl-pro-list li:before{content:"";width:5px;height:5px;border-radius:50%;background:var(--premium);'
+    +   'flex-shrink:0;margin-top:7px}'
+    + '.eyl-pro-foot{margin-top:14px;padding-top:13px;border-top:.5px solid var(--border);'
+    +   'font-size:12.5px;color:var(--dim2)}'
+    + '.eyl-free-meter{flex-basis:100%;text-align:right;font-size:12px;color:var(--dim2);'
+    +   'margin-top:8px;line-height:1.5}';
+  try{
+    var st=document.createElement('style'); st.id='eyl-pro-css'; st.textContent=css;
+    document.head.appendChild(st);
+  }catch(e){}
+
+  function el(id){ return document.getElementById(id); }
+  var STAR = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    + 'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"></path></svg>';
+
+  /* ── Stan PRO: jedno źródło, cache w pamięci ─────────────────────────────
+     Świadomie asymetryczne: BRAMKI zostają fail-closed (eylIsPremium, audyt
+     AUTH-1). Tu chodzi tylko o WYŚWIETLANIE — a przy nieznanym statusie nie
+     pokazujemy niczego. Nigdy nie krzyczymy „darmowy" do kogoś, kto zapłacił,
+     tylko dlatego, że sieć mrugnęła. */
+  var _state = null;    /* {pro:bool, until:Date|null} | null = nieznany */
+  var _inflight = null;
+
+  function eylProState(force){
+    if(_state && !force) return Promise.resolve(_state);
+    if(_inflight && !force) return _inflight;
+    _inflight = (async function(){
+      try{
+        var sess=(await db.auth.getSession()).data.session;
+        if(!sess){ _state={pro:false,until:null}; return _state; }
+        var r=await db.from('profiles').select('is_premium,premium_until').eq('user_id',sess.user.id).maybeSingle();
+        if(r.error||!r.data){ return null; }          /* nieznany — nie cache'ujemy */
+        var until=r.data.premium_until?new Date(r.data.premium_until):null;
+        var pro=!!(r.data.is_premium && (!until || until>new Date()));
+        window._eylPro=pro;
+        _state={pro:pro,until:until};
+        return _state;
+      }catch(e){ return null; }
+      finally{ _inflight=null; }
+    })();
+    return _inflight;
+  }
+  window.eylProState=eylProState;
+
+  function fmtDate(d){
+    try{ return d.toLocaleDateString('pl-PL',{day:'numeric',month:'long',year:'numeric'}); }
+    catch(e){ return d.toISOString().slice(0,10); }
+  }
+
+  /* ── 1. Plakietka w pasku nawigacji ─────────────────────────────────────
+     Świadomość „to działa" musi być trwała, nie jednorazowa — dlatego pasek,
+     a nie toast. Wstawiana PRZED avatarem: status należy do tożsamości konta. */
+  function paintNavPill(s){
+    var host=el('nav-r'); if(!host) return;
+    var old=el('eyl-nav-pro'); if(old) old.remove();
+    if(!s || !s.pro) return;
+    var av=host.querySelector('.nav-avatar');
+    var pill=document.createElement('span');
+    pill.id='eyl-nav-pro'; pill.className='eyl-pro-pill';
+    pill.title='Masz aktywne PRO — wszystkie funkcje odblokowane';
+    pill.innerHTML=STAR+'<span>PRO</span>';
+    if(av && av.parentNode===host) host.insertBefore(pill,av); else host.insertBefore(pill,host.firstChild);
+  }
+
+  /* ── 2. Karta statusu w panelu ──────────────────────────────────────────
+     Zajmuje slot po karcie „Aktywuj Premium". Odpowiada na pytanie, które
+     płacący użytkownik zadaje sobie realnie: „co ja właściwie mam i do kiedy". */
+  function paintDashCard(s){
+    var pc=el('premium-card');
+    var card=el('eyl-pro-card');
+    if(!s){ return; }                                   /* status nieznany — nie ruszamy */
+    if(!s.pro){
+      if(card) card.remove();
+      if(pc) pc.style.display='';
+      return;
+    }
+    if(pc) pc.style.display='none';
+    if(!card){
+      if(!pc || !pc.parentNode) return;
+      card=document.createElement('div');
+      card.className='dcard eyl-pro-card'; card.id='eyl-pro-card';
+      card.innerHTML=''
+        + '<div class="dcard-t"><span class="eyl-pro-mark">'+STAR+'</span><span>PRO aktywne</span></div>'
+        + '<p style="font-size:13px;color:var(--dim2);line-height:1.6;margin:0">Wszystkie funkcje są '
+        +   'odblokowane na tym koncie — na stronie, w aplikacji na telefon i na komputerze.</p>'
+        + '<ul class="eyl-pro-list">'
+        +   '<li>Lekcje z Ailexem bez limitu</li>'
+        +   '<li>Rozmowa bez dziennego limitu wiadomości</li>'
+        +   '<li>Tworzenie zestawów z AI — z tematu, ze zdjęcia, z listy</li>'
+        +   '<li>Własne zestawy bez limitu</li>'
+        + '</ul>'
+        + '<div class="eyl-pro-foot" id="eyl-pro-until"></div>';
+      pc.parentNode.insertBefore(card,pc);
+    }
+    var f=el('eyl-pro-until');
+    if(f) f.textContent = s.until ? ('Dostęp aktywny do '+fmtDate(s.until)+'.') : 'Dostęp bezterminowy.';
+  }
+
+  /* ── 3. Parytet bramek: oczekiwania przed kliknięciem ───────────────────
+     Apka mobilna robi to od v2 (komentarz przy renderPick: „plakietki PRO
+     ustawiają oczekiwania PRZED dotknięciem, zamiast ściany po tapnięciu").
+     Strona dotąd nie robiła nic — użytkownik darmowy odkrywał bramkę modalem. */
+  function paintAiTag(s){
+    var b=el('mat-create-ai-btn'); if(!b) return;
+    var tag=b.querySelector('.eyl-pro-tag');
+    if(s && !s.pro){
+      if(!tag){
+        tag=document.createElement('span'); tag.className='eyl-pro-tag'; tag.textContent='PRO';
+        b.appendChild(tag);
+      }
+      b.title='Tworzenie zestawów z AI jest częścią PRO';
+    } else if(tag){ tag.remove(); b.removeAttribute('title'); }
+  }
+
+  /* Licznik limitu darmowego. Ujawnienie warunków planu, nie pasek postępu —
+     bez grafiki, bez procentów, bez nagrody na końcu (Design Bible §6.6). */
+  function meterEl(){
+    var m=el('eyl-free-meter');
+    if(m) return m;
+    var btn=el('mat-create-btn'); if(!btn || !btn.parentNode) return null;
+    var row=btn.parentNode;
+    try{ row.style.flexWrap='wrap'; }catch(e){}
+    m=document.createElement('div'); m.id='eyl-free-meter'; m.className='eyl-free-meter';
+    m.style.display='none';
+    row.appendChild(m);
+    /* Licznik żyje tylko wtedy, gdy żyją akcje tworzenia (segment „Moje zestawy”).
+       Obserwator zamiast pollingu — zero kosztu w spoczynku. */
+    try{
+      new MutationObserver(syncMeterVis).observe(btn,{attributes:true,attributeFilter:['style']});
+    }catch(e){}
+    return m;
+  }
+  function syncMeterVis(){
+    var m=el('eyl-free-meter'), btn=el('mat-create-btn');
+    if(!m||!btn) return;
+    var on = btn.style.display!=='none' && (!_state || !_state.pro) && !!m.textContent;
+    m.style.display = on ? '' : 'none';
+  }
+  async function paintMeter(s){
+    var m=meterEl(); if(!m) return;
+    if(!s || s.pro){ m.textContent=''; m.style.display='none'; return; }
+    var n=0;
+    try{ n = (typeof eylSetCount==='function') ? (await eylSetCount()) : 0; }catch(e){ n=0; }
+    m.textContent = (n>=FREE_SETS)
+      ? ('Wersja darmowa · limit '+FREE_SETS+' własnych zestawów wykorzystany')
+      : ('Wersja darmowa · własne zestawy: '+n+' z '+FREE_SETS);
+    syncMeterVis();
+  }
+
+  /* ── Dyrygent ── */
+  var _busy=false;
+  async function refresh(force){
+    if(_busy) return; _busy=true;
+    try{
+      var s=await eylProState(force);
+      paintNavPill(s); paintDashCard(s); paintAiTag(s); await paintMeter(s);
+    }catch(e){}
+    finally{ _busy=false; }
+  }
+  window.eylProRefresh=refresh;
+
+  /* updateNav przebudowuje #nav-r od zera → plakietkę trzeba dosadzić po każdym renderze. */
+  var _un=window.updateNav;
+  if(typeof _un==='function'){
+    window.updateNav=function(li){
+      var r=_un.apply(this,arguments);
+      try{ if(li) paintNavPill(_state); else { _state=null; window._eylPro=false; } }catch(e){}
+      return r;
+    };
+  }
+
+  /* Wejście na panel / bibliotekę = moment, w którym status i licznik muszą być świeże. */
+  var _sp=window.showPage;
+  if(typeof _sp==='function'){
+    window.showPage=function(name){
+      var r=_sp.apply(this,arguments);
+      if(name==='dash'||name==='community'||name==='strefa'){ setTimeout(function(){ refresh(false); },60); }
+      return r;
+    };
+  }
+
+  /* ── Naprawa activateCode ───────────────────────────────────────────────
+     Było: zapis do #dash-status (element nie istnieje) → wyjątek w bloku try →
+     po UDANEJ aktywacji użytkownik widział „Błąd: Cannot set properties of null".
+     Jest: komunikat sukcesu + natychmiastowe odświeżenie statusu PRO w całym UI. */
+  window.activateCode=async function activateCode(){
+    var inp=el('code-input'); if(!inp) return;
+    var code=(inp.value||'').trim().toUpperCase();
+    if(!code){ if(typeof showMsg==='function') showMsg('code-msg','Wpisz kod.','error'); return; }
+    var btn=el('code-btn'), lbl=el('code-btn-text');
+    if(btn) btn.disabled=true; if(lbl) lbl.textContent='...';
+    try{
+      var res=await db.rpc('activate_premium_code',{p_code:code});
+      if(res.error) throw res.error;
+      var data=res.data||{};
+      if(data.success){
+        if(typeof showMsg==='function') showMsg('code-msg',data.message||'Kod aktywowany. PRO jest włączone.','success');
+        try{ if(typeof track==='function') track('pro_activated',{surface:'web',source:'code'}); }catch(_e){}
+        await refresh(true);                 /* plakietka + karta + zdjęte plakietki bramek */
+      } else {
+        if(typeof showMsg==='function') showMsg('code-msg',data.message||'Kod nie został rozpoznany.','error');
+      }
+    }catch(e){
+      if(typeof showMsg==='function') showMsg('code-msg','Nie udało się aktywować kodu: '+((e&&e.message)||e),'error');
+    }
+    if(btn) btn.disabled=false; if(lbl) lbl.textContent='Aktywuj';
+  };
+
+  /* ── Start ── */
+  function boot(){ setTimeout(function(){ refresh(false); },700); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+  try{ db.auth.onAuthStateChange(function(ev){
+    if(ev==='SIGNED_OUT'){ _state=null; window._eylPro=false; var c=el('eyl-pro-card'); if(c) c.remove(); }
+    else setTimeout(function(){ refresh(true); },300);
+  }); }catch(e){}
+})();
+</script>

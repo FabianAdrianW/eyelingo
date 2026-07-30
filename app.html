@@ -21,6 +21,9 @@
 <style>
   :root{--navy:#1a2340;--navy2:#0f1729;--orange:#c96a2a;--orange2:#e07830;--paper:#f8f7f4;--paper2:#f0eee9;--white:#fff;
     --dim:#5b6478;--dim2:#8b93a6;--line:#e7e3da;--line2:#d9d4c8;--success:#0F6E56;--error:#A32D2D;--r:14px;--r-sm:10px;
+    /* Bursztyn = semantyka PRO (parytet z index.html: --premium/--premium-bg).
+       Pomarańcz zostaje wyłącznie kolorem akcji, więc status nie udaje przycisku. */
+    --premium:#B47B0E;--premium-bg:#FFF4E0;
     --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);font-family:'Inter',sans-serif;}
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#2a2e3a;overflow:hidden;font-family:'Inter',sans-serif}
@@ -34,6 +37,15 @@
   .brand{display:flex;align-items:center;gap:9px}.brand .mark{width:30px;height:30px}
   .brand .wm{font-family:'DM Sans';font-weight:600;font-size:18px;letter-spacing:.5px;color:var(--navy)}
   .avatar{width:34px;height:34px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;cursor:pointer}
+  .tb-right{display:flex;align-items:center;gap:9px;flex-shrink:0}
+  /* Świadomość PRO: trwała, cicha, informacyjna. Bez cienia i bez pomarańczu —
+     nie ma wyglądać na przycisk ani konkurować z jedynym akcentem akcji. */
+  .pro-pill{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;letter-spacing:.9px;
+    padding:4px 9px;border-radius:100px;background:var(--premium-bg);color:var(--premium);line-height:1;flex-shrink:0}
+  .plan-row{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:12px;background:var(--paper);
+    border:1px solid var(--line);margin-bottom:4px}
+  .plan-row .pt{font-size:14px;font-weight:600;color:var(--navy);font-family:'DM Sans',sans-serif}
+  .plan-row .pd{font-size:12px;color:var(--dim2);margin-top:2px;line-height:1.45}
   .screens{flex:1;min-height:0;position:relative}
   .appmain{flex:1;min-height:0;display:flex;flex-direction:column}
   .screen{position:absolute;inset:0;display:none;flex-direction:column;min-height:0;animation:fade .22s ease}
@@ -424,7 +436,10 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       <div class="brand">
         <img class="mark" src="eyelingo-mark.png" alt="" style="width:30px;height:30px;display:block"><span class="wm">Eyelingo</span>
       </div>
-      <div class="avatar" id="avatar" onclick="askLogout()">FA</div>
+      <div class="tb-right">
+        <span class="pro-pill" id="pro-pill" style="display:none">PRO</span>
+        <div class="avatar" id="avatar" onclick="askLogout()">FA</div>
+      </div>
     </div>
 
     <div style="flex:1;min-height:0;position:relative">
@@ -682,6 +697,7 @@ function onAuthed(session){
   var ini=(USER_EMAIL||'U').slice(0,2).toUpperCase();
   document.getElementById('avatar').textContent=ini;
   loadProg().then(homeRefresh); go('ucz'); loadMine(); refreshDueBadge();
+  try{ eylProCheck(); }catch(_e){}   /* plakietka PRO w topbarze + cache statusu */
 }
 
 /* ===== Auth ===== */
@@ -739,6 +755,24 @@ async function askLogout(){
   var sheet=document.createElement('div');
   sheet.style.cssText='background:#fff;width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;flex-direction:column;gap:10px;font-family:Inter,sans-serif';
   sheet.innerHTML='<div style="font-family:DM Sans,sans-serif;font-weight:600;font-size:15px;color:#1a2340;text-align:center;padding:6px 0 4px">Konto</div>';
+  /* Status planu na górze arkusza: to jedyne miejsce w apce, gdzie użytkownik
+     świadomie szuka informacji „co ja właściwie mam". Konkret zamiast plakietki:
+     co jest włączone / co odblokowuje PRO — i skąd (konto jest wspólne z www). */
+  (function(){
+    if(!window._eylProKnown) return;                 /* nieznany status → nie zgadujemy */
+    var row=document.createElement('div');
+    row.className='plan-row';
+    var pro=!!window._eylPro;
+    var ic=pro
+      ? '<span class="pro-pill" style="margin-right:2px">PRO</span>'
+      : '<span style="width:28px;height:28px;border-radius:9px;background:#f0eee9;color:#8b93a6;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>';
+    row.innerHTML=ic+'<div style="flex:1;min-width:0"><div class="pt">'+(pro?'PRO aktywne':'Plan darmowy')+'</div>'
+      +'<div class="pd">'+(pro
+        ? escapeHtml(eylProUntilText())+' · lekcje z Ailexem i rozmowa bez limitu, zestawy z AI, własne zestawy bez limitu'
+        : 'Fiszki, powtórki i 5 własnych zestawów bez opłat. PRO zdejmuje limity i dodaje tworzenie zestawów z AI — włączysz je na eyelingo.app')
+      +'</div></div>';
+    sheet.appendChild(row);
+  })();
   var bLogout=document.createElement('button');
   bLogout.textContent='Wyloguj się';
   bLogout.style.cssText='padding:13px;border-radius:12px;border:1.5px solid rgba(26,35,64,.18);background:#fff;color:#1a2340;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer';
@@ -2984,9 +3018,40 @@ async function eylProCheck(){
     var r=await db.from('profiles').select('is_premium,premium_until').eq('user_id',UID).maybeSingle();
     if(r.error||!r.data) return (window._eylPro=false);
     var u=r.data.premium_until?new Date(r.data.premium_until):null;
-    return (window._eylPro=!!(r.data.is_premium&&(!u||u>new Date())));
+    window._eylProUntil=u;
+    window._eylProKnown=true;
+    var _p=!!(r.data.is_premium&&(!u||u>new Date()));
+    window._eylPro=_p;
+    try{ eylProPaintPill(); }catch(e){}
+    return _p;
   }catch(e){ return (window._eylPro=false); }
 }
+
+/* ── Świadomość PRO w apce ────────────────────────────────────────────────
+   Plakietka w topbarze = trwałe potwierdzenie, że kupiona rzecz jest włączona.
+   Świadomie asymetrycznie: przy NIEZNANYM statusie nie pokazujemy niczego.
+   Nigdy nie mówimy „darmowy" komuś, kto zapłacił, tylko dlatego, że sieć mrugnęła.
+   Konto darmowe też nie dostaje plakietki „FREE" — plan darmowy to stan
+   domyślny, a nie etykieta do noszenia (Design Bible §6.6). */
+function eylProPaintPill(){
+  var el=document.getElementById('pro-pill'); if(!el) return;
+  el.style.display = (window._eylProKnown && window._eylPro) ? '' : 'none';
+}
+function eylProUntilText(){
+  var u=window._eylProUntil;
+  if(!u) return 'Dostęp bezterminowy';
+  try{ return 'Aktywne do '+u.toLocaleDateString('pl-PL',{day:'numeric',month:'long',year:'numeric'}); }
+  catch(e){ return 'Aktywne do '+u.toISOString().slice(0,10); }
+}
+/* Konto jest wspólne z www: PRO włączone na stronie musi być widoczne tutaj bez
+   ponownego logowania. Odświeżamy przy powrocie do apki, nie częściej niż raz
+   na minutę — dopisek do obietnicy „funkcja pojawi się tutaj od razu". */
+var _eylProLastCheck=0;
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState!=='visible'||!UID) return;
+  var t=Date.now(); if(t-_eylProLastCheck<60000) return;
+  _eylProLastCheck=t; try{ eylProCheck(); }catch(e){}
+});
 async function alexLoadUsage(){
   try{ await eylProCheck(); }catch(e){}
   var today=new Date().toISOString().slice(0,10);
@@ -3636,7 +3701,7 @@ async function alexSend(){
   .ns-pick .bd{flex:1;min-width:0}
   .ns-pick .t{font-size:15px;font-weight:600;color:var(--navy);display:flex;align-items:center;gap:7px}
   .ns-pick .d{font-size:12.5px;color:var(--dim2);line-height:1.45;margin-top:3px}
-  .ns-pro{font-size:9.5px;font-weight:700;letter-spacing:.8px;color:var(--orange);border:1px solid rgba(201,106,42,.35);border-radius:100px;padding:2px 7px;flex-shrink:0}
+  .ns-pro{font-size:9.5px;font-weight:700;letter-spacing:.8px;color:var(--premium);background:var(--premium-bg);border-radius:100px;padding:2px 7px;flex-shrink:0}
   .ns-ta{width:100%;box-sizing:border-box;border:.5px solid var(--line2);border-radius:var(--r-sm);padding:13px;font-family:inherit;font-size:13.5px;color:var(--navy);background:#fff;outline:none;resize:vertical;margin-bottom:10px}
 </style>
 <script>
@@ -4177,11 +4242,32 @@ async function alexSend(){
       e.onclick=function(){ window.eylNewSetOpen(); };
       e.innerHTML='<div class="ic" style="background:#fff3e9;color:var(--orange)">'+ico('<path d="M12 5v14M5 12h14"/>',20)+'</div>'
         +'<div class="body"><div class="t">Nowy zestaw</div>'
-        +'<div class="m">Ręcznie, z tematu albo ze zdjęcia</div></div>'
+        +'<div class="m" id="ns-entry-m">Ręcznie, z tematu albo ze zdjęcia</div></div>'
         +'<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
       var list=$('mine-list');
       if(list&&list.parentNode) list.parentNode.insertBefore(e,list); else scroll.appendChild(e);
     }
+    entryHint();
+    _nsEmptyCopy();
+  }
+
+  /* Parytet ze stroną (index.html, #eyl-free-meter): warunki planu ujawniamy
+     PRZED wejściem w kreator, nie po. To ujawnienie limitu, nie pasek postępu —
+     bez procentów, bez grafiki, bez nagrody na końcu (Design Bible §6.6).
+     Konto PRO nie widzi tu nic: nie ma limitu, więc nie ma o czym mówić. */
+  async function entryHint(){
+    var m=$('ns-entry-m'); if(!m) return;
+    try{
+      var pro = (typeof window._eylPro==='boolean' && window._eylProKnown) ? window._eylPro : await eylProCheck();
+      if(pro){ m.textContent='Ręcznie, z tematu albo ze zdjęcia'; return; }
+      var r=await db.from('user_sets').select('id',{count:'exact',head:true}).eq('user_id',UID);
+      var n=(r&&typeof r.count==='number')?r.count:0;
+      m.textContent = (n>=FREE_SETS)
+        ? ('Wersja darmowa · limit '+FREE_SETS+' własnych zestawów wykorzystany')
+        : ('Ręcznie bez opłat · własne zestawy: '+n+' z '+FREE_SETS+' · z AI w PRO');
+    }catch(e){}
+  }
+  function _nsEmptyCopy(){
     var empty=document.querySelector('#mine-list .empty .sub');
     if(empty && /na stronie Eyelingo/.test(empty.textContent)){
       empty.textContent='Zacznij od „Nowy zestaw" powyżej — wpisz własne pary słów albo sfotografuj stronę podręcznika. Zestawy z konta www i desktopu pojawią się tu automatycznie.';
