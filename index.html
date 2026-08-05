@@ -8715,6 +8715,14 @@ function _trybResetExtras(){
 window.eylConjGetCard=function(){ try{ return _trybCards[_trybIdx]||null; }catch(e){ return null; } };
 // Skroty klawiszowe (spacja, strzalki, cyfry) nie moga dzialac, gdy uzytkownik
 // pisze w polu tekstowym — inaczej spacja odwraca fiszke zamiast wstawic znak.
+// Polecenie widziane przez ucznia — ewaluator MUSI oceniac wzgledem niego.
+window.lexEvalTask=function(ex){
+  var out=[];
+  [ex&&ex.prompt, ex&&ex.objective, ex&&ex.instruction, ex&&ex.hint].forEach(function(p){
+    p=String(p||'').replace(/\*\*/g,'').trim(); if(p&&out.indexOf(p)<0) out.push(p);
+  });
+  return out.join(' ') || 'ułóż poprawne zdanie';
+};
 window.eylTypingTarget=function(e){
   var t=e&&e.target; if(!t) return false;
   var tn=(t.tagName||'').toLowerCase();
@@ -17589,12 +17597,17 @@ async function lexInit(){
         ? ('Zadanie: przekształć zdanie "'+(ex.source||'')+'". Polecenie: '+(ex.instruction||ex.prompt||'')+'. Wzorcowa odpowiedź: "'+(ex.answer||'')+'". Odpowiedź ucznia: "'+answer+'". WAŻNE: każda poprawna gramatycznie realizacja polecenia jest OK.')
         : ex.type==='scenario'
         ? ('Zadanie: w sytuacji "'+(ex.situation||ex.prompt||'')+'" uczeń ma zareagować po '+langName()+', wplatając słowa: '+([].concat(ex.must_use||ex.target||[]).join(', '))+'. Temat porcji: "'+(focus||'')+'". Odpowiedź ucznia: "'+answer+'".')
-        : ('Zadanie: ułóż poprawne zdanie w '+langName()+' używając "'+(ex.target||'')+'"'+(tgtTr?(' (znaczenie po polsku: '+tgtTr+')'):'')+'. Temat porcji: "'+(focus||'codzienna komunikacja')+'". Odpowiedź ucznia: "'+answer+'".');
+        : ('Zadanie postawione uczniowi (DOSŁOWNIE): "'+lexEvalTask(ex)+'"'
+           +(ex.target?(' Miał użyć: "'+ex.target+'"'+(tgtTr?(' — po polsku: '+tgtTr):'')+'.'):'')
+           +' Temat porcji (tylko tło, NIE jest częścią zadania): "'+(focus||'codzienna komunikacja')+'".'
+           +' Odpowiedź ucznia: "'+answer+'".');
       var prompt='Jesteś trenerem '+langName()+' uczącym Polaków. '+task+'\n'
         +'Oceń odpowiedź ucznia. Bądź wyrozumiały dla drobnych literówek i alternatywnych poprawnych form. '
         +'Jeśli zadanie dopuszcza wiele poprawnych słów lub realizacji, zaakceptuj KAŻDĄ poprawną gramatycznie i sensowną — nie wymagaj akurat wzorcowego słowa. '
         +'Komentarz pisz poprawnie i naturalnie po '+CL+'. NIE twórz hybryd polsko-angielskich (np. nigdy nie pisz "roastujesz", "forwardować") — używaj polskiego znaczenia słowa. '
-        +'Trzymaj się tematu porcji; jeśli zdanie ucznia jest poprawne, ale poza tematem, zaakceptuj i delikatnie zaproponuj wersję w temacie. '
+        +'ROZSTRZYGAJĄCE jest polecenie zadania, nie temat porcji. Jeśli uczeń wykonał polecenie, a zdanie jest poprawne — oceń je jako poprawne, nawet jeśli nie pasuje do tematu porcji. '
+        +'NIGDY nie zarzucaj uczniowi, że zdanie nie pasuje do innego kontekstu niż ten z polecenia, i nie proponuj poprawki zmieniającej cel wypowiedzi. '
+        +'Pole "fix" musi realizować TO SAMO polecenie i być kompletnym zdaniem — bez nawiasów kwadratowych, bez miejsc do uzupełnienia typu [KRAJ], bez wielokropków. '
         +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po '+CL+': co dobrze, co poprawić","gap":"jeśli błąd — krótki temat braku, inaczej pusty","fix":"poprawiona wersja zdania ucznia po '+langName()+' — zmień TYLKO to, co błędne (gramatyka, przedimki, formy); zachowaj sens i dobór słów ucznia; jeśli zdanie jest już poprawne, przepisz je bez zmian"}';
       var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex', messages:[{role:'user',content:prompt}],max_tokens:400})});
       if(!res.ok) throw new Error('proxy '+res.status);
@@ -19338,7 +19351,9 @@ async function lexInit(){
 (function(){
   if(window.tlBuildHTML) return; // już zainicjalizowane
   window._tlCache = {};
-  var LANG_NAMES = {en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French',it:'Italian',pt:'Portuguese'};
+  var LANG_NAMES = {en:'English',es:'Spanish',nl:'Dutch',jp:'Japanese',de:'German',fr:'French',it:'Italian',pt:'Portuguese',
+    ru:'Russian',uk:'Ukrainian',ar:'Arabic',sv:'Swedish',da:'Danish',no:'Norwegian',ko:'Korean',zh:'Chinese',cs:'Czech',tr:'Turkish'};
+  var TRANSLIT_LANGS = {jp:1,ko:1,zh:1,ru:1,uk:1,ar:1};
   function esc(s){ return (typeof escH==='function')?escH(s):String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 
   // Tłumaczenie tekstu na polski (z cache) przez AI proxy
@@ -19354,8 +19369,12 @@ async function lexInit(){
       var tok=sess?sess.access_token:'';
       var langName=LANG_NAMES[lang]||'English';
       var prompt = useCtx
-        ? ('Zdanie ('+langName+'): "'+context+'"\nSłowo do wyjaśnienia: "'+text+'".\nOdpowiedz PO POLSKU dokładnie w formacie:\nznaczenie ||| nota\ngdzie „znaczenie" = polskie tłumaczenie słowa tak, jak użyto go w tym zdaniu (zwięźle, 1–3 słowa), a „nota" = krótkie (do ~10 słów) wyjaśnienie, co to słowo znaczy w tym kontekście. Zawsze podaj OBIE części oddzielone |||. Nie dodawaj nic poza tym.')
-        : ('Translate this '+langName+' text to Polish. Return ONLY the Polish translation, no quotes, nothing else.\nText: "'+text+'"');
+        ? ('Zdanie ('+langName+(TRANSLIT_LANGS[lang]?', zapis w transliteracji łacińskiej':'')+'): "'+context+'"\n'
+           +'Słowo do wyjaśnienia: "'+text+'" — jest to słowo z języka '+langName+', NIE polskie ani angielskie. '
+           +'Zdanie może zawierać fragmenty po polsku (polecenie) — ignoruj je.\nOdpowiedz PO POLSKU dokładnie w formacie:\nznaczenie ||| nota\ngdzie „znaczenie" = polskie tłumaczenie słowa tak, jak użyto go w tym zdaniu (zwięźle, 1–3 słowa), a „nota" = krótkie (do ~10 słów) wyjaśnienie, co to słowo znaczy w tym kontekście. Zawsze podaj OBIE części oddzielone |||. Nie dodawaj nic poza tym.')
+        : ('Słowo "'+text+'" pochodzi z języka: '+langName+(TRANSLIT_LANGS[lang]?' (zapis w transliteracji łacińskiej, nie w piśmie oryginalnym)':'')+'. '
+           +'Podaj jego polskie tłumaczenie. NIE interpretuj go jako słowa polskiego ani angielskiego, nawet jeśli tak wygląda. '
+           +'Odpowiedz TYLKO polskim tłumaczeniem, bez cudzysłowów i bez niczego więcej.');
       var res=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex',messages:[{role:'user',content:prompt}],max_tokens:220})});
       if(!res.ok) throw new Error('HTTP '+res.status);
       var d=await res.json();
@@ -21918,7 +21937,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
 </style>
 <script>
 (function(){
-  var CACHE_V = 3;
+  var CACHE_V = 4;
   var _mem={}, _cur=null, _tab=0;
 
   /* ── Kanoniczne czasy: krotka nazwa PL + nazwa oryginalna + poziom ──────
@@ -21975,6 +21994,11 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       {id:'fut',  pl:'Przyszły',         nat:'',                        lvl:'A2'}
     ]
   };
+  var LANG_PL={en:'angielski',es:'hiszpański',de:'niemiecki',fr:'francuski',it:'włoski',
+    nl:'niderlandzki',pt:'portugalski',no:'norweski',sv:'szwedzki',da:'duński',
+    ru:'rosyjski',uk:'ukraiński',ar:'arabski',jp:'japoński',ko:'koreański',zh:'chiński',cs:'czeski',tr:'turecki'};
+  var TRANSLIT={jp:1,ko:1,zh:1,ru:1,uk:1,ar:1};
+
   var LV=['A1','A2','B1','B2','C1','C2'];
   function lvIdx(l){ var i=LV.indexOf(String(l||'A1')); return i<0?0:i; }
 
@@ -22139,6 +22163,14 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     return true;
   };
 
+  /* Heurystyka bez zagladania do cache — potrzebna, gdy model twierdzi
+     „to nie czasownik", a polskie tlumaczenie mowi co innego. */
+  window.eylConjHeuristicVerb=function(card){
+    if(!card||!card.word) return false;
+    var tr=String(card.translation||'').trim();
+    if(tr) return plLooksVerb(tr);
+    return targetLooksVerb(card.word);
+  };
   window.eylConjCanConjugate=function(card){
     if(!card||!card.word) return false;
     var v=cachedVerdict(card.word);
@@ -22190,7 +22222,9 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       if(isVerdict(d)){ localSet(c.word,d); render(d,false); return; }
 
       try{ d=await fetchConj(c); }catch(e){ d=null; }
-      if(isVerdict(d)){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
+      var trustNeg = !(d && d.is_verb===false && window.eylConjHeuristicVerb(c));
+      if(isVerdict(d) && trustNeg){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
+      else if(isVerdict(d)){ render(d,false); }   // pokazujemy, ale NIE zapamietujemy
       else render({error:1},false);   // bledu i smieci NIE cache'ujemy
     }catch(err){
       try{ console.warn('[conj] blad otwarcia:', (err&&err.message)||err); }catch(e){}
@@ -22218,6 +22252,14 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
      tokenow przy 6 czasach x 6 osob), ponawiamy z zestawem przycietym do poziomu. */
   async function fetchConj(c){
     var d=await askConj(c, tenseSet(), 4000);
+    // Model bywa, ze bierze obce slowo za polskie („ser" = ser, a nie „byc").
+    // Jesli przeczy polskiemu tlumaczeniu, ponawiamy z jawnym zalozeniem.
+    if(d && d.is_verb===false && window.eylConjHeuristicVerb(c)){
+      try{ console.warn('[conj] model przeczy tlumaczeniu — ponawiam z wymuszeniem'); }catch(e){}
+      var f=await askConj(c, tenseSet(), 4000, true);
+      if(f && f.tabs && f.tabs.length) return f;
+      return null;   // brak werdyktu — NIE chowamy przycisku
+    }
     if(d && (d.is_verb===false || (d.tabs&&d.tabs.length))) return d;
     try{ console.warn('[conj] pelny zestaw sie nie udal, ponawiam z wezszym'); }catch(e){}
     return await askConj(c, visibleTenses(), 3000);
@@ -22236,13 +22278,16 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     return out;
   };
 
-  async function askConj(c, set, budget){
-    var L='obcego'; try{ if(typeof langName==='function') L=langName(); else if(typeof langLoc==='function') L=langLoc(); }catch(e){}
+  async function askConj(c, set, budget, force){
+    var L=LANG_PL[lg()]||'obcy';
     var spec=set.map(function(t){ return '{"id":"'+t.id+'"'+(t.nat?(', czas: '+t.nat):'')+'}'; }).join(', ');
 
-    var p='Jestes metodykiem jezyka '+L+'. Slowo: "'+c.word+'"'
-      +(c.translation?(' (po polsku: '+c.translation+')'):'')+'. '
-      +'Jesli to NIE jest czasownik, zwroc {"is_verb":false}. '
+    var p='Jestes metodykiem jezyka '+L+'. '
+      +'UWAGA: slowo pochodzi z jezyka '+L+(TRANSLIT[lg()]?' (zapis w transliteracji lacinskiej)':'')
+      +' — NIE interpretuj go jako slowa polskiego ani angielskiego, nawet jesli tak wyglada. '
+      +'Slowo: "'+c.word+'". '
+      +(c.translation?('Po polsku znaczy: "'+c.translation+'" — to znaczenie jest rozstrzygajace. '):'')
+      +(force?'To slowo JEST czasownikiem — podaj jego odmiane. ':'Jesli to NIE jest czasownik, zwroc {"is_verb":false}. ')
       +'Jesli to czasownik, odmien go w DOKLADNIE tych formach, w tej kolejnosci: '+spec+'. '
       +'Dla kazdej pozycji zwroc obiekt z tym samym "id". Nie dodawaj wlasnych czasow, nie pomijaj zadnego. '
       +'W jezykach odmieniajacych sie przez osoby wiersze = wszystkie osoby liczby pojedynczej i mnogiej, '
