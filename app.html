@@ -453,6 +453,16 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 .gram-inline .gram-eyebrow{display:none}
 </style>
 
+<style id="lex-gram-board-css">
+  .lbsh-sec{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2);margin:14px 2px 7px}
+  .lbsh-sec:first-child{margin-top:2px}
+  .lbg{background:#fff;border:.5px solid var(--line);border-left:3px solid var(--orange);border-radius:10px;overflow:hidden;margin-bottom:7px}
+  .lbg-head{display:flex;align-items:center;gap:8px;padding:11px 12px;cursor:pointer;color:var(--orange)}
+  .lbg-head:active{background:var(--paper)}
+  .lbg-name{flex:1;font-size:13px;font-weight:500;color:var(--navy);line-height:1.35}
+  .lbg-arw{color:var(--dim2);font-size:11px}
+  .lbg-body{padding:0 12px 12px}
+</style>
 </head>
 <body>
 <div class="phone"><div class="app" id="app-root">
@@ -1339,13 +1349,37 @@ function lexBoardItems(){
   return out.reverse(); // najnowsze na górze
 }
 function lexBoardSpeak(w){ if(w&&typeof lexSceneSpeak==='function') lexSceneSpeak(w); }
+// Sekcja struktur gramatycznych — to samo miejsce co slowa, bez osobnego przycisku.
+function lexGramBoardHTML(){
+  if(!_lexGramBoard.length || typeof gramCardHTML!=='function') return '';
+  var rows=_lexGramBoard.map(function(id){
+    var p=(typeof gramPoint==='function')?gramPoint(id):null;
+    if(!p) return '';
+    var open=!!_lexGramOpen[id];
+    var body=open?('<div class="lbg-body gram-inline">'+gramCardHTML(id,{eyebrow:'Struktura'})+'</div>'):'';
+    return '<div class="lbg'+(open?' open':'')+'">'
+      +'<div class="lbg-head" onclick="lexGramBoardToggle(this.getAttribute(\'data-i\'))" data-i="'+esc(id)+'">'
+      +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h7"/></svg>'
+      +'<span class="lbg-name">'+esc(p.name_pl)+'</span>'
+      +'<span class="lbg-arw">'+(open?'\u25B4':'\u25BE')+'</span></div>'+body+'</div>';
+  }).join('');
+  if(!rows) return '';
+  return '<div class="lbsh-sec">Struktury</div>'+rows+'<div class="lbsh-sec">Słowa</div>';
+}
+function lexGramBoardToggle(id){
+  if(!id) return;
+  if(_lexGramOpen[id]) delete _lexGramOpen[id]; else _lexGramOpen[id]=1;
+  lexBoardRender();
+}
 function lexBoardRender(){
   var list=document.getElementById('lex-board-list'), badge=document.getElementById('lex-board-badge');
   var items=lexBoardItems();
-  if(badge){ if(items.length){ badge.style.display='flex'; badge.textContent=String(items.length); } else badge.style.display='none'; }
+  var gram=lexGramBoardHTML();
+  var total=items.length+_lexGramBoard.length;
+  if(badge){ if(total){ badge.style.display='flex'; badge.textContent=String(total); } else badge.style.display='none'; }
   if(!list) return;
-  if(!items.length){ list.innerHTML='<div class="lbsh-empty">Lex zbierze tu słowa, gdy tylko zaczniecie pierwszą porcję.</div>'; return; }
-  list.innerHTML=items.map(function(it){
+  if(!items.length && !gram){ list.innerHTML='<div class="lbsh-empty">Lex zbierze tu słowa i reguły, gdy tylko zaczniecie pierwszą porcję.</div>'; return; }
+  list.innerHTML=gram+items.map(function(it){
     var key=String(it.word).toLowerCase().trim();
     var rev=_lexBoardShowAll||_lexBoardRevealed[key];
     var _bDisp=(_lexScript==='romaji'&&it.reading)?it.reading:it.word; var safeWord=esc(_bDisp); var safeSay=esc(it.word);
@@ -1892,6 +1926,8 @@ async function lexGenSimple(focus, dueWords){
 
 /* ── generator porcji (port lexxGeneratePortion) ── */
 let _lexData=null, _lexDone=[], _lexStep=-1, _lexSculpt={}, _lexGapN={}, _lexSweepPool=[], _lexVocab=[];
+// Struktury gramatyczne wprowadzone w tej lekcji — trafiaja do Tablicy obok slow.
+let _lexGramBoard=[], _lexGramOpen={};
 let _lexPortionNum=0, _lexPortionTarget=5;
 var LEX_STAGE_PORTIONS=3;            // ~12 słów na etap; po etapie = checkpoint
 var _lexStartStr={};                 // card_key → siła na start lekcji (raport końcowy)
@@ -1971,6 +2007,7 @@ async function lexGeneratePortion(){
     _lexData=data; _lexSculpt={}; _lexGapN={};
     try{ (data.exercises||[]).forEach(function(ex){ if(ex&&ex.type==='cloze'&&ex.sentence){ var ga=lexGapAnswers(ex); if(ga.length) _lexSweepPool.push({sentence:ex.sentence,answer:ga[0],answers:ga,wrong:false,portion:pn,pl:(ex.sentence_pl||'')}); } }); }catch(e){}
     try{ if(data.items) data.items.forEach(function(it){ if(it&&it.word&&it.translation) _lexVocab.push({word:it.word,translation:it.translation,reading:(it.reading||'')}); }); }catch(e){}
+    try{ if(typeof gramLessonPoints==='function') gramLessonPoints(data).forEach(function(_p){ if(_lexGramBoard.indexOf(_p.id)<0) _lexGramBoard.push(_p.id); }); }catch(e){}
     try{ lexBoardRender(); }catch(e){}
     lexRenderPortion(data);
   }catch(e){
@@ -2007,7 +2044,7 @@ async function lexStart(){
     }
   }catch(e){ lexSourceWords=[]; }
   if(!lexSourceWords.length){ lexError('Ten zestaw nie ma jeszcze słów do utrwalania.'); return; }
-  _lexPortionNum=0; _lexShapeS={lastShape:null,recog:0,total:0}; _lexSweepPool=[]; _lexVocab=[]; _lexSweepDone=false; _lexReflectionDone=false;
+  _lexPortionNum=0; _lexShapeS={lastShape:null,recog:0,total:0}; _lexSweepPool=[]; _lexVocab=[]; _lexGramBoard=[]; _lexGramOpen={}; _lexSweepDone=false; _lexReflectionDone=false;
   window._lexCarry=null;   // nowa lekcja → nic nie dziedziczymy po poprzedniej migawce
   try{ lexBoardReset(); lexBoardFabShow(true); lexBoardRender(); }catch(e){}
   var _fam={}, _famIv={};
