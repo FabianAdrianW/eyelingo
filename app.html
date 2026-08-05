@@ -1752,6 +1752,12 @@ function lexParseJSON(raw){
   /* Sito bierze tylko wykładniki >=4 znaków albo wielowyrazowe — krótkie
      partykuły (wa, no, de, ni) dawałyby masowe fałszywe trafienia. */
   function sieveHit(ex,point){
+    // Sito dziala TYLKO dla punktow oznaczonych w banku jako sieve:true — czyli
+    // takich, ktorych wykladnik jest jednoznaczna konstrukcja gramatyczna
+    // ("te kudasai", "koto ga dekimasu"). Punkty o wykladnikach bedacych
+    // zwyklymi slowami ("kore", "desu", "arimasu") trafialyby w niemal kazde
+    // zdanie i wycinaly poprawne cwiczenia.
+    if(point.sieve!==true) return false;
     var exps=[].concat(point.exponents||[]).filter(function(e){ e=String(e||'').trim(); return e.length>=4||e.indexOf(' ')>0; });
     if(!exps.length) return false;
     var t=exText(ex);
@@ -1799,20 +1805,24 @@ function lexParseJSON(raw){
     if(e<6||(r.errors||0)>0) return 'chip';
     return 'hidden';
   };
+  /* Wygrywa NAJDLUZSZE dopasowanie, nie pierwsze napotkane. Inaczej krotki
+     wykladnik ("masen") wygrywalby z dluzszym, w ktorym sie zawiera
+     ("te itadakemasen ka"), i blad trafialby na zla strukture. */
   window.gramFindByGap=function(text){
     if(!gramBankReady()) return null;
     var t=String(text||'').toLowerCase(); if(!t) return null;
-    var hit=null;
+    var hit=null, best=0;
     bank().list.forEach(function(p){
-      if(hit) return;
-      if(p.name_pl&&t.indexOf(String(p.name_pl).toLowerCase())>=0){ hit=p.id; return; }
+      var nm=String(p.name_pl||'').toLowerCase();
+      if(nm && nm.length>best && t.indexOf(nm)>=0){ hit=p.id; best=nm.length; }
       [].concat(p.exponents||[]).forEach(function(e){
-        if(hit) return; e=String(e||'').trim();
-        if(e.length>=4&&t.indexOf(e.toLowerCase())>=0) hit=p.id;
+        e=String(e||'').trim().toLowerCase();
+        if(e.length>=4 && e.length>best && t.indexOf(e)>=0){ hit=p.id; best=e.length; }
       });
     });
     return hit;
   };
+
   window.gramProgress=function(lvl){
     lvl=lvl||level(); var total=0,done=0;
     bank().list.forEach(function(p){ if(p.level!==lvl) return; total++; if((rec(p.id)||{}).status==='unlocked') done++; });
