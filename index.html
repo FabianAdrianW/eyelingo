@@ -8713,6 +8713,13 @@ function _trybResetExtras(){
 }
 
 window.eylConjGetCard=function(){ try{ return _trybCards[_trybIdx]||null; }catch(e){ return null; } };
+// Skroty klawiszowe (spacja, strzalki, cyfry) nie moga dzialac, gdy uzytkownik
+// pisze w polu tekstowym — inaczej spacja odwraca fiszke zamiast wstawic znak.
+window.eylTypingTarget=function(e){
+  var t=e&&e.target; if(!t) return false;
+  var tn=(t.tagName||'').toLowerCase();
+  return tn==='input'||tn==='textarea'||tn==='select'||t.isContentEditable===true;
+};
 function loadTrybFlipCard(direction){
   if(direction!=='prev' && typeof _trybBlockGate==='function' && _trybBlockGate(function(){loadTrybFlipCard(direction);})) return;
   try{ if(typeof eylConjClose==='function') eylConjClose(); }catch(e){}
@@ -8775,6 +8782,7 @@ function loadTrybFlipCard(direction){
 
   // Keyboard handlers
   document.onkeydown = function(e){
+    if(eylTypingTarget(e)) return;   // pisanie w polu ma pierwszenstwo przed skrotami
     if(e.code === 'Space'){ e.preventDefault(); if(!_trybFlipRevealed) trybFlipReveal(backText); }
     if(e.code === 'ArrowRight' && _trybFlipRevealed) _trybIdx++;
     if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard('prev'); }
@@ -8883,6 +8891,7 @@ function trybFlipReveal(backText){
 
   // Keyboard: space = re-flip, arrows = navigate
   document.onkeydown = function(e){
+    if(eylTypingTarget(e)) return;   // pisanie w polu ma pierwszenstwo przed skrotami
     if(e.code === 'Space'){ e.preventDefault();
       var fl = document.getElementById('tryb-card-flipper');
       if(fl && fl.classList.contains('flipped')){ fl.classList.remove('flipped'); _trybFlipRevealed = false; var fh=document.getElementById('tryb-flip-hint'); if(fh) fh.style.display='block'; var n=document.getElementById('tryb-flip-nav'); if(n) n.remove(); }
@@ -21870,7 +21879,9 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     z-index:10041;background:#fff;border-radius:22px 22px 0 0;box-shadow:0 -12px 34px rgba(26,35,64,.18);
     display:flex;flex-direction:column;max-height:86vh;transition:transform .3s cubic-bezier(.4,0,.2,1)}
   #eyl-conj-sheet.open{transform:translate(-50%,0)}
-  #eyl-conj-sheet[data-inphone].open{transform:translateY(0)}
+  #eyl-conj-back.inphone{position:absolute}
+  #eyl-conj-sheet.inphone{position:absolute;left:0;right:0;width:auto;max-width:none;transform:translateY(110%)}
+  #eyl-conj-sheet.inphone.open{transform:translateY(0)}
 
   .ecj-head{display:flex;align-items:flex-start;gap:10px;padding:15px 18px 12px;border-bottom:.5px solid var(--line,#e8e3da);flex:0 0 auto}
   .ecj-word{font-family:'DM Sans',system-ui,sans-serif;font-size:18px;font-weight:600;color:var(--navy,#1a2340);line-height:1.25}
@@ -22023,12 +22034,9 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     var inPhone=(host!==document.body);
     var b=document.createElement('div'); b.id='eyl-conj-back'; b.onclick=window.eylConjClose;
     var s=document.createElement('div'); s.id='eyl-conj-sheet';
-    if(inPhone){
-      b.style.position='absolute';
-      s.style.position='absolute'; s.style.left='0'; s.style.right='0';
-      s.style.width='auto'; s.style.transform='translateY(110%)';
-      s.setAttribute('data-inphone','1');
-    }
+    // UWAGA: transform ustawiamy KLASA, nie stylem inline — inline wygrywa
+    // z regula .open i arkusz zostawal schowany pod krawedzia ramki.
+    if(inPhone){ b.classList.add('inphone'); s.classList.add('inphone'); }
     host.appendChild(b); host.appendChild(s);
   }
 
@@ -22125,10 +22133,16 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   };
 
   /* show===false wymusza ukrycie (np. fiszka jeszcze nieodwrocona). */
+  /* _revealed = czy fiszka jest odwrocona. Wywolanie bez argumentu (np. po
+     zamknieciu arkusza) NIE moze pokazac przycisku na nieodwroconej karcie —
+     wczesniej wlasnie tak sie dzialo. */
+  var _revealed=false;
   window.eylConjSync=function(show){
-    if(_open && show!==false) return;   // nie chowamy przycisku pod otwartym arkuszem
+    if(show===true||show===false) _revealed=show;
+    if(show===false) _open=false;
+    if(_open && _revealed) return;      // nie chowamy przycisku pod otwartym arkuszem
     var c=(typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null;
-    var on=(show===false)?false:window.eylConjCanConjugate(c);
+    var on=_revealed && window.eylConjCanConjugate(c);
     Array.prototype.forEach.call(document.querySelectorAll('.eyl-conjbtn'),function(b){
       b.classList.toggle('on', !!on);
     });
