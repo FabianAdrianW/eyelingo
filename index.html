@@ -8825,9 +8825,11 @@ function trybFlipReveal(backText){
     try{
       var _cj=document.createElement('div');
       _cj.style.cssText='text-align:center';
-      _cj.innerHTML='<button class="eyl-conjbtn on" onclick="eylConjOpen()">'
+      _cj.innerHTML='<button class="eyl-conjbtn" onclick="eylConjOpen()">'
         +'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h7"/></svg>Odmiana</button>';
       nav.appendChild(_cj);
+      // O widocznosci decyduje heurystyka: rzeczowniki nie dostaja przycisku.
+      setTimeout(function(){ try{ eylConjSync(true); }catch(e){} },0);
     }catch(e){}
 
     // SRS rating
@@ -21961,11 +21963,84 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     document.body.appendChild(b); document.body.appendChild(s);
   }
 
-  window.eylConjSync=function(){
+  /* ── Czy fiszka moze miec odmiane? ─────────────────────────────────────
+     Kolejnosc pewnosci:
+     1. Cache — jesli juz raz sprawdzalismy, wiemy na pewno (takze globalnie).
+     2. Polskie tlumaczenie — bezokolicznik konczy sie na -c/-ć, niezaleznie
+        od jezyka docelowego. To najmocniejszy sygnal, bo kazda fiszka ma
+        tlumaczenie na polski.
+     3. Morfologia slowa docelowego — sufiksy typowe dla bezokolicznika.
+     Brak przeslanek => przycisku nie pokazujemy. Lepiej nie pokazac przycisku
+     przy czasowniku niz pokazac go przy rzeczowniku i skonczyc komunikatem
+     „to nie jest czasownik". */
+  /* Morfologia jezyka docelowego — tylko awaryjnie, bo w japonskim sufiks
+     -masu/-ru lapie takze zwroty grzecznosciowe, a hiszpanskie -ar lapie
+     rzeczowniki (el lugar, la mujer). */
+  var VERB_SUFFIX = {
+    es:[/ar$/,/er$/,/ir$/,/[aei]rse$/],
+    it:[/are$/,/ere$/,/ire$/,/[ai]rsi$/],
+    fr:[/er$/,/ir$/,/re$/,/oir$/],
+    de:[/en$/,/ern$/,/eln$/],
+    nl:[/en$/],
+    pt:[/ar$/,/er$/,/ir$/],
+    no:[/^å /],
+    ru:[/ть$/,/ться$/,/ти$/],
+    uk:[/ти$/,/тися$/]
+  };
+  /* Polskie bezokoloczniki na -c (nie -ć) — zamknieta lista, zeby „noc"
+     i „moc" (rzeczownik) nie przechodzily jako czasowniki. */
+  var PL_C_VERBS = {'móc':1,'biec':1,'piec':1,'strzec':1,'tłuc':1,'wlec':1,'siec':1,'przyrzec':1,'uciec':1,'zbiec':1,'upiec':1,'pomóc':1};
+
+  function plLooksVerb(tr){
+    var t=String(tr||'').toLowerCase()
+      .replace(/\([^)]*\)/g,' ')            // (o przysługę) — nie liczy sie
+      .split(/[,;/]|\blub\b|\balbo\b/)[0]   // pierwszy wariant znaczenia
+      .trim();
+    if(!t) return false;
+    // dowolny wyraz frazy moze byc bezokolicznikiem: „czekać na kogoś", „mówić powoli"
+    var toks=t.split(/\s+/);
+    for(var i=0;i<toks.length;i++){
+      var w=toks[i].replace(/[^a-ząćęłńóśźż]/g,'');
+      if(!w) continue;
+      if(w.length>2 && /ć$/.test(w)) return true;
+      if(PL_C_VERBS[w]) return true;
+    }
+    return false;
+  }
+  function targetLooksVerb(w){
+    var pats=VERB_SUFFIX[lg()]; if(!pats) return false;
+    var t=String(w||'').trim().toLowerCase();
+    if(!t) return false;
+    for(var i=0;i<pats.length;i++){ if(pats[i].test(t)) return true; }
+    return false;
+  }
+
+  /* true / false / null (nie wiadomo — brak cache) */
+  function cachedVerdict(w){
+    var d=localGet(w);
+    if(!d) return null;
+    if(d.is_verb===false) return false;
+    return !!(d.tabs&&d.tabs.length);
+  }
+
+  window.eylConjCanConjugate=function(card){
+    if(!card||!card.word) return false;
+    var v=cachedVerdict(card.word);
+    if(v!==null) return v;
+    // Tlumaczenie na polski rozstrzyga. Morfologia wchodzi tylko gdy go brak.
+    var tr=String(card.translation||'').trim();
+    if(tr) return plLooksVerb(tr);
+    return targetLooksVerb(card.word);
+  };
+
+  /* show===false wymusza ukrycie (np. fiszka jeszcze nieodwrocona). */
+  window.eylConjSync=function(show){
     var c=(typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null;
+    var on=(show===false)?false:window.eylConjCanConjugate(c);
     Array.prototype.forEach.call(document.querySelectorAll('.eyl-conjbtn'),function(b){
-      b.classList.toggle('on', !!(c&&c.word));
+      b.classList.toggle('on', !!on);
     });
+    if(!on && typeof window.eylConjClose==='function') window.eylConjClose();
   };
   window.eylConjClose=function(){
     var s=document.getElementById('eyl-conj-sheet'), b=document.getElementById('eyl-conj-back');
@@ -21988,7 +22063,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
 
     try{ d=await fetchConj(c); }catch(e){ d=null; }
     if(d){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
-    else render({error:1},false);
+    else render({error:1},false);   // bledu NIE cache'ujemy — to nie werdykt
   };
 
   function pickText(d){
@@ -22094,7 +22169,11 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
         +'<button class="ecj-tab" style="margin-top:12px" onclick="eylConjOpen()">Spróbuj ponownie</button></div>'; return;
     }
     if(data.is_verb===false||!data.tabs||!data.tabs.length){
-      s.innerHTML=head+'<div class="ecj-msg">To słowo nie jest czasownikiem,<br>więc nie ma odmiany przez czasy.</div>'; return;
+      // Werdykt trafia do cache, wiec przy nastepnym pokazaniu tej fiszki
+      // przycisk juz sie nie pojawi — ani u tego uzytkownika, ani u innych.
+      s.innerHTML=head+'<div class="ecj-msg">To słowo nie odmienia się przez czasy.</div>';
+      setTimeout(function(){ try{ window.eylConjSync(); }catch(e){} },0);
+      return;
     }
 
     // Zakladki: kanoniczne nazwy, przyciete do poziomu ucznia, w stalej kolejnosci.
