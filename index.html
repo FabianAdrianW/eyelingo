@@ -8825,7 +8825,7 @@ function trybFlipReveal(backText){
     try{
       var _cj=document.createElement('div');
       _cj.style.cssText='text-align:center';
-      _cj.innerHTML='<button class="eyl-conjbtn" onclick="eylConjOpen()">'
+      _cj.innerHTML='<button class="eyl-conjbtn" onclick="event.stopPropagation();eylConjOpen(event)">'
         +'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h7"/></svg>Odmiana</button>';
       nav.appendChild(_cj);
       // O widocznosci decyduje heurystyka: rzeczowniki nie dostaja przycisku.
@@ -21870,6 +21870,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     z-index:10041;background:#fff;border-radius:22px 22px 0 0;box-shadow:0 -12px 34px rgba(26,35,64,.18);
     display:flex;flex-direction:column;max-height:86vh;transition:transform .3s cubic-bezier(.4,0,.2,1)}
   #eyl-conj-sheet.open{transform:translate(-50%,0)}
+  #eyl-conj-sheet[data-inphone].open{transform:translateY(0)}
 
   .ecj-head{display:flex;align-items:flex-start;gap:10px;padding:15px 18px 12px;border-bottom:.5px solid var(--line,#e8e3da);flex:0 0 auto}
   .ecj-word{font-family:'DM Sans',system-ui,sans-serif;font-size:18px;font-weight:600;color:var(--navy,#1a2340);line-height:1.25}
@@ -22009,11 +22010,26 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     try{ await db.from('conj_cache').upsert({lang:lg(), word:norm(w), v:CACHE_V, data:d},{onConflict:'lang,word,v'}); }catch(e){}
   }
 
+  /* W PWA cala aplikacja zyje w ramce .phone (position:relative, overflow:hidden).
+     Arkusz doklejony do <body> ladowal poza ta ramka — stad „przycisk znikl,
+     nic sie nie pojawilo": widac bylo samo przyciemnienie. Montujemy wiec
+     wewnatrz ramki i pozycjonujemy absolutnie wzgledem niej. */
+  function mountPoint(){
+    return document.querySelector('.phone') || document.body;
+  }
   function ensure(){
     if(document.getElementById('eyl-conj-sheet')) return;
+    var host=mountPoint();
+    var inPhone=(host!==document.body);
     var b=document.createElement('div'); b.id='eyl-conj-back'; b.onclick=window.eylConjClose;
     var s=document.createElement('div'); s.id='eyl-conj-sheet';
-    document.body.appendChild(b); document.body.appendChild(s);
+    if(inPhone){
+      b.style.position='absolute';
+      s.style.position='absolute'; s.style.left='0'; s.style.right='0';
+      s.style.width='auto'; s.style.transform='translateY(110%)';
+      s.setAttribute('data-inphone','1');
+    }
+    host.appendChild(b); host.appendChild(s);
   }
 
   /* ── Czy fiszka moze miec odmiane? ─────────────────────────────────────
@@ -22110,35 +22126,45 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
 
   /* show===false wymusza ukrycie (np. fiszka jeszcze nieodwrocona). */
   window.eylConjSync=function(show){
+    if(_open && show!==false) return;   // nie chowamy przycisku pod otwartym arkuszem
     var c=(typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null;
     var on=(show===false)?false:window.eylConjCanConjugate(c);
     Array.prototype.forEach.call(document.querySelectorAll('.eyl-conjbtn'),function(b){
       b.classList.toggle('on', !!on);
     });
-    if(!on && typeof window.eylConjClose==='function') window.eylConjClose();
   };
+  var _open=false;
   window.eylConjClose=function(){
+    _open=false;
     var s=document.getElementById('eyl-conj-sheet'), b=document.getElementById('eyl-conj-back');
     if(s) s.classList.remove('open'); if(b) b.classList.remove('open');
+    try{ window.eylConjSync(); }catch(e){}
   };
 
-  window.eylConjOpen=async function(){
+  window.eylConjOpen=async function(ev){
+    try{ if(ev&&ev.stopPropagation) ev.stopPropagation(); }catch(e){}
     var c=(typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null;
     if(!c||!c.word) return;
-    ensure(); _cur=c; _tab=0;
-    document.getElementById('eyl-conj-back').classList.add('open');
-    document.getElementById('eyl-conj-sheet').classList.add('open');
+    try{
+      ensure(); _cur=c; _tab=0;
+      _open=true;
+      document.getElementById('eyl-conj-back').classList.add('open');
+      document.getElementById('eyl-conj-sheet').classList.add('open');
 
-    var d=localGet(c.word);
-    if(d){ render(d,false); return; }
-    render(null,true);
+      var d=localGet(c.word);
+      if(d){ render(d,false); return; }
+      render(null,true);
 
-    d=await sharedGet(c.word);
-    if(d){ localSet(c.word,d); render(d,false); return; }
+      d=await sharedGet(c.word);
+      if(d){ localSet(c.word,d); render(d,false); return; }
 
-    try{ d=await fetchConj(c); }catch(e){ d=null; }
-    if(d){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
-    else render({error:1},false);   // bledu NIE cache'ujemy — to nie werdykt
+      try{ d=await fetchConj(c); }catch(e){ d=null; }
+      if(d){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
+      else render({error:1},false);   // bledu NIE cache'ujemy — to nie werdykt
+    }catch(err){
+      try{ console.warn('[conj] blad otwarcia:', (err&&err.message)||err); }catch(e){}
+      try{ render({error:1},false); }catch(e){ window.eylConjClose(); }
+    }
   };
 
   function pickText(d){
@@ -22247,7 +22273,6 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       // Werdykt trafia do cache, wiec przy nastepnym pokazaniu tej fiszki
       // przycisk juz sie nie pojawi — ani u tego uzytkownika, ani u innych.
       s.innerHTML=head+'<div class="ecj-msg">To słowo nie odmienia się przez czasy.</div>';
-      setTimeout(function(){ try{ window.eylConjSync(); }catch(e){} },0);
       return;
     }
 
