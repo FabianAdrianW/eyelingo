@@ -16581,6 +16581,58 @@ async function lexInit(){
      Etapu 1-2 (przepisywana przez model do intro) oraz przez Zeszyt.
      W Etapie 3 zastapi ja karta „Nowa struktura" renderowana przez aplikacje:
      wystarczy ustawic window.GRAM_INTRO_BRIDGE=false. */
+  /* ── Normalizacja porcji ────────────────────────────────────────────────
+     Model bywa, ze zwraca kafelki jako JEDEN string sklejony przecinkami
+     ("Watashi,wa,Nihon,no,gakusei,desu,.") zamiast tablicy slow. Wtedy
+     uczen dostaje jeden bezuzyteczny kafel. Kafelki MUSZA byc dokladnie
+     slowami zdania wzorcowego — wiec jesli sie nie zgadzaja, odtwarzamy je
+     z pola answer i tasujemy. To jest deterministyczne, wiec nie zalezy od
+     tego, czy model tym razem posluchal. */
+  function _tok(str){
+    return String(str||'')
+      .replace(/([^\s,]),(?=[^\s,])/g,'$1 ')   // slowo,slowo -> slowo slowo
+      .replace(/\s*([.!?…、。])\s*/g,' $1 ')     // interpunkcja jako osobny token
+      .split(/\s+/).filter(Boolean);
+  }
+  function _shuffle(a){
+    a=a.slice();
+    for(var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; }
+    return a;
+  }
+  window.lexNormalizePortion=function(data){
+    if(!data||!data.exercises) return data;
+    data.exercises.forEach(function(ex){
+      if(!ex) return;
+
+      // 1. answer sklejone przecinkami -> normalne zdanie ze spacjami
+      ['answer','sentence','skeleton','source','context'].forEach(function(k){
+        if(typeof ex[k]==='string' && ex[k].indexOf(',')>=0 && !/,\s/.test(ex[k])){
+          ex[k]=ex[k].replace(/([^\s,]),(?=[^\s,])/g,'$1 ').replace(/\s+([.!?])/g,'$1').trim();
+        }
+      });
+
+      if(ex.type!=='sculpt') return;
+
+      // 2. kafelki: string albo jednoelementowa tablica ze sklejka
+      var t=ex.tiles;
+      if(typeof t==='string') t=_tok(t);
+      else if(Array.isArray(t) && t.length===1 && /[,\s]/.test(String(t[0]))) t=_tok(t[0]);
+      else if(Array.isArray(t)) t=t.map(function(x){ return String(x==null?'':x).trim(); }).filter(Boolean);
+      else t=[];
+
+      // 3. kafelki musza pokrywac sie ze zdaniem wzorcowym — inaczej odtwarzamy
+      var want=_tok(ex.answer);
+      var okCount = want.length>0 && t.length===want.length;
+      var okWords = okCount && want.slice().sort().join('\u0001')===t.slice().sort().join('\u0001');
+      if(!okWords && want.length) t=_shuffle(want);
+
+      // 4. gotowe kafelki nie moga stac w kolejnosci odpowiedzi
+      if(t.length>1 && t.join(' ')===want.join(' ')) t=_shuffle(t);
+      ex.tiles=t;
+    });
+    return data;
+  };
+
   window.gramTeachBlock=function(p){
     if(!p||!p.teach) return '';
     var t=p.teach, out=[];
@@ -16896,6 +16948,7 @@ async function lexInit(){
         data=await lexxGenerateSimple(focus, lvl, dueWords);
       }
       if(!data||!data.exercises||!data.exercises.length) throw new Error('Pusta porcja');
+      try{ if(typeof lexNormalizePortion==='function') lexNormalizePortion(data); }catch(e){}
       // GRAM-3: twarda walidacja kontraktu gramatycznego
       if(gramBankReady()){
         var _tid=gramTeachableNow();
@@ -21991,22 +22044,44 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
      i „moc" (rzeczownik) nie przechodzily jako czasowniki. */
   var PL_C_VERBS = {'móc':1,'biec':1,'piec':1,'strzec':1,'tłuc':1,'wlec':1,'siec':1,'przyrzec':1,'uciec':1,'zbiec':1,'upiec':1,'pomóc':1};
 
+  /* Czesc fiszek ma tlumaczenia bez polskich znakow („chodzic" zamiast
+     „chodzić"). Wtedy koncowka -ć jest nie do odroznienia od -c, wiec
+     rozpoznajemy pelne koncowki bezokolicznika i odejmujemy rzeczowniki,
+     ktore w tej pisowni wygladaja tak samo (palec, ojciec, miesiac). */
+  var PL_INF_ASCII = /(?:ac|ec|ic|yc|uc|sc|zc)$/;
+  var PL_ASCII_NOUNS = {
+    palec:1, ojciec:1, chlopiec:1, taniec:1, kupiec:1, koniec:1, wieniec:1,
+    starzec:1, samiec:1, dworzec:1, kaganiec:1, garniec:1, szeregowiec:1,
+    walec:1, kolec:1, widelec:1, mlodzieniec:1, jeziec:1, chodnic:1,
+    miesiac:1, zajac:1, tysiac:1, plac:1, palac:1, kolac:1
+  };
+  function hasPlDiacritics(t){ return /[ąćęłńóśźż]/.test(t); }
+  function stripPl(t){
+    return t.replace(/[ąćęłńóśźż]/g, function(ch){
+      return {'ą':'a','ć':'c','ę':'e','ł':'l','ń':'n','ó':'o','ś':'s','ź':'z','ż':'z'}[ch]||ch;
+    });
+  }
+
   function plLooksVerb(tr){
     var t=String(tr||'').toLowerCase()
       .replace(/\([^)]*\)/g,' ')            // (o przysługę) — nie liczy sie
       .split(/[,;/]|\blub\b|\balbo\b/)[0]   // pierwszy wariant znaczenia
       .trim();
     if(!t) return false;
+    // Tekst z diakrytyka czytamy doslownie; tekst bez niej — przez koncowki.
+    var fuzzy=!hasPlDiacritics(t);
     // dowolny wyraz frazy moze byc bezokolicznikiem: „czekać na kogoś", „mówić powoli"
     var toks=t.split(/\s+/);
     for(var i=0;i<toks.length;i++){
       var w=toks[i].replace(/[^a-ząćęłńóśźż]/g,'');
-      if(!w) continue;
-      if(w.length>2 && /ć$/.test(w)) return true;
+      if(w.length<3) continue;
+      if(/ć$/.test(w)) return true;
       if(PL_C_VERBS[w]) return true;
+      if(fuzzy && PL_INF_ASCII.test(w) && !PL_ASCII_NOUNS[stripPl(w)]) return true;
     }
     return false;
   }
+
   function targetLooksVerb(w){
     var pats=VERB_SUFFIX[lg()]; if(!pats) return false;
     var t=String(w||'').trim().toLowerCase();
