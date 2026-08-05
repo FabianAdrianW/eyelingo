@@ -1104,6 +1104,13 @@ async function markKnownCurrent(){
 /* ═══════════════ Przeglądanie: oceny SM-2 ═══════════════ */
 var _brGraded=0;
 function brShowGrades(show){
+  try{
+    var c=(typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null;
+    Array.prototype.forEach.call(document.querySelectorAll('.eyl-conjbtn'),function(b){
+      b.classList.toggle('on', !!(show&&c&&c.word));
+    });
+    if(!show && typeof eylConjClose==='function') eylConjClose();
+  }catch(e){}
   var g=document.getElementById('br-grades'); if(g) g.style.display=show?'grid':'none';
   var n=document.getElementById('br-note'); if(n) n.style.display=show?'block':'none';
   var h=document.getElementById('br-hint'); if(h) h.textContent=show?'Jak Ci posz\u0142o? Ocena zapisze post\u0119p.':'Dotknij kart\u0119, aby zobaczy\u0107 t\u0142umaczenie i oceni\u0107.';
@@ -1310,7 +1317,7 @@ function renderCard(){
   _brSetRmj('br-back-cue-rmj', ff?_rmj:'');     // cue echo awersu
   document.getElementById('br-count').innerHTML=(bi+1)+' / '+CARDS.length+(_brGraded?'<span class="br-graded">'+_brGraded+' \u2713</span>':'');
   brShowGrades(false);
-  try{ if(typeof eylConjSync==='function') eylConjSync(); if(typeof eylConjClose==='function') eylConjClose(); }catch(e){}
+  try{ if(typeof eylConjClose==='function') eylConjClose(); }catch(e){}
   document.getElementById('br-prev').disabled=bi===0;
   document.getElementById('br-next').disabled=bi===CARDS.length-1;
 }
@@ -5385,9 +5392,30 @@ async function alexSend(){
     return null;
   }
 
-  /* Generujemy PELNY zestaw dla jezyka — cache jest niezalezny od poziomu. */
+  /* Generujemy PELNY zestaw dla jezyka — cache jest niezalezny od poziomu.
+     Jesli odpowiedz sie nie sparsuje (najczestsza przyczyna: obciecie na limicie
+     tokenow przy 6 czasach x 6 osob), ponawiamy z zestawem przycietym do poziomu. */
   async function fetchConj(c){
-    var set=tenseSet();
+    var d=await askConj(c, tenseSet(), 4000);
+    if(d && (d.is_verb===false || (d.tabs&&d.tabs.length))) return d;
+    try{ console.warn('[conj] pelny zestaw sie nie udal, ponawiam z wezszym'); }catch(e){}
+    return await askConj(c, visibleTenses(), 3000);
+  }
+
+  window._eylConjLastRaw='';
+  window.eylConjDiag=async function(word){
+    var c={word:word||(_cur&&_cur.word)||'', translation:''};
+    var d=await askConj(c, tenseSet(), 4000);
+    var out={ jezyk:lg(), poziom:userLevel(), slowo:c.word,
+      zakladek_oczekiwanych:tenseSet().length,
+      zakladek_widocznych:visibleTenses().length,
+      sparsowano:!!d, zakladek_w_odpowiedzi:(d&&d.tabs)?d.tabs.length:0,
+      dlugosc_odpowiedzi:String(window._eylConjLastRaw||'').length };
+    console.log(out); console.log('surowa odpowiedz:', window._eylConjLastRaw);
+    return out;
+  };
+
+  async function askConj(c, set, budget){
     var L='obcego'; try{ if(typeof langName==='function') L=langName(); else if(typeof langLoc==='function') L=langLoc(); }catch(e){}
     var spec=set.map(function(t){ return '{"id":"'+t.id+'"'+(t.nat?(', czas: '+t.nat):'')+'}'; }).join(', ');
 
@@ -5401,17 +5429,31 @@ async function alexSend(){
       +'W jezykach bez odmiany przez osoby (japonski, koreanski) wiersze = warianty formy: '
       +'twierdzaca, przeczaca, a jesli to naturalne takze przeszla — etykieta po polsku. '
       +'Pole "note" to JEDNO krotkie zdanie po polsku: kiedy sie tego uzywa. '
+      +'Pole "tr" ma byc BARDZO krotkie — same slowo lub dwa, bez wariantow rodzajowych w nawiasach. '
+      +'Nie dodawaj zadnego tekstu poza JSON-em. '
       +'Zwroc WYLACZNIE poprawny JSON bez backtickow: '
       +'{"is_verb":true,"base":"forma podstawowa","axis":"co rozroznia wiersze, 2-3 slowa po polsku",'
       +'"tabs":[{"id":"id z listy","note":"jedno zdanie","rows":[{"label":"etykieta","form":"forma","tr":"tlumaczenie na polski"}]}]}';
 
-    if(typeof lexProxy==='function') return parseJ(await lexProxy(p,1800));
-    var tok='';
-    try{ var sess=(await db.auth.getSession()).data.session; tok=sess?sess.access_token:''; }catch(e){}
-    var res=await fetch(AI_PROXY_URL,{method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-      body:JSON.stringify({kind:'lex',messages:[{role:'user',content:p}],max_tokens:1800})});
-    return parseJ(pickText(await res.json()));
+    var raw='';
+    try{
+      if(typeof lexProxy==='function'){ raw=await lexProxy(p,budget); }
+      else{
+        var tok='';
+        try{ var sess=(await db.auth.getSession()).data.session; tok=sess?sess.access_token:''; }catch(e){}
+        var res=await fetch(AI_PROXY_URL,{method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+          body:JSON.stringify({kind:'lex',messages:[{role:'user',content:p}],max_tokens:budget})});
+        raw=pickText(await res.json());
+      }
+    }catch(err){
+      try{ console.warn('[conj] blad zapytania:', (err&&err.message)||err); }catch(e){}
+      return null;
+    }
+    window._eylConjLastRaw=raw;
+    var out=parseJ(raw);
+    if(!out){ try{ console.warn('[conj] nie sparsowano odpowiedzi (dlugosc '+String(raw||'').length+'). Podglad: '+String(raw||'').slice(0,200)); }catch(e){} }
+    return out;
   }
 
   window.eylConjTab=function(i){ _tab=i; render(localGet(_cur&&_cur.word)||null,false); };
