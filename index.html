@@ -8784,7 +8784,11 @@ function loadTrybFlipCard(direction){
   document.onkeydown = function(e){
     if(eylTypingTarget(e)) return;   // pisanie w polu ma pierwszenstwo przed skrotami
     if(e.code === 'Space'){ e.preventDefault(); if(!_trybFlipRevealed) trybFlipReveal(backText); }
-    if(e.code === 'ArrowRight' && _trybFlipRevealed) _trybIdx++;
+    // Bylo: samo _trybIdx++ bez przeladowania karty — strzalka w prawo nie robila nic.
+    if(e.code === 'ArrowRight'){
+      if(_trybIdx < _trybCards.length-1){ _trybIdx++; loadTrybFlipCard('next'); }
+      else if(_trybFlipRevealed && typeof showTrybSessionSummary==='function') showTrybSessionSummary();
+    }
     if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard('prev'); }
   };
 }
@@ -8897,7 +8901,7 @@ function trybFlipReveal(backText){
       if(fl && fl.classList.contains('flipped')){ fl.classList.remove('flipped'); _trybFlipRevealed = false; var fh=document.getElementById('tryb-flip-hint'); if(fh) fh.style.display='block'; var n=document.getElementById('tryb-flip-nav'); if(n) n.remove(); }
       else trybFlipReveal(document.getElementById('tryb-card-answer-data')?document.getElementById('tryb-card-answer-data').textContent:'');
     }
-    if(e.code === 'ArrowRight' && _trybFlipRevealed){ if(_trybIdx >= _trybCards.length-1) showTrybSessionSummary(); else { _trybIdx++; loadTrybFlipCard(); } }
+    if(e.code === 'ArrowRight'){ if(_trybIdx >= _trybCards.length-1){ if(_trybFlipRevealed) showTrybSessionSummary(); } else { _trybIdx++; loadTrybFlipCard('next'); } }
     if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard('prev'); }
     // Ocena klawiszami 1-4 (tylko po odsłonięciu)
     if(_trybFlipRevealed && /^Digit[1-3]$/.test(e.code)){
@@ -21914,7 +21918,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
 </style>
 <script>
 (function(){
-  var CACHE_V = 2;
+  var CACHE_V = 3;
   var _mem={}, _cur=null, _tab=0;
 
   /* ── Kanoniczne czasy: krotka nazwa PL + nazwa oryginalna + poziom ──────
@@ -22115,12 +22119,25 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   }
 
   /* true / false / null (nie wiadomo — brak cache) */
+  /* Werdykt = albo jasne „to nie czasownik", albo odmiana z co najmniej jedna
+     zakladka. Wszystko inne (pusty obiekt, ucieta odpowiedz) NIE jest werdyktem —
+     wczesniej takie smieci trafialy do cache i trwale chowaly przycisk. */
+  function isVerdict(d){
+    return !!d && (d.is_verb===false || (Array.isArray(d.tabs)&&d.tabs.length>0));
+  }
   function cachedVerdict(w){
     var d=localGet(w);
-    if(!d) return null;
-    if(d.is_verb===false) return false;
-    return !!(d.tabs&&d.tabs.length);
+    if(!isVerdict(d)) return null;      // brak wpisu albo wpis bezwartosciowy
+    return d.is_verb!==false;
   }
+  /* Reczne wyczyszczenie wpisu — do diagnostyki: eylConjForget('ser') */
+  window.eylConjForget=function(w){
+    w=w||(_cur&&_cur.word); if(!w) return false;
+    delete _mem[w];
+    try{ localStorage.removeItem(ckey(w)); }catch(e){}
+    try{ window.eylConjSync(); }catch(e){}
+    return true;
+  };
 
   window.eylConjCanConjugate=function(card){
     if(!card||!card.word) return false;
@@ -22170,11 +22187,11 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       render(null,true);
 
       d=await sharedGet(c.word);
-      if(d){ localSet(c.word,d); render(d,false); return; }
+      if(isVerdict(d)){ localSet(c.word,d); render(d,false); return; }
 
       try{ d=await fetchConj(c); }catch(e){ d=null; }
-      if(d){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
-      else render({error:1},false);   // bledu NIE cache'ujemy — to nie werdykt
+      if(isVerdict(d)){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
+      else render({error:1},false);   // bledu i smieci NIE cache'ujemy
     }catch(err){
       try{ console.warn('[conj] blad otwarcia:', (err&&err.message)||err); }catch(e){}
       try{ render({error:1},false); }catch(e){ window.eylConjClose(); }

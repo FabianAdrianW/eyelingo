@@ -5283,7 +5283,7 @@ async function alexSend(){
 </style>
 <script>
 (function(){
-  var CACHE_V = 2;
+  var CACHE_V = 3;
   var _mem={}, _cur=null, _tab=0;
 
   /* ── Kanoniczne czasy: krotka nazwa PL + nazwa oryginalna + poziom ──────
@@ -5484,12 +5484,25 @@ async function alexSend(){
   }
 
   /* true / false / null (nie wiadomo — brak cache) */
+  /* Werdykt = albo jasne „to nie czasownik", albo odmiana z co najmniej jedna
+     zakladka. Wszystko inne (pusty obiekt, ucieta odpowiedz) NIE jest werdyktem —
+     wczesniej takie smieci trafialy do cache i trwale chowaly przycisk. */
+  function isVerdict(d){
+    return !!d && (d.is_verb===false || (Array.isArray(d.tabs)&&d.tabs.length>0));
+  }
   function cachedVerdict(w){
     var d=localGet(w);
-    if(!d) return null;
-    if(d.is_verb===false) return false;
-    return !!(d.tabs&&d.tabs.length);
+    if(!isVerdict(d)) return null;      // brak wpisu albo wpis bezwartosciowy
+    return d.is_verb!==false;
   }
+  /* Reczne wyczyszczenie wpisu — do diagnostyki: eylConjForget('ser') */
+  window.eylConjForget=function(w){
+    w=w||(_cur&&_cur.word); if(!w) return false;
+    delete _mem[w];
+    try{ localStorage.removeItem(ckey(w)); }catch(e){}
+    try{ window.eylConjSync(); }catch(e){}
+    return true;
+  };
 
   window.eylConjCanConjugate=function(card){
     if(!card||!card.word) return false;
@@ -5539,11 +5552,11 @@ async function alexSend(){
       render(null,true);
 
       d=await sharedGet(c.word);
-      if(d){ localSet(c.word,d); render(d,false); return; }
+      if(isVerdict(d)){ localSet(c.word,d); render(d,false); return; }
 
       try{ d=await fetchConj(c); }catch(e){ d=null; }
-      if(d){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
-      else render({error:1},false);   // bledu NIE cache'ujemy — to nie werdykt
+      if(isVerdict(d)){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
+      else render({error:1},false);   // bledu i smieci NIE cache'ujemy
     }catch(err){
       try{ console.warn('[conj] blad otwarcia:', (err&&err.message)||err); }catch(e){}
       try{ render({error:1},false); }catch(e){ window.eylConjClose(); }
