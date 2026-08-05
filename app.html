@@ -598,6 +598,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       </div>
     </div>
     <div class="br-hint" id="br-hint">Dotknij kartę, aby zobaczyć tłumaczenie i ocenić.</div>
+    <div style="text-align:center"><button id="br-conj" onclick="eylConjOpen()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h7"/></svg>Odmiana</button></div>
     <div class="br-grades" id="br-grades">
       <button class="br-g q1" onclick="brGrade(1)">Nie wiedziałem<span class="ph">znów wkrótce</span></button>
       <button class="br-g q3" onclick="brGrade(3)">Wiedziałem<span class="ph">za kilka dni</span></button>
@@ -610,6 +611,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       <button class="nav-arrow" id="br-next" onclick="brNav(1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
     </div>
     <div class="br-end" id="br-end" style="display:none"></div>
+    <div id="eyl-conj-sheet"></div>
   </div>
 
   <!-- IMMERSIVE: POWTÓRKI SM-2 (real) -->
@@ -1267,6 +1269,7 @@ function renderCard(){
   _brSetRmj('br-back-cue-rmj', ff?_rmj:'');     // cue echo awersu
   document.getElementById('br-count').innerHTML=(bi+1)+' / '+CARDS.length+(_brGraded?'<span class="br-graded">'+_brGraded+' \u2713</span>':'');
   brShowGrades(false);
+  try{ if(typeof eylConjSync==='function') eylConjSync(); if(typeof eylConjClose==='function') eylConjClose(); }catch(e){}
   document.getElementById('br-prev').disabled=bi===0;
   document.getElementById('br-next').disabled=bi===CARDS.length-1;
 }
@@ -1479,14 +1482,17 @@ function lexParseJSON(raw){
     if(BANK[l]) return Promise.resolve(BANK[l]);
     if(LOADING[l]) return LOADING[l];
     LOADING[l]=fetch(BANK_BASE+l+'.json',{cache:'force-cache'})
-      .then(function(r){ if(!r.ok) throw new Error('brak banku'); return r.json(); })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
       .then(function(j){
         var list=(j&&j.points)?j.points.slice():[];
         list.sort(function(a,b){ return (a.order||0)-(b.order||0); });
         var byId={}; list.forEach(function(p){ if(p&&p.id) byId[p.id]=p; });
         BANK[l]={byId:byId,list:list}; return BANK[l];
       })
-      .catch(function(){ BANK[l]={byId:{},list:[]}; return BANK[l]; });
+      .catch(function(err){
+        try{ console.warn('[gram] nie wczytano banku:', BANK_BASE+l+'.json', '-', (err&&err.message)||err); }catch(e){}
+        BANK[l]={byId:{},list:[]}; return BANK[l];
+      });
     return LOADING[l];
   };
   function bank(){ return BANK[lang()]||{byId:{},list:[]}; }
@@ -1536,6 +1542,21 @@ function lexParseJSON(raw){
     }
     if(t.contrast_pl) out.push('Uwaga: '+t.contrast_pl);
     return out.join('\n');
+  };
+
+  /* Diagnostyka — do wklejenia w konsoli gdy bank sie nie laduje. */
+  window.gramDiag=async function(){
+    var l=lang();
+    var url=BANK_BASE+l+'.json';
+    var out={ kod_jezyka:l, poziom:level(), sciezka:url, pelny_url:(new URL(url, location.href)).href };
+    try{
+      var r=await fetch(url,{cache:'no-store'});
+      out.status=r.status;
+      if(r.ok){ var j=await r.json(); out.punktow=(j&&j.points)?j.points.length:0; out.lang_w_pliku=j&&j.lang; }
+    }catch(e){ out.blad=(e&&e.message)||String(e); }
+    out.bank_zaladowany=gramBankReady();
+    console.table?console.table(out):console.log(out);
+    return out;
   };
 
   window.gramPromptBlock=function(){
@@ -1791,8 +1812,16 @@ async function lexStart(){
   _lexLang=curSetLang||'en';
   lexLevel=lexSetLevel()||'B1';
   _lexScript='native';
-  if(_isTranslitLang(curSetLang||'')){ var _es=document.querySelector('#lex-script .opt.sel'); _lexScript=(_es&&_es.dataset.v)||_lexDefaultScriptForLevel(lexSetLevel());
-    try{ if(_lexScript!==window._lexScriptShown) saveJpScriptPref(_lexScript); }catch(e){} }
+  if(_isTranslitLang(curSetLang||'')){
+    // Parytet z web: wybor uzytkownika > preferencja z profilu > domyslka wg poziomu.
+    // Markup ma preselekcje 'native', wiec UI liczy sie TYLKO gdy user faktycznie zmienil wybor.
+    var _sp=null; try{ _sp=await loadJpScriptPref(); }catch(e){}
+    var _es=document.querySelector('#lex-script .opt.sel');
+    var _uiv=(_es&&_es.dataset.v)||null;
+    var _picked=(_uiv && window._lexScriptShown && _uiv!==window._lexScriptShown) ? _uiv : null;
+    _lexScript=_picked || _sp || _lexDefaultScriptForLevel(lexSetLevel());
+    try{ if(_lexScript!==window._lexScriptShown) saveJpScriptPref(_lexScript); }catch(e){}
+  }
   closeImm('imm-lexsetup'); document.getElementById('imm-lex').classList.add('active');
   lexLoading('Lex przygotowuje lekcję z Twojego zestawu…');
   try{
@@ -5026,5 +5055,159 @@ async function alexSend(){
   }
 })();
 </script>
+<!-- ═══ EYELINGO — Odmiana czasownika przy fiszkach ═══
+     Jedno wywolanie AI na slowo => wszystkie formy dostepne na poziomie ucznia.
+     Cache per (jezyk, slowo). Przelaczanie zakladek jest natychmiastowe, bez sieci.
+     Zakres form ograniczony przez bank gramatyczny (gramAllowed) — spojnie z GRAM-0. -->
+<style id="eyl-conj-css">
+  #br-conj{display:none;margin:10px auto 0;background:#fff;border:1.5px solid var(--line2);border-radius:100px;
+    padding:9px 16px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--navy);cursor:pointer;
+    align-items:center;gap:7px;transition:.15s}
+  #br-conj.on{display:inline-flex}
+  #br-conj:active{transform:scale(.97);border-color:var(--orange)}
+  #eyl-conj-sheet{position:absolute;left:0;right:0;bottom:0;z-index:70;background:#fff;border-top:.5px solid var(--line);
+    border-radius:22px 22px 0 0;box-shadow:0 -12px 34px rgba(26,35,64,.16);display:flex;flex-direction:column;
+    max-height:82%;transform:translateY(110%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
+  #eyl-conj-sheet.open{transform:translateY(0)}
+  .ecj-head{display:flex;align-items:center;gap:10px;padding:16px 18px 10px;border-bottom:.5px solid var(--line)}
+  .ecj-word{font-family:'DM Sans';font-size:17px;font-weight:600;color:var(--navy)}
+  .ecj-sub{font-size:11px;color:var(--dim2);margin-top:1px}
+  .ecj-tabs{display:flex;gap:7px;overflow-x:auto;padding:12px 18px 4px;scrollbar-width:none}
+  .ecj-tabs::-webkit-scrollbar{display:none}
+  .ecj-tab{flex:0 0 auto;background:#fff;border:1.5px solid var(--line2);border-radius:100px;padding:7px 13px;
+    font-family:inherit;font-size:12px;font-weight:600;color:var(--dim);cursor:pointer;white-space:nowrap}
+  .ecj-tab.sel{border-color:var(--orange);background:#fff6ef;color:var(--orange)}
+  .ecj-body{flex:1;overflow-y:auto;padding:12px 18px 22px}
+  .ecj-note{font-size:12.5px;color:var(--dim);line-height:1.55;background:var(--paper);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+  .ecj-row{display:flex;align-items:baseline;gap:12px;padding:11px 2px;border-bottom:.5px solid var(--line);cursor:pointer}
+  .ecj-row:active{background:var(--paper)}
+  .ecj-lab{flex:0 0 38%;font-size:12.5px;color:var(--dim2)}
+  .ecj-form{flex:1;font-size:15.5px;font-weight:600;color:var(--navy)}
+  .ecj-tr{font-size:11.5px;color:var(--dim2);font-weight:400;margin-top:2px}
+  .ecj-msg{text-align:center;color:var(--dim2);font-size:13px;padding:26px 10px;line-height:1.6}
+  .ecj-spin{width:20px;height:20px;border:2px solid var(--line2);border-top-color:var(--orange);border-radius:50%;
+    animation:rot .8s linear infinite;margin:26px auto}
+</style>
+<script>
+(function(){
+  var _cache={}, _cur=null, _tab=0;
+
+  function ckey(w){ try{ return uk('eyl_conj_'+(curSetLang||'en')+'_'+String(w||'').toLowerCase()); }
+                    catch(e){ return 'eyl_conj_'+String(w||'').toLowerCase(); } }
+  function cget(w){
+    if(_cache[w]) return _cache[w];
+    try{ var r=localStorage.getItem(ckey(w)); if(r){ _cache[w]=JSON.parse(r); return _cache[w]; } }catch(e){}
+    return null;
+  }
+  function cset(w,d){ _cache[w]=d; try{ localStorage.setItem(ckey(w), JSON.stringify(d)); }catch(e){} }
+
+  function sheet(){ return document.getElementById('eyl-conj-sheet'); }
+
+  window.eylConjSync=function(){
+    var b=document.getElementById('br-conj');
+    if(!b) return;
+    var c=(typeof CARDS!=='undefined'&&typeof bi!=='undefined')?CARDS[bi]:null;
+    b.classList.toggle('on', !!(c&&c.word));
+  };
+
+  window.eylConjClose=function(){
+    var s=sheet(); if(s) s.classList.remove('open');
+  };
+
+  window.eylConjOpen=async function(){
+    var c=(typeof CARDS!=='undefined'&&typeof bi!=='undefined')?CARDS[bi]:null;
+    if(!c||!c.word) return;
+    _cur=c; _tab=0;
+    var s=sheet(); if(!s) return;
+    s.classList.add('open');
+    render(null, true);
+    var have=cget(c.word);
+    if(have){ render(have,false); return; }
+    var data=null;
+    try{ data=await fetchConj(c); }catch(e){}
+    if(data){ cset(c.word,data); render(data,false); }
+    else render({error:1}, false);
+  };
+
+  async function fetchConj(c){
+    var lvl='A1';
+    try{ lvl=(typeof lexSetLevel==='function'&&lexSetLevel())||window._eylCurLevel||'A1'; }catch(e){}
+    var allow='';
+    try{
+      if(typeof gramBankReady==='function'&&gramBankReady()){
+        var names=gramAllowed().map(function(id){ var p=gramPoint(id); return p?p.name_pl:id; });
+        if(names.length) allow='Uczen zna WYLACZNIE te struktury: '+names.join('; ')+'. Nie wychodz poza nie. ';
+      }
+    }catch(e){}
+    var L=(typeof langName==='function')?langName():'obcego';
+    var p='Jestes metodykiem jezyka '+L+'. Slowo: "'+c.word+'"'
+      +(c.translation?(' (po polsku: '+c.translation+')'):'')+'. Uczen jest na poziomie '+lvl+'. '+allow
+      +'Jesli to NIE jest czasownik, zwroc {"is_verb":false}. '
+      +'Jesli to czasownik, zwroc jego odmiane w formach wlasciwych dla poziomu '+lvl+' i nizszych — maksymalnie 5 zakladek. '
+      +'W jezykach odmieniajacych sie przez osoby (hiszpanski, wloski, niemiecki) zakladka = czas gramatyczny, a wiersze = osoby. '
+      +'W jezykach bez odmiany przez osoby (japonski, koreanski) zakladka = grupa form (np. czas terazniejszy uprzejmy), a wiersze = konkretne formy (twierdzaca, przeczaca, przeszla, przeszla przeczaca). '
+      +'W polu "label" podaj etykiete wiersza PO POLSKU lub w jezyku docelowym, tak jak jest to naturalne dla tego jezyka. '
+      +'Zwroc WYLACZNIE poprawny JSON bez backtickow: '
+      +'{"is_verb":true,"base":"forma podstawowa","axis":"co rozroznia wiersze, 2-4 slowa po polsku",'
+      +'"tabs":[{"name":"krotka nazwa czasu/grupy PO POLSKU","note":"1 zdanie po polsku: kiedy sie tego uzywa",'
+      +'"rows":[{"label":"etykieta wiersza","form":"forma","tr":"tlumaczenie na polski"}]}]}';
+    var raw='';
+    if(typeof lexProxy==='function') raw=await lexProxy(p,1400);
+    if(!raw) return null;
+    var d=(typeof lexParseJSON==='function')?lexParseJSON(raw):JSON.parse(String(raw).replace(/```json|```/g,'').trim());
+    return d||null;
+  }
+
+  window.eylConjTab=function(i){ _tab=i; render(cget(_cur&&_cur.word)||null,false); };
+
+  window.eylConjSay=function(txt){
+    try{
+      var code=(typeof lexTtsCode==='function')?lexTtsCode(curSetLang):'en-US';
+      if(typeof window.eylSpeakWord==='function'){ window.eylSpeakWord(txt, code); return; }
+      if(window.speechSynthesis){ window.speechSynthesis.cancel();
+        var u=new SpeechSynthesisUtterance(txt); u.lang=code; u.rate=.95; window.speechSynthesis.speak(u); }
+    }catch(e){}
+  };
+
+  function esc2(s){ return (typeof esc==='function')?esc(s):String(s==null?'':s); }
+
+  function render(data, loading){
+    var s=sheet(); if(!s||!_cur) return;
+    var head='<div class="ecj-head"><div style="flex:1;min-width:0">'
+      +'<div class="ecj-word">'+esc2(_cur.word)+'</div>'
+      +'<div class="ecj-sub">'+(data&&data.axis?esc2(data.axis):(_cur.translation?esc2(_cur.translation):'Odmiana'))+'</div>'
+      +'</div><button class="icon-btn" onclick="eylConjClose()" style="background:none;border:none;color:var(--dim2);font-size:24px;line-height:1;cursor:pointer">&times;</button></div>';
+
+    if(loading){ s.innerHTML=head+'<div class="ecj-spin"></div>'; return; }
+    if(!data || data.error){
+      s.innerHTML=head+'<div class="ecj-msg">Nie udalo sie pobrac odmiany.<br><button class="ecj-tab" style="margin-top:12px" onclick="eylConjOpen()">Sprobuj ponownie</button></div>';
+      return;
+    }
+    if(data.is_verb===false || !data.tabs || !data.tabs.length){
+      s.innerHTML=head+'<div class="ecj-msg">To slowo nie jest czasownikiem,<br>wiec nie ma odmiany przez czasy.</div>';
+      return;
+    }
+    if(_tab>=data.tabs.length) _tab=0;
+    var tabs=data.tabs.map(function(t,i){
+      return '<button class="ecj-tab'+(i===_tab?' sel':'')+'" onclick="eylConjTab('+i+')">'+esc2(t.name)+'</button>';
+    }).join('');
+    var t=data.tabs[_tab]||{};
+    var rows=[].concat(t.rows||[]).map(function(r){
+      return '<div class="ecj-row" onclick="eylConjSay(\''+String(r.form||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">'
+        +'<div class="ecj-lab">'+esc2(r.label)+'</div>'
+        +'<div><div class="ecj-form">'+esc2(r.form)+'</div>'
+        +(r.tr?('<div class="ecj-tr">'+esc2(r.tr)+'</div>'):'')+'</div></div>';
+    }).join('');
+    s.innerHTML=head
+      +'<div class="ecj-tabs">'+tabs+'</div>'
+      +'<div class="ecj-body">'
+      +(t.note?('<div class="ecj-note">'+esc2(t.note)+'</div>'):'')
+      +(rows||'<div class="ecj-msg">Brak form.</div>')
+      +'<div style="font-size:11px;color:var(--dim2);text-align:center;margin-top:14px">Stuknij forme, zeby uslyszec wymowe.</div>'
+      +'</div>';
+  }
+})();
+</script>
+
 </body>
 </html>

@@ -16466,14 +16466,17 @@ async function lexInit(){
     if(BANK[l]) return Promise.resolve(BANK[l]);
     if(LOADING[l]) return LOADING[l];
     LOADING[l]=fetch(BANK_BASE+l+'.json',{cache:'force-cache'})
-      .then(function(r){ if(!r.ok) throw new Error('brak banku'); return r.json(); })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
       .then(function(j){
         var list=(j&&j.points)?j.points.slice():[];
         list.sort(function(a,b){ return (a.order||0)-(b.order||0); });
         var byId={}; list.forEach(function(p){ if(p&&p.id) byId[p.id]=p; });
         BANK[l]={byId:byId,list:list}; return BANK[l];
       })
-      .catch(function(){ BANK[l]={byId:{},list:[]}; return BANK[l]; });
+      .catch(function(err){
+        try{ console.warn('[gram] nie wczytano banku:', BANK_BASE+l+'.json', '-', (err&&err.message)||err); }catch(e){}
+        BANK[l]={byId:{},list:[]}; return BANK[l];
+      });
     return LOADING[l];
   };
   function bank(){ return BANK[lang()]||{byId:{},list:[]}; }
@@ -16523,6 +16526,21 @@ async function lexInit(){
     }
     if(t.contrast_pl) out.push('Uwaga: '+t.contrast_pl);
     return out.join('\n');
+  };
+
+  /* Diagnostyka — do wklejenia w konsoli gdy bank sie nie laduje. */
+  window.gramDiag=async function(){
+    var l=lang();
+    var url=BANK_BASE+l+'.json';
+    var out={ kod_jezyka:l, poziom:level(), sciezka:url, pelny_url:(new URL(url, location.href)).href };
+    try{
+      var r=await fetch(url,{cache:'no-store'});
+      out.status=r.status;
+      if(r.ok){ var j=await r.json(); out.punktow=(j&&j.points)?j.points.length:0; out.lang_w_pliku=j&&j.lang; }
+    }catch(e){ out.blad=(e&&e.message)||String(e); }
+    out.bank_zaladowany=gramBankReady();
+    console.table?console.table(out):console.log(out);
+    return out;
   };
 
   window.gramPromptBlock=function(){
