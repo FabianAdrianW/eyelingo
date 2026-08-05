@@ -5170,11 +5170,16 @@ async function alexSend(){
   }
 })();
 </script>
-<!-- ═══ EYELINGO — Odmiana czasownika przy fiszkach ═══
-     Jedno wywolanie AI na slowo => wszystkie formy dostepne na poziomie ucznia.
-     Cache per (jezyk, slowo). Przelaczanie zakladek natychmiastowe, bez sieci.
-     Zakres form ograniczony przez bank gramatyczny — spojnie z GRAM-0.
-     Zrodlo biezacej fiszki podaje window.eylConjGetCard (rozne w web i PWA). -->
+<!-- ═══ EYELINGO — Odmiana czasownika przy fiszkach (v2) ═══
+     ZASADY:
+     1. Nazwy czasow sa KANONICZNE (tabela ponizej), nie generowane przez model.
+        Dzieki temu web i PWA nazywaja to samo tak samo, a etykiety sa krotkie.
+     2. Generujemy PELNY zestaw dla jezyka (niezaleznie od poziomu) i cache'ujemy raz.
+        Poziom ucznia decyduje tylko o tym, ktore zakladki sa widoczne.
+     3. Cache dwupoziomowy: localStorage (natychmiast) + tabela wspolna w Supabase
+        (jedna generacja na slowo dla WSZYSTKICH uzytkownikow). Brak tabeli =
+        dziala sam cache lokalny, bez bledu.
+     4. Zakladki sie ZAWIJAJA — nigdy nie wyjezdzaja poza ekran. -->
 <style id="eyl-conj-css">
   .eyl-conjbtn{display:none;margin:0 auto;background:#fff;border:1.5px solid var(--line2,#e0dad0);border-radius:100px;
     padding:9px 16px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--navy,#1a2340);cursor:pointer;
@@ -5182,28 +5187,38 @@ async function alexSend(){
   .eyl-conjbtn.on{display:inline-flex}
   .eyl-conjbtn:hover{border-color:var(--orange,#c96a2a)}
   .eyl-conjbtn:active{transform:scale(.97)}
+
   #eyl-conj-back{position:fixed;inset:0;background:rgba(26,35,64,.34);z-index:10040;opacity:0;pointer-events:none;transition:opacity .22s}
   #eyl-conj-back.open{opacity:1;pointer-events:auto}
   #eyl-conj-sheet{position:fixed;left:50%;bottom:0;transform:translate(-50%,110%);width:min(520px,100%);
     z-index:10041;background:#fff;border-radius:22px 22px 0 0;box-shadow:0 -12px 34px rgba(26,35,64,.18);
-    display:flex;flex-direction:column;max-height:84vh;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+    display:flex;flex-direction:column;max-height:86vh;transition:transform .3s cubic-bezier(.4,0,.2,1)}
   #eyl-conj-sheet.open{transform:translate(-50%,0)}
-  .ecj-head{display:flex;align-items:flex-start;gap:10px;padding:16px 18px 10px;border-bottom:.5px solid var(--line,#e8e3da)}
-  .ecj-word{font-family:'DM Sans',system-ui,sans-serif;font-size:17px;font-weight:600;color:var(--navy,#1a2340)}
-  .ecj-sub{font-size:11px;color:var(--dim2,#8b93a7);margin-top:2px}
+
+  .ecj-head{display:flex;align-items:flex-start;gap:10px;padding:15px 18px 12px;border-bottom:.5px solid var(--line,#e8e3da);flex:0 0 auto}
+  .ecj-word{font-family:'DM Sans',system-ui,sans-serif;font-size:18px;font-weight:600;color:var(--navy,#1a2340);line-height:1.25}
+  .ecj-sub{font-size:11.5px;color:var(--dim2,#8b93a7);margin-top:3px}
   .ecj-x{background:none;border:none;color:var(--dim2,#8b93a7);font-size:24px;line-height:1;cursor:pointer;padding:0 2px}
-  .ecj-tabs{display:flex;gap:7px;overflow-x:auto;padding:12px 18px 4px;scrollbar-width:none}
-  .ecj-tabs::-webkit-scrollbar{display:none}
-  .ecj-tab{flex:0 0 auto;background:#fff;border:1.5px solid var(--line2,#e0dad0);border-radius:100px;padding:7px 13px;
-    font-family:inherit;font-size:12px;font-weight:600;color:var(--dim,#4a5268);cursor:pointer;white-space:nowrap}
+
+  /* Zakladki zawijaja sie do kolejnych wierszy — zero poziomego przewijania. */
+  .ecj-tabs{display:flex;flex-wrap:wrap;gap:6px;padding:12px 18px 2px;flex:0 0 auto}
+  .ecj-tab{background:#fff;border:1.5px solid var(--line2,#e0dad0);border-radius:100px;padding:6px 12px;
+    font-family:inherit;font-size:12px;font-weight:600;color:var(--dim,#4a5268);cursor:pointer;line-height:1.3;transition:.13s}
+  .ecj-tab:hover{border-color:var(--dim2,#8b93a7)}
   .ecj-tab.sel{border-color:var(--orange,#c96a2a);background:#fff6ef;color:var(--orange,#c96a2a)}
-  .ecj-body{flex:1;overflow-y:auto;padding:12px 18px 22px}
-  .ecj-note{font-size:12.5px;color:var(--dim,#4a5268);line-height:1.55;background:var(--paper,#faf7f2);border-radius:10px;padding:10px 12px;margin-bottom:12px}
-  .ecj-row{display:flex;align-items:baseline;gap:12px;padding:11px 2px;border-bottom:.5px solid var(--line,#e8e3da);cursor:pointer}
+
+  .ecj-body{flex:1 1 auto;overflow-y:auto;padding:12px 18px 20px;-webkit-overflow-scrolling:touch}
+  .ecj-native{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--orange,#c96a2a);margin-bottom:5px}
+  .ecj-note{font-size:12.5px;color:var(--dim,#4a5268);line-height:1.55;background:var(--paper,#faf7f2);
+    border-radius:10px;padding:10px 12px;margin-bottom:12px}
+  .ecj-row{display:flex;align-items:baseline;gap:12px;padding:10px 2px;border-bottom:.5px solid var(--line,#e8e3da);cursor:pointer}
+  .ecj-row:last-child{border-bottom:0}
   .ecj-row:hover{background:var(--paper,#faf7f2)}
-  .ecj-lab{flex:0 0 38%;font-size:12.5px;color:var(--dim2,#8b93a7)}
-  .ecj-form{flex:1;font-size:15.5px;font-weight:600;color:var(--navy,#1a2340)}
-  .ecj-tr{font-size:11.5px;color:var(--dim2,#8b93a7);font-weight:400;margin-top:2px}
+  .ecj-lab{flex:0 0 36%;max-width:36%;font-size:12px;color:var(--dim2,#8b93a7);line-height:1.35}
+  .ecj-form{flex:1;font-size:15.5px;font-weight:600;color:var(--navy,#1a2340);line-height:1.3}
+  .ecj-tr{font-size:11.5px;color:var(--dim2,#8b93a7);font-weight:400;margin-top:2px;line-height:1.35}
+  .ecj-foot{font-size:11px;color:var(--dim2,#8b93a7);text-align:center;margin-top:14px}
   .ecj-msg{text-align:center;color:var(--dim2,#8b93a7);font-size:13px;padding:26px 10px;line-height:1.6}
   .ecj-spin{width:20px;height:20px;border:2px solid var(--line2,#e0dad0);border-top-color:var(--orange,#c96a2a);
     border-radius:50%;animation:ecjRot .8s linear infinite;margin:26px auto}
@@ -5211,19 +5226,112 @@ async function alexSend(){
 </style>
 <script>
 (function(){
-  var _cache={}, _cur=null, _tab=0;
+  var CACHE_V = 2;
+  var _mem={}, _cur=null, _tab=0;
+
+  /* ── Kanoniczne czasy: krotka nazwa PL + nazwa oryginalna + poziom ──────
+     Nazwa PL trafia na zakladke (krotka!), nazwa oryginalna nad opisem. */
+  var TENSES = {
+    es:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Presente',                lvl:'A1'},
+      {id:'pind', pl:'Przeszły dokonany',nat:'Pretérito indefinido',    lvl:'A2'},
+      {id:'pimp', pl:'Przeszły ciągły',  nat:'Pretérito imperfecto',    lvl:'A2'},
+      {id:'perf', pl:'Present perfect',  nat:'Pretérito perfecto',      lvl:'A2'},
+      {id:'fut',  pl:'Przyszły',         nat:'Futuro simple',           lvl:'A2'},
+      {id:'cond', pl:'Przypuszczający',  nat:'Condicional simple',      lvl:'B1'}
+    ],
+    en:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Present Simple',          lvl:'A1'},
+      {id:'prco', pl:'Teraźniejszy ciągły',nat:'Present Continuous',    lvl:'A1'},
+      {id:'past', pl:'Przeszły',         nat:'Past Simple',             lvl:'A2'},
+      {id:'perf', pl:'Present perfect',  nat:'Present Perfect',         lvl:'A2'},
+      {id:'fut',  pl:'Przyszły',         nat:'Future (will)',           lvl:'A2'},
+      {id:'cond', pl:'Przypuszczający',  nat:'Conditional (would)',     lvl:'B1'}
+    ],
+    jp:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'ます-forma',              lvl:'A1'},
+      {id:'past', pl:'Przeszły',         nat:'ました-forma',            lvl:'A1'},
+      {id:'te',   pl:'Forma -te',        nat:'て-forma',                lvl:'A2'},
+      {id:'plain',pl:'Forma słownikowa', nat:'辞書形',                  lvl:'A2'},
+      {id:'nai',  pl:'Forma przecząca',  nat:'ない-forma',              lvl:'A2'},
+      {id:'pot',  pl:'Możliwości',       nat:'可能形',                  lvl:'B1'}
+    ],
+    de:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Präsens',                 lvl:'A1'},
+      {id:'perf', pl:'Przeszły złożony', nat:'Perfekt',                 lvl:'A2'},
+      {id:'prat', pl:'Przeszły prosty',  nat:'Präteritum',              lvl:'A2'},
+      {id:'fut',  pl:'Przyszły',         nat:'Futur I',                 lvl:'A2'},
+      {id:'konj', pl:'Przypuszczający',  nat:'Konjunktiv II',           lvl:'B1'}
+    ],
+    fr:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Présent',                 lvl:'A1'},
+      {id:'pcom', pl:'Przeszły złożony', nat:'Passé composé',           lvl:'A2'},
+      {id:'imp',  pl:'Przeszły ciągły',  nat:'Imparfait',               lvl:'A2'},
+      {id:'fut',  pl:'Przyszły',         nat:'Futur simple',            lvl:'A2'},
+      {id:'cond', pl:'Przypuszczający',  nat:'Conditionnel présent',    lvl:'B1'}
+    ],
+    it:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Presente',                lvl:'A1'},
+      {id:'ppro', pl:'Przeszły złożony', nat:'Passato prossimo',        lvl:'A2'},
+      {id:'imp',  pl:'Przeszły ciągły',  nat:'Imperfetto',              lvl:'A2'},
+      {id:'fut',  pl:'Przyszły',         nat:'Futuro semplice',         lvl:'A2'},
+      {id:'cond', pl:'Przypuszczający',  nat:'Condizionale presente',   lvl:'B1'}
+    ],
+    _default:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'',                        lvl:'A1'},
+      {id:'past', pl:'Przeszły',         nat:'',                        lvl:'A2'},
+      {id:'fut',  pl:'Przyszły',         nat:'',                        lvl:'A2'}
+    ]
+  };
+  var LV=['A1','A2','B1','B2','C1','C2'];
+  function lvIdx(l){ var i=LV.indexOf(String(l||'A1')); return i<0?0:i; }
 
   function lg(){ try{ return (typeof curSetLang!=='undefined'&&curSetLang)||window._lexLang||'en'; }catch(e){ return 'en'; } }
-  function ckey(w){ var k='eyl_conj_'+lg()+'_'+String(w||'').toLowerCase();
+  function tenseSet(){ return TENSES[lg()]||TENSES._default; }
+
+  /* Jeden sposob liczenia poziomu dla obu wersji — inaczej web i PWA
+     pokazywaly rozna liczbe zakladek dla tego samego slowa. */
+  function userLevel(){
+    var l=null;
+    try{ if(window._gramLevel) l=window._gramLevel; }catch(e){}
+    try{ if(!l && typeof lexCurrentLevel==='function') l=lexCurrentLevel(); }catch(e){}
+    try{ if(!l && typeof lexSetLevel==='function') l=lexSetLevel(); }catch(e){}
+    try{ if(!l) l=window._lexObLevel; }catch(e){}
+    return l||'A2';
+  }
+  function visibleTenses(){
+    var max=lvIdx(userLevel());
+    var vis=tenseSet().filter(function(t){ return lvIdx(t.lvl)<=max; });
+    return vis.length?vis:[tenseSet()[0]];
+  }
+
+  function esc2(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function norm(w){ return String(w||'').trim().toLowerCase(); }
+  function ckey(w){ var k='eyl_conj'+CACHE_V+'_'+lg()+'_'+norm(w);
                     try{ return uk(k); }catch(e){ return k; } }
-  function cget(w){
+
+  /* ── Cache lokalny ────────────────────────────────────────────────────── */
+  function localGet(w){
     if(!w) return null;
-    if(_cache[w]) return _cache[w];
-    try{ var r=localStorage.getItem(ckey(w)); if(r){ _cache[w]=JSON.parse(r); return _cache[w]; } }catch(e){}
+    if(_mem[w]) return _mem[w];
+    try{ var r=localStorage.getItem(ckey(w)); if(r){ _mem[w]=JSON.parse(r); return _mem[w]; } }catch(e){}
     return null;
   }
-  function cset(w,d){ _cache[w]=d; try{ localStorage.setItem(ckey(w), JSON.stringify(d)); }catch(e){} }
-  function esc2(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function localSet(w,d){ _mem[w]=d; try{ localStorage.setItem(ckey(w), JSON.stringify(d)); }catch(e){} }
+
+  /* ── Cache wspolny (Supabase) — jedna generacja na slowo dla wszystkich.
+        Brak tabeli/uprawnien => ciche pominiecie, dziala sam cache lokalny. */
+  async function sharedGet(w){
+    try{
+      var r=await db.from('conj_cache').select('data')
+        .eq('lang',lg()).eq('word',norm(w)).eq('v',CACHE_V).maybeSingle();
+      if(r && r.data && r.data.data) return r.data.data;
+    }catch(e){}
+    return null;
+  }
+  async function sharedSet(w,d){
+    try{ await db.from('conj_cache').upsert({lang:lg(), word:norm(w), v:CACHE_V, data:d},{onConflict:'lang,word,v'}); }catch(e){}
+  }
 
   function ensure(){
     if(document.getElementById('eyl-conj-sheet')) return;
@@ -5233,11 +5341,11 @@ async function alexSend(){
   }
 
   window.eylConjSync=function(){
-    var btns=document.querySelectorAll('.eyl-conjbtn');
     var c=(typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null;
-    Array.prototype.forEach.call(btns,function(b){ b.classList.toggle('on', !!(c&&c.word)); });
+    Array.prototype.forEach.call(document.querySelectorAll('.eyl-conjbtn'),function(b){
+      b.classList.toggle('on', !!(c&&c.word));
+    });
   };
-
   window.eylConjClose=function(){
     var s=document.getElementById('eyl-conj-sheet'), b=document.getElementById('eyl-conj-back');
     if(s) s.classList.remove('open'); if(b) b.classList.remove('open');
@@ -5246,25 +5354,26 @@ async function alexSend(){
   window.eylConjOpen=async function(){
     var c=(typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null;
     if(!c||!c.word) return;
-    ensure();
-    _cur=c; _tab=0;
+    ensure(); _cur=c; _tab=0;
     document.getElementById('eyl-conj-back').classList.add('open');
     document.getElementById('eyl-conj-sheet').classList.add('open');
-    var have=cget(c.word);
-    if(have){ render(have,false); return; }
+
+    var d=localGet(c.word);
+    if(d){ render(d,false); return; }
     render(null,true);
-    var data=null;
-    try{ data=await fetchConj(c); }catch(e){}
-    if(data){ cset(c.word,data); render(data,false); }
+
+    d=await sharedGet(c.word);
+    if(d){ localSet(c.word,d); render(d,false); return; }
+
+    try{ d=await fetchConj(c); }catch(e){ d=null; }
+    if(d){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
     else render({error:1},false);
   };
 
   function pickText(d){
     try{ if(typeof extractAIText==='function'){ var t=extractAIText(d); if(t) return t; } }catch(e){}
-    try{
-      if(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)
-        return d.candidates[0].content.parts.map(function(p){return p.text||'';}).join('');
-    }catch(e){}
+    try{ if(d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts)
+      return d.candidates[0].content.parts.map(function(p){return p.text||'';}).join(''); }catch(e){}
     try{ if(d&&d.content&&d.content[0]&&d.content[0].text) return d.content[0].text; }catch(e){}
     return '';
   }
@@ -5276,50 +5385,41 @@ async function alexSend(){
     return null;
   }
 
+  /* Generujemy PELNY zestaw dla jezyka — cache jest niezalezny od poziomu. */
   async function fetchConj(c){
-    var lvl='A1';
-    try{
-      if(typeof lexCurrentLevel==='function') lvl=lexCurrentLevel()||lvl;
-      else if(typeof lexSetLevel==='function') lvl=lexSetLevel()||lvl;
-      lvl=window._gramLevel||lvl;
-    }catch(e){}
-    var allow='';
-    try{
-      if(typeof gramBankReady==='function'&&gramBankReady()){
-        var names=gramAllowed().map(function(id){ var p=gramPoint(id); return p?p.name_pl:id; });
-        if(names.length) allow='Uczen zna WYLACZNIE te struktury: '+names.join('; ')+'. Nie wychodz poza nie. ';
-      }
-    }catch(e){}
+    var set=tenseSet();
     var L='obcego'; try{ if(typeof langName==='function') L=langName(); else if(typeof langLoc==='function') L=langLoc(); }catch(e){}
+    var spec=set.map(function(t){ return '{"id":"'+t.id+'"'+(t.nat?(', czas: '+t.nat):'')+'}'; }).join(', ');
 
     var p='Jestes metodykiem jezyka '+L+'. Slowo: "'+c.word+'"'
-      +(c.translation?(' (po polsku: '+c.translation+')'):'')+'. Uczen jest na poziomie '+lvl+'. '+allow
+      +(c.translation?(' (po polsku: '+c.translation+')'):'')+'. '
       +'Jesli to NIE jest czasownik, zwroc {"is_verb":false}. '
-      +'Jesli to czasownik, zwroc jego odmiane w formach wlasciwych dla poziomu '+lvl+' i nizszych, maksymalnie 5 zakladek. '
-      +'W jezykach odmieniajacych sie przez osoby (hiszpanski, wloski, niemiecki, francuski) zakladka = czas gramatyczny, a wiersze = osoby. '
-      +'W jezykach bez odmiany przez osoby (japonski, koreanski) zakladka = grupa form, a wiersze = konkretne formy: twierdzaca, przeczaca, przeszla, przeszla przeczaca. '
+      +'Jesli to czasownik, odmien go w DOKLADNIE tych formach, w tej kolejnosci: '+spec+'. '
+      +'Dla kazdej pozycji zwroc obiekt z tym samym "id". Nie dodawaj wlasnych czasow, nie pomijaj zadnego. '
+      +'W jezykach odmieniajacych sie przez osoby wiersze = wszystkie osoby liczby pojedynczej i mnogiej, '
+      +'etykieta wiersza w jezyku docelowym (np. "yo", "tu"). '
+      +'W jezykach bez odmiany przez osoby (japonski, koreanski) wiersze = warianty formy: '
+      +'twierdzaca, przeczaca, a jesli to naturalne takze przeszla — etykieta po polsku. '
+      +'Pole "note" to JEDNO krotkie zdanie po polsku: kiedy sie tego uzywa. '
       +'Zwroc WYLACZNIE poprawny JSON bez backtickow: '
-      +'{"is_verb":true,"base":"forma podstawowa","axis":"co rozroznia wiersze, 2-4 slowa po polsku",'
-      +'"tabs":[{"name":"krotka nazwa czasu lub grupy PO POLSKU","note":"jedno zdanie po polsku: kiedy sie tego uzywa",'
-      +'"rows":[{"label":"etykieta wiersza","form":"forma","tr":"tlumaczenie na polski"}]}]}';
+      +'{"is_verb":true,"base":"forma podstawowa","axis":"co rozroznia wiersze, 2-3 slowa po polsku",'
+      +'"tabs":[{"id":"id z listy","note":"jedno zdanie","rows":[{"label":"etykieta","form":"forma","tr":"tlumaczenie na polski"}]}]}';
 
-    if(typeof lexProxy==='function'){ return parseJ(await lexProxy(p,1400)); }
+    if(typeof lexProxy==='function') return parseJ(await lexProxy(p,1800));
     var tok='';
     try{ var sess=(await db.auth.getSession()).data.session; tok=sess?sess.access_token:''; }catch(e){}
     var res=await fetch(AI_PROXY_URL,{method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
-      body:JSON.stringify({kind:'lex',messages:[{role:'user',content:p}],max_tokens:1400})});
-    var d=await res.json();
-    return parseJ(pickText(d));
+      body:JSON.stringify({kind:'lex',messages:[{role:'user',content:p}],max_tokens:1800})});
+    return parseJ(pickText(await res.json()));
   }
 
-  window.eylConjTab=function(i){ _tab=i; render(cget(_cur&&_cur.word)||null,false); };
+  window.eylConjTab=function(i){ _tab=i; render(localGet(_cur&&_cur.word)||null,false); };
 
   window.eylConjSay=function(txt){
     try{
       if(typeof window.lexSceneSpeak==='function'){ window.lexSceneSpeak(txt); return; }
-      var code='en-US';
-      try{ if(typeof lexTtsCode==='function') code=lexTtsCode(lg()); }catch(e){}
+      var code='en-US'; try{ if(typeof lexTtsCode==='function') code=lexTtsCode(lg()); }catch(e){}
       if(window.speechSynthesis){ window.speechSynthesis.cancel();
         var u=new SpeechSynthesisUtterance(txt); u.lang=code; u.rate=.95; window.speechSynthesis.speak(u); }
     }catch(e){}
@@ -5328,33 +5428,49 @@ async function alexSend(){
   function render(data, loading){
     var s=document.getElementById('eyl-conj-sheet'); if(!s||!_cur) return;
     var head='<div class="ecj-head"><div style="flex:1;min-width:0">'
-      +'<div class="ecj-word">'+esc2(_cur.word)+'</div>'
-      +'<div class="ecj-sub">'+(data&&data.axis?esc2(data.axis):(_cur.translation?esc2(_cur.translation):'Odmiana'))+'</div>'
+      +'<div class="ecj-word">'+esc2((data&&data.base)||_cur.word)+'</div>'
+      +'<div class="ecj-sub">'+esc2(_cur.translation||'Odmiana')+'</div>'
       +'</div><button class="ecj-x" onclick="eylConjClose()">&times;</button></div>';
 
     if(loading){ s.innerHTML=head+'<div class="ecj-spin"></div>'; return; }
     if(!data||data.error){
-      s.innerHTML=head+'<div class="ecj-msg">Nie udało się pobrać odmiany.<br><button class="ecj-tab" style="margin-top:12px" onclick="eylConjOpen()">Spróbuj ponownie</button></div>'; return;
+      s.innerHTML=head+'<div class="ecj-msg">Nie udało się pobrać odmiany.<br>'
+        +'<button class="ecj-tab" style="margin-top:12px" onclick="eylConjOpen()">Spróbuj ponownie</button></div>'; return;
     }
     if(data.is_verb===false||!data.tabs||!data.tabs.length){
       s.innerHTML=head+'<div class="ecj-msg">To słowo nie jest czasownikiem,<br>więc nie ma odmiany przez czasy.</div>'; return;
     }
-    if(_tab>=data.tabs.length) _tab=0;
-    var tabs=data.tabs.map(function(t,i){
-      return '<button class="ecj-tab'+(i===_tab?' sel':'')+'" onclick="eylConjTab('+i+')">'+esc2(t.name)+'</button>';
+
+    // Zakladki: kanoniczne nazwy, przyciete do poziomu ucznia, w stalej kolejnosci.
+    var byId={}; (data.tabs||[]).forEach(function(t){ if(t&&t.id) byId[t.id]=t; });
+    var vis=visibleTenses().filter(function(t){ return byId[t.id]&&(byId[t.id].rows||[]).length; });
+    if(!vis.length){
+      vis=tenseSet().filter(function(t){ return byId[t.id]; }).slice(0,1);
+      if(!vis.length){ s.innerHTML=head+'<div class="ecj-msg">Brak form dla tego słowa.</div>'; return; }
+    }
+    if(_tab>=vis.length) _tab=0;
+
+    var tabs=vis.map(function(t,i){
+      return '<button class="ecj-tab'+(i===_tab?' sel':'')+'" onclick="eylConjTab('+i+')">'+esc2(t.pl)+'</button>';
     }).join('');
-    var t=data.tabs[_tab]||{};
+
+    var meta=vis[_tab], t=byId[meta.id]||{};
     var rows=[].concat(t.rows||[]).map(function(r){
       var f=String(r.form||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       return '<div class="ecj-row" onclick="eylConjSay(\''+f+'\')">'
         +'<div class="ecj-lab">'+esc2(r.label)+'</div>'
-        +'<div><div class="ecj-form">'+esc2(r.form)+'</div>'
+        +'<div style="flex:1;min-width:0"><div class="ecj-form">'+esc2(r.form)+'</div>'
         +(r.tr?('<div class="ecj-tr">'+esc2(r.tr)+'</div>'):'')+'</div></div>';
     }).join('');
-    s.innerHTML=head+'<div class="ecj-tabs">'+tabs+'</div><div class="ecj-body">'
+
+    s.innerHTML=head
+      +'<div class="ecj-tabs">'+tabs+'</div>'
+      +'<div class="ecj-body">'
+      +(meta.nat?('<div class="ecj-native">'+esc2(meta.nat)+'</div>'):'')
       +(t.note?('<div class="ecj-note">'+esc2(t.note)+'</div>'):'')
       +(rows||'<div class="ecj-msg">Brak form.</div>')
-      +'<div style="font-size:11px;color:var(--dim2);text-align:center;margin-top:14px">Kliknij formę, żeby usłyszeć wymowę.</div></div>';
+      +'<div class="ecj-foot">Kliknij formę, żeby usłyszeć wymowę.</div>'
+      +'</div>';
   }
 })();
 </script>
