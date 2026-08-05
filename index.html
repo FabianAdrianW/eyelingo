@@ -16465,7 +16465,7 @@ async function lexInit(){
     l=l||lang();
     if(BANK[l]) return Promise.resolve(BANK[l]);
     if(LOADING[l]) return LOADING[l];
-    LOADING[l]=fetch(BANK_BASE+l+'.json',{cache:'force-cache'})
+    LOADING[l]=fetch(BANK_BASE+l+'.json',{cache:'no-cache'})
       .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
       .then(function(j){
         var list=(j&&j.points)?j.points.slice():[];
@@ -16475,11 +16475,16 @@ async function lexInit(){
       })
       .catch(function(err){
         try{ console.warn('[gram] nie wczytano banku:', BANK_BASE+l+'.json', '-', (err&&err.message)||err); }catch(e){}
-        BANK[l]={byId:{},list:[]}; return BANK[l];
+        // Nieudanej proby NIE zapisujemy — inaczej jeden 404 (np. przed wgraniem
+        // pliku) blokuje bank do konca sesji. Nastepna porcja sprobuje ponownie.
+        delete LOADING[l];
+        return {byId:{},list:[]};
       });
     return LOADING[l];
   };
   function bank(){ return BANK[lang()]||{byId:{},list:[]}; }
+  /* Wymusza ponowne pobranie banku z pominieciem cache przegladarki. */
+  window.gramBankReload=function(l){ l=l||lang(); delete BANK[l]; delete LOADING[l]; return gramBankLoad(l); };
   window.gramPoint=function(id){ return bank().byId[id]||null; };
   window.gramBankReady=function(){ return bank().list.length>0; };
 
