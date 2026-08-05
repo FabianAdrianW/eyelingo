@@ -412,6 +412,47 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   .cont-eyebrow.mine{color:var(--navy)}.cont-eyebrow.eyl{color:var(--orange)}
   .cont-name{font-family:'DM Sans';font-size:17px;font-weight:600;color:var(--navy);margin-bottom:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
+<style id="gram-card-css">
+/* Karta „Nowa struktura" — segmentacja wizualna zamiast sciany tekstu.
+   Kazdy blok = inna funkcja dydaktyczna, inny ciezar wizualny, inny rytm. */
+.gram-card{background:#fff;border:1px solid var(--line,#e8e3da);border-left:3px solid var(--orange,#c96a2a);
+  border-radius:14px;padding:18px 20px;margin-bottom:16px}
+.gram-eyebrow{font-size:10px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--orange,#c96a2a);margin-bottom:7px}
+.gram-title{font-family:'DM Sans',system-ui,sans-serif;font-size:17px;font-weight:600;
+  color:var(--navy,#1a2340);line-height:1.35;margin-bottom:10px}
+.gram-rule{font-size:14.5px;line-height:1.65;color:var(--dim,#4a5268);margin-bottom:14px}
+
+/* Wzorzec — siatka, nie proza. Wyrownanie kolumn robi robote za czytelnika. */
+.gram-para{background:var(--paper,#faf7f2);border-radius:10px;padding:4px 2px;margin-bottom:14px;overflow-x:auto}
+.gram-prow{display:flex;align-items:baseline;gap:10px;padding:7px 12px;border-bottom:1px solid rgba(26,35,64,.055)}
+.gram-prow:last-child{border-bottom:0}
+.gram-phead{padding-top:9px;padding-bottom:6px}
+.gram-phead .gram-pcell{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim2,#8b93a7)}
+.gram-pcell{flex:1 1 0;min-width:0;font-size:13.5px;line-height:1.45;color:var(--dim,#4a5268);
+  font-variant-numeric:tabular-nums}
+.gram-pkey{font-weight:600;color:var(--navy,#1a2340)}
+
+/* Przyklady — para „forma / znaczenie", forma zawsze na pierwszym planie. */
+.gram-exs{margin-bottom:14px}
+.gram-ex{padding:8px 0 8px 12px;border-left:2px solid rgba(201,106,42,.28);margin-bottom:8px;cursor:pointer}
+.gram-ex:last-child{margin-bottom:0}
+.gram-ex:active{border-left-color:var(--orange,#c96a2a)}
+.gram-ex-t{font-size:14.5px;font-weight:600;color:var(--navy,#1a2340);line-height:1.45}
+.gram-ex-p{font-size:12.5px;color:var(--dim2,#8b93a7);line-height:1.45;margin-top:2px}
+
+/* Typowy blad — jedyny blok z ostrzegawczym tlem. Uzyty raz, wiec dziala. */
+.gram-warn{display:flex;gap:9px;align-items:flex-start;background:#fdf4ec;border-radius:10px;
+  padding:11px 13px;font-size:13px;line-height:1.55;color:#8a4a18}
+.gram-warn-ic{flex:0 0 17px;height:17px;border-radius:50%;background:var(--orange,#c96a2a);color:#fff;
+  font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+
+/* Wariant w Zeszycie/Tablicy — bez ramki, ciasniej */
+.gram-inline .gram-card{border:0;border-left:0;padding:0;margin:0}
+.gram-inline .gram-eyebrow{display:none}
+</style>
+
 </head>
 <body>
 <div class="phone"><div class="app" id="app-root">
@@ -1564,6 +1605,69 @@ function lexParseJSON(raw){
     return out;
   };
 
+  /* ── Karta „Nowa struktura" — render z danych banku ──────────────────────
+     Segmentacja wizualna zamiast sciany tekstu: kazda funkcja dydaktyczna
+     (regula / wzorzec / przyklad / typowy blad) dostaje wlasny blok, wlasny
+     kolor i wlasny rytm. Czytelnik skanuje, nie brnie. */
+  function _e(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  window.gramCardHTML=function(id, opts){
+    var p=(typeof id==='object'&&id)?id:gramPoint(id);
+    if(!p||!p.teach) return '';
+    opts=opts||{};
+    var t=p.teach, h='';
+    h+='<div class="gram-card">';
+    h+='<div class="gram-eyebrow">'+_e(opts.eyebrow||'Nowa struktura')+'</div>';
+    h+='<div class="gram-title">'+_e(p.name_pl)+'</div>';
+    if(t.rule_pl) h+='<div class="gram-rule">'+_e(t.rule_pl)+'</div>';
+
+    if(t.paradigm&&t.paradigm.rows&&t.paradigm.rows.length){
+      var head=t.paradigm.head||[];
+      h+='<div class="gram-para">';
+      if(head.length){
+        h+='<div class="gram-prow gram-phead">'+head.map(function(c){
+          return '<div class="gram-pcell">'+_e(c)+'</div>'; }).join('')+'</div>';
+      }
+      t.paradigm.rows.forEach(function(r){
+        var cells=[].concat(r);
+        h+='<div class="gram-prow">'+cells.map(function(c,ci){
+          var last=(ci===cells.length-1);
+          return '<div class="gram-pcell'+(last?' gram-pkey':'')+'">'+_e(c)+'</div>';
+        }).join('')+'</div>';
+      });
+      h+='</div>';
+    }
+
+    if(t.examples&&t.examples.length){
+      h+='<div class="gram-exs">';
+      t.examples.forEach(function(ex){
+        h+='<div class="gram-ex" data-say="'+_e(ex.target)+'">'
+          +'<div class="gram-ex-t">'+_e(ex.target)+'</div>'
+          +(ex.pl?'<div class="gram-ex-p">'+_e(ex.pl)+'</div>':'')+'</div>';
+      });
+      h+='</div>';
+    }
+
+    if(t.contrast_pl){
+      h+='<div class="gram-warn"><span class="gram-warn-ic">!</span><span>'+_e(t.contrast_pl)+'</span></div>';
+    }
+    h+='</div>';
+    return h;
+  };
+
+  /* Lista struktur wprowadzonych w tej porcji — do Tablicy lekcji. */
+  window.gramLessonPoints=function(data){
+    if(!gramBankReady()||!data) return [];
+    var ids={}, out=[];
+    if(data._teachable) ids[data._teachable]=1;
+    (data.exercises||[]).forEach(function(ex){
+      [].concat((ex&&ex.uses_grammar)||[]).forEach(function(i){ if(i) ids[i]=1; });
+    });
+    Object.keys(ids).forEach(function(i){ var p=gramPoint(i); if(p) out.push(p); });
+    out.sort(function(a,b){ return (a.order||0)-(b.order||0); });
+    return out;
+  };
+
   window.gramPromptBlock=function(){
     if(!gramBankReady()) return '';
     var allowed=gramAllowed().map(function(id){ var p=gramPoint(id); return p?(p.id+' = '+p.name_pl):id; });
@@ -1574,7 +1678,7 @@ function lexParseJSON(raw){
           :'NIE wprowadzaj żadnej nowej struktury gramatycznej w tej porcji. ')
       +'Nie wolno użyć ŻADNEJ innej struktury — ani w zdaniach, ani w poleceniach, ani we wzorcowych odpowiedziach, ani w podpowiedziach. '
       +'W KAŻDYM ćwiczeniu wypełnij pole "uses_grammar": tablicę id struktur wymaganych do poprawnego wykonania zadania (pusta tablica, jeśli zadanie jest czysto leksykalne). '
-      +(tp?(window.GRAM_INTRO_BRIDGE===false
+      +(tp?(window.GRAM_INTRO_BRIDGE!==true
             ? 'NIE tłumacz nowej struktury w polu "intro" — regułę i odmianę pokaże aplikacja z własnych danych. Twoim zadaniem są wyłącznie ćwiczenia. '
             : ('NOWĄ strukturę wprowadź na POCZĄTKU pola "intro", przepisując PONIŻSZY model DOSŁOWNIE, bez skracania i bez własnych wyjaśnień, a dopiero potem przejdź do ćwiczeń:\n'
                + gramTeachBlock(tp) + '\n')):'')
@@ -2114,9 +2218,15 @@ function lexShowStep(s){
   if(s<0){
     var box=document.createElement('div'); box.className='lexx-ex lexx-introcard';
     var h='<div class="lexx-ex-head"><span class="lexx-badge">Słowa porcji</span><span style="font-size:13px;color:var(--dim2)">'+esc(data.focus||'')+'</span></div>';
-    var intro=data.intro?('<div class="lexx-introtext">'+lexBoldKey(esc(data.intro))+'</div>'):'';
+    var gramHtml='';
+    try{ if(data._teachable && typeof gramCardHTML==='function') gramHtml=gramCardHTML(data._teachable); }catch(e){}
+    var intro=gramHtml+(data.intro?('<div class="lexx-introtext">'+lexBoldKey(esc(data.intro))+'</div>'):'');
     var chips='<div class="lexx-items">'+(data.items||[]).map(function(it){ var _cd=(it.word||''); var _rmj=it.reading?('<span style="font-size:11px;opacity:.6;font-weight:400;margin-left:5px">'+esc(it.reading)+'</span>'):''; return '<span class="lexx-chip" onclick="lexSceneSpeak(\''+esc(String(it.word||'')).replace(/'/g,"")+'\')">'+esc(_cd)+_rmj+(it.translation?'<span class="tr">'+esc(it.translation)+'</span>':'')+'</span>'; }).join('')+'</div>';
     box.innerHTML=h+intro+chips+'<div style="font-size:12px;color:var(--dim2);margin-top:10px;line-height:1.5">Tapnij słowo, by usłyszeć wymowę. Potem '+((data.exercises||[]).length||4)+' krótkie ćwiczenia, jedno na raz — kończysz produkcją.</div>';
+    try{ box.addEventListener('click', function(ev){
+      var g=ev.target.closest && ev.target.closest('.gram-ex');
+      if(g && typeof lexSceneSpeak==='function'){ ev.stopPropagation(); lexSceneSpeak(g.getAttribute('data-say')); }
+    }); }catch(e){}
     stage.appendChild(box);
     var st=document.createElement('button'); st.className='lexx-next'; st.textContent='Zaczynamy →'; st.onclick=function(){ lexShowStep(0); };
     stage.appendChild(st); w.appendChild(stage);
