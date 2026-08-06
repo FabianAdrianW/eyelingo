@@ -1605,7 +1605,23 @@ function lexParseJSON(raw){
   var BANK={}, LOADING={};
   var BANK_BASE='data/grammar/grammar-bank.';
 
-  function lang(){ try{ return window._lexLang||'en'; }catch(e){ return 'en'; } }
+  /* Kod jezyka banku. PWA deklaruje _lexLang przez `let`, wiec zmienna NIE
+     trafia na window — silnik czytal wtedy zawsze 'en', bank japonskiego
+     ladowal sie pod kluczem 'jp', a bank() siegal po pusty 'en'. Efekt:
+     gramBankReady()===false i cala gramatyka milczala dla kazdego jezyka
+     poza angielskim. Czytamy wiec window, zmienna leksykalna i kod zestawu. */
+  function _gramNormCode(c){
+    c=String(c==null?'':c).toLowerCase().trim().split(/[-_]/)[0];
+    if(c==='ja') c='jp';                 // kanoniczny kod japonskiego w Eyelingo
+    return c;
+  }
+  function lang(){
+    var c='';
+    try{ c=window._lexLang||''; }catch(e){}
+    try{ if(!c && typeof _lexLang!=='undefined') c=_lexLang||''; }catch(e){}
+    try{ if(!c && typeof curSetLang!=='undefined') c=curSetLang||''; }catch(e){}
+    return _gramNormCode(c)||'en';
+  }
   function level(){
     try{ if(window._gramLevel) return window._gramLevel; }catch(e){}
     try{ if(typeof lexLevel!=='undefined'&&lexLevel) return lexLevel; }catch(e){}
@@ -1617,7 +1633,7 @@ function lexParseJSON(raw){
   var DAY=86400000;
 
   window.gramBankLoad=function(l){
-    l=l||lang();
+    l=l?_gramNormCode(l):lang(); if(!l) l=lang();
     if(BANK[l]) return Promise.resolve(BANK[l]);
     if(LOADING[l]) return LOADING[l];
     LOADING[l]=fetch(BANK_BASE+l+'.json',{cache:'no-cache'})
@@ -1639,7 +1655,7 @@ function lexParseJSON(raw){
   };
   function bank(){ return BANK[lang()]||{byId:{},list:[]}; }
   /* Wymusza ponowne pobranie banku z pominieciem cache przegladarki. */
-  window.gramBankReload=function(l){ l=l||lang(); delete BANK[l]; delete LOADING[l]; return gramBankLoad(l); };
+  window.gramBankReload=function(l){ l=l?_gramNormCode(l):lang(); delete BANK[l]; delete LOADING[l]; return gramBankLoad(l); };
   window.gramPoint=function(id){ return bank().byId[id]||null; };
   window.gramBankReady=function(){ return bank().list.length>0; };
 
@@ -2241,7 +2257,7 @@ async function lexGeneratePortion(){
 async function lexStart(){
   var elx=document.querySelector('#lex-exlvl .opt.sel'); lexExLevel=(elx&&elx.dataset.v)||'intermediate';
   var ecd=document.querySelector('#lex-conduct .opt.sel'); lexConductLang=(ecd&&ecd.dataset.v)||'pl';
-  _lexLang=curSetLang||'en';
+  _lexLang=curSetLang||'en'; try{ window._lexLang=_lexLang; }catch(e){}
   lexLevel=lexSetLevel()||'B1';
   _lexScript='native';
   if(_isTranslitLang(curSetLang||'')){
@@ -2375,7 +2391,7 @@ function lexRenderResumeCarousel(wrap, snaps){
 async function resumeLesson(snap){
   if(!snap||!snap.set_id) return;
   curSetId=snap.set_id; curSetName=snap.set_name||''; curSetCount=snap.set_count||0;
-  curSetLang=snap.lang||'en'; curSetLangSrc=_eylNormLang(snap.lang); _lexLang=curSetLang;
+  curSetLang=snap.lang||'en'; curSetLangSrc=_eylNormLang(snap.lang); _lexLang=curSetLang; try{ window._lexLang=_lexLang; }catch(e){}
   lexLevel=snap.level||'B1'; lexExLevel=snap.exLevel||'intermediate'; lexConductLang=snap.conductLang||'pl';
   _lexScript=(snap.script==='romaji'?'romaji':'native');
   try{ if(_isTranslitLang(curSetLang||'') && !snap.script){ _lexScript=(await loadJpScriptPref())||_lexDefaultScriptForLevel(snap.level||lexSetLevel()); } }catch(e){}
