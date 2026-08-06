@@ -465,6 +465,37 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 .gram-sc.open .gram-sc-b{display:block}
 .gram-sc-rule{font-size:12.5px;line-height:1.55;color:var(--dim,#4a4a4a);margin-bottom:9px}
 .gram-sc .gram-para{margin-bottom:0}
+/* Linia postepu i mapa struktur. Mapa terenu, nie tablica wynikow:
+   bez procentow, paskow, serii i ocen. */
+.gram-prog{display:inline-flex;align-items:center;gap:5px;background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
+.gram-prog-i::after{content:'\203A';font-size:13px;opacity:.5}
+.gram-map-ov{position:fixed;inset:0;z-index:9999;background:rgba(26,35,64,.42);display:flex;align-items:flex-end;justify-content:center}
+.phone .gram-map-ov{position:absolute}
+.gram-map-card{width:100%;max-width:560px;max-height:86%;display:flex;flex-direction:column;
+  background:var(--paper,#faf7f2);border-radius:16px 16px 0 0;box-shadow:0 -8px 40px rgba(26,35,64,.18)}
+@media(min-width:700px){.gram-map-ov{align-items:center}.gram-map-card{border-radius:16px;max-height:78%}}
+.gram-map-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px 11px;
+  font-size:13px;font-weight:600;color:var(--navy,#1a2340);border-bottom:1px solid var(--line,#e8e3da)}
+.gram-map-x{background:none;border:0;font-size:21px;line-height:1;color:var(--dim2,#8a8378);cursor:pointer;padding:0 2px}
+.gram-map-body{overflow:auto;padding:4px 18px}
+.gram-map-lead{font-size:11px;color:var(--dim2,#8a8378);margin:11px 0 0}
+.gram-map-sec{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2,#8a8378);margin:16px 0 4px}
+.gram-map-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line,#e8e3da)}
+.gram-map-lvl{flex:0 0 auto;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--dim2,#8a8378);
+  border:1px solid var(--line,#e8e3da);border-radius:4px;padding:1px 4px}
+.gram-map-nm{flex:1 1 auto;font-size:12.5px;line-height:1.4;color:var(--navy,#1a2340)}
+.gram-map-tag{flex:0 0 auto;font-size:10px;color:var(--dim2,#8a8378)}
+.gram-map-more{font-size:11px;color:var(--dim2,#8a8378);padding:7px 0 0}
+.gram-map-btn{flex:0 0 auto;background:none;border:1px solid var(--line,#e8e3da);border-radius:7px;
+  padding:4px 9px;font-family:inherit;font-size:11px;color:var(--navy,#1a2340);cursor:pointer}
+.gram-map-btn:hover{border-color:var(--navy,#1a2340)}
+.gram-map-det{margin:16px 0 4px}
+.gram-map-det>summary{cursor:pointer;font-size:11.5px;color:var(--dim2,#8a8378);padding:6px 0;list-style:none}
+.gram-map-det>summary::-webkit-details-marker{display:none}
+.gram-map-det>summary::before{content:'\25B8  '}
+.gram-map-det[open]>summary::before{content:'\25BE  '}
+.gram-map-foot{padding:11px 18px 16px;font-size:11px;line-height:1.5;color:var(--dim2,#8a8378);border-top:1px solid var(--line,#e8e3da)}
+.gram-map-empty{padding:18px 0;font-size:12px;color:var(--dim2,#8a8378)}
 </style>
 
 <style id="lex-gram-board-css">
@@ -1642,7 +1673,9 @@ function lexParseJSON(raw){
         var list=(j&&j.points)?j.points.slice():[];
         list.sort(function(a,b){ return (a.order||0)-(b.order||0); });
         var byId={}; list.forEach(function(p){ if(p&&p.id) byId[p.id]=p; });
-        BANK[l]={byId:byId,list:list}; return BANK[l];
+        BANK[l]={byId:byId,list:list};
+        // Stan ucznia musi byc na miejscu, zanim policzymy pierwszy status.
+        return Promise.resolve(gramSyncPull(l)).catch(function(){}).then(function(){ return BANK[l]; });
       })
       .catch(function(err){
         try{ console.warn('[gram] nie wczytano banku:', BANK_BASE+l+'.json', '-', (err&&err.message)||err); }catch(e){}
@@ -1659,27 +1692,128 @@ function lexParseJSON(raw){
   window.gramPoint=function(id){ return bank().byId[id]||null; };
   window.gramBankReady=function(){ return bank().list.length>0; };
 
-  function loadState(){ try{ return JSON.parse(localStorage.getItem(skey())||'{}'); }catch(e){ return {}; } }
-  function saveState(s){ try{ localStorage.setItem(skey(),JSON.stringify(s)); }catch(e){} }
-  function rec(id){ return loadState()[id]||null; }
-  window.gramState=loadState;
+  /* Stan trzymamy w pamieci miedzy odczytami. gramStatus wola sie rekurencyjnie
+     po prerekwizytach, wiec bez tego jedno gramAllowed() parsowaloby localStorage
+     kilkaset razy. */
+  var _stCache=null, _stKey='';
+  function loadState(){
+    var k=skey();
+    if(_stCache&&_stKey===k) return _stCache;
+    try{ _stCache=JSON.parse(localStorage.getItem(k)||'{}'); }catch(e){ _stCache={}; }
+    _stKey=k; return _stCache;
+  }
+  function saveState(s){
+    var k=skey();
+    try{ localStorage.setItem(k,JSON.stringify(s)); }catch(e){}
+    _stCache=s; _stKey=k;
+  }
+  function dropState(){ _stCache=null; _stKey=''; }
+  function rec(id){ var r=loadState()[id]; return (r&&typeof r==='object')?r:null; }
+  /* Na zewnatrz oddajemy KOPIE — loadState() zwraca zywy obiekt z cache,
+     wiec wydanie go publicznie znaczyloby, ze czyjas zmienna zmienia sie
+     sama pod reka. */
+  window.gramState=function(){
+    var s=loadState(), out={};
+    Object.keys(s).forEach(function(k){
+      var v=s[k];
+      out[k]=(v&&typeof v==='object')?JSON.parse(JSON.stringify(v)):v;
+    });
+    return out;
+  };
+  /* Reczne odswiezenie cache — dla diagnostyki i srodowisk bez zdarzen okna. */
+  window.gramStateReload=dropState;
+  /* Inna karta tej samej aplikacji moze zapisac stan pod nami. */
+  try{ window.addEventListener('storage',function(ev){ if(!ev||!ev.key||ev.key===_stKey) dropState(); }); }catch(e){}
+
+  /* ── Poziom odniesienia i uznanie kompetencji ────────────────────────────
+     Uczen B1 nie moze dostac lekcji o czasowniku „to be". Wszystko dwa pasma
+     ponizej jego poziomu startuje jako `presumed` — uznane za znane: nie jest
+     nauczane, wolno go uzywac w cwiczeniach, nie dostaje sciagi.
+
+     Weryfikacja NIE jest testem na wejsciu. Dzieje sie w zwyklych cwiczeniach:
+     gdy uznana struktura zawiedzie w produkcji, punkt cicho spada do nauki.
+     Asymetria kosztow (Bible §6.8): nauczenie znanego to chwila nudy, ktora
+     sama sie leczy; uznanie nieznanego to cicha dziura, ktora narasta —
+     dlatego uznajemy chetnie, ale bez sciagi i z natychmiastowa demotacja.
+
+     Zabezpieczenie: nigdy nie uznajemy NAJWYZSZEGO pasma, jakie bank posiada.
+     Inaczej uczen B2 przy bankach konczacych sie na A2 nie dostalby nic. */
+  function bankMaxIdx(){
+    var m=-1; bank().list.forEach(function(p){ var i=lvlIdx(p.level); if(i>m) m=i; }); return m;
+  }
+  /* Kotwica jest monotoniczna — powrot do latwiejszego zestawu nie cofa
+     nadanych statusow do `locked`. */
+  var _anchor={};
+  function anchorIdx(){
+    var l=lang(), cur=lvlIdx(level());
+    if(_anchor[l]==null){
+      var s=loadState();
+      _anchor[l]=(typeof s.__anchor==='number')?s.__anchor:cur;
+    }
+    if(cur>_anchor[l]){
+      _anchor[l]=cur;
+      var s2=loadState(); s2.__anchor=cur; saveState(s2);
+    }
+    return _anchor[l];
+  }
+  function presumedCut(){
+    var mx=bankMaxIdx(); if(mx<0) return -1;
+    return Math.min(anchorIdx()-2, mx-1);
+  }
+  function preOk(q){
+    // Prerekwizyt nieobecny w banku traktujemy jako spelniony — inaczej czesciowy
+    // bank (albo literowka w id) blokuje cala galaz. Kompletnosc grafu sprawdza
+    // audyt banku (GRAM-2), nie runtime.
+    if(!bank().byId[q]) return true;
+    var s=gramStatus(q);
+    return s==='unlocked'||s==='stale'||s==='presumed';
+  }
 
   window.gramStatus=function(id){
     var p=gramPoint(id); if(!p) return 'locked';
     var r=rec(id);
     if(r&&r.status==='unlocked') return (r.due&&r.due<now())?'stale':'unlocked';
-    if(lvlIdx(p.level)>lvlIdx(level())) return 'locked';
-    var pre=[].concat(p.prereq||[]);
-    // Prerekwizyt nieobecny w banku traktujemy jako spelniony — inaczej czesciowy
-    // bank (albo literowka w id) blokuje cala galaz. Kompletnosc grafu sprawdza
-    // audyt banku (GRAM-2), nie runtime.
-    return pre.every(function(q){ return !bank().byId[q] || (rec(q)||{}).status==='unlocked'; })?'teachable':'locked';
+    var pi=lvlIdx(p.level);
+    // `unknown` = uznanie odwolane (przez ucznia albo przez jego blad)
+    if(!(r&&r.status==='unknown') && pi<=presumedCut()) return 'presumed';
+    if(pi>anchorIdx()) return 'locked';
+    return [].concat(p.prereq||[]).every(preOk)?'teachable':'locked';
   };
   window.gramAllowed=function(){
-    var out=[]; bank().list.forEach(function(p){ var s=gramStatus(p.id); if(s==='unlocked'||s==='stale') out.push(p.id); }); return out;
+    var out=[]; bank().list.forEach(function(p){
+      var s=gramStatus(p.id); if(s==='unlocked'||s==='stale'||s==='presumed') out.push(p.id);
+    }); return out;
   };
-  window.gramTeachableNow=function(){
-    var l=bank().list; for(var i=0;i<l.length;i++){ if(gramStatus(l[i].id)==='teachable') return l[i].id; } return null;
+  /* Front: WSZYSTKIE punkty gotowe do wprowadzenia. Graf prereq to porzadek
+     CZESCIOWY, nie kolejka — wybor wewnatrz frontu nie moze zlamac GRAM-0,
+     a pozwala dopasowac strukture do tematu porcji. Poprzednia wersja
+     splaszczala graf do jednej sciezki po `order` i ignorowala temat lekcji. */
+  window.gramFrontier=function(limit){
+    var out=[], l=bank().list;
+    for(var i=0;i<l.length;i++){
+      if(gramStatus(l[i].id)==='teachable'){ out.push(l[i].id); if(limit&&out.length>=limit) break; }
+    }
+    return out;
+  };
+  window.gramTeachableNow=function(){ var f=gramFrontier(1); return f.length?f[0]:null; };
+  /* Odwolanie uznania — z mapy struktur albo automatycznie po bledzie produkcyjnym. */
+  window.gramDemote=function(id,src){
+    if(!gramPoint(id)) return false;
+    if(gramStatus(id)!=='presumed') return false;
+    var s=loadState(); s[id]={status:'unknown',since:now(),src:src||'user',ts:now()};
+    saveState(s); _push(id,s[id]);
+    try{ console.info('[gram] uznanie odwolane:',id,'('+(src||'user')+')'); }catch(e){}
+    return true;
+  };
+  window.gramPresumedCount=function(){
+    var n=0; bank().list.forEach(function(p){ if(gramStatus(p.id)==='presumed') n++; }); return n;
+  };
+  /* Pasmo aktualnie nauczane — nie poziom ucznia. Uczen B1 uczy sie A2. */
+  window.gramTeachLevel=function(){
+    var f=gramFrontier(1);
+    if(f.length){ var p=gramPoint(f[0]); if(p) return p.level; }
+    var mx=Math.min(anchorIdx(), bankMaxIdx());
+    return LEVELS[mx<0?0:mx];
   };
   window.gramStalePoint=function(){
     var l=bank().list; for(var i=0;i<l.length;i++){ if(gramStatus(l[i].id)==='stale') return l[i].id; } return null;
@@ -1890,21 +2024,64 @@ function lexParseJSON(raw){
     return out;
   };
 
-  window.gramPromptBlock=function(){
-    if(!gramBankReady()) return '';
-    var allowed=gramAllowed().map(function(id){ var p=gramPoint(id); return p?(p.id+' = '+p.name_pl):id; });
-    var tid=gramTeachableNow(), tp=tid?gramPoint(tid):null;
-    return 'KONTRAKT GRAMATYCZNY — BEZWZGLĘDNY. '
-      +'Struktury, które uczeń ZNA i których wolno używać: '+(allowed.length?allowed.join('; '):'BRAK — trzymaj się absolutnych podstaw')+'. '
-      +(tp?('Struktura NOWA, dozwolona wyłącznie w tej porcji: '+tp.id+' = '+tp.name_pl+'. ')
-          :'NIE wprowadzaj żadnej nowej struktury gramatycznej w tej porcji. ')
-      +'Nie wolno użyć ŻADNEJ innej struktury — ani w zdaniach, ani w poleceniach, ani we wzorcowych odpowiedziach, ani w podpowiedziach. '
+  function _gramTail(tp){
+    return 'Nie wolno użyć ŻADNEJ innej struktury — ani w zdaniach, ani w poleceniach, ani we wzorcowych odpowiedziach, ani w podpowiedziach. '
       +'W KAŻDYM ćwiczeniu wypełnij pole "uses_grammar": tablicę id struktur wymaganych do poprawnego wykonania zadania (pusta tablica, jeśli zadanie jest czysto leksykalne). '
+      +'Porcja wprowadzająca nową strukturę NIE dokłada własnych słów ponad materiał do utrwalenia — budżet uwagi ucznia zajmuje reguła. '
       +(tp?(window.GRAM_INTRO_BRIDGE!==true
             ? 'NIE tłumacz nowej struktury w polu "intro" — regułę i odmianę pokaże aplikacja z własnych danych. Twoim zadaniem są wyłącznie ćwiczenia. '
             : ('NOWĄ strukturę wprowadź na POCZĄTKU pola "intro", przepisując PONIŻSZY model DOSŁOWNIE, bez skracania i bez własnych wyjaśnień, a dopiero potem przejdź do ćwiczeń:\n'
-               + gramTeachBlock(tp) + '\n')):'')
+               + gramTeachBlock(tp) + '\n'))
+         : 'NIE tłumacz struktur w polu "intro" — regułę pokaże aplikacja z własnych danych. ')
       +'Nie używaj notacji podręcznikowej: tyldy (~ ani ～), nawiasów kwadratowych, gwiazdek poza **wyróżnieniem słowa-celu**. ';
+  }
+  /* Licznik porcji bez nowej struktury. Postep gramatyczny nie moze zalezec
+     od tego, jakie zestawy slownikowe uczen lubi — po trzech porcjach bez
+     wprowadzenia przestajemy pytac o dopasowanie i wymuszamy front. */
+  var _noNew=0;
+  window.gramPromptBlock=function(){
+    if(!gramBankReady()) return '';
+    var allowed=gramAllowed().map(function(id){ var p=gramPoint(id); return p?(p.id+' = '+p.name_pl):id; });
+    var force=_noNew>=3;
+    var cands=gramFrontier(force?1:6).map(function(id){ return gramPoint(id); }).filter(Boolean);
+    _noNew++;
+    var head='KONTRAKT GRAMATYCZNY — BEZWZGLĘDNY. '
+      +'Struktury, które uczeń ZNA i których wolno używać: '
+      +(allowed.length?allowed.join('; '):'BRAK — trzymaj się absolutnych podstaw')+'. ';
+    if(!cands.length){
+      return head+'NIE wprowadzaj żadnej nowej struktury gramatycznej w tej porcji. '+_gramTail(null);
+    }
+    if(cands.length===1){
+      return head+'Struktura NOWA, dozwolona wyłącznie w tej porcji: '
+        +cands[0].id+' = '+cands[0].name_pl+'. '+_gramTail(cands[0]);
+    }
+    return head
+      +'KANDYDACI na nową strukturę — wszyscy dozwoleni na tym etapie: '
+      +cands.map(function(p){ return p.id+' = '+p.name_pl; }).join('; ')+'. '
+      +'Wybierz DOKŁADNIE JEDNEGO, który najnaturalniej łączy się ze słownictwem i tematem tej porcji, '
+      +'i wpisz jego id w pole "new_grammar" na najwyższym poziomie odpowiedzi. '
+      +'Jeśli żaden nie pasuje bez sztuczności — wpisz pusty string i nie wprowadzaj nowej struktury. '
+      +'Wolno użyć wyłącznie wybranego kandydata; pozostali są w tej porcji zabronieni. '
+      +_gramTail(null);
+  };
+  /* Model proponuje, klient rozstrzyga. Id spoza frontu albo zmyslone nie ma
+     prawa przejsc — wracamy wtedy do punktu, ktory faktycznie pojawil sie
+     w cwiczeniach, a w ostatecznosci do najnizszego `order`. */
+  window.gramResolvePick=function(data){
+    if(!gramBankReady()) return null;
+    var fr=gramFrontier(0); if(!fr.length) return null;
+    var inFr={}; fr.forEach(function(i){ inFr[i]=1; });
+    var pick=String((data&&(data.new_grammar||data.newGrammar))||'').trim();
+    var cnt={};
+    ((data&&data.exercises)||[]).forEach(function(ex){
+      [].concat((ex&&ex.uses_grammar)||[]).forEach(function(id){ if(inFr[id]) cnt[id]=(cnt[id]||0)+1; });
+    });
+    if(pick&&inFr[pick]&&cnt[pick]) return pick;
+    var best=null,bn=0;
+    fr.forEach(function(id){ var n=cnt[id]||0; if(n>bn){ bn=n; best=id; } });
+    if(best) return best;
+    if(pick&&inFr[pick]) return pick;
+    return fr[0];
   };
 
   var PRODUCTIVE=['produce','sculpt','transform','translate','scenario'];
@@ -1955,16 +2132,19 @@ function lexParseJSON(raw){
   window.gramMarkTaught=function(id){
     var p=gramPoint(id); if(!p) return;
     var s=loadState(); if(s[id]&&s[id].status==='unlocked') return;
-    s[id]={status:'unlocked',taught_at:now(),exposures:0,errors:0,ease:(p.srs&&p.srs.initial_ease)||2.5,interval:1,due:now()+DAY};
-    saveState(s);
+    s[id]={status:'unlocked',taught_at:now(),exposures:0,errors:0,ease:(p.srs&&p.srs.initial_ease)||2.5,interval:1,due:now()+DAY,ts:now()};
+    saveState(s); _noNew=0; _push(id,s[id]);
     try{ if(typeof lexGrammarSavePoint==='function') lexGrammarSavePoint(p); }catch(e){}
   };
   window.gramGrade=function(id,quality){
-    var s=loadState(), r=s[id]; if(!r) return;
+    // Blad na strukturze uznanej za znana = uznanie bylo falszywe.
+    // Punkt wraca do normalnej sciezki nauczania, bez pytania ucznia o zgode.
+    if(quality<3 && gramStatus(id)==='presumed'){ gramDemote(id,'blad'); return; }
+    var s=loadState(), r=s[id]; if(!r||r.status!=='unlocked') return;
     r.exposures=(r.exposures||0)+1;
     if(quality<3){ r.errors=(r.errors||0)+1; r.interval=1; r.ease=Math.max(1.3,(r.ease||2.5)-0.2); }
     else { r.interval=(r.interval||1)<=1?3:Math.round(r.interval*(r.ease||2.5)); r.ease=Math.min(2.8,(r.ease||2.5)+(quality===5?0.06:0)); }
-    r.due=now()+r.interval*DAY; s[id]=r; saveState(s);
+    r.due=now()+r.interval*DAY; r.ts=now(); s[id]=r; saveState(s); _push(id,r);
   };
   window.gramScaffoldMode=function(id){
     var r=rec(id); if(!r) return 'full';
@@ -2051,7 +2231,14 @@ function lexParseJSON(raw){
     try{
       if(!gramBankReady()) return '';
       var g=gramProgress(); if(!g||!g.total) return '';
-      return '<div style="'+(style||'')+'">'+g.level+' \u00b7 '+g.done+' z '+g.total+' struktur</div>';
+      var txt=g.level+' \u00b7 '+g.done+' z '+g.total+' struktur';
+      // Uczen B1 nie moze zobaczyc „A2 · 0 z 21" i pomyslec, ze system zgubil
+      // jego A1. Pominiete pasma pokazujemy wprost, jako osobna kategorie.
+      if(g.presumed) txt+=' \u00b7 '+g.presumed+' uznanych za znane';
+      var clickable=(typeof window.gramOpenMap==='function');
+      if(!clickable) return '<div style="'+(style||'')+'">'+_e(txt)+'</div>';
+      return '<button type="button" class="gram-prog" onclick="gramOpenMap()" style="'+(style||'')+'">'
+        +_e(txt)+'<span class="gram-prog-i"></span></button>';
     }catch(e){ return ''; }
   };
   /* Wygrywa NAJDLUZSZE dopasowanie, nie pierwsze napotkane. Inaczej krotki
@@ -2079,9 +2266,128 @@ function lexParseJSON(raw){
   };
 
   window.gramProgress=function(lvl){
-    lvl=lvl||level(); var total=0,done=0;
-    bank().list.forEach(function(p){ if(p.level!==lvl) return; total++; if((rec(p.id)||{}).status==='unlocked') done++; });
-    return {level:lvl,done:done,total:total};
+    lvl=lvl||gramTeachLevel(); var total=0,done=0;
+    bank().list.forEach(function(p){
+      if(p.level!==lvl) return; total++;
+      var s=gramStatus(p.id); if(s==='unlocked'||s==='stale') done++;
+    });
+    return {level:lvl,done:done,total:total,presumed:gramPresumedCount()};
+  };
+
+  /* ── Mapa struktur ───────────────────────────────────────────────────────
+     Nie jest wymagana do niczego. Domysly robia robote same; kto chce
+     sterowac, ma jeden gest. Sekcje sa uporzadkowane wedlug tego, co
+     uczen chce wiedziec najpierw: gdzie jestem, co dalej, co pominieto. */
+  window.gramMapHTML=function(){
+    if(!gramBankReady()) return '<div class="gram-map-empty">Bank struktur nie jest załadowany.</div>';
+    var g=gramProgress();
+    var done=[], now_=[], next=[], pre=[];
+    bank().list.forEach(function(p){
+      var s=gramStatus(p.id);
+      if(s==='unlocked'||s==='stale') done.push([p,s]);
+      else if(s==='presumed') pre.push([p,s]);
+      else if(s==='teachable') now_.push([p,s]);
+      else next.push([p,s]);
+    });
+    function row(x,extra){
+      var p=x[0], s=x[1];
+      return '<div class="gram-map-row"><span class="gram-map-lvl">'+_e(p.level)+'</span>'
+        +'<span class="gram-map-nm">'+_e(p.name_pl)+'</span>'
+        +(s==='stale'?'<span class="gram-map-tag">do powtórki</span>':'')
+        +(extra||'')+'</div>';
+    }
+    function sec(t,arr,cap,extra){
+      if(!arr.length) return '';
+      var shown=cap?arr.slice(0,cap):arr;
+      var out='<div class="gram-map-sec">'+t+'</div>'+shown.map(function(x){ return row(x,extra?extra(x):''); }).join('');
+      if(cap&&arr.length>cap) out+='<div class="gram-map-more">i '+(arr.length-cap)+' dalszych</div>';
+      return out;
+    }
+    var out='<div class="gram-map-lead">'+_e(g.level+' \u00b7 '+g.done+' z '+g.total+' struktur')+'</div>';
+    out+=sec('Opanowane',done);
+    out+=sec('Najbliżej',now_,6);
+    out+=sec('Dalej',next,8);
+    if(pre.length){
+      out+='<details class="gram-map-det"><summary>'+pre.length+' uznanych za znane — nie są nauczane</summary>'
+        +pre.map(function(x){
+          return row(x,'<button type="button" class="gram-map-btn" data-gram-demote="'+_e(x[0].id)+'">Nie znam</button>');
+        }).join('')+'</details>';
+    }
+    return out;
+  };
+  window.gramMapBind=function(root, rerender){
+    if(!root||!root.addEventListener) return;
+    root.addEventListener('click',function(ev){
+      var t=ev.target, b=null;
+      while(t&&t!==root){ if(t.getAttribute&&t.getAttribute('data-gram-demote')){ b=t; break; } t=t.parentNode; }
+      if(!b) return;
+      ev.preventDefault(); ev.stopPropagation();
+      if(gramDemote(b.getAttribute('data-gram-demote'),'user')&&typeof rerender==='function') rerender();
+    });
+  };
+
+  /* ── Synchronizacja z Supabase ───────────────────────────────────────────
+     localStorage zostaje jako cache i tryb offline; zrodlem prawdy jest
+     tabela grammar_progress. Zapisy PUNKTOWE — jeden wiersz na zmiane,
+     nigdy caly stan, inaczej pozniejsza sesja nadpisuje wczesniejsza. */
+  function _sb(){ try{ if(typeof db!=='undefined'&&db) return db; }catch(e){} return window.db||null; }
+  async function _uid(){
+    try{ if(typeof UID!=='undefined'&&UID) return UID; }catch(e){}
+    try{
+      var d=_sb(); if(!d) return null;
+      var s=await d.auth.getSession();
+      return (s&&s.data&&s.data.session&&s.data.session.user)?s.data.session.user.id:null;
+    }catch(e){ return null; }
+  }
+  function _push(id,r){
+    try{
+      var d=_sb(); if(!d||!r) return;
+      var l=lang();
+      _uid().then(function(u){
+        if(!u) return;
+        var row={ user_id:u, lang:l, point_id:id, status:r.status||'unlocked',
+          ease:r.ease==null?null:r.ease, interval_days:r.interval==null?null:r.interval,
+          due:r.due?new Date(r.due).toISOString():null,
+          exposures:r.exposures||0, errors:r.errors||0,
+          taught_at:r.taught_at?new Date(r.taught_at).toISOString():null,
+          updated_at:new Date(r.ts||now()).toISOString() };
+        var q=d.from('grammar_progress').upsert(row,{onConflict:'user_id,lang,point_id'});
+        if(q&&q.then) q.then(function(res){
+          if(res&&res.error) try{ console.warn('[gram] zapis nieudany:',res.error.message); }catch(e){}
+        });
+      });
+    }catch(e){}
+  }
+  var _pulled={};
+  window.gramSyncPull=async function(l){
+    l=l?_gramNormCode(l):lang();
+    if(_pulled[l]) return 0;
+    var d=_sb(); if(!d) return 0;
+    try{
+      var u=await _uid(); if(!u) return 0;
+      _pulled[l]=1;
+      var res=await d.from('grammar_progress')
+        .select('point_id,status,ease,interval_days,due,exposures,errors,taught_at,updated_at')
+        .eq('user_id',u).eq('lang',l);
+      if(res.error||!res.data) return 0;
+      var k=(function(){ try{ return uk('lex_gram_state_'+l); }catch(e){ return 'lex_gram_state_'+l; } })();
+      var s={}; try{ s=JSON.parse(localStorage.getItem(k)||'{}'); }catch(e){ s={}; }
+      var n=0;
+      res.data.forEach(function(row){
+        var ts=row.updated_at?Date.parse(row.updated_at):0;
+        var loc=s[row.point_id];
+        if(loc&&(loc.ts||0)>=ts) return;          // lokalny zapis nowszy — zostaje
+        s[row.point_id]={ status:row.status||'unlocked', ease:row.ease||2.5,
+          interval:row.interval_days||1, due:row.due?Date.parse(row.due):0,
+          exposures:row.exposures||0, errors:row.errors||0,
+          taught_at:row.taught_at?Date.parse(row.taught_at):0, ts:ts };
+        n++;
+      });
+      try{ localStorage.setItem(k,JSON.stringify(s)); }catch(e){}
+      dropState();
+      if(n) try{ console.info('[gram] pobrano z Supabase:',n,'struktur ('+l+')'); }catch(e){}
+      return n;
+    }catch(e){ _pulled[l]=0; return 0; }
   };
 })();
 
@@ -2203,6 +2509,7 @@ async function lexGeneratePortion(){
     +(gramBankReady()?'':'GRAMATYKA: jeśli porcja dotyczy gramatyki, w polu "intro" podaj NAJPIERW zwięzły, KOMPLETNY model jako worked example, dopiero potem ćwiczenia. ')
     +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
     +'{"focus":"krótki temat porcji po '+L+'",'
+    +((typeof gramBankReady==='function'&&gramBankReady())?'"new_grammar":"id wybranego kandydata albo pusty string",':'')
     +'"intro":"1-2 zdania po '+L+' wprowadzające; słowa docelowe w języku '+langLoc()+' ujmij w **gwiazdki**",'+(_isRomaji?'"intro_say":"to samo intro w kana/kanji, słowa-cele w **gwiazdkach**",':'')
     +'"items":[{"word":"słowo w '+langLoc()+(_isRomaji?(' ('+_TN2.n+')'):'')+'","translation":"po '+L+'"'+(_isRomaji?',"reading":"to słowo w transliteracji"':'')+'}],'
     +'"exercises":['+_shape.map(function(_t){var _s=lexSpecFor(_t,L);return gramBankReady()?_s.replace(/\}$/,',"uses_grammar":["id struktur gramatycznych wymaganych do wykonania tego zadania; pusta tablica jesli zadanie jest czysto leksykalne"]}'):_s;}).join(',')+']}';
@@ -2213,7 +2520,7 @@ async function lexGeneratePortion(){
     try{ if(typeof lexNormalizePortion==='function') lexNormalizePortion(data); }catch(e){}
     // GRAM-3: twarda walidacja kontraktu gramatycznego
     if(gramBankReady()){
-      var _tid=gramTeachableNow();
+      var _tid=gramResolvePick(data);
       var _v=gramValidatePortion(data,_tid);
       if(_v.bad.length){
         var _keep=data.exercises.filter(function(_x,_i){ return _v.bad.indexOf(_i)<0; });
@@ -6035,6 +6342,45 @@ async function alexSend(){
       +'<div class="ecj-foot">Kliknij formę, żeby usłyszeć wymowę.</div>'
       +'</div>';
   }
+})();
+</script>
+
+<script>
+/* ═══ EYELINGO — MAPA STRUKTUR ═══
+   Otwierana z linii postepu w Tablicy i Zeszycie. Nigdy nie jest wymagana:
+   domyslne uznania dzialaja same, a kto chce je poprawic — ma jeden gest.
+   W PWA montujemy w ramce `.phone` (overflow:hidden), nie w <body>. */
+(function(){
+  'use strict';
+  var ID='gram-map-ov';
+  function mount(){ return document.querySelector('.phone')||document.body; }
+  function close(){ var o=document.getElementById(ID); if(o&&o.parentNode) o.parentNode.removeChild(o); }
+  function draw(){
+    var o=document.getElementById(ID); if(!o) return;
+    var b=o.querySelector('.gram-map-body');
+    if(b) b.innerHTML=(typeof gramMapHTML==='function')?gramMapHTML():'';
+  }
+  window.gramCloseMap=close;
+  window.gramRedrawMap=draw;
+  window.gramOpenMap=function(){
+    close();
+    var o=document.createElement('div');
+    o.id=ID; o.className='gram-map-ov';
+    o.innerHTML='<div class="gram-map-card" role="dialog" aria-modal="true" aria-label="Mapa struktur">'
+      +'<div class="gram-map-head"><span>Mapa struktur</span>'
+      +'<button type="button" class="gram-map-x" aria-label="Zamknij">\u00d7</button></div>'
+      +'<div class="gram-map-body"></div>'
+      +'<div class="gram-map-foot">Struktury uznane za znane nie s\u0105 nauczane \u2014 zak\u0142adamy, '
+      +'\u017ce masz je z wcze\u015bniejszej nauki. Je\u015bli kt\u00f3ra\u015b nie jest dla Ciebie oczywista, '
+      +'oznacz j\u0105: wr\u00f3ci do normalnej \u015bcie\u017cki.</div>'
+      +'</div>';
+    mount().appendChild(o);
+    o.addEventListener('click',function(ev){ if(ev.target===o) close(); });
+    var x=o.querySelector('.gram-map-x'); if(x) x.addEventListener('click',close);
+    draw();
+    if(typeof gramMapBind==='function') gramMapBind(o, draw);
+  };
+  document.addEventListener('keydown',function(ev){ if(ev.key==='Escape') close(); });
 })();
 </script>
 
