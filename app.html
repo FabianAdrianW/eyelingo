@@ -451,6 +451,20 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 /* Wariant w Zeszycie/Tablicy — bez ramki, ciasniej */
 .gram-inline .gram-card{border:0;border-left:0;padding:0;margin:0}
 .gram-inline .gram-eyebrow{display:none}
+/* Sciaga w cwiczeniu — wzorzec struktury dostepny w trakcie zadania.
+   Bez akcentu pomaranczowego: to rusztowanie, nie akcja (RZ-9). */
+.gram-sc{border:1px solid var(--line,#e8e3da);border-radius:10px;background:var(--paper,#faf7f2);margin:0 0 14px}
+.gram-sc-h{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;padding:9px 11px;cursor:pointer;
+  font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--dim2,#8a8378);text-align:left}
+.gram-sc-name{font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--navy,#1a2340)}
+.gram-sc-arw{margin-left:auto;font-size:10px;color:var(--dim2,#8a8378)}
+.gram-sc-arw::after{content:'\25BE'}
+.gram-sc.open .gram-sc-arw::after{content:'\25B4'}
+.gram-sc-b{display:none;padding:0 11px 11px}
+.gram-sc.open .gram-sc-b{display:block}
+.gram-sc-rule{font-size:12.5px;line-height:1.55;color:var(--dim,#4a4a4a);margin-bottom:9px}
+.gram-sc .gram-para{margin-bottom:0}
 </style>
 
 <style id="lex-gram-board-css">
@@ -1366,7 +1380,8 @@ function lexGramBoardHTML(){
       +'<span class="lbg-arw">'+(open?'\u25B4':'\u25BE')+'</span></div>'+body+'</div>';
   }).join('');
   if(!rows) return '';
-  return '<div class="lbsh-sec">Struktury</div>'+rows+'<div class="lbsh-sec">Słowa</div>';
+  var _prog=''; try{ if(typeof gramProgressHTML==='function') _prog=gramProgressHTML('font-size:10.5px;color:var(--dim2);margin:-4px 0 8px 2px'); }catch(e){}
+  return '<div class="lbsh-sec">Struktury</div>'+_prog+rows+'<div class="lbsh-sec">Słowa</div>';
 }
 function lexGramBoardToggle(id){
   if(!id) return;
@@ -1904,6 +1919,86 @@ function lexParseJSON(raw){
     if(e<6||(r.errors||0)>0) return 'chip';
     return 'hidden';
   };
+
+  /* ── Sciaga w cwiczeniu (Warstwa 2c) ────────────────────────────────────
+     Wzorzec struktury dostepny w trakcie zadania, wygaszany wraz z liczba
+     ekspozycji: full (rozwiniety) -> chip (na tapniecie) -> hidden.
+     W obrebie jednej porcji schodzi dodatkowo o stopien przy kazdym kolejnym
+     cwiczeniu z ta sama struktura — pierwsze ma byc imitacja, ostatnie
+     produkcja z pamieci. Klucz to numer cwiczenia, wiec ponowny render tego
+     samego kroku nie przesuwa wygaszania. */
+  var _scOrder=['full','chip','hidden'];
+  var _scSeen={};
+  window.gramScaffoldReset=function(){ _scSeen={}; };
+  function _scStep(id, exIdx){
+    var a=_scSeen[id]||(_scSeen[id]=[]);
+    var k=a.indexOf(exIdx);
+    if(k<0){ a.push(exIdx); k=a.length-1; }
+    return k;
+  }
+  window.gramScaffoldHTML=function(ids, exIdx, exType){
+    if(!gramBankReady()) return '';
+    // cue i contrast to pretest i rozpoznanie — sciaga zabralaby im sens
+    if(exType==='cue'||exType==='contrast') return '';
+    var list=[].concat(ids||[]).filter(Boolean);
+    for(var i=0;i<list.length;i++){
+      var id=list[i], p=gramPoint(id);
+      if(!p||!p.teach) continue;
+      var st=gramStatus(id);
+      if(st==='locked') continue;
+      var mi=_scOrder.indexOf(gramScaffoldMode(id)); if(mi<0) mi=0;
+      mi=Math.min(2, mi+_scStep(id, (exIdx==null?-1:exIdx)));
+      var mode=_scOrder[mi];
+      if(mode==='hidden') continue;
+      var t=p.teach, inner='';
+      if(t.rule_pl) inner+='<div class="gram-sc-rule">'+_e(t.rule_pl)+'</div>';
+      if(t.paradigm&&t.paradigm.rows&&t.paradigm.rows.length){
+        var head=t.paradigm.head||[];
+        inner+='<div class="gram-para">';
+        if(head.length){
+          inner+='<div class="gram-prow gram-phead">'+head.map(function(c){
+            return '<div class="gram-pcell">'+_e(c)+'</div>'; }).join('')+'</div>';
+        }
+        t.paradigm.rows.forEach(function(r){
+          var cells=[].concat(r);
+          inner+='<div class="gram-prow">'+cells.map(function(c,ci){
+            return '<div class="gram-pcell'+((ci===cells.length-1)?' gram-pkey':'')+'">'+_e(c)+'</div>';
+          }).join('')+'</div>';
+        });
+        inner+='</div>';
+      }
+      if(!inner) continue;
+      var open=(mode==='full');
+      var lab=(st==='stale')?'Wzorzec — do odswiezenia':'Wzorzec';
+      return '<div class="gram-sc'+(open?' open':'')+'">'
+        +'<button type="button" class="gram-sc-h" onclick="this.parentNode.classList.toggle(\'open\')">'
+        +'<span>'+_e(lab)+'</span><span class="gram-sc-name">'+_e(p.name_pl)+'</span>'
+        +'<span class="gram-sc-arw"></span></button>'
+        +'<div class="gram-sc-b">'+inner+'</div>'
+      +'</div>';
+    }
+    return '';
+  };
+
+  /* Ocena beatu -> SM-2 struktur. Cue i contrast pomijamy: pretest i
+     rozpoznanie nie sa swiadectwem opanowania struktury. */
+  window.gramBeat=function(ex,correct,attempts){
+    if(!ex||!gramBankReady()) return;
+    if(ex.type==='cue'||ex.type==='contrast') return;
+    var q=correct?((attempts&&attempts>0)?3:5):2;
+    [].concat(ex.uses_grammar||[]).forEach(function(id){
+      if(id&&gramPoint(id)) gramGrade(id,q);
+    });
+  };
+
+  /* Postep poziomu jako mapa terenu, nie wynik: bez procentow, serii i ocen. */
+  window.gramProgressHTML=function(style){
+    try{
+      if(!gramBankReady()) return '';
+      var g=gramProgress(); if(!g||!g.total) return '';
+      return '<div style="'+(style||'')+'">'+g.level+' \u00b7 '+g.done+' z '+g.total+' struktur</div>';
+    }catch(e){ return ''; }
+  };
   /* Wygrywa NAJDLUZSZE dopasowanie, nie pierwsze napotkane. Inaczej krotki
      wykladnik ("masen") wygrywalby z dluzszym, w ktorym sie zawiera
      ("te itadakemasen ka"), i blad trafialby na zla strukture. */
@@ -1969,6 +2064,7 @@ function lexSpecFor(type, L){
   if(type==='cloze') return '{"type":"cloze","sentence":"zdanie w '+langLoc()+' z ___ w miejscu luki (słowo-cel, którego jeszcze NIE ćwiczono w tej porcji); zdanie MUSI jednoznacznie wymuszać dokładnie jedno słowo-cel, kontekst rozstrzyga","sentence_pl":"tłumaczenie zdania na polski; w miejscu luki zostaw ___ (NIE tłumacz słowa-celu)","answers":["słowo do luki; jeśli zdanie dopuszcza wiele poprawnych słów, wypisz WSZYSTKIE"],"hint":"podpowiedź po '+L+'","explain":"wyjaśnienie po '+L+'"}';
   if(type==='contrast') return '{"type":"contrast","options":["zdanie pierwsze","zdanie drugie"],"native":0,"explain":"po '+L+': które jest native, dlaczego, i jaka polska kalka zdradza nie-native"}';
   if(type==='sculpt') return '{"type":"sculpt","intent":"intencja po '+L+', np. grzecznie przesuń termin na czwartek","answer":"POPRAWNE gramatycznie zdanie w '+langLoc()+' realizujące intencję","tiles":["DOKŁADNIE słowa z answer w losowej kolejności","tyle samo kafelków co słów w answer","te same formy, bez odmiany"]}';
+  if(type==='transform') return '{"type":"transform","source":"poprawne zdanie wzorcowe w '+langLoc()+' w strukturze tej porcji","source_pl":"tlumaczenie zdania zrodlowego na polski","instruction":"polecenie po '+L+', np. zamien na przeczenie / na liczbe mnoga / na forme grzeczna","answer":"poprawne zdanie po przeksztalceniu w '+langLoc()+'","explain":"1 krotka nuta po '+L+'"}';
   if(type==='produce') return '{"type":"produce","prompt":"Ułóż własne zdanie","target":"słowo/struktura z tej porcji w '+langLoc()+'","hint":"po '+L+' co ma zawierać"}';
   if(type==='warmfire') return '{"type":"warmfire","cue":"KONKRETNE polskie słowo lub znaczenie MOCNEGO słowa porcji, które uczeń ma wyprodukować, np. ładny","prompt":"Jak powiesz po '+langAdv()+': (wstaw to samo co cue)?","answer":"słowo-cel w '+langLoc()+'","explain":"1 krótka nuta po '+L+'"}';
   if(type==='scenario') return '{"type":"scenario","role":"krótka etykieta sceny po '+L+' (np. W kawiarni)","situation":"2-3 zdania sytuacji/roli po '+L+', w której uczeń ma zareagować","must_use":["2-3 słowa-cele porcji w '+langLoc()+' do wplecenia"],"skeleton":"szkielet zdania po '+langLoc()+' z ___ jako fallback","answer":"wzorcowa naturalna realizacja po '+langLoc()+'"}';
@@ -2023,6 +2119,14 @@ async function lexGeneratePortion(){
     }
   }catch(e){}
   var _shape=lexRegimeShape(lexComposeShape(pn), lexBeginnerLvl());
+  // GRAM warstwa 2b: gdy porcja wprowadza nowa strukture, ksztalt jest wymuszony —
+  // odkrycie -> imitacja (ze sciaga) -> transformacja -> produkcja.
+  try{
+    if(typeof gramBankReady==='function' && gramBankReady() && gramTeachableNow()){
+      _shape = lexBeginnerLvl() ? ['cue','cloze','transform','sculpt'] : ['cue','cloze','transform','produce'];
+      _lexShapeS.lastShape=_shape.join('>'); _lexShapeS.total=(_lexShapeS.total||0)+_shape.length;
+    }
+  }catch(e){}
   var lvlGuard=({B2:'Materiał MUSI być na poziomie B2 — żadnych elementarnych tematów typu "to be", podstawowe czasy, kolory, liczby.',C1:'Materiał MUSI być na poziomie C1 — zaawansowane kolokacje, phrasal verbs, niuanse rejestru, idiomy. ABSOLUTNIE żadnych podstaw.',C2:'Materiał MUSI być na poziomie C2 — subtelne niuanse, rzadkie kolokacje, styl, rejestr. ABSOLUTNIE żadnych podstaw.'})[lexLevel]||'';
   var exLevelInstr = lexExLevel==='basic'
     ? 'POZIOM JĘZYKA W PRZYKŁADACH: zdania, scenki i słowa pomocnicze MUSZĄ być bardzo proste — poziom A1–A2, krótkie zdania, codzienne sytuacje, bez idiomów i złożonych struktur. '
@@ -2036,7 +2140,7 @@ async function lexGeneratePortion(){
     +dueWords
     +'To porcja nr '+pn+'. Zbuduj JEDNĄ porcję skupioną na 3-5 słowach/jednej strukturze. '
     +'Wygeneruj ćwiczenia DOKŁADNIE w tej kolejności i tych typach (nie zmieniaj kolejności, nie dodawaj ani nie usuwaj ćwiczeń): '+_shape.join(', ')+'. '
-    +'Role typów: cue = odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem; cloze = wydobycie z pamięci bez podpowiedzi (każdy kolejny cloze dotyczy INNEGO słowa porcji); contrast = para zdań native vs polska kalka (przyimki, false friends, szyk); sculpt = produkcja z intencji przez ułożenie kafelków słów; produce = własne zdanie ucznia z docelowym słowem; warmfire = szybkie wydobycie słowa; scenario = reakcja w sytuacji z wplecionymi słowami. '
+    +'Role typów: cue = odkrycie znaczenia z autentycznego kontekstu PRZED wyjaśnieniem; cloze = wydobycie z pamięci bez podpowiedzi (każdy kolejny cloze dotyczy INNEGO słowa porcji); contrast = para zdań native vs polska kalka (przyimki, false friends, szyk); sculpt = produkcja z intencji przez ułożenie kafelków słów; produce = własne zdanie ucznia z docelowym słowem; warmfire = szybkie wydobycie słowa; scenario = reakcja w sytuacji z wplecionymi słowami; transform = przeksztalcenie podanego zdania wzorcowego wedlug polecenia (ta sama struktura, inna forma). '
     +'Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. Zwykle 1 luka na cloze; jeśli dasz 2 luki ___, dodaj 2 pozycje w "answers". '
     +'JEDNOZNACZNOŚĆ: każde zdanie cloze musi wymuszać DOKŁADNIE jedno słowo-cel (kontekst rozstrzyga). Jeśli zdanie dopuszcza wiele poprawnych słów (np. "He is ___" przy kilku przymiotnikach), albo dopisz kontekst zawężający do jednego, albo wypisz WSZYSTKIE akceptowalne w "answers". Otwarte polecenia typu "dokończ zdanie" realizuj jako typ produce (ocena AI akceptuje każdą poprawną realizację), NIGDY jako cloze z jednym kluczem. '
     +'DLA POCZĄTKUJĄCYCH: w ćwiczeniu cue wypełnij "context_pl", a w cloze "sentence_pl" wiernym tłumaczeniem na polski (w sentence_pl zostaw ___ w miejscu słowa-celu). '
@@ -2075,6 +2179,7 @@ async function lexGeneratePortion(){
       try{ if(_tid && (data.exercises||[]).some(function(_x){ return [].concat((_x&&_x.uses_grammar)||[]).indexOf(_tid)>=0; })) gramMarkTaught(_tid); }catch(e){}
       try{ data._teachable=_tid; }catch(e){}
     }
+    try{ if(typeof gramScaffoldReset==='function') gramScaffoldReset(); }catch(e){}
     _lexData=data; _lexSculpt={}; _lexGapN={};
     try{ (data.exercises||[]).forEach(function(ex){ if(ex&&ex.type==='cloze'&&ex.sentence){ var ga=lexGapAnswers(ex); if(ga.length) _lexSweepPool.push({sentence:ex.sentence,answer:ga[0],answers:ga,wrong:false,portion:pn,pl:(ex.sentence_pl||'')}); } }); }catch(e){}
     // W trybie transliteracji Tablica musi pokazac zapis, ktory uczen czyta.
@@ -2424,7 +2529,8 @@ function lexShowStep(s){
 /* ── render ćwiczenia (port lexxRenderExercise) ── */
 function lexRenderExercise(ex,i){
   var box=document.createElement('div'); box.className='lexx-ex'; box.dataset.i=i;
-  var head='<div class="lexx-ex-head"><span class="lexx-eyebrow">'+exEyebrow(ex.type)+'</span></div><div class="lexx-obj">'+exObjective(ex)+'</div>';
+  var head='<div class="lexx-ex-head"><span class="lexx-eyebrow">'+exEyebrow(ex.type)+'</span></div><div class="lexx-obj">'+exObjective(ex)+'</div>'
+    +((typeof gramScaffoldHTML==='function')?gramScaffoldHTML(ex.uses_grammar,i,ex.type):'');
   var body='', inputHtml='', needCheck=true;
   if(ex.type==='cue'){
     body+=exScene(ex.source||'Kontekst', ex.context||'', true, ex.say, ex.context_pl);
@@ -2585,7 +2691,7 @@ async function srsUpsertCanon(word,translation,quality,opts){
 async function lexRecordSM2(word,translation,quality,opts){
   try{ await srsUpsertCanon(word,translation,quality,opts); }catch(e){}
 }
-function lexRecordBeat(ex,correct,attempts){ try{ var q=lexBeatQuality(ex,!!correct,attempts||0); if(q==null) return; lexBeatTargets(ex).forEach(function(t){ lexRecordSM2(t.word,t.translation,q); }); }catch(e){} }
+function lexRecordBeat(ex,correct,attempts){ try{ if(typeof gramBeat==='function') gramBeat(ex,correct,attempts); }catch(e){} try{ var q=lexBeatQuality(ex,!!correct,attempts||0); if(q==null) return; lexBeatTargets(ex).forEach(function(t){ lexRecordSM2(t.word,t.translation,q); }); }catch(e){} }
 
 /* poprawiona (minimalnie) wersja zdania ucznia — pod komentarzem oceny */
 function lexFixLine(v){ var f=String((v&&v.fix)||'').trim(); if(!f) return ''; return '<div style="margin-top:8px;font-size:13px;color:var(--navy)"><span style="color:var(--dim2)">Poprawiona wersja:</span> <strong>'+esc(f)+'</strong></div>'; }
@@ -2615,9 +2721,9 @@ async function lexxAIEval(ex, answer){
       +'ROZSTRZYGAJĄCE jest polecenie zadania, nie temat porcji. Jeśli uczeń wykonał polecenie, a zdanie jest poprawne — oceń je jako poprawne, nawet jeśli nie pasuje do tematu porcji. '
       +'NIGDY nie zarzucaj uczniowi, że zdanie nie pasuje do innego kontekstu niż ten z polecenia, i nie proponuj poprawki, która zmienia cel wypowiedzi na inny. '
       +'Pole "fix" musi realizować TO SAMO polecenie co zadanie i być kompletnym zdaniem — bez nawiasów kwadratowych, bez miejsc do uzupełnienia typu [KRAJ], bez wielokropków. '
-      +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po '+CL+': co dobrze, co poprawić","gap":"","fix":"poprawiona wersja zdania ucznia po '+langName()+' — zmień TYLKO to, co błędne (gramatyka, przedimki, formy); zachowaj sens i dobór słów ucznia; jeśli zdanie jest już poprawne, przepisz je bez zmian"}';
+      +'Odpowiedz WYŁĄCZNIE JSON: {"ok":true/false,"comment":"1-2 zdania po '+CL+': co dobrze, co poprawić","gap":"jeśli błąd gramatyczny — krótka polska nazwa struktury, w której uczeń się pomylił; inaczej pusty string","fix":"poprawiona wersja zdania ucznia po '+langName()+' — zmień TYLKO to, co błędne (gramatyka, przedimki, formy); zachowaj sens i dobór słów ucznia; jeśli zdanie jest już poprawne, przepisz je bez zmian"}';
     var raw=await lexProxy(prompt,500); var a=raw.indexOf('{'), b=raw.lastIndexOf('}');
-    if(a>=0&&b>a){ var j=JSON.parse(raw.slice(a,b+1)); return {ok:!!j.ok, comment:j.comment||'', gap:j.gap||'', fix:j.fix||''}; }
+    if(a>=0&&b>a){ var j=JSON.parse(raw.slice(a,b+1)); try{ if(!j.ok && typeof gramFindByGap==='function'){ var _gid=gramFindByGap(String(j.gap||'')+' '+String(j.comment||'')); if(_gid && typeof gramStatus==='function'){ var _gst=gramStatus(_gid); if(_gst==='unlocked'||_gst==='stale') gramGrade(_gid,2); } } }catch(_ge){} return {ok:!!j.ok, comment:j.comment||'', gap:j.gap||'', fix:j.fix||''}; }
     return {ok:true, comment:'Zapisane.', gap:'', fix:''};
   }catch(e){ return {ok:true, comment:'Zapisano Twoją odpowiedź. Ocena AI jest chwilowo niedostępna — spróbuj ponownie za chwilę.', gap:'', fix:''}; }
 }
