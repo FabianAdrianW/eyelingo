@@ -1801,6 +1801,11 @@ var EYL_LOAD_TXT={
 .gram-map-det[open]>summary::before{content:'\25BE  '}
 .gram-map-foot{padding:11px 18px 16px;font-size:11px;line-height:1.5;color:var(--dim2,#8a8378);border-top:1px solid var(--line,#e8e3da)}
 .gram-map-empty{padding:18px 0;font-size:12px;color:var(--dim2,#8a8378)}
+.gram-ctx{margin:0 0 10px;padding:9px 11px;border-radius:9px;background:rgba(26,35,64,.045)}
+.gram-ctx-lab{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2,#8a8378);margin-bottom:5px}
+.gram-ctx .gram-ex{margin:0}
+.gram-map-horizon{margin:10px 0 0;padding:8px 10px;border:1px dashed var(--line,#e8e3da);border-radius:8px;
+  font-size:11px;line-height:1.5;color:var(--dim2,#8a8378)}
 </style>
 
 </head>
@@ -16943,6 +16948,19 @@ async function lexInit(){
      kolor i wlasny rytm. Czytelnik skanuje, nie brnie. */
   function _e(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+  /* Zdanie wzorcowe zbudowane ze slownictwa biezacej porcji. Karta z banku
+     jest z definicji neutralna — uczen widzi regule, ktora nie ma zwiazku
+     z tym, czego sie wlasnie uczy. To domyka luke. */
+  var _gEx={};
+  window.gramSetExample=function(id,ex){
+    if(!id||!ex) return;
+    var tgt=String(ex.target||ex.zdanie||'').trim();
+    if(!tgt) return;
+    try{ tgt=gramCleanNotation(tgt); }catch(e){}
+    _gEx[lang()+'|'+id]={target:tgt, pl:String(ex.pl||ex.tlumaczenie||'').trim()};
+  };
+  window.gramGetExample=function(id){ return _gEx[lang()+'|'+id]||null; };
+
   window.gramCardHTML=function(id, opts){
     var p=(typeof id==='object'&&id)?id:gramPoint(id);
     if(!p||!p.teach) return '';
@@ -16968,6 +16986,18 @@ async function lexInit(){
         }).join('')+'</div>';
       });
       h+='</div>';
+    }
+
+    // Najpierw material wlasny porcji, dopiero potem przyklady kanoniczne.
+    // Uczen ma zobaczyc regule na slowach, ktorych wlasnie uzywa — inaczej
+    // struktura i lekcja zostaja dwoma osobnymi swiatami.
+    var _cx=opts.example||((typeof gramGetExample==='function')?gramGetExample(p.id):null);
+    if(_cx&&_cx.target){
+      h+='<div class="gram-ctx"><div class="gram-ctx-lab">W tej porcji</div>'
+        +'<div class="gram-ex" data-say="'+_e(_cx.target)+'">'
+        +'<div class="gram-ex-t">'+_e(_cx.target)+'</div>'
+        +(_cx.pl?'<div class="gram-ex-p">'+_e(_cx.pl)+'</div>':'')
+        +'</div></div>';
     }
 
     if(t.examples&&t.examples.length){
@@ -17000,8 +17030,13 @@ async function lexInit(){
     return out;
   };
 
-  function _gramTail(tp){
-    return 'Nie wolno użyć ŻADNEJ innej struktury — ani w zdaniach, ani w poleceniach, ani we wzorcowych odpowiedziach, ani w podpowiedziach. '
+  function _gramTail(tp,hasNew){
+    return (hasNew?('Zdania w ćwiczeniach z nową strukturą MUSZĄ być zbudowane ze słownictwa tej porcji '
+        +'— nie z neutralnych przykładów podręcznikowych. Struktura ma obsłużyć TEN temat, nie dowolny. '
+        +'W polu "new_grammar_example" na najwyższym poziomie odpowiedzi podaj jedno krótkie zdanie '
+        +'w języku docelowym, które pokazuje nową strukturę na słowie z materiału tej porcji, '
+        +'wraz z tłumaczeniem na polski: {"target":"zdanie","pl":"tłumaczenie"}. '):'')
+      +'Nie wolno użyć ŻADNEJ innej struktury — ani w zdaniach, ani w poleceniach, ani we wzorcowych odpowiedziach, ani w podpowiedziach. '
       +'W KAŻDYM ćwiczeniu wypełnij pole "uses_grammar": tablicę id struktur wymaganych do poprawnego wykonania zadania (pusta tablica, jeśli zadanie jest czysto leksykalne). '
       +'Porcja wprowadzająca nową strukturę NIE dokłada własnych słów ponad materiał do utrwalenia — budżet uwagi ucznia zajmuje reguła. '
       +(tp?(window.GRAM_INTRO_BRIDGE!==true
@@ -17025,11 +17060,16 @@ async function lexInit(){
       +'Struktury, które uczeń ZNA i których wolno używać: '
       +(allowed.length?allowed.join('; '):'BRAK — trzymaj się absolutnych podstaw')+'. ';
     if(!cands.length){
-      return head+'NIE wprowadzaj żadnej nowej struktury gramatycznej w tej porcji. '+_gramTail(null);
+      return head+'NIE wprowadzaj żadnej nowej struktury gramatycznej w tej porcji. '+_gramTail(null,false);
     }
     if(cands.length===1){
+      // Jeden kandydat = brak wyboru. Ciężar dopasowania przechodzi wtedy
+      // w całości na ćwiczenia: to one mają obsłużyć temat tą strukturą.
       return head+'Struktura NOWA, dozwolona wyłącznie w tej porcji: '
-        +cands[0].id+' = '+cands[0].name_pl+'. '+_gramTail(cands[0]);
+        +cands[0].id+' = '+cands[0].name_pl+'. '
+        +'Struktura jest ustalona z góry — to ćwiczenia mają dopasować się do niej, '
+        +'budując zdania z materiału tej porcji. '
+        +_gramTail(cands[0],true);
     }
     return head
       +'KANDYDACI na nową strukturę — wszyscy dozwoleni na tym etapie: '
@@ -17038,7 +17078,7 @@ async function lexInit(){
       +'i wpisz jego id w pole "new_grammar" na najwyższym poziomie odpowiedzi. '
       +'Jeśli żaden nie pasuje bez sztuczności — wpisz pusty string i nie wprowadzaj nowej struktury. '
       +'Wolno użyć wyłącznie wybranego kandydata; pozostali są w tej porcji zabronieni. '
-      +_gramTail(null);
+      +_gramTail(null,true);
   };
   /* Model proponuje, klient rozstrzyga. Id spoza frontu albo zmyslone nie ma
      prawa przejsc — wracamy wtedy do punktu, ktory faktycznie pojawil sie
@@ -17071,19 +17111,45 @@ async function lexInit(){
     if(ex&&Array.isArray(ex.must_use)) p.push(ex.must_use.join(' '));
     return p.join(' \n ').toLowerCase();
   }
-  /* Sito bierze tylko wykładniki >=4 znaków albo wielowyrazowe — krótkie
-     partykuły (wa, no, de, ni) dawałyby masowe fałszywe trafienia. */
+  /* ── Sito wykładników (GRAM-5) ───────────────────────────────────────────
+     Sito łapie struktury UŻYTE, lecz niezadeklarowane. Każde trafienie wycina
+     ćwiczenie z porcji, więc fałszywy alarm kosztuje więcej niż przeoczenie.
+
+     Poprzednia wersja szukała podciągu i dopuszczała każdy wykładnik od 4
+     znaków. W bankach produkcyjnych oznaczało to, że 'ando' trafiało w
+     'cuando', 'than' w 'thank', 'mente' w każdy włoski przysłówek, a 'that',
+     'some', 'nicht' w niemal każde zdanie. Przy 27–34 punktach z sitem na bank
+     wycinało to poprawne ćwiczenia masowo.
+
+     Teraz: konstrukcje wielowyrazowe ("te kudasai", "om te") szukane jako
+     podciąg — są jednoznaczne. Pojedyncze słowa muszą mieć co najmniej 6
+     znaków i pasować do CAŁEGO słowa, nie do jego fragmentu. Końcówki
+     fleksyjne ('ísimo', 'erai') przestają więc trafiać w ogóle — i dobrze,
+     bo jako podciągi były najgroźniejsze. */
+  var _sieveRe={};
+  function _wordRe(e){
+    if(_sieveRe[e]!==undefined) return _sieveRe[e];
+    var esc=e.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    var r=null;
+    try{ r=new RegExp('(^|[^\\p{L}\\p{N}])'+esc+'([^\\p{L}\\p{N}]|$)','u'); }
+    catch(err){ try{ r=new RegExp('(^|[^a-zà-ÿ0-9])'+esc+'([^a-zà-ÿ0-9]|$)'); }catch(e2){ r=null; } }
+    _sieveRe[e]=r; return r;
+  }
   function sieveHit(ex,point){
-    // Sito dziala TYLKO dla punktow oznaczonych w banku jako sieve:true — czyli
-    // takich, ktorych wykladnik jest jednoznaczna konstrukcja gramatyczna
-    // ("te kudasai", "koto ga dekimasu"). Punkty o wykladnikach bedacych
-    // zwyklymi slowami ("kore", "desu", "arimasu") trafialyby w niemal kazde
-    // zdanie i wycinaly poprawne cwiczenia.
     if(point.sieve!==true) return false;
-    var exps=[].concat(point.exponents||[]).filter(function(e){ e=String(e||'').trim(); return e.length>=4||e.indexOf(' ')>0; });
+    var exps=[].concat(point.exponents||[])
+      .map(function(e){ return String(e==null?'':e).trim().toLowerCase(); })
+      .filter(Boolean);
     if(!exps.length) return false;
     var t=exText(ex);
-    return exps.some(function(e){ return t.indexOf(String(e).toLowerCase().trim())>=0; });
+    for(var i=0;i<exps.length;i++){
+      var e=exps[i];
+      if(e.indexOf(' ')>0){ if(e.length>=5 && t.indexOf(e)>=0) return true; continue; }
+      if(e.length<6) continue;
+      var r=_wordRe(e);
+      if(r ? r.test(t) : (t.indexOf(e)>=0)) return true;
+    }
+    return false;
   }
   window.gramValidatePortion=function(data,teachableId){
     if(!gramBankReady()||!data) return {bad:[],reasons:[]};
@@ -17233,9 +17299,15 @@ async function lexInit(){
       [nm, nmBase].forEach(function(cand){
         if(cand && cand.length>2 && cand.length>best && t.indexOf(cand)>=0){ hit=p.id; best=cand.length; }
       });
+      // Ta sama zasada co w sicie: podciag krotkiego wykladnika trafia
+      // przypadkiem w komentarz ewaluatora i demotuje losowa strukture.
       [].concat(p.exponents||[]).forEach(function(e){
-        e=String(e||'').trim().toLowerCase();
-        if(e.length>=4 && e.length>best && t.indexOf(e)>=0){ hit=p.id; best=e.length; }
+        e=String(e==null?'':e).trim().toLowerCase();
+        if(!e || e.length<=best) return;
+        if(e.indexOf(' ')>0){ if(e.length>=5 && t.indexOf(e)>=0){ hit=p.id; best=e.length; } return; }
+        if(e.length<6) return;
+        var r=_wordRe(e);
+        if(r ? r.test(t) : (t.indexOf(e)>=0)){ hit=p.id; best=e.length; }
       });
     });
     return hit;
@@ -17280,6 +17352,13 @@ async function lexInit(){
       return out;
     }
     var out='<div class="gram-map-lead">'+_e(g.level+' \u00b7 '+g.done+' z '+g.total+' struktur')+'</div>';
+    // Znak horyzontu. Bank konczy sie ponizej poziomu ucznia — bez tej linii
+    // dopracowany widok mowi „tyle jest gramatyki w tym jezyku", co jest
+    // nieprawda. Lepiej powiedziec wprost, gdzie konczy sie mapa.
+    if(bankMaxIdx()>=0 && bankMaxIdx()<anchorIdx()){
+      out+='<div class="gram-map-horizon">Mapa obejmuje na razie poziomy do '
+        +_e(LEVELS[bankMaxIdx()])+'. Wy\u017csze przygotowujemy.</div>';
+    }
     out+=sec('Opanowane',done);
     out+=sec('Najbliżej',now_,6);
     out+=sec('Dalej',next,8);
@@ -17482,7 +17561,7 @@ async function lexInit(){
       +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
       +'{'
       +'"focus":"krótki temat porcji po '+L+'",'
-      +((typeof gramBankReady==='function'&&gramBankReady())?'"new_grammar":"id wybranego kandydata albo pusty string",':'')
+      +((typeof gramBankReady==='function'&&gramBankReady())?'"new_grammar":"id wybranego kandydata albo pusty string","new_grammar_example":{"target":"zdanie z nową strukturą na słowie z tej porcji","pl":"tłumaczenie"},':'')
       +'"intro":"1-2 zdania po '+L+' wprowadzające; słowa docelowe w języku '+langName()+' ujmij w **gwiazdki**",'
       +'"items":[{"word":"słowo w '+langName()+'","translation":"po '+L+'"'+(_lexScript==='romaji'?',"reading":"transliteracja słowa"':'')+'}],'
       +(gramBankReady()?'':'"grammar":null,')
@@ -17523,8 +17602,17 @@ async function lexInit(){
           if(!data.exercises.length) throw new Error('Pusta porcja');
         }
         // struktura faktycznie uzyta w porcji => odblokowana (Etap 3 doda karte przed cwiczeniem)
-      try{ if(_tid && (data.exercises||[]).some(function(_x){ return [].concat((_x&&_x.uses_grammar)||[]).indexOf(_tid)>=0; })) gramMarkTaught(_tid); }catch(e){}
-      try{ data._teachable=_tid; }catch(e){}
+      // Karta „Nowa struktura" ma prawo sie pokazac WYLACZNIE wtedy, gdy
+      // struktura faktycznie pracuje w tej porcji. Wczesniej _teachable
+      // ustawialo sie bezwarunkowo i uczen dostawal regule bez zwiazku
+      // z lekcja — kategoria „Do widzenia" plus przypadkowa gramatyka.
+      var _uzyta=false;
+      try{ _uzyta=!!_tid && (data.exercises||[]).some(function(_x){
+        return [].concat((_x&&_x.uses_grammar)||[]).indexOf(_tid)>=0; }); }catch(e){}
+      try{ if(_uzyta) gramMarkTaught(_tid); }catch(e){}
+      try{ if(_uzyta && data.new_grammar_example && typeof gramSetExample==='function')
+             gramSetExample(_tid, data.new_grammar_example); }catch(e){}
+      try{ data._teachable=_uzyta?_tid:null; }catch(e){}
       }
       try{ if(typeof gramScaffoldReset==='function') gramScaffoldReset(); }catch(e){}
       window._lexxData=data;
