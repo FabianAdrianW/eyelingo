@@ -16654,6 +16654,62 @@ async function lexInit(){
     return data;
   };
 
+  /* ── Transliteracja pozycji porcji ──────────────────────────────────────
+     Pole "reading" pochodzi od modelu, wiec bywa puste. W trybie transliteracji
+     Tablica pokazywalaby wtedy pismo oryginalne — czyli zapis, ktorego uczen
+     na tym poziomie nie czyta. Naprawiamy to deterministycznie: brakujace
+     odczyty dobieramy JEDNYM zbiorczym zapytaniem i cache'ujemy per slowo. */
+  var _trMem={};
+  function _trKey(lang,w){ var k='eyl_translit_'+lang+'_'+String(w||'').trim().toLowerCase();
+    try{ return uk(k); }catch(e){ return k; } }
+  function _trGet(lang,w){
+    var k=_trKey(lang,w);
+    if(_trMem[k]!=null) return _trMem[k];
+    try{ var v=localStorage.getItem(k); if(v){ _trMem[k]=v; return v; } }catch(e){}
+    return null;
+  }
+  function _trSet(lang,w,r){
+    if(!r) return; var k=_trKey(lang,w); _trMem[k]=r;
+    try{ localStorage.setItem(k,r); }catch(e){}
+  }
+
+  /* ask(prompt) -> Promise<string>. Zwraca liczbe uzupelnionych pozycji. */
+  window.lexTranslitRepair=async function(data, langCode, scriptName, ask){
+    if(!data||!data.items||!data.items.length) return 0;
+    var lang=langCode||lang;
+    var brak=[];
+    data.items.forEach(function(it){
+      if(!it||!it.word) return;
+      if(it.reading && String(it.reading).trim()) return;
+      var c=_trGet(lang,it.word);
+      if(c){ it.reading=c; return; }
+      brak.push(it);
+    });
+    if(!brak.length || typeof ask!=='function') return 0;
+
+    var lista=brak.map(function(it,i){ return (i+1)+'. '+it.word; }).join('\n');
+    var p='Podaj transliterację ('+(scriptName||'zapis łaciński')+') dla poniższych słów. '
+      +'Zwróć WYŁĄCZNIE JSON, tablicę w tej samej kolejności, bez żadnego dodatkowego tekstu: '
+      +'{"readings":["transliteracja 1","transliteracja 2"]}\n'+lista;
+    var out=null;
+    try{
+      var raw=await ask(p);
+      var t=String(raw||'').replace(/```json|```/g,'').trim();
+      var a=t.indexOf('{'), b=t.lastIndexOf('}');
+      if(a>=0&&b>a) out=JSON.parse(t.slice(a,b+1));
+    }catch(e){
+      try{ console.warn('[translit] nie udalo sie uzupelnic odczytow:', (e&&e.message)||e); }catch(_){}
+      return 0;
+    }
+    var r=(out&&out.readings)||[];
+    var n=0;
+    brak.forEach(function(it,i){
+      var v=String(r[i]||'').trim();
+      if(v){ it.reading=v; _trSet(lang,it.word,v); n++; }
+    });
+    return n;
+  };
+
   window.gramTeachBlock=function(p){
     if(!p||!p.teach) return '';
     var t=p.teach, out=[];
@@ -16840,7 +16896,13 @@ async function lexInit(){
     var hit=null, best=0;
     bank().list.forEach(function(p){
       var nm=String(p.name_pl||'').toLowerCase();
-      if(nm && nm.length>best && t.indexOf(nm)>=0){ hit=p.id; best=nm.length; }
+      // Nazwa pelna oraz jej czlon glowny przed myslnikiem/dwukropkiem —
+      // punkty bez wykladnikow (np. „Present Simple — twierdzenie") inaczej
+      // nie daloby sie w ogole dopasowac.
+      var nmBase=nm.split(/[—:(]/)[0].trim();
+      [nm, nmBase].forEach(function(cand){
+        if(cand && cand.length>2 && cand.length>best && t.indexOf(cand)>=0){ hit=p.id; best=cand.length; }
+      });
       [].concat(p.exponents||[]).forEach(function(e){
         e=String(e||'').trim().toLowerCase();
         if(e.length>=4 && e.length>best && t.indexOf(e)>=0){ hit=p.id; best=e.length; }
@@ -17015,6 +17077,15 @@ async function lexInit(){
         });
       }catch(e){}
       try{ if(data.focus){ window._lexPortionFocuses=window._lexPortionFocuses||[]; if(window._lexPortionFocuses.indexOf(data.focus)===-1) window._lexPortionFocuses.push(data.focus); } }catch(e){}
+      try{
+        if(_lexScript==='romaji' && typeof lexTranslitRepair==='function'){
+          await lexTranslitRepair(data, window._lexLang, '', async function(q){
+            var _r=await fetch(AI_PROXY_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},body:JSON.stringify({kind:'lex',messages:[{role:'user',content:q}],max_tokens:400})});
+            var _j=await _r.json();
+            return (typeof extractAIText==='function'?extractAIText(_j):'')||'';
+          });
+        }
+      }catch(e){}
       try{ if(data.items&&Array.isArray(window._lexVocab)) data.items.forEach(function(it){ if(it&&it.word&&it.translation){ window._lexVocab.push({word:it.word,translation:it.translation});
         if(typeof lexBoardAdd==='function'){
           // Tablica idzie za trybem pisma lekcji: w transliteracji na pierwszym

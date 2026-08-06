@@ -454,6 +454,8 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 </style>
 
 <style id="lex-gram-board-css">
+  .lbw .w{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .lbw-sub{font-size:11px;color:var(--dim2);font-weight:400;line-height:1.25}
   .lbsh-sec{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2);margin:14px 2px 7px}
   .lbsh-sec:first-child{margin-top:2px}
   .lbg{background:#fff;border:.5px solid var(--line);border-left:3px solid var(--orange);border-radius:10px;overflow:hidden;margin-bottom:7px}
@@ -1382,12 +1384,19 @@ function lexBoardRender(){
   list.innerHTML=gram+items.map(function(it){
     var key=String(it.word).toLowerCase().trim();
     var rev=_lexBoardShowAll||_lexBoardRevealed[key];
-    var _bDisp=(_lexScript==='romaji'&&it.reading)?it.reading:it.word; var safeWord=esc(_bDisp); var safeSay=esc(it.word);
+    var _romaji=(_lexScript==='romaji');
+    var _bDisp=(_romaji&&it.reading)?it.reading:it.word; var safeWord=esc(_bDisp); var safeSay=esc(it.word);
+    // Pismo oryginalne schodzi do drugiej linii; brak odczytu dostaje znacznik,
+    // zeby nie udawac, ze uczen widzi zapis, ktory potrafi przeczytac.
+    var _sub=_romaji ? (it.reading ? esc(it.word) : '<span style="opacity:.65">brak transliteracji</span>') : '';
     var right=rev
       ? (it.translation?'<span class="t">'+esc(it.translation)+'</span>':'')
       : '<span class="hidden-pill">dotknij</span>';
     var spk='<button class="spk" aria-label="Wymowa" onclick="event.stopPropagation();lexBoardSpeak(this.getAttribute(\'data-w\'))" data-w="'+safeSay+'"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button>';
-    return '<div class="lbw'+(rev?' rev':'')+'" onclick="lexBoardReveal(this.getAttribute(\'data-k\'))" data-k="'+esc(key)+'"><span class="w">'+safeWord+'</span>'+right+spk+'</div>';
+    var _wcell=_sub
+      ? ('<span class="w"><span>'+safeWord+'</span><span class="lbw-sub">'+_sub+'</span></span>')
+      : ('<span class="w">'+safeWord+'</span>');
+    return '<div class="lbw'+(rev?' rev':'')+'" onclick="lexBoardReveal(this.getAttribute(\'data-k\'))" data-k="'+esc(key)+'">'+_wcell+right+spk+'</div>';
   }).join('');
 }
 function lexBoardReveal(key){ if(!key) return; if(_lexBoardRevealed[key]) delete _lexBoardRevealed[key]; else _lexBoardRevealed[key]=1; lexBoardRender(); }
@@ -1662,6 +1671,62 @@ function lexParseJSON(raw){
     return data;
   };
 
+  /* ── Transliteracja pozycji porcji ──────────────────────────────────────
+     Pole "reading" pochodzi od modelu, wiec bywa puste. W trybie transliteracji
+     Tablica pokazywalaby wtedy pismo oryginalne — czyli zapis, ktorego uczen
+     na tym poziomie nie czyta. Naprawiamy to deterministycznie: brakujace
+     odczyty dobieramy JEDNYM zbiorczym zapytaniem i cache'ujemy per slowo. */
+  var _trMem={};
+  function _trKey(lang,w){ var k='eyl_translit_'+lang+'_'+String(w||'').trim().toLowerCase();
+    try{ return uk(k); }catch(e){ return k; } }
+  function _trGet(lang,w){
+    var k=_trKey(lang,w);
+    if(_trMem[k]!=null) return _trMem[k];
+    try{ var v=localStorage.getItem(k); if(v){ _trMem[k]=v; return v; } }catch(e){}
+    return null;
+  }
+  function _trSet(lang,w,r){
+    if(!r) return; var k=_trKey(lang,w); _trMem[k]=r;
+    try{ localStorage.setItem(k,r); }catch(e){}
+  }
+
+  /* ask(prompt) -> Promise<string>. Zwraca liczbe uzupelnionych pozycji. */
+  window.lexTranslitRepair=async function(data, langCode, scriptName, ask){
+    if(!data||!data.items||!data.items.length) return 0;
+    var lang=langCode||lang;
+    var brak=[];
+    data.items.forEach(function(it){
+      if(!it||!it.word) return;
+      if(it.reading && String(it.reading).trim()) return;
+      var c=_trGet(lang,it.word);
+      if(c){ it.reading=c; return; }
+      brak.push(it);
+    });
+    if(!brak.length || typeof ask!=='function') return 0;
+
+    var lista=brak.map(function(it,i){ return (i+1)+'. '+it.word; }).join('\n');
+    var p='Podaj transliterację ('+(scriptName||'zapis łaciński')+') dla poniższych słów. '
+      +'Zwróć WYŁĄCZNIE JSON, tablicę w tej samej kolejności, bez żadnego dodatkowego tekstu: '
+      +'{"readings":["transliteracja 1","transliteracja 2"]}\n'+lista;
+    var out=null;
+    try{
+      var raw=await ask(p);
+      var t=String(raw||'').replace(/```json|```/g,'').trim();
+      var a=t.indexOf('{'), b=t.lastIndexOf('}');
+      if(a>=0&&b>a) out=JSON.parse(t.slice(a,b+1));
+    }catch(e){
+      try{ console.warn('[translit] nie udalo sie uzupelnic odczytow:', (e&&e.message)||e); }catch(_){}
+      return 0;
+    }
+    var r=(out&&out.readings)||[];
+    var n=0;
+    brak.forEach(function(it,i){
+      var v=String(r[i]||'').trim();
+      if(v){ it.reading=v; _trSet(lang,it.word,v); n++; }
+    });
+    return n;
+  };
+
   window.gramTeachBlock=function(p){
     if(!p||!p.teach) return '';
     var t=p.teach, out=[];
@@ -1848,7 +1913,13 @@ function lexParseJSON(raw){
     var hit=null, best=0;
     bank().list.forEach(function(p){
       var nm=String(p.name_pl||'').toLowerCase();
-      if(nm && nm.length>best && t.indexOf(nm)>=0){ hit=p.id; best=nm.length; }
+      // Nazwa pelna oraz jej czlon glowny przed myslnikiem/dwukropkiem —
+      // punkty bez wykladnikow (np. „Present Simple — twierdzenie") inaczej
+      // nie daloby sie w ogole dopasowac.
+      var nmBase=nm.split(/[—:(]/)[0].trim();
+      [nm, nmBase].forEach(function(cand){
+        if(cand && cand.length>2 && cand.length>best && t.indexOf(cand)>=0){ hit=p.id; best=cand.length; }
+      });
       [].concat(p.exponents||[]).forEach(function(e){
         e=String(e||'').trim().toLowerCase();
         if(e.length>=4 && e.length>best && t.indexOf(e)>=0){ hit=p.id; best=e.length; }
@@ -2006,6 +2077,13 @@ async function lexGeneratePortion(){
     }
     _lexData=data; _lexSculpt={}; _lexGapN={};
     try{ (data.exercises||[]).forEach(function(ex){ if(ex&&ex.type==='cloze'&&ex.sentence){ var ga=lexGapAnswers(ex); if(ga.length) _lexSweepPool.push({sentence:ex.sentence,answer:ga[0],answers:ga,wrong:false,portion:pn,pl:(ex.sentence_pl||'')}); } }); }catch(e){}
+    // W trybie transliteracji Tablica musi pokazac zapis, ktory uczen czyta.
+    // Pole "reading" pochodzi od modelu, wiec brakujace odczyty uzupelniamy sami.
+    try{
+      if(_lexScript==='romaji' && typeof lexTranslitRepair==='function'){
+        await lexTranslitRepair(data, _lexLang, (typeof _TN2!=='undefined'&&_TN2?_TN2.t:''), function(q){ return lexProxy(q,400); });
+      }
+    }catch(e){}
     try{ if(data.items) data.items.forEach(function(it){ if(it&&it.word&&it.translation) _lexVocab.push({word:it.word,translation:it.translation,reading:(it.reading||'')}); }); }catch(e){}
     try{ if(typeof gramLessonPoints==='function') gramLessonPoints(data).forEach(function(_p){ if(_lexGramBoard.indexOf(_p.id)<0) _lexGramBoard.push(_p.id); }); }catch(e){}
     try{ lexBoardRender(); }catch(e){}
