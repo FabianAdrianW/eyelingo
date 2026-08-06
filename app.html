@@ -1518,19 +1518,58 @@ function openLexSetup(){
 }
 function lexQuit(){ if(confirm('Zakończyć lekcję z Ailexem?')){ try{speechSynthesis.cancel();}catch(e){} try{lexBoardFabShow(false);}catch(e){} closeImm('imm-lex'); } }
 
-function extractAI(d){ try{
-  if(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]) return d.candidates[0].content.parts[0].text||'';
-  if(Array.isArray(d.content)&&d.content[0]) return d.content[0].text||'';
-  if(typeof d.content==='string') return d.content;
-  if(d.choices&&d.choices[0]) return (d.choices[0].message&&d.choices[0].message.content)||d.choices[0].text||'';
-  if(typeof d.text==='string') return d.text;
-}catch(e){} return ''; }
+function extractAI(d){
+  try{
+    if(!d) return '';
+    if(typeof d==='string') return d;
+    /* Anthropic: content to TABLICA blokow i blok tekstowy nie musi byc pierwszy.
+       Model z rozumowaniem zwraca najpierw blok 'thinking', przez co odczyt
+       content[0].text dawal pusty string przy poprawnej odpowiedzi 200 —
+       lekcja konczyla sie komunikatem „Pusta porcja". Sklejamy WSZYSTKIE
+       bloki tekstowe. */
+    if(Array.isArray(d.content)){
+      var _t=d.content.filter(function(b){ return b && (b.type==='text' || typeof b.text==='string'); })
+                      .map(function(b){ return b.text||''; }).join('').trim();
+      if(_t) return _t;
+    }
+    if(typeof d.content==='string' && d.content.trim()) return d.content;
+    if(d.candidates&&d.candidates[0]&&d.candidates[0].content&&Array.isArray(d.candidates[0].content.parts)){
+      var _g=d.candidates[0].content.parts.map(function(p){ return (p&&p.text)||''; }).join('').trim();
+      if(_g) return _g;
+    }
+    if(d.choices&&d.choices[0]){
+      var _m=d.choices[0].message, _c=_m?_m.content:null;
+      if(Array.isArray(_c)){
+        var _a=_c.map(function(b){ return (b&&(b.text||(typeof b.content==='string'?b.content:'')))||''; }).join('').trim();
+        if(_a) return _a;
+      }
+      if(typeof _c==='string' && _c.trim()) return _c;
+      if(typeof d.choices[0].text==='string' && d.choices[0].text.trim()) return d.choices[0].text;
+    }
+    if(typeof d.text==='string' && d.text.trim()) return d.text;
+    if(typeof d.output_text==='string' && d.output_text.trim()) return d.output_text;
+    /* Responses API: output[].content[].text */
+    if(Array.isArray(d.output)){
+      var _o='';
+      d.output.forEach(function(it){ [].concat((it&&it.content)||[]).forEach(function(b){ if(b&&typeof b.text==='string') _o+=b.text; }); });
+      if(_o.trim()) return _o.trim();
+    }
+  }catch(e){}
+  /* Nic nie wyciagnelismy — zapisujemy odpowiedz do diagnozy zamiast gubic ja po cichu. */
+  try{
+    window._lexLastAIResp=d;
+    console.warn('[AI] proxy odpowiedzialo, ale nie znaleziono w tresci tekstu. '
+      +'Pelna odpowiedz jest w window._lexLastAIResp:', d);
+  }catch(e){}
+  return '';
+}
 async function lexProxy(prompt, maxTok){
   var tok=''; try{ tok=(await db.auth.getSession()).data.session.access_token||''; }catch(e){}
   var res=await fetch(LEX_PROXY,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},
     body:JSON.stringify({kind:'lex',messages:[{role:'user',content:prompt}],max_tokens:maxTok||3000})});
   if(!res.ok) throw new Error('proxy '+res.status);
   var d=await res.json();
+  try{ window._lexLastAIResp=d; }catch(e){}
   return ((extractAI(d))||'').replace(/```json|```/g,'').trim();
 }
 
