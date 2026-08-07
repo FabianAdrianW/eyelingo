@@ -23246,3 +23246,70 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   document.addEventListener('keydown',function(ev){ if(ev.key==='Escape') close(); });
 })();
 </script>
+
+<script>
+/* ═══ EYELINGO — PAMIĘĆ WYBORÓW ═══
+   Język, poziom i podobne ustawienia mają zostawać tam, gdzie użytkownik je
+   postawił. Zamiast dopisywać zapis do każdego selecta z osobna, trzymamy
+   jedną listę identyfikatorów i obsługujemy je wspólnie.
+
+   Klucz idzie przez uk(), więc ustawienia są osobne dla każdego konta.
+   Przywracamy tylko wtedy, gdy zapisana opcja nadal istnieje na liście —
+   inaczej select pokazałby pustkę po zmianie katalogu języków. */
+(function(){
+  'use strict';
+  var IDS = ['chat-lang','chat-level','alex-lang','alex-level','tutor-filter-lang',
+             'new-set-lang','ns-lang','lex-book-lang','lex-audiolang'];
+  var done = {};
+
+  function key(id){
+    try{ return (typeof uk==='function') ? uk('eyl_pref_'+id) : ('eyl_pref_'+id); }
+    catch(e){ return 'eyl_pref_'+id; }
+  }
+  function save(el){
+    if(!el||!el.id) return;
+    try{ localStorage.setItem(key(el.id), el.value); }catch(e){}
+  }
+  function restore(el){
+    if(!el||!el.id||done[el.id]) return;
+    var v=null;
+    try{ v=localStorage.getItem(key(el.id)); }catch(e){}
+    if(v==null){ done[el.id]=1; return; }
+    if(el.tagName==='SELECT'){
+      var has=false;
+      for(var i=0;i<el.options.length;i++){ if(el.options[i].value===v){ has=true; break; } }
+      if(!has) return;                 // katalog jeszcze się nie wypełnił albo opcja zniknęła
+    }
+    done[el.id]=1;
+    if(el.value===v) return;           // już ustawione — nie wywołujemy zbędnego przeładowania
+    el.value=v;
+    // Zdarzenie musi polecieć, żeby aplikacja zareagowała tak samo, jakby
+    // użytkownik wybrał to ręcznie.
+    try{ el.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){}
+  }
+  function sweep(){
+    for(var i=0;i<IDS.length;i++){
+      var el=document.getElementById(IDS[i]);
+      if(el) restore(el);
+    }
+  }
+
+  document.addEventListener('change', function(ev){
+    var el=ev.target;
+    if(el && el.id && IDS.indexOf(el.id)>=0) save(el);
+  }, true);
+
+  function start(){
+    sweep();
+    // Część selectów powstaje dopiero po otwarciu ekranu albo po dociągnięciu
+    // listy języków — obserwujemy DOM zamiast zgadywać moment.
+    try{
+      var mo=new MutationObserver(function(){ sweep(); });
+      mo.observe(document.documentElement,{childList:true,subtree:true});
+      setTimeout(function(){ mo.disconnect(); }, 60000);
+    }catch(e){}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start);
+  else start();
+})();
+</script>
