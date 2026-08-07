@@ -16961,6 +16961,32 @@ async function lexInit(){
   };
   window.gramGetExample=function(id){ return _gEx[lang()+'|'+id]||null; };
 
+  /* Model regularnie nie wypelnia pol, o ktore prosimy (Bible §6.6). Wszystko,
+     co da sie odtworzyc deterministycznie, odtwarzamy sami: zdanie „W tej
+     porcji" bierzemy z pierwszego cwiczenia, ktore faktycznie uzywa tej
+     struktury. W cloze wstawiamy odpowiedz w luke, zeby zdanie bylo pelne. */
+  window.gramDeriveExample=function(data,id){
+    if(!data||!id) return null;
+    var exs=[].concat(data.exercises||[]);
+    for(var i=0;i<exs.length;i++){
+      var ex=exs[i]||{};
+      if([].concat(ex.uses_grammar||[]).indexOf(id)<0) continue;
+      var s=ex.sentence||ex.answer||ex.target||ex.source||'';
+      if(Array.isArray(s)) s=s.join(' ');
+      s=String(s||'');
+      var ans=[].concat(ex.answers||ex.answer||[]).map(function(a){ return String(a||'').trim(); }).filter(Boolean);
+      if(s.indexOf('_')>=0 && ans.length){
+        var k=0;
+        s=s.replace(/_{2,}/g,function(){ var v=ans[k++]; return v||'…'; });
+      }
+      s=s.replace(/_{2,}/g,'').replace(/\s+/g,' ').trim();
+      if(s.length<6 || s.indexOf('…')>=0) continue;
+      var pl=String(ex.sentence_pl||ex.source_pl||ex.context_pl||'').replace(/_{2,}/g,'').replace(/\s+/g,' ').trim();
+      return {target:s, pl:pl};
+    }
+    return null;
+  };
+
   window.gramCardHTML=function(id, opts){
     var p=(typeof id==='object'&&id)?id:gramPoint(id);
     if(!p||!p.teach) return '';
@@ -17050,9 +17076,11 @@ async function lexInit(){
      od tego, jakie zestawy slownikowe uczen lubi — po trzech porcjach bez
      wprowadzenia przestajemy pytac o dopasowanie i wymuszamy front. */
   var _noNew=0;
-  window.gramPromptBlock=function(){
+  window.gramPromptBlock=function(words){
     if(!gramBankReady()) return '';
     var allowed=gramAllowed().map(function(id){ var p=gramPoint(id); return p?(p.id+' = '+p.name_pl):id; });
+    var mat=[].concat(words||[]).map(function(w){
+      return String((w&&w.word)||w||'').trim(); }).filter(Boolean).slice(0,12);
     var force=_noNew>=3;
     var cands=gramFrontier(force?1:6).map(function(id){ return gramPoint(id); }).filter(Boolean);
     _noNew++;
@@ -17074,8 +17102,13 @@ async function lexInit(){
     return head
       +'KANDYDACI na nową strukturę — wszyscy dozwoleni na tym etapie: '
       +cands.map(function(p){ return p.id+' = '+p.name_pl; }).join('; ')+'. '
-      +'Wybierz DOKŁADNIE JEDNEGO, który najnaturalniej łączy się ze słownictwem i tematem tej porcji, '
-      +'i wpisz jego id w pole "new_grammar" na najwyższym poziomie odpowiedzi. '
+      // Kandydaci i slowa musza stac obok siebie. Rozdzielone w promptcie,
+      // model wybieral pierwszego z listy zamiast tego, ktory obsluguje material.
+      +(mat.length?('Materiał tej porcji to: '+mat.join(', ')+'. Wybierz kandydata, który obsłuży WŁAŚNIE TE słowa '
+        +'w naturalnych zdaniach — nie takiego, przy którym trzeba by je naginać. '):'')
+      +'Wybierz DOKŁADNIE JEDNEGO i wpisz jego id w pole "new_grammar" na najwyższym poziomie odpowiedzi. '
+      +'Kolejność listy nie ma znaczenia — nie bierz pierwszego z przyzwyczajenia; '
+      +'przejdź całą listę i sprawdź, który daje najlepsze zdania z tym słownictwem. '
       +'Jeśli żaden nie pasuje bez sztuczności — wpisz pusty string i nie wprowadzaj nowej struktury. '
       +'Wolno użyć wyłącznie wybranego kandydata; pozostali są w tej porcji zabronieni. '
       +_gramTail(null,true);
@@ -17555,7 +17588,7 @@ async function lexInit(){
       +'Zakaz wykrzykników typu Świetnie/Brawo i zakaz drylowania tłumaczeniowego. Zwykle 1 luka na cloze; jeśli dasz 2 luki ___, dodaj 2 pozycje w "answers" (tyle ile ___).\n'
       +'JEDNOZNACZNOŚĆ: każde zdanie cloze musi wymuszać DOKŁADNIE jedno słowo-cel (kontekst rozstrzyga). Jeśli zdanie dopuszcza wiele poprawnych słów (np. "He is ___" przy kilku przymiotnikach), albo dopisz kontekst zawężający do jednego, albo wypisz WSZYSTKIE akceptowalne w "answers". Otwarte polecenia typu "dokończ zdanie" realizuj jako typ produce (ocena AI akceptuje każdą poprawną realizację), NIGDY jako cloze z jednym kluczem. '
       +'DLA POCZĄTKUJĄCYCH: w ćwiczeniu cue wypełnij "context_pl", a w cloze "sentence_pl" wiernym tłumaczeniem na polski (w sentence_pl zostaw ___ w miejscu słowa-celu). '
-      +gramPromptBlock()
+      +gramPromptBlock((function(){ try{ return (pick||[]).map(function(w){ return w.word; }); }catch(_e){ return []; } })())
       +(gramBankReady()?'':'GRAMATYKA: jeśli porcja dotyczy gramatyki (odmiana, czas, reguła, przyimki, deklinacja), w polu "intro" podaj NAJPIERW zwięzły, KOMPLETNY model jako worked example — pełną odmianę przez wszystkie osoby albo całą regułę w 1-2 liniach (np. present simple: 3. os. l.poj. +s/-es) — dopiero potem ćwiczenia. ')
       +(gramBankReady()?'':'Jeśli porcja uczy zagadnienia gramatycznego, WYPEŁNIJ też pole "grammar": {"topic":"krótka, kanoniczna nazwa zagadnienia PO POLSKU (np. \\"Present Simple\\", \\"Czasownik ser — odmiana\\", \\"Rodzajniki el/la\\")","note":"zwięzła, KOMPLETNA reguła/odmiana PO POLSKU — ta sama treść co model w intro, gotowa do zapisania w zeszycie","complete":true gdy to pełne zagadnienie, false gdy tylko fragment do uzupełnienia w kolejnych lekcjach}. Gdy porcja NIE dotyczy gramatyki, ustaw "grammar":null. Używaj SPÓJNEJ nazwy topic dla tego samego zagadnienia (kontynuacja = ten sam topic). ')
       +'Zwróć WYŁĄCZNIE poprawny JSON (bez backticków, bez komentarzy) w formacie:\n'
@@ -17610,8 +17643,13 @@ async function lexInit(){
       try{ _uzyta=!!_tid && (data.exercises||[]).some(function(_x){
         return [].concat((_x&&_x.uses_grammar)||[]).indexOf(_tid)>=0; }); }catch(e){}
       try{ if(_uzyta) gramMarkTaught(_tid); }catch(e){}
-      try{ if(_uzyta && data.new_grammar_example && typeof gramSetExample==='function')
-             gramSetExample(_tid, data.new_grammar_example); }catch(e){}
+      try{
+        if(_uzyta && typeof gramSetExample==='function'){
+          var _ge=data.new_grammar_example;
+          if(!(_ge && String(_ge.target||'').trim())) _ge=gramDeriveExample(data,_tid);
+          if(_ge) gramSetExample(_tid,_ge);
+        }
+      }catch(e){}
       try{ data._teachable=_uzyta?_tid:null; }catch(e){}
       }
       try{ if(typeof gramScaffoldReset==='function') gramScaffoldReset(); }catch(e){}
