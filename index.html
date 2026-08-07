@@ -17265,10 +17265,31 @@ async function lexInit(){
     saveState(s); _noNew=0; _push(id,s[id]);
     try{ if(typeof lexGrammarSavePoint==='function') lexGrammarSavePoint(p); }catch(e){}
   };
+  /* ── Dowody zamiast wyroku ───────────────────────────────────────────────
+     Pierwsza wersja demotowala uznana strukture po jednym bledzie. To zle
+     odwzorowuje czlowieka: pomylka bywa pospiechem, nieuwaga, zmeczeniem
+     albo pechem przy dwuznacznym zdaniu. Zamiast progu jednego bledu
+     zbieramy dowody po obu stronach i cofamy uznanie dopiero, gdy sa
+     powtarzalne ORAZ przewazaja nad dowodami znajomosci.
+
+     Efekt uboczny jest pozadany: im wiecej razy uczen uzyl struktury
+     poprawnie, tym trudniej ja podwazyc. Uznanie samo sie utwierdza,
+     bez ani jednego pytania do uzytkownika. */
+  /* Margines dwoch dowodow. Sam bilans „wiecej bledow niz sukcesow" bywa
+     krzywdzacy: dwa potkniecia przy jednym trafieniu to jeszcze nie dowod
+     nieznajomosci, tylko slaby dzien. Cofamy uznanie dopiero, gdy bledy
+     przewazaja WYRAZNIE — a im wiecej uczen ma na koncie poprawnych uzyc,
+     tym wiecej potkniec trzeba, zeby go podwazyc. */
+  var PROBE_BAD=2, PROBE_MARGIN=2;
   window.gramGrade=function(id,quality){
-    // Blad na strukturze uznanej za znana = uznanie bylo falszywe.
-    // Punkt wraca do normalnej sciezki nauczania, bez pytania ucznia o zgode.
-    if(quality<3 && gramStatus(id)==='presumed'){ gramDemote(id,'blad'); return; }
+    if(gramStatus(id)==='presumed'){
+      var sp=loadState(), rp=sp[id];
+      if(!rp||typeof rp!=='object'||rp.status!=='probe') rp={status:'probe',ok:0,bad:0};
+      if(quality>=3) rp.ok=(rp.ok||0)+1; else rp.bad=(rp.bad||0)+1;
+      rp.ts=now(); sp[id]=rp; saveState(sp); _push(id,rp);
+      if((rp.bad||0)>=PROBE_BAD && (rp.bad||0)-(rp.ok||0)>=PROBE_MARGIN) gramDemote(id,'dowody');
+      return;
+    }
     var s=loadState(), r=s[id]; if(!r||r.status!=='unlocked') return;
     r.exposures=(r.exposures||0)+1;
     if(quality<3){ r.errors=(r.errors||0)+1; r.interval=1; r.ease=Math.max(1.3,(r.ease||2.5)-0.2); }
@@ -17293,6 +17314,8 @@ async function lexInit(){
      samego kroku nie przesuwa wygaszania. */
   var _scOrder=['full','chip','hidden'];
   var _scSeen={};
+  var _gramFocus=null;
+  window.gramSetFocus=function(id){ _gramFocus=id||null; };
   window.gramScaffoldReset=function(){ _scSeen={}; };
   function _scStep(id, exIdx){
     var a=_scSeen[id]||(_scSeen[id]=[]);
@@ -17305,11 +17328,21 @@ async function lexInit(){
     // cue i contrast to pretest i rozpoznanie — sciaga zabralaby im sens
     if(exType==='cue'||exType==='contrast') return '';
     var list=[].concat(ids||[]).filter(Boolean);
+    // Struktura wprowadzana w tej porcji idzie pierwsza. Bez tego cwiczenie,
+    // ktore deklaruje przy okazji strukture tla, pokazywalo wzorzec czegos,
+    // czego uczen wlasnie nie cwiczy.
+    if(_gramFocus && list.indexOf(_gramFocus)>0){
+      list = [_gramFocus].concat(list.filter(function(x){ return x!==_gramFocus; }));
+    }
     for(var i=0;i<list.length;i++){
       var id=list[i], p=gramPoint(id);
       if(!p||!p.teach) continue;
       var st=gramStatus(id);
       if(st==='locked') continue;
+      // Struktura uznana za znana nie dostaje rusztowania — zalozylismy, ze
+      // uczen ja ma. Wzorzec byłby zaprzeczeniem tego zalozenia i zabieral
+      // miejsce strukturze, o ktora w tym cwiczeniu chodzi.
+      if(st==='presumed') continue;
       var mi=_scOrder.indexOf(gramScaffoldMode(id)); if(mi<0) mi=0;
       mi=Math.min(2, mi+_scStep(id, (exIdx==null?-1:exIdx)));
       var mode=_scOrder[mi];
@@ -17349,10 +17382,20 @@ async function lexInit(){
   window.gramBeat=function(ex,correct,attempts){
     if(!ex||!gramBankReady()) return;
     if(ex.type==='cue'||ex.type==='contrast') return;
-    var q=correct?((attempts&&attempts>0)?3:5):2;
-    [].concat(ex.uses_grammar||[]).forEach(function(id){
-      if(id&&gramPoint(id)) gramGrade(id,q);
-    });
+    var ids=[].concat(ex.uses_grammar||[]).filter(function(id){ return id&&gramPoint(id); });
+    if(!ids.length) return;
+    if(correct){
+      // Sukces obcia¿a wszystkie struktury, ktore musialy zadzialac naraz.
+      var q=(attempts&&attempts>0)?3:5;
+      ids.forEach(function(id){ gramGrade(id,q); });
+      return;
+    }
+    // Porazka jest przypisywalna tylko wtedy, gdy cwiczenie opieralo sie na
+    // JEDNEJ strukturze. Przy kilku nie wiadomo, ktora zawiodla — karanie
+    // wszystkich zabiera uznanie strukturom, z ktorymi nie bylo problemu.
+    // Wskazanie winnej przy wielu strukturach nalezy do ewaluatora
+    // (gramFindByGap), ktory patrzy na tresc bledu, nie na deklaracje.
+    if(ids.length===1) gramGrade(ids[0],2);
   };
 
   /* Postep poziomu jako mapa terenu, nie wynik: bez procentow, serii i ocen. */
@@ -17516,10 +17559,14 @@ async function lexInit(){
       var l=lang();
       _uid().then(function(u){
         if(!u) return;
+        // Zapisy probne nie maja wlasnych kolumn — dowody mieszcza sie w tych
+        // samych licznikach: trafienia jako exposures, potkniecia jako errors.
+        var _pr=(r.status==='probe');
         var row={ user_id:u, lang:l, point_id:id, status:r.status||'unlocked',
-          ease:r.ease==null?null:r.ease, interval_days:r.interval==null?null:r.interval,
-          due:r.due?new Date(r.due).toISOString():null,
-          exposures:r.exposures||0, errors:r.errors||0,
+          ease:_pr?null:(r.ease==null?null:r.ease),
+          interval_days:_pr?null:(r.interval==null?null:r.interval),
+          due:(!_pr&&r.due)?new Date(r.due).toISOString():null,
+          exposures:_pr?(r.ok||0):(r.exposures||0), errors:_pr?(r.bad||0):(r.errors||0),
           taught_at:r.taught_at?new Date(r.taught_at).toISOString():null,
           updated_at:new Date(r.ts||now()).toISOString() };
         var q=d.from('grammar_progress').upsert(row,{onConflict:'user_id,lang,point_id'});
@@ -17548,10 +17595,14 @@ async function lexInit(){
         var ts=row.updated_at?Date.parse(row.updated_at):0;
         var loc=s[row.point_id];
         if(loc&&(loc.ts||0)>=ts) return;          // lokalny zapis nowszy — zostaje
-        s[row.point_id]={ status:row.status||'unlocked', ease:row.ease||2.5,
-          interval:row.interval_days||1, due:row.due?Date.parse(row.due):0,
-          exposures:row.exposures||0, errors:row.errors||0,
-          taught_at:row.taught_at?Date.parse(row.taught_at):0, ts:ts };
+        if(row.status==='probe'){
+          s[row.point_id]={ status:'probe', ok:row.exposures||0, bad:row.errors||0, ts:ts };
+        } else {
+          s[row.point_id]={ status:row.status||'unlocked', ease:row.ease||2.5,
+            interval:row.interval_days||1, due:row.due?Date.parse(row.due):0,
+            exposures:row.exposures||0, errors:row.errors||0,
+            taught_at:row.taught_at?Date.parse(row.taught_at):0, ts:ts };
+        }
         n++;
       });
       try{ localStorage.setItem(k,JSON.stringify(s)); }catch(e){}
@@ -17734,6 +17785,7 @@ async function lexInit(){
         }
       }catch(e){}
       try{ data._teachable=_uzyta?_tid:null; }catch(e){}
+      try{ if(typeof gramSetFocus==='function') gramSetFocus(_uzyta?_tid:null); }catch(e){}
       }
       try{ if(typeof gramScaffoldReset==='function') gramScaffoldReset(); }catch(e){}
       window._lexxData=data;
@@ -17995,17 +18047,17 @@ async function lexInit(){
       inputHtml='';
     } else if(ex.type==='translate'){
       body+=exScene('Po polsku', ex.source||'');
-      inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoje tłumaczenie po '+lexxAdv(lang())+'…">';
+      inputHtml='<input class="lexx-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" id="lexx-in-'+i+'" placeholder="Twoje tłumaczenie po '+lexxAdv(lang())+'…">';
     } else if(ex.type==='transform'){
       body+=exScene('Zdanie wyjściowe', ex.source||'', lang());
       if(ex.instruction) body+='<div class="lexx-prompt" style="margin-bottom:14px">'+esc(ex.instruction)+'</div>';
-      inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="Twoja wersja…">';
+      inputHtml='<input class="lexx-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" id="lexx-in-'+i+'" placeholder="Twoja wersja…">';
     } else if(ex.type==='warmfire'){
       // E2 WARM FIRE: szybkie wydobycie słowa mocnego (tempo + baseline latencji)
       var _wfCue=lexxWfCue(ex,(window._lexxData&&window._lexxData.items)||[]);
       body+='<div style="font-size:12.5px;color:var(--dim2);margin-bottom:8px">Przypomnij sobie słowo z tej porcji i wpisz je po '+lexxAdv(lang())+'.</div>';
       body+='<div class="lexx-prompt" style="margin-bottom:14px">'+(_wfCue?esc(_wfCue):('Poproś o nową porcję — to ćwiczenie było niekompletne.'))+'</div>';
-      inputHtml='<input class="lexx-input" id="lexx-in-'+i+'" placeholder="wpisz jedno słowo po '+lexxAdv(lang())+'…" autocomplete="off">';
+      inputHtml='<input class="lexx-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" id="lexx-in-'+i+'" placeholder="wpisz jedno słowo po '+lexxAdv(lang())+'…">';
     } else if(ex.type==='scenario'){
       // E7 THE SCENARIO: role-play, szczyt — integracja kilku słów-celów
       body+=exScene(ex.role||'Sytuacja', ex.situation||ex.prompt||'');
@@ -18013,11 +18065,11 @@ async function lexInit(){
       var _mu=[].concat(ex.must_use||ex.target||[]).filter(Boolean);
       if(_mu.length) body+='<div style="margin:0 0 12px">Użyj tych słów: '+_mu.map(function(w){return '<span class="lexx-target">'+esc(w)+'</span>';}).join(' ')+'</div>';
       if(ex.skeleton) body+='<div class="lexx-hint" style="margin-bottom:10px">Podpowiedź (możesz uzupełnić luki albo napisać po swojemu): '+esc(ex.skeleton)+'</div>';
-      inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="3" placeholder="Twoja odpowiedź po '+lexxAdv(lang())+'…"></textarea>';
+      inputHtml='<textarea class="lexx-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" id="lexx-in-'+i+'" rows="3" placeholder="Twoja odpowiedź po '+lexxAdv(lang())+'…"></textarea>';
     } else { // produce
       if(ex.target) body+='<div style="margin-bottom:16px">Użyj: <span class="lexx-target">'+esc(ex.target)+'</span></div>';
       if(ex.hint) body+='<div class="lexx-hint" style="margin-bottom:10px">'+esc(ex.hint)+'</div>';
-      inputHtml='<textarea class="lexx-input" id="lexx-in-'+i+'" rows="3" placeholder="Napisz własne zdanie po '+lexxAdv(lang())+'…"></textarea>';
+      inputHtml='<textarea class="lexx-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" id="lexx-in-'+i+'" rows="3" placeholder="Napisz własne zdanie po '+lexxAdv(lang())+'…"></textarea>';
     }
     box.innerHTML=head+body+inputHtml
       +(needCheck?'<button class="lexx-check" id="lexx-chk-'+i+'" onclick="lexxCheck('+i+')">Sprawdź</button>':'')
@@ -18434,7 +18486,7 @@ async function lexInit(){
     w.innerHTML='<div class="lexx-stage"><div class="lexx-ex">'
       +'<div class="lexx-ex-head"><span class="lexx-eyebrow">'+esc(_eb)+'</span></div>'
       +'<div class="lexx-obj">'+lexxBold(esc(lexxReflectScenario()))+'</div>'
-      +'<textarea class="lexx-input" id="lexx-reflect-in" rows="'+_rows+'" placeholder="'+esc(_ph)+'"></textarea>'
+      +'<textarea class="lexx-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" id="lexx-reflect-in" rows="'+_rows+'" placeholder="'+esc(_ph)+'"></textarea>'
       +'<button class="lexx-check" id="lexx-reflect-btn" onclick="lexxReflectSubmit()">Poproś Ailexa o szczerą ocenę</button>'
       +'<button class="lexx-next" id="lexx-reflect-skip" style="background:transparent;border:none;color:var(--dim2);text-decoration:underline;font-size:12.5px;margin-top:6px" onclick="window._lexxReflectionDone=true;lexEndLesson()">Pomiń</button>'
       +'<div class="lexx-fb" id="lexx-reflect-fb"></div>'
@@ -18492,7 +18544,7 @@ async function lexInit(){
       +'<div class="lexx-obj">Szybko — to było kilka porcji temu.</div>'
       +'<div class="lexx-dots">'+dots+'</div>'
       +'<p class="lexx-q">'+sent+'</p>'+(lexIsBeginner()?lexSentGloss(it.pl||''):'')
-      +'<input class="lexx-input" id="lexx-sweep-in" placeholder="z pamięci">'
+      +'<input class="lexx-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" id="lexx-sweep-in" placeholder="z pamięci">'
       +'<button class="lexx-check" id="lexx-sweep-btn" onclick="lexxSweepSubmit()">'+(idx+1<items.length?'Następne':'Zakończ powrót')+'</button>'
       +'<div class="lexx-fb" id="lexx-sweep-fb"></div>'
       +'</div></div>';
