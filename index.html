@@ -1790,6 +1790,14 @@ var EYL_LOAD_TXT={
   border:1px solid var(--line,#e8e3da);border-radius:4px;padding:1px 4px}
 .gram-map-nm{flex:1 1 auto;font-size:12.5px;line-height:1.4;color:var(--navy,#1a2340)}
 .gram-map-tag{flex:0 0 auto;font-size:10px;color:var(--dim2,#8a8378)}
+.gram-map-item{border-bottom:1px solid var(--line,#e8e3da)}
+.gram-map-item .gram-map-row{border-bottom:0;cursor:pointer}
+.gram-map-chev{flex:0 0 auto;font-size:10px;color:var(--dim2,#8a8378)}
+.gram-map-chev::after{content:'\25BE'}
+.gram-map-item.open .gram-map-chev::after{content:'\25B4'}
+.gram-map-rule{display:none;padding:0 0 10px}
+.gram-map-item.open .gram-map-rule{display:block}
+.gram-map-rule .gram-card{margin:0}
 .gram-map-more{font-size:11px;color:var(--dim2,#8a8378);padding:7px 0 0}
 .gram-map-btn{flex:0 0 auto;background:none;border:1px solid var(--line,#e8e3da);border-radius:7px;
   padding:4px 9px;font-family:inherit;font-size:11px;color:var(--navy,#1a2340);cursor:pointer}
@@ -16686,9 +16694,9 @@ async function lexInit(){
   function saveState(s){
     var k=skey();
     try{ localStorage.setItem(k,JSON.stringify(s)); }catch(e){}
-    _stCache=s; _stKey=k;
+    _stCache=s; _stKey=k; _touched=null;
   }
-  function dropState(){ _stCache=null; _stKey=''; }
+  function dropState(){ _stCache=null; _stKey=''; _touched=null; }
   function rec(id){ var r=loadState()[id]; return (r&&typeof r==='object')?r:null; }
   /* Na zewnatrz oddajemy KOPIE — loadState() zwraca zywy obiekt z cache,
      wiec wydanie go publicznie znaczyloby, ze czyjas zmienna zmienia sie
@@ -16741,6 +16749,25 @@ async function lexInit(){
     var mx=bankMaxIdx(); if(mx<0) return -1;
     return Math.min(anchorIdx()-2, mx-1);
   }
+  /* Pasmo, w ktorym uczen ma juz JAKIKOLWIEK slad pracy, przestaje podlegac
+     uznaniu. Bez tego ktos, kto przerobil polowe A1, po jednym zestawie B1
+     tracil reszte: punkty zmienialy sie w „uznane za znane" i nikt ich nigdy
+     nie uczyl. Uznajemy cale pasma, ktorych uczen nie tknal — nie polowki. */
+  var _touched=null;
+  function bandTouched(idx){
+    if(_touched===null){
+      _touched={};
+      var s=loadState();
+      bank().list.forEach(function(p){
+        var r=s[p.id];
+        // Wylacznie faktyczna nauka. Odwolanie uznania ('unknown') to korekta
+        // samego zalozenia, nie dowod pracy w pasmie — inaczej jedno „nie znam"
+        // zdejmowaloby uznanie z calego poziomu naraz.
+        if(r&&typeof r==='object'&&r.status==='unlocked') _touched[lvlIdx(p.level)]=1;
+      });
+    }
+    return !!_touched[idx];
+  }
   function preOk(q){
     // Prerekwizyt nieobecny w banku traktujemy jako spelniony — inaczej czesciowy
     // bank (albo literowka w id) blokuje cala galaz. Kompletnosc grafu sprawdza
@@ -16756,7 +16783,7 @@ async function lexInit(){
     if(r&&r.status==='unlocked') return (r.due&&r.due<now())?'stale':'unlocked';
     var pi=lvlIdx(p.level);
     // `unknown` = uznanie odwolane (przez ucznia albo przez jego blad)
-    if(!(r&&r.status==='unknown') && pi<=presumedCut()) return 'presumed';
+    if(!(r&&r.status==='unknown') && pi<=presumedCut() && !bandTouched(pi)) return 'presumed';
     if(pi>anchorIdx()) return 'locked';
     return [].concat(p.prereq||[]).every(preOk)?'teachable':'locked';
   };
@@ -16785,6 +16812,15 @@ async function lexInit(){
     saveState(s); _push(id,s[id]);
     try{ console.info('[gram] uznanie odwolane:',id,'('+(src||'user')+')'); }catch(e){}
     return true;
+  };
+  /* Prog opanowania — identyczny jak dla fiszek: trzy trafienia i interwal,
+     ktory przetrwal odstep. Nie da sie go osiagnac w jednej sesji i o to
+     chodzi: opanowanie to przetrwanie odstepu, nie liczba klikniec. */
+  var MASTER_REPS=3, MASTER_DAYS=21;
+  window.gramMastered=function(id){
+    var r=rec(id);
+    if(!r||r.status!=='unlocked') return false;
+    return (r.exposures||0)>=MASTER_REPS && (r.interval||0)>=MASTER_DAYS;
   };
   window.gramPresumedCount=function(){
     var n=0; bank().list.forEach(function(p){ if(gramStatus(p.id)==='presumed') n++; }); return n;
@@ -17051,7 +17087,14 @@ async function lexInit(){
     (data.exercises||[]).forEach(function(ex){
       [].concat((ex&&ex.uses_grammar)||[]).forEach(function(i){ if(i) ids[i]=1; });
     });
-    Object.keys(ids).forEach(function(i){ var p=gramPoint(i); if(p) out.push(p); });
+    Object.keys(ids).forEach(function(i){
+      var p=gramPoint(i); if(!p) return;
+      // Struktury uznane za znane sluza tu za rusztowanie, nie za material.
+      // Wpisane na Tablice na rowni z nowa struktura zrownywaly to, co uczen
+      // dzis poznaje, z tym, co system tylko zalozyl — i przeczyly mapie.
+      if(i!==data._teachable && gramStatus(i)==='presumed') return;
+      out.push(p);
+    });
     out.sort(function(a,b){ return (a.order||0)-(b.order||0); });
     return out;
   };
@@ -17087,6 +17130,17 @@ async function lexInit(){
     var head='KONTRAKT GRAMATYCZNY — BEZWZGLĘDNY. '
       +'Struktury, które uczeń ZNA i których wolno używać: '
       +(allowed.length?allowed.join('; '):'BRAK — trzymaj się absolutnych podstaw')+'. ';
+    /* SM-2 planowal powtorki struktur, ale nikt ich nie odczytywal — interwal
+       mijal i nic sie nie dzialo. Struktura po terminie wraca teraz do
+       materialu porcji jako WYDOBYCIE, nie jako nowe wprowadzenie. */
+    var _sp=(typeof gramStalePoint==='function')?gramStalePoint():null;
+    var _spP=_sp?gramPoint(_sp):null;
+    if(_spP){
+      head+='DO ODŚWIEŻENIA — struktura poznana wcześniej, której termin powtórki minął: '
+        +_spP.id+' = '+_spP.name_pl+'. Wpleć ją w co najmniej jedno ćwiczenie tej porcji '
+        +'i zadeklaruj w "uses_grammar". Nie tłumacz jej od nowa — uczeń ma ją sobie przypomnieć, '
+        +'wykonując zadanie. ';
+    }
     if(!cands.length){
       return head+'NIE wprowadzaj żadnej nowej struktury gramatycznej w tej porcji. '+_gramTail(null,false);
     }
@@ -17347,12 +17401,13 @@ async function lexInit(){
   };
 
   window.gramProgress=function(lvl){
-    lvl=lvl||gramTeachLevel(); var total=0,done=0;
+    lvl=lvl||gramTeachLevel(); var total=0,done=0,mastered=0;
     bank().list.forEach(function(p){
       if(p.level!==lvl) return; total++;
-      var s=gramStatus(p.id); if(s==='unlocked'||s==='stale') done++;
+      var s=gramStatus(p.id);
+      if(s==='unlocked'||s==='stale'){ done++; if(gramMastered(p.id)) mastered++; }
     });
-    return {level:lvl,done:done,total:total,presumed:gramPresumedCount()};
+    return {level:lvl,done:done,total:total,mastered:mastered,presumed:gramPresumedCount()};
   };
 
   /* ── Mapa struktur ───────────────────────────────────────────────────────
@@ -17362,20 +17417,28 @@ async function lexInit(){
   window.gramMapHTML=function(){
     if(!gramBankReady()) return '<div class="gram-map-empty">Bank struktur nie jest załadowany.</div>';
     var g=gramProgress();
-    var done=[], now_=[], next=[], pre=[];
+    var done=[], learn=[], now_=[], next=[], pre=[];
     bank().list.forEach(function(p){
       var s=gramStatus(p.id);
-      if(s==='unlocked'||s==='stale') done.push([p,s]);
+      if(s==='unlocked'||s==='stale'){
+        (gramMastered(p.id)?done:learn).push([p,s]);
+      }
       else if(s==='presumed') pre.push([p,s]);
       else if(s==='teachable') now_.push([p,s]);
       else next.push([p,s]);
     });
     function row(x,extra){
       var p=x[0], s=x[1];
-      return '<div class="gram-map-row"><span class="gram-map-lvl">'+_e(p.level)+'</span>'
+      // Wiersz rozwija pelna karte reguly. Powtorka na zadanie, bez osobnego
+      // trybu nauki gramatyki — regula jest tam, gdzie uczen o niej mysli.
+      return '<div class="gram-map-item" data-gram-id="'+_e(p.id)+'">'
+        +'<div class="gram-map-row" data-gram-open="'+_e(p.id)+'">'
+        +'<span class="gram-map-lvl">'+_e(p.level)+'</span>'
         +'<span class="gram-map-nm">'+_e(p.name_pl)+'</span>'
         +(s==='stale'?'<span class="gram-map-tag">do powtórki</span>':'')
-        +(extra||'')+'</div>';
+        +(extra||'')
+        +'<span class="gram-map-chev"></span></div>'
+        +'<div class="gram-map-rule"></div></div>';
     }
     function sec(t,arr,cap,extra){
       if(!arr.length) return '';
@@ -17384,7 +17447,9 @@ async function lexInit(){
       if(cap&&arr.length>cap) out+='<div class="gram-map-more">i '+(arr.length-cap)+' dalszych</div>';
       return out;
     }
-    var out='<div class="gram-map-lead">'+_e(g.level+' \u00b7 '+g.done+' z '+g.total+' struktur')+'</div>';
+    var _lead=g.level+' \u00b7 '+g.done+' z '+g.total+' poznanych';
+    if(g.done) _lead+=' \u00b7 '+g.mastered+(g.mastered===1?' opanowana':' opanowanych');
+    var out='<div class="gram-map-lead">'+_e(_lead)+'</div>';
     // Znak horyzontu. Bank konczy sie ponizej poziomu ucznia — bez tej linii
     // dopracowany widok mowi „tyle jest gramatyki w tym jezyku", co jest
     // nieprawda. Lepiej powiedziec wprost, gdzie konczy sie mapa.
@@ -17393,6 +17458,7 @@ async function lexInit(){
         +_e(LEVELS[bankMaxIdx()])+'. Wy\u017csze przygotowujemy.</div>';
     }
     out+=sec('Opanowane',done);
+    out+=sec('W nauce',learn);
     out+=sec('Najbliżej',now_,6);
     out+=sec('Dalej',next,8);
     if(pre.length){
@@ -17405,12 +17471,29 @@ async function lexInit(){
   };
   window.gramMapBind=function(root, rerender){
     if(!root||!root.addEventListener) return;
+    function up(t,attr){
+      while(t&&t!==root){ if(t.getAttribute&&t.getAttribute(attr)) return t; t=t.parentNode; }
+      return null;
+    }
     root.addEventListener('click',function(ev){
-      var t=ev.target, b=null;
-      while(t&&t!==root){ if(t.getAttribute&&t.getAttribute('data-gram-demote')){ b=t; break; } t=t.parentNode; }
-      if(!b) return;
-      ev.preventDefault(); ev.stopPropagation();
-      if(gramDemote(b.getAttribute('data-gram-demote'),'user')&&typeof rerender==='function') rerender();
+      var d=up(ev.target,'data-gram-demote');
+      if(d){
+        ev.preventDefault(); ev.stopPropagation();
+        if(gramDemote(d.getAttribute('data-gram-demote'),'user')&&typeof rerender==='function') rerender();
+        return;
+      }
+      var o=up(ev.target,'data-gram-open');
+      if(!o) return;
+      ev.preventDefault();
+      var item=o.parentNode, box=item?item.querySelector('.gram-map-rule'):null;
+      if(!box) return;
+      // Karty renderujemy dopiero na tapniecie — przy czterdziestu punktach
+      // budowanie wszystkich z gory to zbedna praca i sciana tekstu.
+      if(!box.getAttribute('data-gotowe')){
+        try{ box.innerHTML=gramCardHTML(o.getAttribute('data-gram-open'),{eyebrow:''}); }catch(e){ return; }
+        box.setAttribute('data-gotowe','1');
+      }
+      item.classList.toggle('open');
     });
   };
 
@@ -23088,9 +23171,10 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       +'<div class="gram-map-head"><span>Mapa struktur</span>'
       +'<button type="button" class="gram-map-x" aria-label="Zamknij">\u00d7</button></div>'
       +'<div class="gram-map-body"></div>'
-      +'<div class="gram-map-foot">Struktury uznane za znane nie s\u0105 nauczane \u2014 zak\u0142adamy, '
-      +'\u017ce masz je z wcze\u015bniejszej nauki. Je\u015bli kt\u00f3ra\u015b nie jest dla Ciebie oczywista, '
-      +'oznacz j\u0105: wr\u00f3ci do normalnej \u015bcie\u017cki.</div>'
+      +'<div class="gram-map-foot">Struktura trafia do opanowanych, gdy wr\u00f3ci w powt\u00f3rkach '
+      +'po d\u0142u\u017cszej przerwie \u2014 nie po samym przerobieniu lekcji. '
+      +'Struktury uznane za znane nie s\u0105 nauczane; je\u015bli kt\u00f3ra\u015b nie jest dla Ciebie '
+      +'oczywista, oznacz j\u0105, a wr\u00f3ci do normalnej \u015bcie\u017cki.</div>'
       +'</div>';
     mount().appendChild(o);
     o.addEventListener('click',function(ev){ if(ev.target===o) close(); });
