@@ -5450,6 +5450,7 @@ async function initToFixPage(){
         style="display:none;position:fixed;right:22px;bottom:26px;z-index:9996;width:54px;height:54px;border-radius:50%;border:1px solid rgba(26,35,64,.12);background:rgba(255,255,255,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 6px 22px rgba(26,35,64,.16);cursor:pointer;color:var(--navy);align-items:center;justify-content:center;opacity:.55;transition:opacity .2s,transform .15s"
         onmouseover="this.style.opacity='1';this.style.transform='scale(1.06)'" onmouseout="this.style.opacity='.55';this.style.transform='none'">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20v14H2z"></path><path d="M8 21h8M12 17v4"></path></svg>
+        <span id="lex-board-fab-gram" title="Reguły w tej lekcji" style="display:none;position:absolute;bottom:-3px;left:-3px;min-width:19px;height:19px;padding:0 4px;border-radius:10px;background:var(--navy);color:#fff;font-size:10px;font-weight:600;font-family:DM Sans,sans-serif;align-items:center;justify-content:center;gap:2px;line-height:19px;box-shadow:0 1px 4px rgba(26,35,64,.28)"></span>
         <span id="lex-board-fab-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--orange);color:#fff;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;align-items:center;justify-content:center;line-height:20px;text-align:center"></span>
       </button>
       <div id="lex-side-panel" style="position:fixed;right:-380px;top:0;width:360px;height:100vh;display:flex;flex-direction:column;gap:0;background:#fff;border-left:.5px solid var(--border);box-shadow:-8px 0 32px rgba(26,35,64,.12);z-index:9998;transition:right .28s ease;overflow:hidden">
@@ -15712,8 +15713,16 @@ function lexUpdateBoardPanel(){
       + '</div></div></div>';
   }).join('');
   // Licznik na pływającym przycisku
+  // Slowa i reguly liczymy OSOBNO — wspolna suma nie mowila, po co tu wchodzic.
+  var _nGram=0, _nWord=0;
+  _lexBoard.forEach(function(e){ if(e&&e.type==='gram') _nGram++; else _nWord++; });
   var badge=document.getElementById('lex-board-fab-badge');
-  if(badge){ var n=_lexBoard.length; if(n){ badge.style.display='flex'; badge.textContent=String(n); } else { badge.style.display='none'; } }
+  if(badge){ if(_nWord){ badge.style.display='flex'; badge.textContent=String(_nWord); } else { badge.style.display='none'; } }
+  var gbadge=document.getElementById('lex-board-fab-gram');
+  if(gbadge){
+    if(_nGram){ gbadge.style.display='flex'; gbadge.innerHTML='<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg><span>'+_nGram+'</span>'; }
+    else gbadge.style.display='none';
+  }
 }
 window.lexBoardGramToggle=function(i){
   var b=document.getElementById('lex-gram-body-'+i), a=document.getElementById('lex-gram-arrow-'+i);
