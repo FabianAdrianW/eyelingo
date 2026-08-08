@@ -3686,10 +3686,28 @@ async function _eylLoadCats(code){
 }
 
 var _eylState={lang:null, level:null};
-function openEyl(){ _eylState={lang:(window._lexLang||'en'), level:null}; go('eyelingo'); eylRenderBrowse(); }
+/* ═══ EYELINGO — PAMIĘĆ WYBORU W KATALOGU ═══
+   Język i poziom w „Zestawach Eyelingo” mają zostawać. Użytkownik, który uczy
+   się angielskiego na B2, nie powinien wybierać tego samego przy każdym
+   wejściu. Klucz idzie przez uk(), więc ustawienie jest osobne dla konta. */
+function _eylPrefKey(){ try{ return (typeof uk==='function')?uk('eyl_cat_pick'):'eyl_cat_pick'; }catch(e){ return 'eyl_cat_pick'; } }
+function eylPrefSave(lang, level){
+  try{ localStorage.setItem(_eylPrefKey(), JSON.stringify({lang:lang||null, level:level||null})); }catch(e){}
+}
+function eylPrefLoad(){
+  try{ var v=JSON.parse(localStorage.getItem(_eylPrefKey())||'null'); return (v&&typeof v==='object')?v:null; }catch(e){ return null; }
+}
+
+function openEyl(){
+  // Ostatni wybór wygrywa nad domyślnym językiem sesji — to on odzwierciedla
+  // intencję użytkownika, a nie to, co akurat robił Lex.
+  var _pf=eylPrefLoad();
+  _eylState={ lang:(_pf&&_pf.lang) || (window._lexLang||'en'), level:(_pf&&_pf.level) || null };
+  go('eyelingo'); eylRenderBrowse();
+}
 function eylBack(){ go('ucz'); }
-function eylPickLang(c){ _eylState.lang=c; _eylState.level=null; eylRenderBrowse(); }
-function eylPickLvl(l){ _eylState.level=l||null; eylRenderBrowse(); }
+function eylPickLang(c){ _eylState.lang=c; _eylState.level=null; eylPrefSave(c,null); eylRenderBrowse(); }
+function eylPickLvl(l){ _eylState.level=l||null; eylPrefSave(_eylState.lang,_eylState.level); eylRenderBrowse(); }
 
 async function eylRenderBrowse(){
   var b=document.getElementById('eyl-body'); if(!b) return;

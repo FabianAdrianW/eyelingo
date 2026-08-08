@@ -1892,6 +1892,18 @@ window.switchMatTab = function(tab){
   var ORANGE='#d85a30', MINE_IDS=['mat-tabs-row','mat-continue-wrap','mat-count','mat-drag-hint','mat-grid','mat-voices','mat-collection-view','mat-learn-surface','mat-create-btn','mat-create-ai-btn','mat-search'];
   var EYLPROG={}, EYLPROG_READY=false, EYL_MASTER_REPS=3, EYL_MASTER_IV=21;
   var _eylLangIds=null, _eylLevelIds=null, _eylSeg={lang:null,level:null};
+/* ═══ EYELINGO — PAMIĘĆ WYBORU W KATALOGU ═══
+   Język i poziom w „Zestawach Eyelingo” mają zostawać. Użytkownik, który uczy
+   się angielskiego na B2, nie powinien wybierać tego samego przy każdym
+   wejściu. Klucz idzie przez uk(), więc ustawienie jest osobne dla konta. */
+function _eylPrefKey(){ try{ return (typeof uk==='function')?uk('eyl_cat_pick'):'eyl_cat_pick'; }catch(e){ return 'eyl_cat_pick'; } }
+function eylPrefSave(lang, level){
+  try{ localStorage.setItem(_eylPrefKey(), JSON.stringify({lang:lang||null, level:level||null})); }catch(e){}
+}
+function eylPrefLoad(){
+  try{ var v=JSON.parse(localStorage.getItem(_eylPrefKey())||'null'); return (v&&typeof v==='object')?v:null; }catch(e){ return null; }
+}
+
   var _eylDoneOpen=false;
   window.eylToggleDone=function(){ _eylDoneOpen=!_eylDoneOpen; var b=document.getElementById('eylc-done-body'); var ch=document.getElementById('eylc-done-chev'); if(b) b.style.display=_eylDoneOpen?'block':'none'; if(ch) ch.style.transform='rotate('+(_eylDoneOpen?'180deg':'0deg')+')'; };
   var EYL_LEVELS=['A1','A2','B1','B2','C1','C2'];
@@ -1980,6 +1992,10 @@ window.switchMatTab = function(tab){
     if(!EYLPROG_READY) await eylLoadProg();
     await _ensureIds();
     var codes=(typeof LEX_LANG_MAP!=='undefined')?Object.keys(LEX_LANG_MAP):['en','es','nl','jp'];
+    // Zapamiętany wybór ma pierwszeństwo nad pierwszym językiem z listy —
+    // inaczej użytkownik uczący się angielskiego na B2 lądował za każdym
+    // razem na domyślnym języku katalogu.
+    try{ eylPrefApply(); }catch(e){}
     if(!_eylSeg.lang || codes.indexOf(_eylSeg.lang)<0) _eylSeg.lang=codes[0]||'en';
     var code=_eylSeg.lang, langId=_eylLangIds[code];
     var lvlCode={}; Object.keys(_eylLevelIds||{}).forEach(function(c){ lvlCode[_eylLevelIds[c]]=c; });
@@ -2032,8 +2048,17 @@ window.switchMatTab = function(tab){
     else if(doneIds.length){ html+='<div style="padding:8px 2px;color:var(--dim2);font-size:13.5px">Ca\u0142y materia\u0142 na tym poziomie masz opanowany \u2713 \u2014 rozwi\u0144 sekcj\u0119 wy\u017cej, by powt\u00f3rzy\u0107.</div>'; }
     box.innerHTML=html;
   }
-  function eylPickLang(c){ _eylSeg.lang=c; _eylSeg.level=null; eylBrowse(); }
-  function eylPickLvl(l){ _eylSeg.level=l||null; eylBrowse(); }
+  function eylPickLang(c){ _eylSeg.lang=c; _eylSeg.level=null; eylPrefSave(c,null); eylBrowse(); }
+  function eylPickLvl(l){ _eylSeg.level=l||null; eylPrefSave(_eylSeg.lang,_eylSeg.level); eylBrowse(); }
+  // Przywrócenie ostatniego wyboru przy wejściu do katalogu.
+  function eylPrefApply(){
+    try{
+      if(_eylSeg.lang) return false;               // wybór już ustawiony w tej sesji
+      var pf=eylPrefLoad(); if(!pf||!pf.lang) return false;
+      _eylSeg.lang=pf.lang; _eylSeg.level=pf.level||null;
+      return true;
+    }catch(e){ return false; }
+  }
 
   // ── Podgląd zawartości kategorii („oko") ──
   async function eylPreview(code, level, catId, label, ctx){
@@ -8649,8 +8674,10 @@ function showTrybModePicker(){
   var srsCheck = document.createElement('input');
   srsCheck.type = 'checkbox'; srsCheck.id = 'tryb-srs-toggle'; srsCheck.checked = true;
   srsCheck.style.cssText = 'width:14px;height:14px;accent-color:var(--orange)';
-  srsCheck.onchange = function(){ window._trybSRSEnabled = this.checked; };
-  window._trybSRSEnabled = true;
+  // Zapamietujemy, czy uzytkownik SAM ruszyl przelacznik. Jesli tak, jego
+  // wybor obowiazuje niezaleznie od trybu; jesli nie — decyduje tryb.
+  srsCheck.onchange = function(){ window._trybSRSEnabled = this.checked; window._trybSRSTouched = true; };
+  window._trybSRSEnabled = true; window._trybSRSTouched = false;
   var srsText = document.createElement('span'); srsText.textContent = 'Zapisuj do powtórek (SRS)';
   srsLabel.appendChild(srsCheck); srsLabel.appendChild(srsText);
   dirRow.appendChild(srsSep); dirRow.appendChild(srsLabel);
@@ -8689,6 +8716,17 @@ function trybToggleDirection(){
 
 function startTrybMode(mode){
   _trybMode = mode;
+  // Przegladanie = ogladanie. Nie zapisuje do powtorek, chyba ze uzytkownik
+  // sam wlaczyl zapis. Pozostale tryby to nauka i zapisuja jak dotad.
+  try{
+    if(!window._trybSRSTouched) window._trybSRSEnabled = (mode !== 'flip');
+    var _cb=document.getElementById('tryb-srs-toggle');
+    if(_cb) _cb.checked = !!window._trybSRSEnabled;
+  }catch(e){}
+  // Stan „nie zapisuje" musi byc widoczny w sesji, inaczej uzytkownik nie wie,
+  // co sie dzieje — i nie ma jak tego zmienic bez wychodzenia z zestawu.
+  try{ eylTrybSrsNote(); }catch(e){}
+  try{ eylForgetBar(); }catch(e){}
   // B2: „Zmień tryb" wznawia od bieżącej pozycji (zrobione karty zostają); świeży start → 0.
   var _ri = window._trybResumeIdx; window._trybResumeIdx = null;
   _trybIdx = (_ri!=null && _ri>0 && typeof _trybCards!=='undefined' && _trybCards && _ri < _trybCards.length) ? _ri : 0;
@@ -9071,7 +9109,7 @@ function loadTrybMCCard(){
       btn.onclick = function(){
         if(btn.dataset.answered) return;
         var isCorrect = opt === correctAnswer;
-        try{ var _ns=sm2Local(card,isCorrect?4:1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); }catch(_e){}
+        try{ if(window._trybSRSEnabled!==false){ var _ns=sm2Local(card,isCorrect?4:1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); } }catch(_e){}
         grid.querySelectorAll('button').forEach(function(b){
           b.dataset.answered = '1'; b.disabled = true; b.onmouseover = null;
           if(b.textContent === correctAnswer){ b.style.background='#eaf3de'; b.style.color='#3b6d11'; b.style.borderColor='#639922'; }
@@ -9172,7 +9210,7 @@ function loadTrybMemorizeMCPhase(){
       btn.onclick=function(){
         if(btn.dataset.answered)return;
         var isCorrect=opt===correctAnswer;
-        try{ var _ns=sm2Local(card,isCorrect?4:1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); }catch(_e){}
+        try{ if(window._trybSRSEnabled!==false){ var _ns=sm2Local(card,isCorrect?4:1); saveTrybSRS(card,_ns); usrsRecord(card,_ns); } }catch(_e){}
         grid.querySelectorAll('button').forEach(function(b){
           b.dataset.answered='1';b.disabled=true;b.onmouseover=null;
           if(b.textContent===correctAnswer){b.style.background='#eaf3de';b.style.color='#3b6d11';b.style.borderColor='#639922';}
@@ -9318,7 +9356,7 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
     var oldNav=document.getElementById('tryb-flip-nav'); if(oldNav) oldNav.remove();
     var _aq = isCorrect ? (isTypo?3:4) : 1;
     var _aqMap={1:0,3:4,4:5};
-    try{ var _ans=sm2Local(card,_aqMap[_aq]); saveTrybSRS(card,_ans); usrsRecord(card,_ans); }catch(_e){}
+    try{ if(window._trybSRSEnabled!==false){ var _ans=sm2Local(card,_aqMap[_aq]); saveTrybSRS(card,_ans); usrsRecord(card,_ans); } }catch(_e){}
     if(!isCorrect && card && card.id){ if(!window._trybStruggling) window._trybStruggling=[]; if(!_trybStruggling.some(function(c){return c.id===card.id;})) _trybStruggling.push({id:card.id,word:card.word,translation:card.translation}); }
     if(isCorrect){ _trybSessionStats.xpGained+=7; }
     var answerSide=document.getElementById('tryb-a-side');
@@ -9360,8 +9398,13 @@ async function rateCard(btnRating, declare){
   if(declare){ var _bt=({1:{r:0,iv:1},2:{r:1,iv:3},3:{r:2,iv:6},4:{r:2,iv:12}})[eff]||{r:2,iv:6};
     newSRS={ease_factor:(card.ease_factor||2.5),repetitions:_bt.r,interval_days:_bt.iv,next_review:new Date(Date.now()+_bt.iv*86400000).toISOString().slice(0,10)}; }
   else { newSRS=sm2Local(card,quality); }
-  await saveTrybSRS(card,newSRS);
-  usrsRecord(card,newSRS);
+  // Przegladanie z wylaczonym zapisem: karta sie ocenia dla statystyk sesji,
+  // ale nie trafia do powtorek. Bez tego przelacznik byl fikcja wlasnie tutaj,
+  // bo rateCard jest glowna sciezka oceny w trybie „Przegladanie".
+  if(window._trybSRSEnabled!==false){
+    await saveTrybSRS(card,newSRS);
+    usrsRecord(card,newSRS);
+  }
   var xpTable={1:0,2:3,3:7,4:10};
   var xp=xpTable[eff]||0;
   if(_trybChallengeMode)xp=Math.round(xp*1.25);
@@ -23336,5 +23379,129 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start);
   else start();
+})();
+</script>
+
+<script>
+/* ═══ EYELINGO — PASEK ZAPISU W SESJI ═══
+   Przegladanie domyslnie nie zapisuje do powtorek. Ten pasek mowi o tym
+   wprost i pozwala wlaczyc zapis jednym tapnieciem — bez wracania do
+   ekranu wyboru trybu. Przelaczenie dziala od nastepnej ocenionej karty. */
+(function(){
+  'use strict';
+  var ID='tryb-srs-note';
+  window.eylTrybSrsNote=function(){
+    try{
+      var host=document.getElementById('tryb-session'); if(!host) return;
+      var old=document.getElementById(ID); if(old&&old.parentNode) old.parentNode.removeChild(old);
+      if(window._trybSRSEnabled!==false) return;   // zapis wlaczony — nic nie mowimy
+      var bar=document.createElement('div');
+      bar.id=ID;
+      bar.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;'
+        +'padding:9px 13px;margin:0 0 14px;border:1px dashed var(--border2,#e8e3da);'
+        +'border-radius:10px;font-size:12.5px;color:var(--dim2,#8a8378);'
+        +'font-family:DM Sans,sans-serif';
+      bar.innerHTML='<span>Przegl\u0105danie \u2014 te fiszki nie trafiaj\u0105 do powt\u00f3rek.</span>';
+      var btn=document.createElement('button');
+      btn.type='button';
+      btn.textContent='Zapisuj do powt\u00f3rek';
+      btn.style.cssText='margin-left:auto;padding:5px 12px;border-radius:100px;'
+        +'border:1px solid var(--border2,#e8e3da);background:transparent;cursor:pointer;'
+        +'font-family:inherit;font-size:12px;color:var(--navy,#1a2340)';
+      btn.onclick=function(){
+        window._trybSRSEnabled=true; window._trybSRSTouched=true;
+        var n=document.getElementById(ID); if(n&&n.parentNode) n.parentNode.removeChild(n);
+        try{ if(typeof showToast==='function') showToast('Zapisuj\u0119 do powt\u00f3rek','Od nast\u0119pnej karty'); }catch(e){}
+      };
+      bar.appendChild(btn);
+      var first=host.firstChild;
+      if(first) host.insertBefore(bar,first); else host.appendChild(bar);
+    }catch(e){}
+  };
+})();
+</script>
+
+<script>
+/* ═══ EYELINGO — USUWANIE SŁOWA Z POWTÓREK ═══
+   Ktoś odpalił lekcję „żeby zobaczyć, jak działa" i ma w powtórkach słowa,
+   których nie chciał. Wyjście awaryjne musi być tam, gdzie boli — czyli
+   w samej powtórce, nie w osobnym menu, do którego trzeba trafić.
+
+   Kasujemy wiersz, nie ukrywamy go. Powód: brak flagi w schemacie znaczyłby,
+   że kolejka, licznik w nawigacji i statystyka opanowanych liczą co innego.
+   Kasowanie jest spójne z tym, co robi już usuwanie zestawu. */
+(function(){
+  'use strict';
+  var ID='tryb-forget-bar';
+
+  window.eylSrsForget = async function(word, translation){
+    var w=String(word||'').trim(), tr=String(translation||'').trim();
+    if(!w) return false;
+    var key=w.toLowerCase()+'|'+tr.toLowerCase();
+    var uid=null;
+    try{ uid = (typeof _usrsUid==='function') ? await _usrsUid() : null; }catch(e){}
+    // 1) cache lokalny — natychmiast, żeby słowo nie wróciło w tej sesji
+    try{
+      if(uid && typeof _usrsLoad==='function'){
+        var store=_usrsLoad(uid);
+        if(store && (key in store)){ delete store[key]; _usrsSaveAll(uid,store); }
+      }
+    }catch(e){}
+    // 2) chmura — nie blokuje interfejsu
+    try{
+      if(uid && typeof db!=='undefined'){
+        db.from('srs_progress').delete().eq('user_id',uid).eq('card_key',key)
+          .then(function(r){ if(r&&r.error) console.warn('[srs] usuniecie nieudane:', r.error.message); },
+                function(e){ console.warn('[srs] usuniecie nieudane:', e&&e.message); });
+      }
+    }catch(e){}
+    return true;
+  };
+
+  function biezacaKarta(){
+    try{
+      if(typeof _trybCards==='undefined' || !_trybCards) return null;
+      var i=(typeof _trybIdx!=='undefined')?_trybIdx:0;
+      return _trybCards[i]||null;
+    }catch(e){ return null; }
+  }
+
+  window.eylForgetBar = function(){
+    try{
+      var host=document.getElementById('tryb-session'); if(!host) return;
+      var old=document.getElementById(ID); if(old&&old.parentNode) old.parentNode.removeChild(old);
+      // Tylko w Powtórkach — w zwykłej nauce zestawu usuwanie nie ma sensu.
+      if(window._trybSource!=='strefa') return;
+      var bar=document.createElement('div');
+      bar.id=ID;
+      bar.style.cssText='display:flex;justify-content:flex-end;margin:0 0 10px';
+      var btn=document.createElement('button');
+      btn.type='button';
+      btn.textContent='Nie ucz mnie tego s\u0142owa';
+      btn.style.cssText='padding:5px 12px;border-radius:100px;border:1px solid var(--border2,#e8e3da);'
+        +'background:transparent;cursor:pointer;font-family:DM Sans,sans-serif;font-size:12px;color:var(--dim2,#8a8378)';
+      btn.onmouseover=function(){ this.style.color='var(--navy,#1a2340)'; };
+      btn.onmouseout=function(){ this.style.color='var(--dim2,#8a8378)'; };
+      btn.onclick=async function(){
+        var c=biezacaKarta(); if(!c) return;
+        var w=c.word||c.front||'', tr=c.translation||c.back||'';
+        btn.disabled=true;
+        await window.eylSrsForget(w,tr);
+        try{ if(typeof showToast==='function') showToast('Usuni\u0119to z powt\u00f3rek', w); }catch(e){}
+        // Wyjmujemy kartę z bieżącej kolejki, żeby nie wróciła za chwilę.
+        try{
+          if(typeof _trybCards!=='undefined' && _trybCards && _trybIdx<_trybCards.length){
+            _trybCards.splice(_trybIdx,1);
+            if(_trybIdx>=_trybCards.length) _trybIdx=Math.max(0,_trybCards.length-1);
+          }
+        }catch(e){}
+        btn.disabled=false;
+        try{ if(typeof loadTrybCard==='function') loadTrybCard(); }catch(e){}
+      };
+      bar.appendChild(btn);
+      var first=host.firstChild;
+      if(first) host.insertBefore(bar,first); else host.appendChild(bar);
+    }catch(e){}
+  };
 })();
 </script>
