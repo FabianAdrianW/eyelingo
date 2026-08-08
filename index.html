@@ -15696,7 +15696,8 @@ function lexUpdateBoardPanel(){
     return;
   }
   var _gprog=''; try{ if(typeof gramProgressHTML==='function') _gprog=gramProgressHTML('font-size:10.5px;color:var(--dim2);margin:0 0 8px 2px'); }catch(_x){}
-  panel.innerHTML = _gprog + _lexBoard.map(function(e,_ix){
+  var _gnext=''; try{ if(typeof gramUpcomingHTML==='function') _gnext=gramUpcomingHTML('font-size:10.5px;color:var(--dim2);margin:-4px 0 10px 2px'); }catch(_x){}
+  panel.innerHTML = _gprog + _gnext + _lexBoard.map(function(e,_ix){
     if(e.type==='gram'){
       var _c='';
       try{ _c=(typeof gramCardHTML==='function')?gramCardHTML(e.gid,{eyebrow:'Struktura'}):''; }catch(_x){}
@@ -17531,6 +17532,19 @@ async function lexInit(){
         }).join('')+'</details>';
     }
     return out;
+  };
+  /* Porzadek istnieje — tylko nie widac go z lekcji. Bez tej linii zmiennosc
+     („raz struktura jest, raz jej nie ma") wyglada na przypadek, a jest
+     nastepstwem frontu i stanu ucznia. Pokazujemy najblizszych kandydatow
+     jako informacje, nie jako obietnice: model wybiera sposrod nich tego,
+     ktory pasuje do slownictwa porcji. */
+  window.gramUpcomingHTML=function(style){
+    try{
+      if(!gramBankReady()) return '';
+      var f=gramFrontier(2).map(function(id){ var p=gramPoint(id); return p?p.name_pl:null; }).filter(Boolean);
+      if(!f.length) return '';
+      return '<div style="'+(style||'')+'">Najbliżej: '+_e(f.join(' \u00b7 '))+'</div>';
+    }catch(e){ return ''; }
   };
   window.gramMapBind=function(root, rerender){
     if(!root||!root.addEventListener) return;
