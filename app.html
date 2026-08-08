@@ -512,6 +512,10 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 .gram-map-empty{padding:18px 0;font-size:12px;color:var(--dim2,#8a8378)}
 .gram-ctx{margin:0 0 10px;padding:9px 11px;border-radius:9px;background:rgba(26,35,64,.045)}
 .gram-ctx-lab{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2,#8a8378);margin-bottom:5px}
+.gram-ex-n{font-size:14px;line-height:1.5;margin-top:1px;color:var(--navy,#1a2340);unicode-bidi:isolate}
+/* Pismo pisane od prawej (arabski) wymieszane z lacinka rozjezdza sie bez
+   izolacji kierunku — nawiasy i przecinki laduja po zlej stronie komorki. */
+.gram-pcell,.gram-ex-t,.gram-ctx .gram-ex-t{unicode-bidi:isolate}
 .gram-ctx .gram-ex{margin:0}
 .gram-map-horizon{margin:10px 0 0;padding:8px 10px;border:1px dashed var(--line,#e8e3da);border-radius:8px;
   font-size:11px;line-height:1.5;color:var(--dim2,#8a8378)}
@@ -2104,8 +2108,15 @@ function lexParseJSON(raw){
     if(t.examples&&t.examples.length){
       h+='<div class="gram-exs">';
       t.examples.forEach(function(ex){
-        h+='<div class="gram-ex" data-say="'+_e(ex.target)+'">'
+        // Pismo oryginalne siedzialo w modelu danych od wersji 2.0 i nie bylo
+        // renderowane nigdzie — bank japonski niosl kane i kanji, ktorych nikt
+        // nie widzial. Kolejnosc jak w Tablicy: transliteracja, pod nia zapis.
+        // Do wymowy podajemy oryginal, jesli jest — lektor czytajacy
+        // transliterację wymawia ja jak tekst polski.
+        var nat=String(ex.target_native||'').trim();
+        h+='<div class="gram-ex" data-say="'+_e(nat||ex.target)+'">'
           +'<div class="gram-ex-t">'+_e(ex.target)+'</div>'
+          +(nat?'<div class="gram-ex-n">'+_e(nat)+'</div>':'')
           +(ex.pl?'<div class="gram-ex-p">'+_e(ex.pl)+'</div>':'')+'</div>';
       });
       h+='</div>';
