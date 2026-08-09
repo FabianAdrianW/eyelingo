@@ -2897,7 +2897,7 @@ function clearUserLocalData(){
 // Usuwamy je raz — nowe zapisy są już per-user (klucz zawiera user.id).
 function killLegacyLeakKeys(){
   try{
-    ['teacher_conversations','eyelingo_lang_levels','kk_streak','kk_last_read','strefa_last_session','lex_audio_lang','lex_speech'].forEach(function(k){ localStorage.removeItem(k); });
+    ['teacher_conversations','eyelingo_lang_levels','kk_streak','kk_last_read','strefa_last_session','lex_audio_lang','lex_speech','tutor_contacts','dashBridgeLang','eyelingo_ai_images'].forEach(function(k){ localStorage.removeItem(k); });
     for(var i=localStorage.length-1;i>=0;i--){
       var key=localStorage.key(i);
       if(key && (key.indexOf('quiz_done_2')===0 || key.indexOf('daily_quiz_ans_2')===0)) localStorage.removeItem(key);
@@ -2906,6 +2906,10 @@ function killLegacyLeakKeys(){
 }
 // Po ustaleniu/zmianie usera przeładuj stan zależny od konta z jego namespace'a.
 function reloadUserScopedState(){
+  /* Kontakty z lektorami: po zmianie konta stan w pamieci musi zniknac,
+     inaczej nastepny uzytkownik zobaczylby liste poprzedniego do czasu
+     przeladowania strony. */
+  try{ if(typeof _tcp!=='undefined'){ _tcp.contacts={}; _tcp.contactsLoaded=false; } }catch(e){}
   try{ if(typeof loadLangLevels==='function'){ loadLangLevels(); if(typeof syncLevelSelector==='function') syncLevelSelector(); } }catch(e){}
 }
 /* ═══ EYL · ROUTING MOBILNY (QR / wizytówka → app.html po zalogowaniu) ═══
@@ -7533,8 +7537,24 @@ var _tcp = {
   myId: null,
   realtimeSub: null,
   convs: {},        // tutorId → lastMsg
-  contacts: JSON.parse(localStorage.getItem('tutor_contacts')||'{}')
+  contacts: {},          // wypelniane leniwie przez _tcpContacts() — patrz nizej
+  contactsLoaded: false
 };
+
+/* Kontakty z lektorami trzymamy w kubelku uzytkownika. Odczyt dopiero wtedy,
+   gdy window._uid jest juz ustawione — inaczej wpadaloby do "_anon". */
+function _tcpContacts(){
+  if(!_tcp.contactsLoaded && window._uid){
+    try{ _tcp.contacts = JSON.parse(localStorage.getItem(uk('tutor_contacts'))||'{}'); }
+    catch(e){ _tcp.contacts = {}; }
+    _tcp.contactsLoaded = true;
+  }
+  return _tcp.contacts;
+}
+function _tcpSaveContacts(){
+  if(!window._uid) return;   // bez usera nie zapisujemy — nie tworzymy wspolnego kubelka
+  try{ localStorage.setItem(uk('tutor_contacts'), JSON.stringify(_tcp.contacts)); }catch(e){}
+}
 
 async function _tcpGetMyId(){
   if(_tcp.myId) return _tcp.myId;
@@ -7559,9 +7579,9 @@ async function openTutorChat(tutorId, tutorName){
   _tcp.open=true;
 
   // Zapisz kontakt
-  if(!_tcp.contacts[tutorId]){
+  if(!_tcpContacts()[tutorId]){
     _tcp.contacts[tutorId]=Date.now();
-    localStorage.setItem('tutor_contacts',JSON.stringify(_tcp.contacts));
+    _tcpSaveContacts();
     try{
       var myId=await _tcpGetMyId();
       if(myId) await db.from('tutor_contacts').upsert({user_id:myId,tutor_id:tutorId,contacted_at:new Date().toISOString()},{onConflict:'user_id,tutor_id'});
@@ -7871,7 +7891,7 @@ document.addEventListener('keydown',function(e){
 });
 
 // hasTutorContact helper
-function hasTutorContact(tutorId){return !!_tcp.contacts[tutorId];}
+function hasTutorContact(tutorId){return !!_tcpContacts()[tutorId];}
 
 // Chat badge po zalogowaniu
 var _origPostLogin2=window.postLogin;
