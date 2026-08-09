@@ -1966,7 +1966,7 @@ function eylPrefLoad(){
   }
 
   // ── Recents (per-konto, localStorage) ──
-  async function _recKey(){ var u=await _uid(); return 'eyl_recent_'+(u||'anon'); }
+  async function _recKey(){ var u=await _uid(); return 'eyl_recent2_'+(u||'anon'); }
   async function _getRecents(){ try{ return JSON.parse(localStorage.getItem(await _recKey())||'[]'); }catch(e){ return []; } }
   async function _pushRecent(rec){
     try{
@@ -21225,7 +21225,7 @@ if ('serviceWorker' in navigator) {
      Kanon (wspólny z app.html): {id, kind:'eyl'|'set', name, lang, level, count, keys[], ts}
        · 'eyl'  → id = 'eyl:<lang>:<catId>'
        · 'set'  → id = user_sets.id
-     Web trzyma lokalnie własne formaty (eyl_recent_*, eyl_last_set_*) — konwersja przy pull/push. */
+     Web trzyma lokalnie własne formaty (eyl_recent2_*, eyl_last_set_*) — konwersja przy pull/push. */
   function mergeRecents(a,b){
     var by={}, order=[];
     (a||[]).concat(b||[]).forEach(function(it){
@@ -21248,7 +21248,7 @@ if ('serviceWorker' in navigator) {
   function localRecents(){
     var u=uidNow()||'anon', out=[];
     try{
-      (JSON.parse(localStorage.getItem('eyl_recent_'+u)||'[]')||[]).forEach(function(r){
+      (JSON.parse(localStorage.getItem('eyl_recent2_'+u)||'[]')||[]).forEach(function(r){
         if(!r||r.catId==null) return;
         out.push({id:'eyl:'+(r.lang||'')+':'+r.catId, kind:'eyl', name:r.catLabel||'', lang:r.lang||'', level:r.level||null, count:0, ts:ms(r.ts)});
       });
@@ -21267,7 +21267,7 @@ if ('serviceWorker' in navigator) {
         var p=String(x.id).split(':');
         return {lang:x.lang||p[1]||'', level:x.level||'', catId:p[2]||'', catLabel:x.name||'', ts:ms(x.ts)};
       }).slice(0,8);
-      localStorage.setItem('eyl_recent_'+u, JSON.stringify(eyl));
+      localStorage.setItem('eyl_recent2_'+u, JSON.stringify(eyl));
     }catch(e){}
     try{
       var st=(list||[]).filter(function(x){ return x.kind==='set'; })[0];
