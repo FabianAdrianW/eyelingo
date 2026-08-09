@@ -1999,19 +1999,38 @@ function eylPrefLoad(){
     if(!_eylSeg.lang || codes.indexOf(_eylSeg.lang)<0) _eylSeg.lang=codes[0]||'en';
     var code=_eylSeg.lang, langId=_eylLangIds[code];
     var lvlCode={}; Object.keys(_eylLevelIds||{}).forEach(function(c){ lvlCode[_eylLevelIds[c]]=c; });
-    var rows=[];
+    var rows=[], presentLv={}, byCat={}, meta={}, orderedIds=null;
+    // ── Szybka ścieżka: jedno RPC zamiast N stron po 1000 wierszy. ──
+    //    Ten sam kontrakt, z którego korzysta katalog Lexa (~18785).
+    //    keys z RPC == _ck(word,translation), więc _agg działa bez zmian.
     if(langId!=null){
-      try{ rows = await window.eylPagedFetch(function(a,b){ return db.from('flashcards').select('category_id,level_id,word,translation').eq('language_id',langId).range(a,b); }); }catch(e){ console.error('[eyl] katalog:', e); box.innerHTML='<div style="text-align:center;padding:44px 20px;color:var(--dim2);font-size:14px;margin-top:20px">Nie udało się wczytać katalogu. Sprawdź połączenie i odśwież stronę.</div>'; return; }
+      try{
+        var _rp=await db.rpc('catalog_categories',{p_lang:code});
+        var _rd=(_rp && !_rp.error && _rp.data) || null;
+        if(_rd && _rd.length){
+          _rd.forEach(function(r){ (r.all_levels||[]).forEach(function(lv){ if(lv) presentLv[lv]=1; }); });
+          if(_eylSeg.level && !presentLv[_eylSeg.level]) _eylSeg.level=null;
+          var _sel=_eylSeg.level;
+          var _use=_rd.filter(function(r){ return !_sel || (r.all_levels||[]).indexOf(_sel)>=0; });
+          _use.forEach(function(r){ meta[r.id]={label:r.label}; byCat[r.id]=r.keys||[]; });
+          orderedIds=_use.map(function(r){ return String(r.id); });
+        }
+      }catch(_eRpc){ console.warn('[eyl] RPC katalogu niedostępne, stara ścieżka:', _eRpc); }
     }
-    var presentLv={}; rows.forEach(function(r){ var lc=lvlCode[r.level_id]; if(lc) presentLv[lc]=1; });
+    // ── Fallback: pełne pobranie wierszy (odporne dzięki eylPagedFetch). ──
+    if(orderedIds===null){
+      if(langId!=null){
+        try{ rows = await window.eylPagedFetch(function(a,b){ return db.from('flashcards').select('category_id,level_id,word,translation').eq('language_id',langId).range(a,b); }); }catch(e){ console.error('[eyl] katalog:', e); box.innerHTML='<div style="text-align:center;padding:44px 20px;color:var(--dim2);font-size:14px;margin-top:20px">Nie udało się wczytać katalogu. Sprawdź połączenie i odśwież stronę.</div>'; return; }
+      }
+      rows.forEach(function(r){ var lc=lvlCode[r.level_id]; if(lc) presentLv[lc]=1; });
+      if(_eylSeg.level && !presentLv[_eylSeg.level]) _eylSeg.level=null;
+      var fr=_eylSeg.level?rows.filter(function(r){return lvlCode[r.level_id]===_eylSeg.level;}):rows;
+      fr.forEach(function(r){ var c=r.category_id; if(c==null) return; (byCat[c]=byCat[c]||[]).push(_ck(r.word,r.translation)); });
+      var catIds=Object.keys(byCat);
+      if(catIds.length){ try{ var rc=await db.from('categories').select('id,label,icon').in('id',catIds).order('id',{ascending:true}); (rc.data||[]).forEach(function(c){ meta[c.id]={label:c.label,icon:c.icon}; }); }catch(e){} }
+      orderedIds=Object.keys(meta).length?Object.keys(meta):catIds;
+    }
     var levels=EYL_LEVELS.filter(function(l){return presentLv[l];});
-    if(_eylSeg.level && !presentLv[_eylSeg.level]) _eylSeg.level=null;
-    var fr=_eylSeg.level?rows.filter(function(r){return lvlCode[r.level_id]===_eylSeg.level;}):rows;
-    var byCat={}; fr.forEach(function(r){ var c=r.category_id; if(c==null) return; (byCat[c]=byCat[c]||[]).push(_ck(r.word,r.translation)); });
-    var catIds=Object.keys(byCat);
-    var meta={};
-    if(catIds.length){ try{ var rc=await db.from('categories').select('id,label,icon').in('id',catIds).order('id',{ascending:true}); (rc.data||[]).forEach(function(c){ meta[c.id]={label:c.label,icon:c.icon}; }); }catch(e){} }
-    var orderedIds=Object.keys(meta).length?Object.keys(meta):catIds;
 
     var html='';
     html+='<div class="eylc-flabel">Język</div><div class="eylc-chiprow eylc-langrow">'+codes.map(function(c){ var info=_langInfo(c); return '<button class="eylc-chip'+(c===code?' on':'')+'" onclick="eylPickLang('+JSON.stringify(c).replace(/"/g,'&quot;')+')">'+(window.eylFlagSvg?window.eylFlagSvg(c,16):info.flag)+' '+_eEsc(info.label)+'</button>'; }).join('')+'</div>';
