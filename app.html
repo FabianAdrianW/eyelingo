@@ -3678,6 +3678,26 @@ async function _eylLoadCats(code){
   try{
     var langId=await _eylLangId(code);
     if(langId==null){ _eylCatCache[code]=out; return out; }
+    // ── Szybka ścieżka: jedno RPC zamiast N stron po 1000 wierszy. ──
+    //    Ten sam kontrakt co w index.html; keys z RPC == _usrsCK().
+    try{
+      var _rp=await db.rpc('catalog_categories',{p_lang:code});
+      var _rd=(_rp && !_rp.error && _rp.data) || null;
+      if(_rd && _rd.length){
+        _rd.forEach(function(r){
+          out.push({id:r.id, label:eylCleanCat(r.label||''), level:r.level||null,
+                    count:Number(r.cnt)||0, allLevels:r.all_levels||[], keys:r.keys||[]});
+        });
+        var _lk={};
+        try{
+          var _rl=await db.rpc('catalog_level_keys',{p_lang:code});
+          ((_rl && _rl.data) || []).forEach(function(x){ if(x.lvl) _lk[x.lvl]=x.keys||[]; });
+        }catch(_e2){}
+        out.sort(function(a,b){ var na=+a.id, nb=+b.id; if(!isNaN(na)&&!isNaN(nb)) return na-nb; return String(a.id).localeCompare(String(b.id)); });
+        _eylLevelKeysCache[code]=_lk;
+        _eylCatCache[code]=out; return out;
+      }
+    }catch(_e1){ console.warn('[eyl] RPC katalogu niedostępne, stara ścieżka:', _e1); }
     var all = await window.eylPagedFetch(function(a,b){ return db.from('flashcards').select('category_id,word,translation,levels(code)').eq('language_id',langId).range(a,b); },{maxRows:40000});
     var byCat={}, _lvlK={};
     all.forEach(function(r){ if(r.category_id==null) return; var lv=(r.levels&&r.levels.code)||null;
