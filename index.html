@@ -2001,7 +2001,7 @@ function eylPrefLoad(){
     var lvlCode={}; Object.keys(_eylLevelIds||{}).forEach(function(c){ lvlCode[_eylLevelIds[c]]=c; });
     var rows=[];
     if(langId!=null){
-      try{ var from=0,pg=1000; while(true){ var r=await db.from('flashcards').select('category_id,level_id,word,translation').eq('language_id',langId).range(from,from+pg-1); var d=(r&&r.data)||[]; rows=rows.concat(d); if(d.length<pg) break; from+=pg; if(from>20000) break; } }catch(e){}
+      try{ rows = await window.eylPagedFetch(function(a,b){ return db.from('flashcards').select('category_id,level_id,word,translation').eq('language_id',langId).range(a,b); }); }catch(e){ console.error('[eyl] katalog:', e); box.innerHTML='<div style="text-align:center;padding:44px 20px;color:var(--dim2);font-size:14px;margin-top:20px">Nie udało się wczytać katalogu. Sprawdź połączenie i odśwież stronę.</div>'; return; }
     }
     var presentLv={}; rows.forEach(function(r){ var lc=lvlCode[r.level_id]; if(lc) presentLv[lc]=1; });
     var levels=EYL_LEVELS.filter(function(l){return presentLv[l];});
@@ -20856,7 +20856,7 @@ if ('serviceWorker' in navigator) {
     var langId=_ids.lang[_lang];
     var lvlById={}; Object.keys(_ids.lvl).forEach(function(cd){ lvlById[_ids.lvl[cd]]=cd; });
     var rows=[];
-    if(langId!=null){ try{ var from=0,pg=1000; while(true){ var r=await db.from('flashcards').select('category_id,level_id,word,translation').eq('language_id',langId).range(from,from+pg-1); var d=(r&&r.data)||[]; rows=rows.concat(d); if(d.length<pg) break; from+=pg; if(from>20000) break; } }catch(e){} }
+    if(langId!=null){ try{ rows = await window.eylPagedFetch(function(a,b){ return db.from('flashcards').select('category_id,level_id,word,translation').eq('language_id',langId).range(a,b); }); }catch(e){ console.error('[eyl] katalog:', e); b.innerHTML='<div style="text-align:center;padding:44px 20px;color:var(--dim2);font-size:14px;margin-top:20px">Nie udało się wczytać katalogu. Sprawdź połączenie i odśwież stronę.</div>'; return; } }
     var presentLv={}; rows.forEach(function(r){ var lc=lvlById[r.level_id]; if(lc) presentLv[lc]=1; });
     var levels=LVLS.filter(function(l){return presentLv[l];});
     if(_level&&!presentLv[_level]) _level=null;
@@ -23933,4 +23933,31 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     return wynik;
   };
 })();
+</script>
+<script>
+/* ── eylPagedFetch — stronicowanie, ktore NIE udaje sukcesu ──────────────────
+   Zwraca komplet albo rzuca. Cichy czesciowy wynik byl zrodlem bledu
+   "10 kategorii zamiast 20" po migracji taksonomii A1. */
+window.eylPagedFetch = async function(makeQuery, opts){
+  opts = opts || {};
+  var pg = opts.pageSize || 1000, maxRows = opts.maxRows || 20000;
+  var out = [], from = 0;
+  while(true){
+    var res = null, lastErr = null;
+    for(var att = 0; att < 3; att++){
+      try{ res = await makeQuery(from, from + pg - 1); }
+      catch(ex){ res = { error: ex }; }
+      if(res && !res.error && res.data){ lastErr = null; break; }
+      lastErr = (res && res.error) || new Error('brak danych');
+      await new Promise(function(r){ setTimeout(r, 300 * (att + 1)); });
+    }
+    if(lastErr) throw lastErr;
+    var d = res.data || [];
+    out = out.concat(d);
+    if(d.length < pg) break;
+    from += pg;
+    if(from > maxRows) break;
+  }
+  return out;
+};
 </script>

@@ -3678,12 +3678,7 @@ async function _eylLoadCats(code){
   try{
     var langId=await _eylLangId(code);
     if(langId==null){ _eylCatCache[code]=out; return out; }
-    var all=[], pg=1000, from=0;
-    while(true){
-      var r=await db.from('flashcards').select('category_id,word,translation,levels(code)').eq('language_id',langId).range(from,from+pg-1);
-      var d=(r&&r.data)||[]; all=all.concat(d);
-      if(d.length<pg) break; from+=pg; if(from>40000) break;
-    }
+    var all = await window.eylPagedFetch(function(a,b){ return db.from('flashcards').select('category_id,word,translation,levels(code)').eq('language_id',langId).range(a,b); },{maxRows:40000});
     var byCat={}, _lvlK={};
     all.forEach(function(r){ if(r.category_id==null) return; var lv=(r.levels&&r.levels.code)||null;
       if(!byCat[r.category_id]) byCat[r.category_id]={count:0,levels:{},keys:[]};
@@ -7089,5 +7084,32 @@ async function alexSend(){
 })();
 </script>
 
+<script>
+/* ── eylPagedFetch — stronicowanie, ktore NIE udaje sukcesu ──────────────────
+   Zwraca komplet albo rzuca. Cichy czesciowy wynik byl zrodlem bledu
+   "10 kategorii zamiast 20" po migracji taksonomii A1. */
+window.eylPagedFetch = async function(makeQuery, opts){
+  opts = opts || {};
+  var pg = opts.pageSize || 1000, maxRows = opts.maxRows || 20000;
+  var out = [], from = 0;
+  while(true){
+    var res = null, lastErr = null;
+    for(var att = 0; att < 3; att++){
+      try{ res = await makeQuery(from, from + pg - 1); }
+      catch(ex){ res = { error: ex }; }
+      if(res && !res.error && res.data){ lastErr = null; break; }
+      lastErr = (res && res.error) || new Error('brak danych');
+      await new Promise(function(r){ setTimeout(r, 300 * (att + 1)); });
+    }
+    if(lastErr) throw lastErr;
+    var d = res.data || [];
+    out = out.concat(d);
+    if(d.length < pg) break;
+    from += pg;
+    if(from > maxRows) break;
+  }
+  return out;
+};
+</script>
 </body>
 </html>
