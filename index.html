@@ -22847,14 +22847,16 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
 
   .ecj-body{flex:1 1 auto;overflow-y:auto;padding:12px 18px 20px;-webkit-overflow-scrolling:touch}
   .ecj-native{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-    color:var(--orange,#c96a2a);margin-bottom:5px}
+    color:var(--orange,#c96a2a);margin-bottom:5px;unicode-bidi:isolate}
+  .ecj-axis{font-size:11px;color:var(--dim2,#8b93a7);margin:-2px 0 10px}
+  .ecj-rom{font-size:12px;color:var(--dim,#4a5268);margin-top:1px;line-height:1.3;unicode-bidi:isolate}
   .ecj-note{font-size:12.5px;color:var(--dim,#4a5268);line-height:1.55;background:var(--paper,#faf7f2);
     border-radius:10px;padding:10px 12px;margin-bottom:12px}
   .ecj-row{display:flex;align-items:baseline;gap:12px;padding:10px 2px;border-bottom:.5px solid var(--line,#e8e3da);cursor:pointer}
   .ecj-row:last-child{border-bottom:0}
   .ecj-row:hover{background:var(--paper,#faf7f2)}
-  .ecj-lab{flex:0 0 36%;max-width:36%;font-size:12px;color:var(--dim2,#8b93a7);line-height:1.35}
-  .ecj-form{flex:1;font-size:15.5px;font-weight:600;color:var(--navy,#1a2340);line-height:1.3}
+  .ecj-lab{flex:0 0 36%;max-width:36%;font-size:12px;color:var(--dim2,#8b93a7);line-height:1.35;unicode-bidi:isolate}
+  .ecj-form{flex:1;font-size:15.5px;font-weight:600;color:var(--navy,#1a2340);line-height:1.3;unicode-bidi:isolate}
   .ecj-tr{font-size:11.5px;color:var(--dim2,#8b93a7);font-weight:400;margin-top:2px;line-height:1.35}
   .ecj-foot{font-size:11px;color:var(--dim2,#8b93a7);text-align:center;margin-top:14px}
   .ecj-msg{text-align:center;color:var(--dim2,#8b93a7);font-size:13px;padding:26px 10px;line-height:1.6}
@@ -22864,7 +22866,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
 </style>
 <script>
 (function(){
-  var CACHE_V = 4;
+  var CACHE_V = 5;
   var _mem={}, _cur=null, _tab=0;
 
   /* ── Kanoniczne czasy: krotka nazwa PL + nazwa oryginalna + poziom ──────
@@ -22915,6 +22917,64 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       {id:'fut',  pl:'Przyszły',         nat:'Futuro semplice',         lvl:'A2'},
       {id:'cond', pl:'Przypuszczający',  nat:'Condizionale presente',   lvl:'B1'}
     ],
+    nl:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Tegenwoordige tijd',      lvl:'A1'},
+      {id:'perf', pl:'Przeszły złożony', nat:'Perfectum',               lvl:'A2'},
+      {id:'past', pl:'Przeszły prosty',  nat:'Imperfectum',             lvl:'A2'},
+      {id:'fut',  pl:'Przyszły',         nat:'Toekomende tijd (zullen)',lvl:'A2'},
+      {id:'cond', pl:'Przypuszczający',  nat:'Conditionalis (zou)',     lvl:'B1'}
+    ],
+    pt:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Presente',                lvl:'A1'},
+      {id:'ppf',  pl:'Przeszły dokonany',nat:'Pretérito perfeito',      lvl:'A2'},
+      {id:'pimp', pl:'Przeszły ciągły',  nat:'Pretérito imperfeito',    lvl:'A2'},
+      {id:'fut',  pl:'Przyszły',         nat:'Futuro do presente',      lvl:'A2'},
+      {id:'cond', pl:'Przypuszczający',  nat:'Futuro do pretérito',     lvl:'B1'}
+    ],
+    no:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Presens',                 lvl:'A1'},
+      {id:'past', pl:'Przeszły',         nat:'Preteritum',              lvl:'A2'},
+      {id:'perf', pl:'Przeszły złożony', nat:'Presens perfektum',       lvl:'A2'},
+      {id:'fut',  pl:'Przyszły',         nat:'Futurum (skal/vil)',      lvl:'A2'},
+      {id:'cond', pl:'Przypuszczający',  nat:'Kondisjonalis (ville)',   lvl:'B1'}
+    ],
+    ru:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Настоящее время',         lvl:'A1'},
+      {id:'past', pl:'Przeszły',         nat:'Прошедшее время',         lvl:'A1'},
+      {id:'fut',  pl:'Przyszły',         nat:'Будущее время',           lvl:'A2'},
+      {id:'imper',pl:'Rozkazujący',      nat:'Повелительное наклонение',lvl:'A2'},
+      {id:'cond', pl:'Przypuszczający',  nat:'Сослагательное (бы)',     lvl:'B1'}
+    ],
+    uk:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'Теперішній час',          lvl:'A1'},
+      {id:'past', pl:'Przeszły',         nat:'Минулий час',             lvl:'A1'},
+      {id:'fut',  pl:'Przyszły',         nat:'Майбутній час',           lvl:'A2'},
+      {id:'imper',pl:'Rozkazujący',      nat:'Наказовий спосіб',        lvl:'A2'},
+      {id:'cond', pl:'Przypuszczający',  nat:'Умовний спосіб (би)',     lvl:'B1'}
+    ],
+    ar:[
+      {id:'pres', pl:'Niedokonany',      nat:'المضارع',                 lvl:'A1'},
+      {id:'past', pl:'Dokonany',         nat:'الماضي',                  lvl:'A1'},
+      {id:'fut',  pl:'Przyszły',         nat:'المستقبل',                lvl:'A2'},
+      {id:'imper',pl:'Rozkazujący',      nat:'الأمر',                   lvl:'A2'},
+      {id:'neg',  pl:'Przeczenie',       nat:'النفي',                   lvl:'B1'}
+    ],
+    ko:[
+      {id:'pres', pl:'Teraźniejszy',     nat:'해요체 (현재)',            lvl:'A1'},
+      {id:'past', pl:'Przeszły',         nat:'했어요',                   lvl:'A1'},
+      {id:'fut',  pl:'Przyszły',         nat:'할 거예요',                lvl:'A2'},
+      {id:'plain',pl:'Nieformalna',      nat:'반말 (해체)',              lvl:'A2'},
+      {id:'neg',  pl:'Przeczenie',       nat:'안 / -지 않다',            lvl:'A2'},
+      {id:'hon',  pl:'Formalna',         nat:'합니다체',                 lvl:'B1'}
+    ],
+    zh:[
+      {id:'pres', pl:'Podstawowa',       nat:'原形',                    lvl:'A1'},
+      {id:'prog', pl:'W trakcie',        nat:'正在 / 在',               lvl:'A1'},
+      {id:'perf', pl:'Dokonana',         nat:'了',                      lvl:'A2'},
+      {id:'exp',  pl:'Doświadczenie',    nat:'过',                      lvl:'A2'},
+      {id:'fut',  pl:'Przyszła',         nat:'会 / 要',                 lvl:'A2'},
+      {id:'neg',  pl:'Przeczenie',       nat:'不 / 没',                 lvl:'A1'}
+    ],
     _default:[
       {id:'pres', pl:'Teraźniejszy',     nat:'',                        lvl:'A1'},
       {id:'past', pl:'Przeszły',         nat:'',                        lvl:'A2'},
@@ -22925,11 +22985,36 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     nl:'niderlandzki',pt:'portugalski',no:'norweski',sv:'szwedzki',da:'duński',
     ru:'rosyjski',uk:'ukraiński',ar:'arabski',jp:'japoński',ko:'koreański',zh:'chiński',cs:'czeski',tr:'turecki'};
   var TRANSLIT={jp:1,ko:1,zh:1,ru:1,uk:1,ar:1};
+  /* Jezyki, w ktorych wiersze to NIE osoby, tylko warianty formy. */
+  var ROWMODE={jp:'form',ko:'form',zh:'form',no:'form'};
 
   var LV=['A1','A2','B1','B2','C1','C2'];
   function lvIdx(l){ var i=LV.indexOf(String(l||'A1')); return i<0?0:i; }
 
-  function lg(){ try{ return (typeof curSetLang!=='undefined'&&curSetLang)||window._lexLang||'en'; }catch(e){ return 'en'; } }
+  /* JEZYK BIERZEMY Z FISZKI, nie z sesji Lexa.
+     Poprzednio: (curSetLang || window._lexLang || 'en'). W index.html zmienna
+     `curSetLang` nie istniala w ogole (tylko odczyty, zero przypisan), wiec
+     kazda fiszka — wloska, hiszpanska, rosyjska — byla odmieniana jak
+     angielska, a wynik trafial do wspolnego `conj_cache` pod lang='en'.
+     Kolejnosc jak w TTS i generatorze zdan: karta -> sesja nauki -> Lex. */
+  function _cnorm(x){
+    try{ if(typeof _eylNormLang==='function') return _eylNormLang(x)||''; }catch(e){}
+    return String(x==null?'':x).toLowerCase().trim().split(/[-_]/)[0];
+  }
+  function curCard(){
+    try{ return (typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null; }catch(e){ return null; }
+  }
+  function lgOf(card){
+    var c='';
+    try{ if(typeof _eylTrueLang==='function' && card && (card.word||card.lang)) c=_eylTrueLang(card)||''; }catch(e){}
+    if(!c) c=_cnorm(card&&card.lang);
+    if(!c){ try{ c=_cnorm(window._trybStudyLang); }catch(e){} }
+    if(!c){ try{ c=_cnorm(window._trybLang); }catch(e){} }
+    if(!c){ try{ if(typeof curSetLang!=='undefined'&&curSetLang) c=_cnorm(curSetLang); }catch(e){} }
+    if(!c){ try{ c=_cnorm(window._lexLang); }catch(e){} }
+    return c||'en';
+  }
+  function lg(){ return lgOf(_open ? (_cur||curCard()) : (curCard()||_cur)); }
   function tenseSet(){ return TENSES[lg()]||TENSES._default; }
 
   /* Jeden sposob liczenia poziomu dla obu wersji — inaczej web i PWA
@@ -23061,8 +23146,8 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     return false;
   }
 
-  function targetLooksVerb(w){
-    var pats=VERB_SUFFIX[lg()]; if(!pats) return false;
+  function targetLooksVerb(w, code){
+    var pats=VERB_SUFFIX[code||lg()]; if(!pats) return false;
     var t=String(w||'').trim().toLowerCase();
     if(!t) return false;
     for(var i=0;i<pats.length;i++){ if(pats[i].test(t)) return true; }
@@ -23096,7 +23181,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     if(!card||!card.word) return false;
     var tr=String(card.translation||'').trim();
     if(tr) return plLooksVerb(tr);
-    return targetLooksVerb(card.word);
+    return targetLooksVerb(card.word, lgOf(card));
   };
   window.eylConjCanConjugate=function(card){
     if(!card||!card.word) return false;
@@ -23105,7 +23190,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     // Tlumaczenie na polski rozstrzyga. Morfologia wchodzi tylko gdy go brak.
     var tr=String(card.translation||'').trim();
     if(tr) return plLooksVerb(tr);
-    return targetLooksVerb(card.word);
+    return targetLooksVerb(card.word, lgOf(card));
   };
 
   /* show===false wymusza ukrycie (np. fiszka jeszcze nieodwrocona). */
@@ -23150,7 +23235,9 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
 
       try{ d=await fetchConj(c); }catch(e){ d=null; }
       var trustNeg = !(d && d.is_verb===false && window.eylConjHeuristicVerb(c));
-      if(isVerdict(d) && trustNeg){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
+      var isFull = !!(d && d._full);
+      if(d){ try{ delete d._full; }catch(e){} }
+      if(isVerdict(d) && trustNeg && isFull){ localSet(c.word,d); sharedSet(c.word,d); render(d,false); }
       else if(isVerdict(d)){ render(d,false); }   // pokazujemy, ale NIE zapamietujemy
       else render({error:1},false);   // bledu i smieci NIE cache'ujemy
     }catch(err){
@@ -23178,18 +23265,25 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
      Jesli odpowiedz sie nie sparsuje (najczestsza przyczyna: obciecie na limicie
      tokenow przy 6 czasach x 6 osob), ponawiamy z zestawem przycietym do poziomu. */
   async function fetchConj(c){
-    var d=await askConj(c, tenseSet(), 4000);
+    // Pisma nielacinskie dostaja dodatkowe pole "rom" — wiecej tokenow.
+    var B = TRANSLIT[lgOf(c)] ? 6000 : 4000;
+    var d=await askConj(c, tenseSet(), B);
     // Model bywa, ze bierze obce slowo za polskie („ser" = ser, a nie „byc").
     // Jesli przeczy polskiemu tlumaczeniu, ponawiamy z jawnym zalozeniem.
     if(d && d.is_verb===false && window.eylConjHeuristicVerb(c)){
       try{ console.warn('[conj] model przeczy tlumaczeniu — ponawiam z wymuszeniem'); }catch(e){}
-      var f=await askConj(c, tenseSet(), 4000, true);
-      if(f && f.tabs && f.tabs.length) return f;
+      var f=await askConj(c, tenseSet(), B, true);
+      if(f && f.tabs && f.tabs.length){ f._full=true; return f; }
       return null;   // brak werdyktu — NIE chowamy przycisku
     }
-    if(d && (d.is_verb===false || (d.tabs&&d.tabs.length))) return d;
+    if(d && (d.is_verb===false || (d.tabs&&d.tabs.length))){ d._full=true; return d; }
     try{ console.warn('[conj] pelny zestaw sie nie udal, ponawiam z wezszym'); }catch(e){}
-    return await askConj(c, visibleTenses(), 3000);
+    // Zestaw awaryjny = pierwsze 3 kanoniczne czasy (budzet tokenow), NIE poziom
+    // ucznia. Wynik renderujemy, ale NIE zapisujemy do cache — inaczej okrojona
+    // odpowiedz jednego uzytkownika trwale obcinala zakladki wszystkim.
+    var n=await askConj(c, tenseSet().slice(0,3), Math.round(B*0.75));
+    if(n) n._full=false;
+    return n;
   }
 
   window._eylConjLastRaw='';
@@ -23206,27 +23300,34 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   };
 
   async function askConj(c, set, budget, force){
-    var L=LANG_PL[lg()]||'obcy';
+    var code=lgOf(c), rowMode=(ROWMODE[code]||'person');
+    var L=LANG_PL[code]||'obcy';
     var spec=set.map(function(t){ return '{"id":"'+t.id+'"'+(t.nat?(', czas: '+t.nat):'')+'}'; }).join(', ');
 
     var p='Jestes metodykiem jezyka '+L+'. '
-      +'UWAGA: slowo pochodzi z jezyka '+L+(TRANSLIT[lg()]?' (zapis w transliteracji lacinskiej)':'')
+      +'UWAGA: slowo pochodzi z jezyka '+L+(TRANSLIT[code]?' (zapis w transliteracji lacinskiej)':'')
       +' — NIE interpretuj go jako slowa polskiego ani angielskiego, nawet jesli tak wyglada. '
       +'Slowo: "'+c.word+'". '
       +(c.translation?('Po polsku znaczy: "'+c.translation+'" — to znaczenie jest rozstrzygajace. '):'')
       +(force?'To slowo JEST czasownikiem — podaj jego odmiane. ':'Jesli to NIE jest czasownik, zwroc {"is_verb":false}. ')
       +'Jesli to czasownik, odmien go w DOKLADNIE tych formach, w tej kolejnosci: '+spec+'. '
       +'Dla kazdej pozycji zwroc obiekt z tym samym "id". Nie dodawaj wlasnych czasow, nie pomijaj zadnego. '
-      +'W jezykach odmieniajacych sie przez osoby wiersze = wszystkie osoby liczby pojedynczej i mnogiej, '
-      +'etykieta wiersza w jezyku docelowym (np. "yo", "tu"). '
-      +'W jezykach bez odmiany przez osoby (japonski, koreanski) wiersze = warianty formy: '
-      +'twierdzaca, przeczaca, a jesli to naturalne takze przeszla — etykieta po polsku. '
+      +(rowMode==='form'
+        ? 'Ten jezyk NIE odmienia czasownika przez osoby. Wiersze = warianty formy w obrebie zakladki '
+          +'(twierdzaca, przeczaca, a jesli naturalne takze pytajaca albo inny rejestr) — etykieta po polsku. '
+        : 'Wiersze = wszystkie osoby liczby pojedynczej i mnogiej, etykieta wiersza w jezyku docelowym (np. "yo", "tu"). '
+          +'JESLI w danej zakladce forma zalezy nie od osoby, lecz od rodzaju albo liczby '
+          +'(czas przeszly w rosyjskim i ukrainskim, formy arabskie) — wiersze maja odzwierciedlac TEN podzial, nie osoby. ')
+      +'Maksymalnie 8 wierszy na zakladke; w arabskim pomin liczbe podwojna. '
+      +'W polu "axis" KAZDEJ zakladki napisz po polsku 2-3 slowami, co rozroznia jej wiersze (np. "osoby", "rodzaj", "rejestr"). '
+      +(TRANSLIT[code]?'Pole "form" = zapis w PISMIE ORYGINALNYM, pole "rom" = ta sama forma w transliteracji lacinskiej. ':'')
       +'Pole "note" to JEDNO krotkie zdanie po polsku: kiedy sie tego uzywa. '
       +'Pole "tr" ma byc BARDZO krotkie — same slowo lub dwa, bez wariantow rodzajowych w nawiasach. '
       +'Nie dodawaj zadnego tekstu poza JSON-em. '
       +'Zwroc WYLACZNIE poprawny JSON bez backtickow: '
       +'{"is_verb":true,"base":"forma podstawowa","axis":"co rozroznia wiersze, 2-3 slowa po polsku",'
-      +'"tabs":[{"id":"id z listy","note":"jedno zdanie","rows":[{"label":"etykieta","form":"forma","tr":"tlumaczenie na polski"}]}]}';
+      +'"tabs":[{"id":"id z listy","axis":"co rozroznia wiersze tej zakladki","note":"jedno zdanie",'
+      +'"rows":[{"label":"etykieta","form":"forma"'+(TRANSLIT[code]?',"rom":"transliteracja"':'')+',"tr":"tlumaczenie na polski"}]}]}';
 
     var raw='';
     try{
@@ -23281,7 +23382,10 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
 
     // Zakladki: kanoniczne nazwy, przyciete do poziomu ucznia, w stalej kolejnosci.
     var byId={}; (data.tabs||[]).forEach(function(t){ if(t&&t.id) byId[t.id]=t; });
-    var vis=visibleTenses().filter(function(t){ return byId[t.id]&&(byId[t.id].rows||[]).length; });
+    // Arkusz odmiany to powierzchnia REFERENCYJNA, nie cwiczeniowa: nie jest
+    // testowana, nie karmi SM-2, otwiera sie swiadomym gestem. Bramkowanie go
+    // poziomem nic nie dawalo pedagogicznie, a dawalo „wloski ma tylko Presente".
+    var vis=tenseSet().filter(function(t){ return byId[t.id]&&(byId[t.id].rows||[]).length; });
     if(!vis.length){
       vis=tenseSet().filter(function(t){ return byId[t.id]; }).slice(0,1);
       if(!vis.length){ s.innerHTML=head+'<div class="ecj-msg">Brak form dla tego słowa.</div>'; return; }
@@ -23298,6 +23402,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       return '<div class="ecj-row" onclick="eylConjSay(\''+f+'\')">'
         +'<div class="ecj-lab">'+esc2(r.label)+'</div>'
         +'<div style="flex:1;min-width:0"><div class="ecj-form">'+esc2(r.form)+'</div>'
+        +(r.rom?('<div class="ecj-rom">'+esc2(r.rom)+'</div>'):'')
         +(r.tr?('<div class="ecj-tr">'+esc2(r.tr)+'</div>'):'')+'</div></div>';
     }).join('');
 
@@ -23305,6 +23410,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       +'<div class="ecj-tabs">'+tabs+'</div>'
       +'<div class="ecj-body">'
       +(meta.nat?('<div class="ecj-native">'+esc2(meta.nat)+'</div>'):'')
+      +((t.axis||data.axis)?('<div class="ecj-axis">Wiersze: '+esc2(t.axis||data.axis)+'</div>'):'')
       +(t.note?('<div class="ecj-note">'+esc2(t.note)+'</div>'):'')
       +(rows||'<div class="ecj-msg">Brak form.</div>')
       +'<div class="ecj-foot">Kliknij formę, żeby usłyszeć wymowę.</div>'
