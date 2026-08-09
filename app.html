@@ -757,7 +757,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
     </div>
     <div style="padding:8px 16px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line)">
       <select id="alex-lang" onchange="alexLangChange()" style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--line2);font-size:12.5px;background:var(--paper);color:var(--navy)">
-        <option value="en">🇬🇧 Angielski</option><option value="es">🇪🇸 Hiszpański</option><option value="de">🇩🇪 Niemiecki</option><option value="fr">🇫🇷 Francuski</option><option value="it">🇮🇹 Włoski</option><option value="nl">🇳🇱 Niderlandzki</option><option value="pt">🇵🇹 Portugalski</option><option value="no">🇳🇴 Norweski</option><option value="ru">🇷🇺 Rosyjski</option><option value="uk">🇺🇦 Ukraiński</option><option value="ar">🇸🇦 Arabski</option><option value="jp">🇯🇵 Japoński</option><option value="zh">🇨🇳 Chiński</option><option value="ko">🇰🇷 Koreański</option>
+        <option value="en">Angielski</option><option value="es">Hiszpański</option><option value="de">Niemiecki</option><option value="fr">Francuski</option><option value="it">Włoski</option><option value="nl">Niderlandzki</option><option value="pt">Portugalski</option><option value="no">Norweski</option><option value="ru">Rosyjski</option><option value="uk">Ukraiński</option><option value="ar">Arabski</option><option value="jp">Japoński</option><option value="zh">Chiński</option><option value="ko">Koreański</option>
       </select>
       <select id="alex-level" onchange="alexLevelChange()" style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--line2);font-size:12.5px;background:var(--paper);color:var(--navy)">
         <option value="A1">A1</option><option value="A2">A2</option><option value="B1" selected>B1</option><option value="B2">B2</option><option value="C1">C1</option><option value="C2">C2</option>
@@ -1557,7 +1557,7 @@ function lexWfCue(ex, items){
   return '';
 }
 function lexTtsCode(code){ return lexLangInfo(code).tts; }   // BCP-47 dla Web Speech
-function lexLangFlag(code){ return lexLangInfo(code).flag; }
+function lexLangFlag(code){ return window.eylFlagSvg?window.eylFlagSvg(code,20):''; }   // SVG, nie emoji — Windows nie ma glifow dla regional indicators
 function lang(){ return _lexLang; }
 
 function lexSel(el,grp){ document.querySelectorAll(grp).forEach(o=>o.classList.remove('sel')); el.classList.add('sel'); }
@@ -2265,12 +2265,28 @@ function lexParseJSON(raw){
      fleksyjne ('ísimo', 'erai') przestają więc trafiać w ogóle — i dobrze,
      bo jako podciągi były najgroźniejsze. */
   var _sieveRe={};
+  /* Granica slowa nakladana WARUNKOWO — tylko po tej stronie wykladnika,
+     ktora konczy sie znakiem alfanumerycznym. Wykladnik zaczynajacy sie od
+     interpunkcji (", das") nie ma przed soba granicy, bo poprzedza go litera
+     ("Zeit, das"); wymuszenie jej po obu stronach kasowalo poprawne trafienia.
+     Granica NA KONCU jest natomiast konieczna takze dla wykladnikow
+     wielowyrazowych: bez niej ", das" (zdanie wzgledne) lapie ", dass"
+     (zdanie dopelnieniowe), a "voy a" lapie "voy al". Kazde takie trafienie
+     wycina z porcji cwiczenie, ktore bylo poprawne. */
+  var _AN=/[\p{L}\p{N}]/u;
+  function _alnum(ch){ try{ return _AN.test(ch); }catch(e){ return /[a-zà-ÿ0-9]/i.test(ch); } }
   function _wordRe(e){
     if(_sieveRe[e]!==undefined) return _sieveRe[e];
     var esc=e.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    var pre=_alnum(e.charAt(0))?'(^|[^\\p{L}\\p{N}])':'';
+    var post=_alnum(e.charAt(e.length-1))?'([^\\p{L}\\p{N}]|$)':'';
     var r=null;
-    try{ r=new RegExp('(^|[^\\p{L}\\p{N}])'+esc+'([^\\p{L}\\p{N}]|$)','u'); }
-    catch(err){ try{ r=new RegExp('(^|[^a-zà-ÿ0-9])'+esc+'([^a-zà-ÿ0-9]|$)'); }catch(e2){ r=null; } }
+    try{ r=new RegExp(pre+esc+post,'u'); }
+    catch(err){
+      var pre2=/[a-zà-ÿ0-9]/i.test(e.charAt(0))?'(^|[^a-zà-ÿ0-9])':'';
+      var post2=/[a-zà-ÿ0-9]/i.test(e.charAt(e.length-1))?'([^a-zà-ÿ0-9]|$)':'';
+      try{ r=new RegExp(pre2+esc+post2); }catch(e2){ r=null; }
+    }
     _sieveRe[e]=r; return r;
   }
   function sieveHit(ex,point){
@@ -2282,8 +2298,9 @@ function lexParseJSON(raw){
     var t=exText(ex);
     for(var i=0;i<exps.length;i++){
       var e=exps[i];
-      if(e.indexOf(' ')>0){ if(e.length>=5 && t.indexOf(e)>=0) return true; continue; }
-      if(e.length<6) continue;
+      /* Prog dlugosci zostaje rozny (wielowyrazowe >=5, pojedyncze >=6), ale
+         dopasowanie idzie juz przez te sama granice warunkowa. */
+      if(e.length < (e.indexOf(' ')>0 ? 5 : 6)) continue;
       var r=_wordRe(e);
       if(r ? r.test(t) : (t.indexOf(e)>=0)) return true;
     }
@@ -2485,8 +2502,7 @@ function lexParseJSON(raw){
       [].concat(p.exponents||[]).forEach(function(e){
         e=String(e==null?'':e).trim().toLowerCase();
         if(!e || e.length<=best) return;
-        if(e.indexOf(' ')>0){ if(e.length>=5 && t.indexOf(e)>=0){ hit=p.id; best=e.length; } return; }
-        if(e.length<6) return;
+        if(e.length < (e.indexOf(' ')>0 ? 5 : 6)) return;
         var r=_wordRe(e);
         if(r ? r.test(t) : (t.indexOf(e)>=0)){ hit=p.id; best=e.length; }
       });
@@ -3929,7 +3945,7 @@ function _pwRenderTransition(card){
   var stage=document.getElementById('pw-stage'); if(!stage){ pwRenderCard(); return; }
   stage.innerHTML='<div onclick="_pwContinue()" style="cursor:pointer;margin:auto;text-align:center;padding:36px 20px">'
     +'<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:700;margin-bottom:12px">Teraz</div>'
-    +(meta.flag?'<div style="font-size:34px;margin-bottom:10px">'+meta.flag+'</div>':'')
+    +((window.eylFlagSvg&&lang&&lang!=='?')?'<div style="margin-bottom:10px;line-height:0">'+window.eylFlagSvg(lang,54)+'</div>':'')
     +'<div class="h2" style="margin-bottom:4px">'+esc(meta.name)+'</div>'
     +'<div class="sub" style="margin-bottom:22px">'+cnt+' '+plural(cnt,'fiszka','fiszki','fiszek')+' do powtórki</div>'
     +'<button class="btn btn-orange" style="width:auto;padding:12px 26px;display:block;margin:0 auto;pointer-events:none">Kontynuuj</button></div>';

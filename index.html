@@ -1649,7 +1649,7 @@ var EYL_LOAD_TXT={
 .lp-lang-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
 .lp-lang{display:flex;align-items:center;gap:12px;padding:15px 16px;background:var(--white);border:1px solid var(--border);border-radius:11px;transition:transform var(--t-base),border-color var(--t-base)}
 .lp-lang:hover{transform:translateY(-2px);border-color:var(--border-2)}
-.lp-lang-flag{font-size:23px;line-height:1}
+.lp-lang-flag{display:inline-flex;align-items:center;line-height:0;width:30px}
 .lp-lang-name{font-size:14px;font-weight:500;color:var(--navy)}
 .lp-lang-meta{font-size:11px;color:var(--text-3);margin-top:2px}
 .lp-levels{display:flex;gap:9px;flex-wrap:wrap;margin-top:26px;align-items:center}
@@ -2071,7 +2071,7 @@ function eylPrefLoad(){
     var _foot=(ctx==='trener')
       ? '<div class="eylc-sfoot"><button class="eylc-learn" onclick="document.getElementById(\'eylc-preview\').remove();lexTrenerStart(\'eyelingo\','+JSON.stringify(String(catId)).replace(/"/g,'&quot;')+','+JSON.stringify(label||'').replace(/"/g,'&quot;')+','+JSON.stringify(code).replace(/"/g,'&quot;')+','+JSON.stringify(level||'').replace(/"/g,'&quot;')+')">Rozpocznij lekcję →</button></div>'
       : '<div class="eylc-sfoot"><button class="eylc-learn" onclick="document.getElementById(\'eylc-preview\').remove();eylOpenCat('+learnArgs+')">Ucz się tej kategorii →</button></div>';
-    ov.innerHTML='<div class="eylc-sheet"><div class="eylc-shead"><div style="min-width:0"><div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_eEsc(label||'Kategoria')+'</div><div style="font-size:12px;color:var(--dim2);margin-top:3px">'+info.flag+' '+_eEsc(info.label)+(level?(' · '+_eEsc(level)):'')+' · podgląd</div></div><button class="eylc-x" onclick="document.getElementById(\'eylc-preview\').remove()">×</button></div><div class="eylc-sbody" id="eylc-pbody"><div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Wczytuję słowa…</div></div>'+_foot+'</div>';
+    ov.innerHTML='<div class="eylc-sheet"><div class="eylc-shead"><div style="min-width:0"><div style="font-family:DM Sans,sans-serif;font-size:17px;font-weight:500;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_eEsc(label||'Kategoria')+'</div><div style="font-size:12px;color:var(--dim2);margin-top:3px">'+(window.eylFlagSvg?window.eylFlagSvg(code,14):'')+' '+_eEsc(info.label)+(level?(' · '+_eEsc(level)):'')+' · podgląd</div></div><button class="eylc-x" onclick="document.getElementById(\'eylc-preview\').remove()">×</button></div><div class="eylc-sbody" id="eylc-pbody"><div style="color:var(--dim2);font-size:13px;padding:18px 0;text-align:center">Wczytuję słowa…</div></div>'+_foot+'</div>';
     document.body.appendChild(ov);
     var body=document.getElementById('eylc-pbody');
     try{
@@ -2109,7 +2109,7 @@ function eylPrefLoad(){
     _pushRecent({lang:code, level:level, catId:String(catId), catLabel:catLabel||'', ts:Date.now()});
     window._trybStudyLang=code;
     window._trybExternalCards=cards;
-    window._trybExternalName=info.flag+' '+info.label+(level?(' · '+level):'')+' · '+(catLabel||'');
+    window._trybExternalName=info.label+(level?(' · '+level):'')+' · '+(catLabel||'');
     window._trybSource='eyelingo';
     if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load();
     if(typeof showPage==='function') showPage('tryb');
@@ -2427,20 +2427,20 @@ function eylPrefLoad(){
       <p class="lp-lead">Od podstawowego A1 po zaawansowany C2. Ponad 56 000 fiszek w katalogu, japoński z romaji, a rosyjski, ukraiński, arabski, chiński i koreański z transliteracją.</p>
     </div>
     <div class="lp-lang-grid lp-reveal">
-      <div class="lp-lang"><span class="lp-lang-flag">🇬🇧</span><div><div class="lp-lang-name">Angielski</div><div class="lp-lang-meta">A1–C2</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇪🇸</span><div><div class="lp-lang-name">Hiszpański</div><div class="lp-lang-meta">A1–C2</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇩🇪</span><div><div class="lp-lang-name">Niemiecki</div><div class="lp-lang-meta">A1–C2</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇫🇷</span><div><div class="lp-lang-name">Francuski</div><div class="lp-lang-meta">A1–C2</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇮🇹</span><div><div class="lp-lang-name">Włoski</div><div class="lp-lang-meta">A1–C2</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇳🇱</span><div><div class="lp-lang-name">Niderlandzki</div><div class="lp-lang-meta">A1–C2</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇵🇹</span><div><div class="lp-lang-name">Portugalski</div><div class="lp-lang-meta">A1–C2</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇳🇴</span><div><div class="lp-lang-name">Norweski</div><div class="lp-lang-meta">A1–C2</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇷🇺</span><div><div class="lp-lang-name">Rosyjski</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇺🇦</span><div><div class="lp-lang-name">Ukraiński</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇸🇦</span><div><div class="lp-lang-name">Arabski</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇯🇵</span><div><div class="lp-lang-name">Japoński</div><div class="lp-lang-meta">A1–C2 · romaji</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇨🇳</span><div><div class="lp-lang-name">Chiński</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
-      <div class="lp-lang"><span class="lp-lang-flag">🇰🇷</span><div><div class="lp-lang-name">Koreański</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="en" data-flag-w="30"></span><div><div class="lp-lang-name">Angielski</div><div class="lp-lang-meta">A1–C2</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="es" data-flag-w="30"></span><div><div class="lp-lang-name">Hiszpański</div><div class="lp-lang-meta">A1–C2</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="de" data-flag-w="30"></span><div><div class="lp-lang-name">Niemiecki</div><div class="lp-lang-meta">A1–C2</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="fr" data-flag-w="30"></span><div><div class="lp-lang-name">Francuski</div><div class="lp-lang-meta">A1–C2</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="it" data-flag-w="30"></span><div><div class="lp-lang-name">Włoski</div><div class="lp-lang-meta">A1–C2</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="nl" data-flag-w="30"></span><div><div class="lp-lang-name">Niderlandzki</div><div class="lp-lang-meta">A1–C2</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="pt" data-flag-w="30"></span><div><div class="lp-lang-name">Portugalski</div><div class="lp-lang-meta">A1–C2</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="no" data-flag-w="30"></span><div><div class="lp-lang-name">Norweski</div><div class="lp-lang-meta">A1–C2</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="ru" data-flag-w="30"></span><div><div class="lp-lang-name">Rosyjski</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="uk" data-flag-w="30"></span><div><div class="lp-lang-name">Ukraiński</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="ar" data-flag-w="30"></span><div><div class="lp-lang-name">Arabski</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="jp" data-flag-w="30"></span><div><div class="lp-lang-name">Japoński</div><div class="lp-lang-meta">A1–C2 · romaji</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="zh" data-flag-w="30"></span><div><div class="lp-lang-name">Chiński</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
+      <div class="lp-lang"><span class="lp-lang-flag" data-flag="ko" data-flag-w="30"></span><div><div class="lp-lang-name">Koreański</div><div class="lp-lang-meta">A1–C2 · transliteracja</div></div></div>
     </div>
     <div class="lp-levels lp-reveal">
       <div class="lp-lv lp-lv--free"><b>A1</b><span>Zawsze darmowy</span></div>
@@ -2603,12 +2603,12 @@ function eylPrefLoad(){
 
   // ambient flashcard cycle
   var cards=[
-    {f:'🇬🇧',l:'Angielski · A2',w:'achievement',t:'osiągnięcie',p:64},
-    {f:'🇪🇸',l:'Hiszpański · B1',w:'desarrollar',t:'rozwijać',p:38},
-    {f:'🇯🇵',l:'Japoński · A2',w:'時間 (jikan)',t:'czas',p:72},
-    {f:'🇩🇪',l:'Niemiecki · B1',w:'die Erfahrung',t:'doświadczenie',p:51},
-    {f:'🇮🇹',l:'Włoski · A2',w:'la riunione',t:'spotkanie',p:45},
-    {f:'🇳🇱',l:'Niderlandzki · A2',w:'vergadering',t:'spotkanie',p:29}
+    {f:'en',l:'Angielski · A2',w:'achievement',t:'osiągnięcie',p:64},
+    {f:'es',l:'Hiszpański · B1',w:'desarrollar',t:'rozwijać',p:38},
+    {f:'jp',l:'Japoński · A2',w:'時間 (jikan)',t:'czas',p:72},
+    {f:'de',l:'Niemiecki · B1',w:'die Erfahrung',t:'doświadczenie',p:51},
+    {f:'it',l:'Włoski · A2',w:'la riunione',t:'spotkanie',p:45},
+    {f:'nl',l:'Niderlandzki · A2',w:'vergadering',t:'spotkanie',p:29}
   ];
   var el=document.getElementById('lpCard'), i=0;
   if(el && !reduce){
@@ -2618,7 +2618,7 @@ function eylPrefLoad(){
       el.classList.add('lp-card--out');
       setTimeout(function(){
         i=(i+1)%cards.length; var c=cards[i];
-        fl.textContent=c.f; lv.textContent=c.l; wo.textContent=c.w; tr.textContent=c.t; pr.style.width=c.p+'%';
+        if(window.eylFlagSvg) fl.innerHTML=window.eylFlagSvg(c.f,30); lv.textContent=c.l; wo.textContent=c.w; tr.textContent=c.t; pr.style.width=c.p+'%';
         el.classList.remove('lp-card--out');
       },420);
     },3400);
@@ -4440,10 +4440,10 @@ function setCard(s){
   const langInfo = (langCode && typeof LEX_LANG_MAP!=='undefined' && LEX_LANG_MAP[langCode])||null;
   const langBadge = isOwn
     ? (langInfo
-        ? `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'${langCode}')" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
+        ? `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'${langCode}')" title="Zmień język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer">${window.eylFlagSvg?window.eylFlagSvg(langCode,13):''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
         : `<span onclick="event.stopPropagation();matSetLangPicker(${s.id},'')" title="Ustaw język zestawu" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(201,106,42,.10);color:var(--orange);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px;cursor:pointer;border:1px dashed rgba(201,106,42,.45)">+ język</span>`)
     : (langInfo
-        ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langInfo.flag||''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
+        ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${window.eylFlagSvg?window.eylFlagSvg(langCode,13):''} ${(langInfo.name||langCode).charAt(0).toUpperCase()+(langInfo.name||langCode).slice(1)}</span>`
         : (langCode ? `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:500;background:rgba(26,35,64,.07);color:var(--navy);padding:2px 7px;border-radius:100px;vertical-align:middle;margin-left:4px">${langCode.toUpperCase()}</span>` : ''));
   const delBtn = (isOwn && isMineTab)
     ? `<span title="Usuń zestaw" onclick="event.stopPropagation();deleteSetConfirm(${s.id})" style="position:absolute;top:8px;right:10px;font-size:16px;line-height:1;color:var(--dim2);cursor:pointer;opacity:.5;transition:.2s;font-weight:500" onmouseover="this.style.opacity=1;this.style.color='#c0392b'" onmouseout="this.style.opacity=.5;this.style.color='var(--dim2)'">&times;</span>`
@@ -4766,12 +4766,12 @@ window.matSetLangApply=async function(setId, code){
   <div style="background:#fff;border:0.5px solid var(--border);border-radius:10px;padding:16px;margin-bottom:32px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
     <select id="tutor-filter-lang" onchange="filterTutors()" style="padding:9px 12px;border-radius:8px;border:0.5px solid var(--border2);font-size:13px;background:var(--paper);color:var(--navy);font-family:DM Sans,sans-serif">
       <option value="">Wszystkie języki</option>
-      <option value="en">🇬🇧 Angielski</option>
-      <option value="es">🇪🇸 Hiszpański</option>
-      <option value="nl">🇳🇱 Holenderski</option>
-      <option value="jp">🇯🇵 Japoński</option>
-      <option value="de">🇩🇪 Niemiecki</option>
-      <option value="fr">🇫🇷 Francuski</option>
+      <option value="en">Angielski</option>
+      <option value="es">Hiszpański</option>
+      <option value="nl">Holenderski</option>
+      <option value="jp">Japoński</option>
+      <option value="de">Niemiecki</option>
+      <option value="fr">Francuski</option>
     </select>
     <select id="tutor-sort" onchange="filterTutors()" style="padding:9px 12px;border-radius:8px;border:0.5px solid var(--border2);font-size:13px;background:var(--paper);color:var(--navy);font-family:DM Sans,sans-serif">
       <option value="rating">Najlepiej oceniani</option>
@@ -4823,12 +4823,12 @@ window.matSetLangApply=async function(setId, code){
       <div>
         <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:8px">Języki nauczania *</label>
         <div style="display:flex;flex-wrap:wrap;gap:6px" id="tutor-langs-wrap">
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="en" class="tutor-lang-cb"> 🇬🇧 EN</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="es" class="tutor-lang-cb"> 🇪🇸 ES</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="nl" class="tutor-lang-cb"> 🇳🇱 NL</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="jp" class="tutor-lang-cb"> 🇯🇵 JP</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="de" class="tutor-lang-cb"> 🇩🇪 DE</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="fr" class="tutor-lang-cb"> 🇫🇷 FR</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="en" class="tutor-lang-cb"> <span data-flag="en" data-flag-w="18" style="display:inline-flex;align-items:center;line-height:0"></span> EN</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="es" class="tutor-lang-cb"> <span data-flag="es" data-flag-w="18" style="display:inline-flex;align-items:center;line-height:0"></span> ES</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="nl" class="tutor-lang-cb"> <span data-flag="nl" data-flag-w="18" style="display:inline-flex;align-items:center;line-height:0"></span> NL</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="jp" class="tutor-lang-cb"> <span data-flag="jp" data-flag-w="18" style="display:inline-flex;align-items:center;line-height:0"></span> JP</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="de" class="tutor-lang-cb"> <span data-flag="de" data-flag-w="18" style="display:inline-flex;align-items:center;line-height:0"></span> DE</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" value="fr" class="tutor-lang-cb"> <span data-flag="fr" data-flag-w="18" style="display:inline-flex;align-items:center;line-height:0"></span> FR</label>
         </div>
       </div>
       <div>
@@ -5226,20 +5226,20 @@ async function initToFixPage(){
         <div style="margin-bottom:14px">
           <label style="font-size:11px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px" for="chat-lang">Język</label>
           <select id="chat-lang" onchange="chatUpdatePersona()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);font-size:13px;background:var(--paper)">
-            <option value="en">🇬🇧 Angielski</option>
-            <option value="es">🇪🇸 Hiszpański</option>
-            <option value="de">🇩🇪 Niemiecki</option>
-            <option value="fr">🇫🇷 Francuski</option>
-            <option value="it">🇮🇹 Włoski</option>
-            <option value="nl">🇳🇱 Niderlandzki</option>
-            <option value="pt">🇵🇹 Portugalski</option>
-            <option value="no">🇳🇴 Norweski</option>
-            <option value="ru">🇷🇺 Rosyjski</option>
-            <option value="uk">🇺🇦 Ukraiński</option>
-            <option value="ar">🇸🇦 Arabski</option>
-            <option value="jp">🇯🇵 Japoński</option>
-            <option value="zh">🇨🇳 Chiński</option>
-            <option value="ko">🇰🇷 Koreański</option>
+            <option value="en">Angielski</option>
+            <option value="es">Hiszpański</option>
+            <option value="de">Niemiecki</option>
+            <option value="fr">Francuski</option>
+            <option value="it">Włoski</option>
+            <option value="nl">Niderlandzki</option>
+            <option value="pt">Portugalski</option>
+            <option value="no">Norweski</option>
+            <option value="ru">Rosyjski</option>
+            <option value="uk">Ukraiński</option>
+            <option value="ar">Arabski</option>
+            <option value="jp">Japoński</option>
+            <option value="zh">Chiński</option>
+            <option value="ko">Koreański</option>
           </select>
         </div>
         <div style="margin-bottom:14px">
@@ -5293,22 +5293,22 @@ async function initToFixPage(){
         <div id="lex-continue-banner" style="display:none;margin-bottom:20px"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="lex-lang-grid">
           <button onclick="lexSelectLanguage('en','angielski')" class="lex-lang-btn" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px;background:#fff;border:2px solid var(--border2);border-radius:16px;cursor:pointer;transition:all .2s font-family:DM Sans,sans-serif" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border2)';this.style.transform='none'">
-            <span style="font-size:32px">🇬🇧</span>
+            <span data-flag="en" data-flag-w="44" style="display:inline-flex;align-items:center;line-height:0"></span>
             <span style="font-size:16px;font-weight:500;color:var(--navy)">Angielski</span>
             <span style="font-size:12px;color:var(--dim2)">English</span>
           </button>
           <button onclick="lexSelectLanguage('es','hiszpański')" class="lex-lang-btn" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px;background:#fff;border:2px solid var(--border2);border-radius:16px;cursor:pointer;transition:all .2s;font-family:DM Sans,sans-serif" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border2)';this.style.transform='none'">
-            <span style="font-size:32px">🇪🇸</span>
+            <span data-flag="es" data-flag-w="44" style="display:inline-flex;align-items:center;line-height:0"></span>
             <span style="font-size:16px;font-weight:500;color:var(--navy)">Hiszpański</span>
             <span style="font-size:12px;color:var(--dim2)">Español</span>
           </button>
           <button onclick="lexSelectLanguage('nl','niderlandzki')" class="lex-lang-btn" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px;background:#fff;border:2px solid var(--border2);border-radius:16px;cursor:pointer;transition:all .2s;font-family:DM Sans,sans-serif" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border2)';this.style.transform='none'">
-            <span style="font-size:32px">🇳🇱</span>
+            <span data-flag="nl" data-flag-w="44" style="display:inline-flex;align-items:center;line-height:0"></span>
             <span style="font-size:16px;font-weight:500;color:var(--navy)">Niderlandzki</span>
             <span style="font-size:12px;color:var(--dim2)">Nederlands</span>
           </button>
           <button onclick="lexSelectLanguage('jp','japoński')" class="lex-lang-btn" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px;background:#fff;border:2px solid var(--border2);border-radius:16px;cursor:pointer;transition:all .2s;font-family:DM Sans,sans-serif" onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border2)';this.style.transform='none'">
-            <span style="font-size:32px">🇯🇵</span>
+            <span data-flag="jp" data-flag-w="44" style="display:inline-flex;align-items:center;line-height:0"></span>
             <span style="font-size:16px;font-weight:500;color:var(--navy)">Japoński</span>
             <span style="font-size:12px;color:var(--dim2)">日本語</span>
           </button>
@@ -5319,7 +5319,7 @@ async function initToFixPage(){
     <!-- ── ONBOARDING (goal + style + duration) ── -->
     <div id="lex-onboarding" style="display:none;padding:0 24px">
       <div style="max-width:520px;margin:0 auto;padding:32px 0;text-align:center">
-        <div id="lex-ob-lang-flag" style="font-size:40px;margin-bottom:12px">🇬🇧</div>
+        <div id="lex-ob-lang-flag" data-flag="en" data-flag-w="56" style="margin-bottom:12px;line-height:0;display:flex;justify-content:center"></div>
         <h3 style="font-family:DM Sans,sans-serif;font-size:22px;font-weight:500;color:var(--navy);margin-bottom:6px" id="lex-ob-title">Angielski</h3>
         <p style="font-size:14px;color:var(--dim);margin-bottom:28px" id="lex-ob-sub">Powiedz mi o sobie — dostosuję lekcje do Ciebie</p>
         <div style="text-align:left;display:flex;flex-direction:column;gap:16px">
@@ -5415,7 +5415,7 @@ async function initToFixPage(){
           </div>
           <!-- Sentence translation panel -->
           <div id="lex-sentence-tr" style="display:none;margin-top:10px;padding:10px 14px;background:var(--paper);border-radius:10px;border-left:3px solid var(--orange);font-size:13px;color:var(--dim);line-height:1.6">
-            <div style="font-size:10px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">🇵🇱 Tłumaczenie zdania</div>
+            <div style="font-size:10px;font-weight:500;color:var(--dim2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px"><span data-flag="pl" data-flag-w="13" style="display:inline-flex;align-items:center;line-height:0;vertical-align:-2px"></span> Tłumaczenie zdania</div>
             <div id="lex-sentence-tr-text"></div>
           </div>
         </div>
@@ -6030,7 +6030,7 @@ function strefaSelectLang(code,label,flag,mode){
   // Show levels in center
   var center=document.getElementById('strefa-center-content');
   if(!center) return;
-  setBreadcrumb(flag+' '+label);
+  setBreadcrumb(label);   // textContent — flaga renderowalaby sie jako tekst
   var wrap=document.createElement('div');
   var back=document.createElement('button');
   back.style.cssText='background:transparent;border:none;font-size:13px;color:var(--dim2);cursor:pointer;padding:0;margin-bottom:16px;display:block';
@@ -8304,7 +8304,7 @@ function _trybRenderTransition(card, reRender){
   ov.style.cssText='position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:var(--paper,#f8f7f4);animation:lexFadeIn .2s ease';
   ov.innerHTML='<div style="text-align:center;padding:40px 24px;max-width:420px">'
     +'<div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2);font-weight:600;margin-bottom:14px">Teraz</div>'
-    +(meta.flag?'<div style="font-size:34px;margin-bottom:10px">'+meta.flag+'</div>':'')
+    +((window.eylFlagSvg&&lang&&lang!=='?')?'<div style="margin-bottom:10px;line-height:0">'+window.eylFlagSvg(lang,54)+'</div>':'')
     +'<div style="font-size:26px;font-weight:600;color:var(--navy);margin-bottom:6px">'+meta.name+'</div>'
     +'<div style="font-size:14px;color:var(--dim2);margin-bottom:26px">'+cnt+' '+plWord(cnt,'fiszka','fiszki','fiszek')+' do powtórki</div>'
     +'<button id="tryb-lang-cont" style="border:none;border-radius:100px;padding:13px 30px;font-size:14px;font-weight:600;cursor:pointer;background:var(--orange);color:#fff;font-family:DM Sans,sans-serif">Kontynuuj</button>'
@@ -10180,7 +10180,7 @@ async function showTrybEyelingoSets(){
                   if(cards && cards.length){
                     window._trybStudyLang = lang.code || '';
                     _trybExternalCards = cards.map(function(c){ return {word: c.word, translation: c.translation, lang: (lang.code||'')}; });
-                    _trybExternalName = lang.flag + ' ' + lang.label + ' ' + lvl + ' · ' + (cat.label||cat.code);
+                    _trybExternalName = lang.label + ' ' + lvl + ' · ' + (cat.label||cat.code);
                     picker.style.display = 'none';
                     showTrybView('lobby');
                     startSession('set_external');
@@ -10797,12 +10797,12 @@ window.loadVoiceRecordings = async function loadVoiceRecordings(){
     filterBar.style.cssText='display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap';
     filterBar.id='voices-lang-filter';
     var langs=[
-      {code:'en',label:'🇬🇧 Angielski'},
-      {code:'es',label:'🇪🇸 Hiszpański'},
-      {code:'nl',label:'🇳🇱 Holenderski'},
-      {code:'jp',label:'🇯🇵 Japoński'},
-      {code:'de',label:'🇩🇪 Niemiecki'},
-      {code:'fr',label:'🇫🇷 Francuski'}
+      {code:'en',label:'Angielski'},
+      {code:'es',label:'Hiszpański'},
+      {code:'nl',label:'Holenderski'},
+      {code:'jp',label:'Japoński'},
+      {code:'de',label:'Niemiecki'},
+      {code:'fr',label:'Francuski'}
     ];
     langs.forEach(function(l){
       var btn=document.createElement('button');
@@ -10942,8 +10942,8 @@ async function initTeacher(){
   el.dataset.inited='1';
   // Show welcome
   var lang=window._strefaLang||'en';
-  var teachers={en:'Alex 🇬🇧',es:'María 🇪🇸',nl:'Lars 🇳🇱',jp:'Yuki 🇯🇵',de:'Klaus 🇩🇪',fr:'Claire 🇫🇷'};
-  var teacher=teachers[lang]||'Alex 🇬🇧';
+  var teachers={en:'Alex',es:'María',nl:'Lars',jp:'Yuki',de:'Klaus',fr:'Claire'};
+  var teacher=teachers[lang]||'Alex';
   appendTeacherMsg('assistant','Cześć! Jestem '+teacher+', Twój nauczyciel. Porozmawiajmy! O czym chcesz dziś porozmawiać?');
   window._teacherHistory=[{role:'user',content:'You are '+teacher+', a friendly language teacher. Speak in English (or the target language). Be encouraging. Keep responses short (2-3 sentences max).'}];
 }
@@ -11592,7 +11592,7 @@ function strefaShowEyelingoLangs(){
 }
 
 async function strefaShowEyelingoLevels(langCode, langLabel, flag){
-  setBreadcrumb('Zestawy Eyelingo → ' + flag + ' ' + langLabel);
+  setBreadcrumb('Zestawy Eyelingo → ' + langLabel);
   var LEVELS = ['A1','A2','B1','B2','C1','C2'];
   var wrap = document.createElement('div');
   var backBtn = document.createElement('button');
@@ -11923,7 +11923,7 @@ function teacherLoadConversation(id){
 // Edge Function URLs - klucze są bezpiecznie w Supabase
 
 const LANG_LABELS = {en:'Angielski',es:'Hiszpański',jp:'Japoński',nl:'Niderlandzki'};
-const LANG_FLAGS = {en:'🇬🇧',es:'🇪🇸',jp:'🇯🇵',nl:'🇳🇱'};
+const LANG_FLAGS = {en:'en',es:'es',jp:'jp',nl:'nl'}; // kody dla eylFlagSvg — nigdy emoji (brak glifów na Windows)
 const LEVEL_DESC = {A1:'Początkujący',A2:'Podstawowy',B1:'Średniozaawansowany',B2:'Wyższy średni',C1:'Zaawansowany',C2:'Biegły'};
 
 let _strefaState = 'langs';
@@ -17278,12 +17278,28 @@ async function lexInit(){
      fleksyjne ('ísimo', 'erai') przestają więc trafiać w ogóle — i dobrze,
      bo jako podciągi były najgroźniejsze. */
   var _sieveRe={};
+  /* Granica slowa nakladana WARUNKOWO — tylko po tej stronie wykladnika,
+     ktora konczy sie znakiem alfanumerycznym. Wykladnik zaczynajacy sie od
+     interpunkcji (", das") nie ma przed soba granicy, bo poprzedza go litera
+     ("Zeit, das"); wymuszenie jej po obu stronach kasowalo poprawne trafienia.
+     Granica NA KONCU jest natomiast konieczna takze dla wykladnikow
+     wielowyrazowych: bez niej ", das" (zdanie wzgledne) lapie ", dass"
+     (zdanie dopelnieniowe), a "voy a" lapie "voy al". Kazde takie trafienie
+     wycina z porcji cwiczenie, ktore bylo poprawne. */
+  var _AN=/[\p{L}\p{N}]/u;
+  function _alnum(ch){ try{ return _AN.test(ch); }catch(e){ return /[a-zà-ÿ0-9]/i.test(ch); } }
   function _wordRe(e){
     if(_sieveRe[e]!==undefined) return _sieveRe[e];
     var esc=e.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    var pre=_alnum(e.charAt(0))?'(^|[^\\p{L}\\p{N}])':'';
+    var post=_alnum(e.charAt(e.length-1))?'([^\\p{L}\\p{N}]|$)':'';
     var r=null;
-    try{ r=new RegExp('(^|[^\\p{L}\\p{N}])'+esc+'([^\\p{L}\\p{N}]|$)','u'); }
-    catch(err){ try{ r=new RegExp('(^|[^a-zà-ÿ0-9])'+esc+'([^a-zà-ÿ0-9]|$)'); }catch(e2){ r=null; } }
+    try{ r=new RegExp(pre+esc+post,'u'); }
+    catch(err){
+      var pre2=/[a-zà-ÿ0-9]/i.test(e.charAt(0))?'(^|[^a-zà-ÿ0-9])':'';
+      var post2=/[a-zà-ÿ0-9]/i.test(e.charAt(e.length-1))?'([^a-zà-ÿ0-9]|$)':'';
+      try{ r=new RegExp(pre2+esc+post2); }catch(e2){ r=null; }
+    }
     _sieveRe[e]=r; return r;
   }
   function sieveHit(ex,point){
@@ -17295,8 +17311,9 @@ async function lexInit(){
     var t=exText(ex);
     for(var i=0;i<exps.length;i++){
       var e=exps[i];
-      if(e.indexOf(' ')>0){ if(e.length>=5 && t.indexOf(e)>=0) return true; continue; }
-      if(e.length<6) continue;
+      /* Prog dlugosci zostaje rozny (wielowyrazowe >=5, pojedyncze >=6), ale
+         dopasowanie idzie juz przez te sama granice warunkowa. */
+      if(e.length < (e.indexOf(' ')>0 ? 5 : 6)) continue;
       var r=_wordRe(e);
       if(r ? r.test(t) : (t.indexOf(e)>=0)) return true;
     }
@@ -17498,8 +17515,7 @@ async function lexInit(){
       [].concat(p.exponents||[]).forEach(function(e){
         e=String(e==null?'':e).trim().toLowerCase();
         if(!e || e.length<=best) return;
-        if(e.indexOf(' ')>0){ if(e.length>=5 && t.indexOf(e)>=0){ hit=p.id; best=e.length; } return; }
-        if(e.length<6) return;
+        if(e.length < (e.indexOf(' ')>0 ? 5 : 6)) return;
         var r=_wordRe(e);
         if(r ? r.test(t) : (t.indexOf(e)>=0)){ hit=p.id; best=e.length; }
       });
@@ -21980,6 +21996,8 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
     zh: '<rect width="60" height="40" fill="#DE2910"/><polygon points="11.00,3.50 12.46,7.99 17.18,7.99 13.36,10.77 14.82,15.26 11.00,12.48 7.18,15.26 8.64,10.77 4.82,7.99 9.54,7.99" fill="#FFDE00"/><polygon points="21.79,1.84 21.73,3.51 23.30,4.08 21.69,4.54 21.63,6.21 20.70,4.83 19.09,5.29 20.12,3.97 19.19,2.58 20.76,3.16" fill="#FFDE00"/><polygon points="24.80,6.71 25.45,8.25 27.12,8.10 25.86,9.20 26.51,10.74 25.08,9.88 23.82,10.97 24.19,9.34 22.76,8.48 24.42,8.34" fill="#FFDE00"/><polygon points="24.03,12.92 25.17,14.14 26.68,13.43 25.87,14.89 27.01,16.12 25.37,15.80 24.56,17.26 24.36,15.60 22.72,15.28 24.23,14.57" fill="#FFDE00"/><polygon points="19.24,17.52 20.79,18.15 21.86,16.87 21.75,18.53 23.29,19.16 21.67,19.56 21.56,21.23 20.67,19.81 19.05,20.22 20.12,18.94" fill="#FFDE00"/>',
     ko: '<rect width="60" height="40" fill="#fff"/><circle cx="30" cy="20" r="9.5" fill="#0047A0"/><path d="M20.5 20A9.5 9.5 0 0 1 39.5 20A4.75 4.75 0 0 1 30 20A4.75 4.75 0 0 0 20.5 20Z" fill="#CD2E3A"/><g fill="#000"><rect x="7.5" y="8.2" width="9" height="1.5" transform="rotate(33 12 9)"/><rect x="7.5" y="11.2" width="9" height="1.5" transform="rotate(33 12 12)"/><rect x="7.5" y="14.2" width="9" height="1.5" transform="rotate(33 12 15)"/><rect x="43.5" y="8.2" width="9" height="1.5" transform="rotate(-33 48 9)"/><rect x="43.5" y="11.2" width="9" height="1.5" transform="rotate(-33 48 12)"/><rect x="43.5" y="14.2" width="9" height="1.5" transform="rotate(-33 48 15)"/><rect x="7.5" y="25.3" width="9" height="1.5" transform="rotate(-33 12 26)"/><rect x="7.5" y="28.3" width="9" height="1.5" transform="rotate(-33 12 29)"/><rect x="7.5" y="31.3" width="9" height="1.5" transform="rotate(-33 12 32)"/><rect x="43.5" y="25.3" width="9" height="1.5" transform="rotate(33 48 26)"/><rect x="43.5" y="28.3" width="9" height="1.5" transform="rotate(33 48 29)"/><rect x="43.5" y="31.3" width="9" height="1.5" transform="rotate(33 48 32)"/></g>'
   };
+  /* Polski — potrzebny do etykiet interfejsu (np. „Tlumaczenie zdania”). */
+  F.pl = '<rect width="60" height="20" fill="#fff"/><rect y="20" width="60" height="20" fill="#dc143c"/><rect width="60" height="40" fill="none" stroke="rgba(26,35,64,.16)" stroke-width="1"/>';
   var ALIAS = { ja:'jp', gb:'en', us:'en', uk_:'uk' };
   function norm(c){
     c = String(c||'').toLowerCase().trim().split('-')[0];
@@ -23502,6 +23520,85 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       var first=host.firstChild;
       if(first) host.insertBefore(bar,first); else host.appendChild(bar);
     }catch(e){}
+  };
+})();
+</script>
+
+<script>
+/* ═══ EYELINGO — HYDRACJA FLAG STATYCZNYCH ═══
+   Windows nie ma glifow dla regional indicators — emoji flaga renderuje sie
+   tam jako para liter ("GB", "ES"). Miejsca statyczne w HTML nosza atrybut
+   data-flag="<kod>"; ten modul wypelnia je inline SVG z eylFlagSvg, ktory jest
+   jedynym zrodlem prawdy dla flag w calej aplikacji.
+   Uwaga: <option> nie moze zawierac SVG — tam flagi zostaly usuniete, nie
+   zastapione. */
+(function(){
+  'use strict';
+  var czeka=false;
+  function wypelnij(root){
+    if(typeof window.eylFlagSvg!=='function') return;
+    var els;
+    try{ els=(root||document).querySelectorAll('[data-flag]'); }catch(e){ return; }
+    for(var i=0;i<els.length;i++){
+      var el=els[i];
+      if(el.getAttribute('data-flag-gotowe')==='1') continue;
+      var kod=el.getAttribute('data-flag'); if(!kod) continue;
+      var w=parseInt(el.getAttribute('data-flag-w')||'0',10)||20;
+      try{
+        el.innerHTML=window.eylFlagSvg(kod,w);
+        el.setAttribute('data-flag-gotowe','1');
+      }catch(e){}
+    }
+  }
+  window.eylFlagHydrate=wypelnij;
+  /* Widoki montowane dynamicznie dokladaja wezly po starcie. Obserwator
+     zbiera je jednym przebiegiem na klatke — bez tego kazda mutacja
+     odpalalaby querySelectorAll na calym drzewie. */
+  function zaplanuj(){
+    if(czeka) return; czeka=true;
+    var f=window.requestAnimationFrame||function(cb){ return setTimeout(cb,16); };
+    f(function(){ czeka=false; wypelnij(); });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ wypelnij(); });
+  else wypelnij();
+  try{
+    new MutationObserver(zaplanuj).observe(document.documentElement,{childList:true,subtree:true});
+  }catch(e){}
+})();
+</script>
+
+<script>
+/* ═══ EYELINGO — FLAGI W ONBOARDINGU LEX (nadpisanie) ═══
+   lexSelectLanguage lezy w strefie chronionej rdzenia Lex, wiec zamiast
+   edycji w miejscu opakowujemy funkcje na koncu pliku. Oryginal wykonuje sie
+   bez zmian; korygujemy tylko dwa miejsca, ktore wpisywaly emoji flage przez
+   textContent — na Windows renderowaly sie tam pary liter. */
+(function(){
+  'use strict';
+  if(typeof window.lexSelectLanguage!=='function') return;
+  var oryginal = window.lexSelectLanguage;
+  window.lexSelectLanguage = function(code, name){
+    var wynik = oryginal.apply(this, arguments);
+    try{
+      var flaga = document.getElementById('lex-ob-lang-flag');
+      if(flaga && window.eylFlagSvg){
+        flaga.setAttribute('data-flag', code);
+        flaga.removeAttribute('data-flag-gotowe');
+        flaga.innerHTML = window.eylFlagSvg(code, 56);
+        flaga.setAttribute('data-flag-gotowe','1');
+      }
+      /* Odznaka jezyka: oryginal wpisuje "· <emoji> <nazwa>" przez textContent.
+         Przepisujemy na innerHTML z SVG, zachowujac ten sam uklad. */
+      var odznaka = document.getElementById('lex-lang-badge');
+      var mapa = (typeof LEX_LANG_MAP!=='undefined') ? LEX_LANG_MAP[code] : null;
+      if(odznaka && mapa && window.eylFlagSvg){
+        odznaka.innerHTML = '· <span style="display:inline-flex;align-items:center;'
+          + 'line-height:0;vertical-align:-2px">' + window.eylFlagSvg(code, 14) + '</span> '
+          + String(mapa.native||'').replace(/[&<>]/g, function(c){
+              return c==='&'?'&amp;':(c==='<'?'&lt;':'&gt;'); });
+      }
+    }catch(e){}
+    return wynik;
   };
 })();
 </script>
