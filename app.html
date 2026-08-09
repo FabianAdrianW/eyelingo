@@ -721,6 +721,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
     </div>
     <div class="br-hint" id="br-hint">Dotknij kartę, aby zobaczyć tłumaczenie i ocenić.</div>
     <div style="text-align:center"><button class="eyl-conjbtn" onclick="event.stopPropagation();eylConjOpen(event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h7"/></svg>Odmiana</button></div>
+    <div id="eyl-ex-host"></div>
     <div class="br-grades" id="br-grades">
       <button class="br-g q1" onclick="brGrade(1)">Nie wiedziałem<span class="ph">znów wkrótce</span></button>
       <button class="br-g q3" onclick="brGrade(3)">Wiedziałem<span class="ph">za kilka dni</span></button>
@@ -1186,6 +1187,7 @@ async function markKnownCurrent(){
 var _brGraded=0;
 function brShowGrades(show){
   try{ if(typeof eylConjSync==='function') eylConjSync(!!show); }catch(e){}
+  try{ if(typeof eylExSync==='function') eylExSync(!!show); }catch(e){}
   var g=document.getElementById('br-grades'); if(g) g.style.display=show?'grid':'none';
   var n=document.getElementById('br-note'); if(n) n.style.display=show?'block':'none';
   var h=document.getElementById('br-hint'); if(h) h.textContent=show?'Jak Ci posz\u0142o? Ocena zapisze post\u0119p.':'Dotknij kart\u0119, aby zobaczy\u0107 t\u0142umaczenie i oceni\u0107.';
@@ -1373,6 +1375,8 @@ function restoreFlipMarkup(){
     +'<button class="speak" id="br-speak" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div></div>';
 }
 window.eylConjGetCard=function(){ try{ return CARDS[bi]||null; }catch(e){ return null; } };
+/* Talia dla prefetchu zdan w kontekscie — 2 karty do przodu. */
+window.eylExDeck=function(){ try{ return {cards:CARDS, idx:bi}; }catch(e){ return null; } };
 function renderCard(){
   var c=CARDS[bi]; if(!c) return;
   flipped=false; var fl=document.getElementById('flip'); if(fl) fl.classList.remove('flipped');
@@ -6202,6 +6206,7 @@ async function alexSend(){
 
   .ecj-head{display:flex;align-items:flex-start;gap:10px;padding:15px 18px 12px;border-bottom:.5px solid var(--line,#e8e3da);flex:0 0 auto}
   .ecj-word{font-family:'DM Sans',system-ui,sans-serif;font-size:18px;font-weight:600;color:var(--navy,#1a2340);line-height:1.25}
+  .ecj-baserom{font-size:12.5px;color:var(--dim,#4a5268);margin-top:2px;unicode-bidi:isolate}
   .ecj-sub{font-size:11.5px;color:var(--dim2,#8b93a7);margin-top:3px}
   .ecj-x{background:none;border:none;color:var(--dim2,#8b93a7);font-size:24px;line-height:1;cursor:pointer;padding:0 2px}
 
@@ -6382,6 +6387,9 @@ async function alexSend(){
     return c||'en';
   }
   function lg(){ return lgOf(_open ? (_cur||curCard()) : (curCard()||_cur)); }
+  /* Wspoldzielone z modulem zdania w kontekscie — jeden resolver jezyka
+     na cala aplikacje, zeby nie rozjechal sie drugi raz. */
+  try{ window.eylConjLangOf=lgOf; }catch(e){}
   function tenseSet(){ return TENSES[lg()]||TENSES._default; }
 
   /* Jeden sposob liczenia poziomu dla obu wersji — inaczej web i PWA
@@ -6680,13 +6688,8 @@ async function alexSend(){
       +'Jesli to czasownik, odmien go w DOKLADNIE tych formach, w tej kolejnosci: '+spec+'. '
       +'Dla kazdej pozycji zwroc obiekt z tym samym "id". Nie dodawaj wlasnych czasow, nie pomijaj zadnego. '
       +(rowMode==='form'
-        ? 'Ten jezyk NIE odmienia czasownika przez osoby. Wiersze = warianty formy w obrebie zakladki: '
-          +'twierdzaca, przeczaca, a jesli naturalne takze pytajaca albo inny rejestr — etykieta po polsku. '
-          +'KAZDA zakladka musi miec CO NAJMNIEJ 2 wiersze. '
-          +'Forme podawaj w minimalnej ramce zdaniowej z zaimkiem, zeby bylo widac marker w uzyciu '
-          +'(np. chinski: "我说了" / "我没说" / "你说了吗"), a nie sama forme slownikowa. '
-          +'Zakladka, ktora powtarzalaby wylacznie forme podstawowa, jest bezwartosciowa — '
-          +'pokaz w niej uzycie w zdaniu. '
+        ? 'Ten jezyk NIE odmienia czasownika przez osoby. Wiersze = warianty formy w obrebie zakladki '
+          +'(twierdzaca, przeczaca, a jesli naturalne takze pytajaca albo inny rejestr) — etykieta po polsku. '
         : 'Wiersze = wszystkie osoby liczby pojedynczej i mnogiej, etykieta wiersza w jezyku docelowym (np. "yo", "tu"). '
           +'JESLI w danej zakladce forma zalezy nie od osoby, lecz od rodzaju albo liczby '
           +'(czas przeszly w rosyjskim i ukrainskim, formy arabskie) — wiersze maja odzwierciedlac TEN podzial, nie osoby. ')
@@ -6697,7 +6700,7 @@ async function alexSend(){
       +'Pole "tr" ma byc BARDZO krotkie — same slowo lub dwa, bez wariantow rodzajowych w nawiasach. '
       +'Nie dodawaj zadnego tekstu poza JSON-em. '
       +'Zwroc WYLACZNIE poprawny JSON bez backtickow: '
-      +'{"is_verb":true,"base":"forma podstawowa","axis":"co rozroznia wiersze, 2-3 slowa po polsku",'
+      +'{"is_verb":true,"base":"forma podstawowa"'+(TRANSLIT[code]?',"base_rom":"forma podstawowa w transliteracji lacinskiej"':'')+',"axis":"co rozroznia wiersze, 2-3 slowa po polsku",'
       +'"tabs":[{"id":"id z listy","axis":"co rozroznia wiersze tej zakladki","note":"jedno zdanie",'
       +'"rows":[{"label":"etykieta","form":"forma"'+(TRANSLIT[code]?',"rom":"transliteracja"':'')+',"tr":"tlumaczenie na polski"}]}]}';
 
@@ -6737,6 +6740,7 @@ async function alexSend(){
     var s=document.getElementById('eyl-conj-sheet'); if(!s||!_cur) return;
     var head='<div class="ecj-head"><div style="flex:1;min-width:0">'
       +'<div class="ecj-word">'+esc2((data&&data.base)||_cur.word)+'</div>'
+      +((data&&data.base_rom)?('<div class="ecj-baserom">'+esc2(data.base_rom)+'</div>'):'')
       +'<div class="ecj-sub">'+esc2(_cur.translation||'Odmiana')+'</div>'
       +'</div><button class="ecj-x" onclick="eylConjClose()">&times;</button></div>';
 
@@ -6788,6 +6792,193 @@ async function alexSend(){
       +'<div class="ecj-foot">Kliknij formę, żeby usłyszeć wymowę.</div>'
       +'</div>';
   }
+})();
+</script>
+
+<!-- ═══ EYELINGO — Zdanie w kontekscie przy fiszkach (v1) ═══
+     ZASADY:
+     1. Tylko STRONA ODPOWIEDZI, po odslonieciu. Nigdy na stronie pytania:
+        zdanie zawiera slowo docelowe, wiec uczen odczytalby je zamiast
+        wydobyc z pamieci — ocena SM-2 bylaby zafalszowana.
+     2. Klucz cache = card_key (`slowo|tlumaczenie`) + jezyk. Samo slowo NIE
+        wystarcza: `zamek` to twierdza albo zamek w drzwiach, wloskie `sono`
+        to „jestem" albo „sa". Zdanie zalezy od ZNACZENIA, nie od napisu.
+     3. Cache dwupoziomowy: localStorage + wspolna tabela `example_cache`
+        (jedna generacja na fiszke dla WSZYSTKICH). Brak tabeli => dziala sam
+        cache lokalny, bez bledu.
+     4. Blad nie pokazuje komunikatu — element znika. To dodatek, nie tresc
+        obowiazkowa; halas przy kazdej karcie kosztowalby wiecej niz brak.
+     5. Zdanie jest TYPOWE, nie „najczestsze". Model nie ma danych
+        frekwencyjnych, wiec nie obiecujemy statystyki bez pokrycia.
+     6. Zero pomaranczy — na ekranie fiszki akcent jest juz zajety (Design
+        Bible §RZ-9). Slowo wyroznione sama gruboscia. -->
+<style id="eyl-ex-css">
+  .eyl-ex{display:none;margin:12px auto 0;max-width:520px;width:100%;box-sizing:border-box;
+    background:var(--paper,#faf7f2);border:.5px solid var(--line,#e8e3da);border-radius:12px;
+    padding:11px 14px;text-align:left;font-family:inherit}
+  .eyl-ex.on{display:block}
+  .eyl-ex-lab{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--dim2,#8b93a7);margin-bottom:6px}
+  .eyl-ex-s{font-size:14.5px;color:var(--navy,#1a2340);line-height:1.5;cursor:pointer;unicode-bidi:isolate}
+  .eyl-ex-s b{font-weight:700}
+  .eyl-ex-rom{font-size:12px;color:var(--dim,#4a5268);line-height:1.4;margin-top:2px;unicode-bidi:isolate}
+  .eyl-ex-pl{font-size:12px;color:var(--dim2,#8b93a7);line-height:1.45;margin-top:4px}
+  .eyl-ex-sp{width:16px;height:16px;border:2px solid var(--line2,#e0dad0);border-top-color:var(--dim2,#8b93a7);
+    border-radius:50%;animation:eylExRot .8s linear infinite;margin:6px auto}
+  @keyframes eylExRot{to{transform:rotate(360deg)}}
+</style>
+<script>
+(function(){
+  'use strict';
+  var V=1, _mem={}, _busy={}, _shown=false, _tok=0;
+  var TRANSLIT={jp:1,ko:1,zh:1,ru:1,uk:1,ar:1};
+  var LANG_PL={en:'angielski',es:'hiszpański',de:'niemiecki',fr:'francuski',it:'włoski',
+    nl:'niderlandzki',pt:'portugalski',no:'norweski',ru:'rosyjski',uk:'ukraiński',
+    ar:'arabski',jp:'japoński',ko:'koreański',zh:'chiński'};
+
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function norm(s){ return String(s==null?'':s).trim().toLowerCase(); }
+  function ckOf(c){ return norm(c&&c.word)+'|'+norm(c&&c.translation); }
+  function lgOf(c){ try{ if(typeof window.eylConjLangOf==='function') return window.eylConjLangOf(c)||'en'; }catch(e){} return 'en'; }
+  function lkey(lg,k){ var s='eyl_ex'+V+'_'+lg+'_'+k; try{ return uk(s); }catch(e){ return s; } }
+  function card(){ try{ return (typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null; }catch(e){ return null; } }
+
+  function localGet(lg,k){
+    var m=lg+'\u0001'+k;
+    if(_mem[m]) return _mem[m];
+    try{ var r=localStorage.getItem(lkey(lg,k)); if(r){ _mem[m]=JSON.parse(r); return _mem[m]; } }catch(e){}
+    return null;
+  }
+  function localSet(lg,k,d){ _mem[lg+'\u0001'+k]=d; try{ localStorage.setItem(lkey(lg,k), JSON.stringify(d)); }catch(e){} }
+
+  async function sharedGet(lg,k){
+    try{
+      var r=await db.from('example_cache').select('data')
+        .eq('lang',lg).eq('ckey',k).eq('v',V).maybeSingle();
+      if(r && r.data && r.data.data) return r.data.data;
+    }catch(e){}
+    return null;
+  }
+  async function sharedSet(lg,k,d){
+    try{ await db.from('example_cache').upsert({lang:lg, ckey:k, v:V, data:d},{onConflict:'lang,ckey,v'}); }catch(e){}
+  }
+
+  function box(){
+    var h=document.getElementById('eyl-ex-host'); if(!h) return null;
+    var b=h.querySelector('.eyl-ex');
+    if(!b){ b=document.createElement('div'); b.className='eyl-ex'; h.appendChild(b); }
+    return b;
+  }
+  function hide(b){ if(b){ b.classList.remove('on'); b.innerHTML=''; } }
+
+  window.eylExSay=function(t){ try{ if(typeof window.eylConjSay==='function') window.eylConjSay(t); }catch(e){} };
+
+  function draw(b,d,c){
+    if(!d||!d.s){ hide(b); return; }
+    var s=esc(d.s), w=String((c&&c.word)||'').trim();
+    if(w.length>1){
+      try{ s=s.replace(new RegExp('('+w.replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\$&')+')','i'),'<b>$1</b>'); }catch(e){}
+    }
+    var f=String(d.s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    b.innerHTML='<div class="eyl-ex-lab">Przykład użycia</div>'
+      +'<div class="eyl-ex-s" onclick="event.stopPropagation();eylExSay(\''+f+'\')">'+s+'</div>'
+      +(d.rom?('<div class="eyl-ex-rom">'+esc(d.rom)+'</div>'):'')
+      +(d.pl?('<div class="eyl-ex-pl">'+esc(d.pl)+'</div>'):'');
+    b.classList.add('on');
+  }
+
+  async function ask(c,lg){
+    var L=LANG_PL[lg]||'obcy', T=!!TRANSLIT[lg], B=T?600:400;
+    var w=String(c.word||''), tr=String(c.translation||'');
+    var p='Jestes metodykiem jezyka '+L+'. '
+      +'Ulóż JEDNO krotkie, naturalne zdanie w jezyku '+L+' pokazujace TYPOWE uzycie slowa "'+w+'"'
+      +(tr?(' (po polsku znaczy: "'+tr+'" — to znaczenie jest rozstrzygajace)'):'')+'. '
+      +'Ma to byc zdanie, jakie czlowiek realnie powie w codziennej sytuacji: 4-9 slow, poziom A2-B1, '
+      +'bez metafor i bez zdan encyklopedycznych. '
+      +'Slowo musi wystapic w zdaniu; moze byc w formie odmienionej. '
+      +(T?'Pole "s" = zapis w PISMIE ORYGINALNYM, pole "rom" = transliteracja lacinska CALEGO zdania. ':'')
+      +'Nie dodawaj zadnego tekstu poza JSON-em. Zwroc WYLACZNIE poprawny JSON bez backtickow: '
+      +'{"s":"zdanie"'+(T?',"rom":"transliteracja"':'')+',"pl":"tlumaczenie zdania na polski"}';
+    var raw='';
+    try{
+      if(typeof lexProxy==='function'){ raw=await lexProxy(p,B); }
+      else{
+        var tok=''; try{ var ss=(await db.auth.getSession()).data.session; tok=ss?ss.access_token:''; }catch(e){}
+        var res=await fetch(AI_PROXY_URL,{method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
+          body:JSON.stringify({kind:'lex',messages:[{role:'user',content:p}],max_tokens:B})});
+        var j=await res.json();
+        raw=(typeof extractAIText==='function'?extractAIText(j):'')||'';
+      }
+    }catch(e){ return null; }
+    var t=String(raw||'').replace(/```json|```/g,'').trim();
+    var a=t.indexOf('{'), z=t.lastIndexOf('}');
+    if(a>=0&&z>a){ try{ var o=JSON.parse(t.slice(a,z+1)); if(o&&o.s) return o; }catch(e){} }
+    return null;
+  }
+
+  function ensure(c,lg,k,done,tries){
+    tries=tries||0;
+    var d=localGet(lg,k);
+    if(d){ if(done) done(d); return; }
+    var m=lg+'\u0001'+k;
+    if(_busy[m]){                       // ktos juz generuje to samo — poczekaj
+      if(tries<5) setTimeout(function(){ ensure(c,lg,k,done,tries+1); },800);
+      else if(done) done(null);
+      return;
+    }
+    _busy[m]=1;
+    (async function(){
+      var r=null;
+      try{
+        r=await sharedGet(lg,k);
+        if(!r){ r=await ask(c,lg); if(r) sharedSet(lg,k,r); }
+        if(r) localSet(lg,k,r);
+      }catch(e){}
+      delete _busy[m];
+      if(done) done(r);
+    })();
+  }
+
+  /* Prefetch kolejnych kart — bez tego kazda odslona ma dziure na spinner. */
+  function prefetch(){
+    var dk=null; try{ dk=(typeof window.eylExDeck==='function')?window.eylExDeck():null; }catch(e){}
+    if(!dk||!dk.cards||!dk.cards.length) return;
+    for(var i=1;i<=2;i++){
+      var n=dk.cards[(dk.idx||0)+i];
+      if(!n||!n.word) continue;
+      var lg=lgOf(n), k=ckOf(n);
+      if(localGet(lg,k)) continue;
+      (function(nn,l,kk,delay){ setTimeout(function(){ ensure(nn,l,kk,null); }, delay); })(n,lg,k,450*i);
+    }
+  }
+
+  /* show===true  -> karta odslonieta, pokaz zdanie
+     show===false -> karta zakryta / zmiana karty, schowaj i wyczysc */
+  window.eylExSync=function(show){
+    var b=box(); if(!b) return;
+    if(show===false){ _shown=false; hide(b); return; }
+    if(show===true) _shown=true;
+    if(!_shown){ hide(b); return; }
+    var c=card();
+    if(!c||!c.word){ hide(b); return; }
+    var lg=lgOf(c), k=ckOf(c), my=++_tok;
+    var d=localGet(lg,k);
+    if(d){ draw(b,d,c); prefetch(); return; }
+    b.innerHTML='<div class="eyl-ex-sp"></div>'; b.classList.add('on');
+    ensure(c,lg,k,function(dd){
+      if(my!==_tok) return;            // uzytkownik poszedl dalej — nie nadpisuj
+      draw(b,dd,c); prefetch();
+    });
+  };
+
+  /* Diagnostyka: eylExDiag() -> co modul widzi dla biezacej karty. */
+  window.eylExDiag=function(){
+    var c=card(); if(!c) return console.log('brak karty');
+    var lg=lgOf(c), k=ckOf(c);
+    var out={jezyk:lg, card_key:k, klucz_lokalny:lkey(lg,k), w_cache:!!localGet(lg,k)};
+    console.log(out); return out;
+  };
 })();
 </script>
 
