@@ -1101,11 +1101,12 @@ function homeRefresh(){ try{ lexCheckResume(); }catch(e){} try{ renderContinue()
 /* ═══════════════ Status zestawu + nawigacja kategorii + „Już znam" ═══════════════ */
 var curSetCards=[], _setCardsCache={};
 async function loadCurSetCards(){
-  if(curSetKind==='eyelingo'){ curSetCards=(_eylCards||[]).map(function(c){return {word:c.word||'',translation:c.translation||'',romaji:(c.romaji||''),flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null)};}); return curSetCards; }
+  if(curSetKind==='eyelingo'){ var _lg0=(curSetLangSrc||_eylNormLang(curSetLang)||''); curSetCards=(_eylCards||[]).map(function(c){return {word:c.word||'',translation:c.translation||'',romaji:(c.romaji||''),lang:(c.lang||_lg0),flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null)};}); return curSetCards; }
   if(_setCardsCache[curSetId]){ curSetCards=_setCardsCache[curSetId]; return curSetCards; }
   try{
     var rs=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',curSetId).order('sort_order',{ascending:true});
-    curSetCards=((rs.data)||[]).filter(function(c){return c.word||c.translation;}).map(function(c){return {word:c.word||'',translation:c.translation||'',flashcard_id:null};});
+    var _lg1=(curSetLangSrc||_eylNormLang(curSetLang)||'');
+    curSetCards=((rs.data)||[]).filter(function(c){return c.word||c.translation;}).map(function(c){return {word:c.word||'',translation:c.translation||'',lang:_lg1,flashcard_id:null};});
     _setCardsCache[curSetId]=curSetCards;
   }catch(e){ curSetCards=[]; }
   return curSetCards;
@@ -1362,7 +1363,11 @@ async function openBrowse(){
     var data;
     if(curSetKind==='eyelingo'){ data=(_eylCards||[]).map(function(c){return {word:c.word,translation:c.translation,romaji:(c.romaji||''),flashcard_id:(c.flashcard_id!=null?c.flashcard_id:null)};}); }
     else { var rs=await db.from('user_set_cards').select('word,translation,sort_order').eq('set_id',curSetId).order('sort_order',{ascending:true}); if(rs.error) throw rs.error; data=rs.data; }
-    CARDS=(data||[]).filter(function(c){return c.word||c.translation;});
+    /* Karta MUSI niesc swoj jezyk. Bez tego resolver (lgOf) nie ma zrodla
+       prawdy i dla pisma han zgaduje miedzy japonskim a chinskim. */
+    var _setLg=(curSetLangSrc||_eylNormLang(curSetLang)||'');
+    CARDS=(data||[]).filter(function(c){return c.word||c.translation;})
+      .map(function(c){ if(!c.lang && _setLg) c.lang=_setLg; return c; });
     if(!CARDS.length){ stage.innerHTML='<div class="empty" style="margin:auto"><div class="h2">Pusty zestaw</div><div class="sub">Ten zestaw nie ma jeszcze fiszek.</div></div>'; document.getElementById('br-count').textContent=''; return; }
     bi=0; _brGraded=0; brShowGrades(false); restoreFlipMarkup(); renderCard();
   }catch(e){ stage.innerHTML='<div class="empty" style="margin:auto"><div class="h2">Nie udało się wczytać</div><div class="sub">Spróbuj ponownie za chwilę.</div></div>'; }
@@ -6391,14 +6396,34 @@ async function alexSend(){
   function curCard(){
     try{ return (typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null; }catch(e){ return null; }
   }
-  function lgOf(card){
+  /* Kontekst = jezyk, o ktorym aplikacja WIE (zestaw, sesja nauki, Lex).
+     Kolejnosc od najblizszego zrodla do najdalszego. */
+  function _ctxLang(){
     var c='';
-    try{ if(typeof _eylTrueLang==='function' && card && (card.word||card.lang)) c=_eylTrueLang(card)||''; }catch(e){}
-    if(!c) c=_cnorm(card&&card.lang);
-    if(!c){ try{ c=_cnorm(window._trybStudyLang); }catch(e){} }
-    if(!c){ try{ c=_cnorm(window._trybLang); }catch(e){} }
-    if(!c){ try{ if(typeof curSetLang!=='undefined'&&curSetLang) c=_cnorm(curSetLang); }catch(e){} }
-    if(!c){ try{ c=_cnorm(window._lexLang); }catch(e){} }
+    try{ if(!c) c=_cnorm(window._trybStudyLang); }catch(e){}
+    try{ if(!c) c=_cnorm(window._trybLang); }catch(e){}
+    try{ if(!c && typeof curSetLangSrc!=='undefined' && curSetLangSrc) c=_cnorm(curSetLangSrc); }catch(e){}
+    try{ if(!c && typeof curSetLang!=='undefined' && curSetLang) c=_cnorm(curSetLang); }catch(e){}
+    try{ if(!c) c=_cnorm(window._lexLang); }catch(e){}
+    return c;
+  }
+  /* UWAGA (regresja 2026-08): kanji i hanzi to te same punkty kodowe Unicode,
+     wiec analiza pisma NIE ROZROZNI japonskiego od chinskiego dla slowa
+     zapisanego samym kanji (山, 水, 日, 本). Wczesniej _eylTrueLang bylo pytane
+     PIERWSZE i — nie majac `lang` na karcie z user_set_cards — zgadywalo 'zh'.
+     Skutek: japonska fiszka dostawala chinskie zdanie w kontekscie i chinski
+     glos TTS. Teraz znany jezyk idzie do _eylTrueLang jako `stored`, a pismo
+     sluzy juz tylko do KOREKTY bledow (kana/hangul/cyrylica/arabski w zlym
+     zestawie), nie do zgadywania w miejsce wiedzy. */
+  function lgOf(card){
+    var stored=_cnorm(card&&card.lang);
+    var base=stored||_ctxLang();
+    var txt=(card&&(card.word||card.front))||'';
+    var c='';
+    try{
+      if(typeof _eylTrueLang==='function' && (txt||base)) c=_eylTrueLang({word:txt, lang:base})||'';
+    }catch(e){}
+    if(!c) c=base;
     return c||'en';
   }
   function lg(){ return lgOf(_open ? (_cur||curCard()) : (curCard()||_cur)); }

@@ -23041,14 +23041,34 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   function curCard(){
     try{ return (typeof window.eylConjGetCard==='function')?window.eylConjGetCard():null; }catch(e){ return null; }
   }
-  function lgOf(card){
+  /* Kontekst = jezyk, o ktorym aplikacja WIE (zestaw, sesja nauki, Lex).
+     Kolejnosc od najblizszego zrodla do najdalszego. */
+  function _ctxLang(){
     var c='';
-    try{ if(typeof _eylTrueLang==='function' && card && (card.word||card.lang)) c=_eylTrueLang(card)||''; }catch(e){}
-    if(!c) c=_cnorm(card&&card.lang);
-    if(!c){ try{ c=_cnorm(window._trybStudyLang); }catch(e){} }
-    if(!c){ try{ c=_cnorm(window._trybLang); }catch(e){} }
-    if(!c){ try{ if(typeof curSetLang!=='undefined'&&curSetLang) c=_cnorm(curSetLang); }catch(e){} }
-    if(!c){ try{ c=_cnorm(window._lexLang); }catch(e){} }
+    try{ if(!c) c=_cnorm(window._trybStudyLang); }catch(e){}
+    try{ if(!c) c=_cnorm(window._trybLang); }catch(e){}
+    try{ if(!c && typeof curSetLangSrc!=='undefined' && curSetLangSrc) c=_cnorm(curSetLangSrc); }catch(e){}
+    try{ if(!c && typeof curSetLang!=='undefined' && curSetLang) c=_cnorm(curSetLang); }catch(e){}
+    try{ if(!c) c=_cnorm(window._lexLang); }catch(e){}
+    return c;
+  }
+  /* UWAGA (regresja 2026-08): kanji i hanzi to te same punkty kodowe Unicode,
+     wiec analiza pisma NIE ROZROZNI japonskiego od chinskiego dla slowa
+     zapisanego samym kanji (山, 水, 日, 本). Wczesniej _eylTrueLang bylo pytane
+     PIERWSZE i — nie majac `lang` na karcie z user_set_cards — zgadywalo 'zh'.
+     Skutek: japonska fiszka dostawala chinskie zdanie w kontekscie i chinski
+     glos TTS. Teraz znany jezyk idzie do _eylTrueLang jako `stored`, a pismo
+     sluzy juz tylko do KOREKTY bledow (kana/hangul/cyrylica/arabski w zlym
+     zestawie), nie do zgadywania w miejsce wiedzy. */
+  function lgOf(card){
+    var stored=_cnorm(card&&card.lang);
+    var base=stored||_ctxLang();
+    var txt=(card&&(card.word||card.front))||'';
+    var c='';
+    try{
+      if(typeof _eylTrueLang==='function' && (txt||base)) c=_eylTrueLang({word:txt, lang:base})||'';
+    }catch(e){}
+    if(!c) c=base;
     return c||'en';
   }
   function lg(){ return lgOf(_open ? (_cur||curCard()) : (curCard()||_cur)); }
