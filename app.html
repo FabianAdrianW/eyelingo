@@ -7394,6 +7394,8 @@ window.eylPagedFetch = async function(makeQuery, opts){
     if(r2 && r2.error) throw r2.error;
     purgeRecent(sid);
     try{ delete _setCardsCache[sid]; }catch(e){}
+    try{ if(typeof window.eylInvalidateLiveSets==='function') window.eylInvalidateLiveSets(); }catch(e){}
+    try{ document.dispatchEvent(new Event('eyl:set-deleted')); }catch(e){}
     try{ await purgeSrs(cards); }catch(e){}
   }
   function after(){
@@ -7470,6 +7472,126 @@ window.eylPagedFetch = async function(makeQuery, opts){
   window.addEventListener('pagehide', function(){ flushAll(); });
 
   document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ try{ mountSetDel(); }catch(e){} }, 1400); });
+})();
+</script>
+
+<!-- ═══ EYELINGO — „Kontynuuj” nigdy nie pokazuje nieistniejącego zestawu ═══
+     OBJAW: zestaw usunięty z „Moich zestawów” wracał jako kafel w „Kontynuuj”
+       i w „Wznów lekcję”.
+     PRZYCZYNA: oba te miejsca czytają z LOGÓW, nie z prawdy o danych.
+       • „Kontynuuj” — lokalny log `eyl_recent2_*` (localStorage). Log jest
+         zapisem HISTORII: „tu byłeś”. Nikt go nie pyta, czy zestaw wciąż
+         istnieje, a usunięcie z drugiego urządzenia w ogóle go nie dotyka.
+       • „Wznów lekcję” — `mobile_lesson_state`; wiersz migawki przetrwał
+         usunięcie zestawu (brak kaskady FK).
+     ZASADA: log mówi, CO było ostatnio; `user_sets` mówi, CO ISTNIEJE. Przy
+       renderze rozstrzyga baza, nie log. Dzięki temu naprawa jest samoleczaca:
+       kasuje też duchy, które powstały wcześniej albo na drugim urządzeniu —
+       bez migracji i bez czyszczenia ręcznego.
+     OSTROŻNOŚĆ: gdy listy żywych zestawów NIE DA SIĘ pobrać (offline, błąd),
+       nie ukrywamy niczego. Brak potwierdzenia ≠ dowód nieistnienia — lepiej
+       pokazać kafel, który nie zadziała, niż schować zestaw, który istnieje.
+     Wycofanie: usun caly blok. -->
+<script id="el-ghost-m">
+(function(){
+  if(window._eylGhostGuard) return; window._eylGhostGuard=true;
+
+  var _live=null, _at=0, _inflight=null;   // _live: {id:1} albo null = nie wiemy
+
+  function liveSets(force){
+    var now=Date.now();
+    if(!force && _live && (now-_at)<30000) return Promise.resolve(_live);
+    if(_inflight) return _inflight;
+    _inflight=(async function(){
+      try{
+        var sess=(await db.auth.getSession()).data.session;
+        if(!sess){ _inflight=null; return _live; }
+        var r=await db.from('user_sets').select('id').eq('user_id',sess.user.id);
+        if(!r || r.error || !r.data){ _inflight=null; return _live; }   /* b\u0142\u0105d -> zostaw stan poprzedni */
+        var m={}; r.data.forEach(function(x){ m[String(x.id)]=1; });
+        _live=m; _at=Date.now();
+      }catch(e){}
+      _inflight=null;
+      return _live;
+    })();
+    return _inflight;
+  }
+  window.eylInvalidateLiveSets=function(){ _live=null; _at=0; };
+
+  /* Wpis dotyczy wlasnego zestawu tylko wtedy, gdy nie jest kategoria Eyelingo. */
+  function isUserSet(kind, id){
+    if(kind==='eyl' || kind==='eyelingo') return false;
+    var sid=String(id==null?'':id);
+    if(!sid || sid.indexOf('eyl:')===0 || sid.indexOf('multi:')===0) return false;
+    return true;
+  }
+  function alive(kind, id){
+    if(!isUserSet(kind,id)) return true;
+    if(!_live) return true;                       /* nie wiemy -> nie ukrywamy */
+    return !!_live[String(id)];
+  }
+
+  /* \u2500\u2500\u2500\u2500\u2500 1. \u201eKontynuuj\u201d (log lokalny) \u2500\u2500\u2500\u2500\u2500 */
+  function pruneRecents(){
+    if(!_live) return false;
+    try{
+      var k=recentsKey(), arr=JSON.parse(localStorage.getItem(k)||'[]')||[];
+      var out=arr.filter(function(x){ return x && alive(x.kind, x.id); });
+      if(out.length===arr.length) return false;
+      localStorage.setItem(k, JSON.stringify(out));
+      return true;
+    }catch(e){ return false; }
+  }
+
+  var _rc=window.renderContinue;
+  if(typeof _rc==='function'){
+    window.renderContinue=function(){
+      pruneRecents();
+      var r=_rc.apply(this, arguments);
+      var self=this;
+      liveSets().then(function(){ if(pruneRecents()) _rc.apply(self, []); });
+      return r;
+    };
+  }
+
+  /* \u2500\u2500\u2500\u2500\u2500 2. \u201eWzn\u00f3w lekcj\u0119\u201d (mobile_lesson_state) \u2500\u2500\u2500\u2500\u2500 */
+  function dropSnapRow(sid){
+    (async function(){
+      try{
+        var sess=(await db.auth.getSession()).data.session; if(!sess) return;
+        await db.from('mobile_lesson_state').delete().eq('user_id',sess.user.id).eq('set_id',sid);
+      }catch(e){}
+    })();
+  }
+  function pruneResume(){
+    var wrap=document.getElementById('lex-resume-wrap'); if(!wrap) return;
+    var snaps=window._lexResumeSnaps||[];
+    if(!snaps.length || !_live) return;
+    var keep=[], dead=[];
+    snaps.forEach(function(s){
+      if(alive(s&&s.kind, s&&s.set_id)) keep.push(s); else dead.push(s);
+    });
+    if(!dead.length) return;
+    dead.forEach(function(s){ dropSnapRow(s.set_id); });
+    window._lexResumeSnaps=keep;
+    window._lexResumeSnap=keep[0]||null;
+    if(!keep.length){ wrap.style.display='none'; wrap.innerHTML=''; return; }
+    try{ lexRenderResumeCarousel(wrap, keep); }catch(e){}
+  }
+
+  var _lcr=window.lexCheckResume;
+  if(typeof _lcr==='function'){
+    window.lexCheckResume=async function(){
+      try{ await liveSets(); }catch(e){}
+      var r=await _lcr.apply(this, arguments);
+      try{ pruneResume(); }catch(e){}
+      return r;
+    };
+  }
+
+  /* Usuniecie zestawu w tej sesji: uniewaznij cache od razu, zeby kolejny
+     render nie czekal 30 s na wygasniecie. */
+  document.addEventListener('eyl:set-deleted', function(){ window.eylInvalidateLiveSets(); });
 })();
 </script>
 </body>

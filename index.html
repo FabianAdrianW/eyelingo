@@ -4273,6 +4273,13 @@ window.deleteSet = async function deleteSet(id){
     // Usuń słowa skasowanego zestawu z powtórek SM-2 — ale TYLKO te, których nie ma w innym zestawie
     // (słowa z lekcji Lexa, nigdy nieprzypisane do zestawu, zostają — "lekcja zbiera").
     try{ await purgeDeletedSetReviews(delCards); }catch(e){}
+    /* Migawka lekcji zyje we WLASNEJ tabeli i nie ma kaskady po set_id.
+       Bez tego usuniety zestaw wracal jako kafel "Kontynuuj"/"Wznow lekcje". */
+    try{
+      var _ms=(await db.auth.getSession()).data.session;
+      if(_ms) await db.from('mobile_lesson_state').delete().eq('user_id',_ms.user.id).eq('set_id',id);
+    }catch(e){}
+    try{ if(typeof window.eylDropResumeFor==='function') window.eylDropResumeFor(id); }catch(e){}
     // Usuń zestaw z „ostatnio przeglądane" (log lokalny per-język, widoczny w Nauczycielu PRO).
     try{ purgeRecentSet('user', id); }catch(e){}
     typeof showToast!=='undefined'&&showToast('Zestaw usunięty','success');
@@ -24047,3 +24054,109 @@ div:has(>.eylc-cat)>.eylc-cat{height:100%;box-sizing:border-box}
 .lexcat-tile .mt{margin-top:auto}
 .lexcat-tile .lexcat-bar{margin-top:8px}
 </style>
+
+<!-- ═══ EYELINGO — „Kontynuuj” / „Wznów lekcję” bez zestawów-duchów ═══
+     Ten sam błąd co w PWA, innym wejściem. Lista materiałów (`lexLoadStudySources`)
+     jest budowana z `user_sets`, więc ta była czysta — ale kafel „Wznów/Kontynuuj”
+     pochodzi z `mobile_lesson_state`, gdzie wiersz migawki przetrwał usunięcie
+     zestawu, oraz z lokalnego cache `lex_resume_portion_*`, który ta migawka
+     zasila. Usunięcie zestawu w apce (albo przed tą poprawką na stronie) zostawiało
+     więc działający z pozoru kafel prowadzący donikąd.
+     ROZWIĄZANIE: jeden punkt kontrolny — `EylSync.lessonPull`, przez który
+     przechodzą WSZYSTKIE migawki, zanim zobaczą je hero, sidebar i Trener AI.
+     Migawka wskazująca na nieistniejący `user_sets.id` jest odrzucana, wiersz
+     w bazie kasowany, a lokalny cache czyszczony.
+     Gdy listy żywych zestawów nie da się pobrać — nie ukrywamy niczego. -->
+<script id="el-ghost-w">
+(function(){
+  if(window._eylGhostGuardW) return; window._eylGhostGuardW=true;
+
+  var _live=null, _at=0, _inflight=null;
+
+  function liveSets(force){
+    var now=Date.now();
+    if(!force && _live && (now-_at)<30000) return Promise.resolve(_live);
+    if(_inflight) return _inflight;
+    _inflight=(async function(){
+      try{
+        var sess=(await db.auth.getSession()).data.session;
+        if(!sess){ _inflight=null; return _live; }
+        var r=await db.from('user_sets').select('id').eq('user_id',sess.user.id);
+        if(!r || r.error || !r.data){ _inflight=null; return _live; }
+        var m={}; r.data.forEach(function(x){ m[String(x.id)]=1; });
+        _live=m; _at=Date.now();
+      }catch(e){}
+      _inflight=null; return _live;
+    })();
+    return _inflight;
+  }
+  window.eylInvalidateLiveSets=function(){ _live=null; _at=0; };
+
+  function isUserSet(sid){
+    sid=String(sid==null?'':sid);
+    if(!sid) return false;
+    if(sid.indexOf('eyl:')===0 || sid.indexOf('multi:')===0) return false;
+    return true;
+  }
+
+  /* Lokalny cache webu (`lex_resume_portion_<kind>_<lang>_<uid>`) jest zasilany
+     przez lessonPull, wiec skasowanie samego wiersza w bazie nie wystarcza \u2014
+     `lexxHasResume` czytaloby ducha dalej z localStorage. */
+  function dropLocal(sid){
+    try{
+      var kill=[];
+      for(var i=0;i<localStorage.length;i++){
+        var k=localStorage.key(i);
+        if(!k || k.indexOf('lex_resume_portion_')!==0) continue;
+        var v=null; try{ v=JSON.parse(localStorage.getItem(k)||'null'); }catch(e){}
+        if(v && String(v._setId)===String(sid)) kill.push(k);
+      }
+      kill.forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+    }catch(e){}
+  }
+  function dropRow(sid){
+    (async function(){
+      try{
+        var sess=(await db.auth.getSession()).data.session; if(!sess) return;
+        await db.from('mobile_lesson_state').delete().eq('user_id',sess.user.id).eq('set_id',sid);
+      }catch(e){}
+    })();
+  }
+  /* Wywolywane takze z deleteSet \u2014 natychmiast, bez czekania na kolejny pull. */
+  window.eylDropResumeFor=function(sid){
+    dropLocal(sid);
+    try{
+      window._eylLessonSnaps=(window._eylLessonSnaps||[]).filter(function(x){ return String(x._setId)!==String(sid); });
+    }catch(e){}
+    window.eylInvalidateLiveSets();
+  };
+
+  function guard(){
+    if(!window.EylSync || !window.EylSync.lessonPull || window.EylSync._ghostWrapped) return false;
+    var _pull=window.EylSync.lessonPull;
+    window.EylSync._ghostWrapped=true;
+    window.EylSync.lessonPull=async function(){
+      var out=await _pull.apply(this, arguments);
+      try{
+        var live=await liveSets();
+        if(!live) return window._eylLessonSnaps||out;
+        var dead=[], keep=[];
+        (window._eylLessonSnaps||[]).forEach(function(st){
+          var sid=(st&&st._setId!=null)?String(st._setId):'';
+          if(!isUserSet(sid) || live[sid]) keep.push(st); else dead.push(sid);
+        });
+        if(dead.length){
+          window._eylLessonSnaps=keep;
+          dead.forEach(function(sid){ dropLocal(sid); dropRow(sid); });
+          return keep;
+        }
+      }catch(e){}
+      return window._eylLessonSnaps||out;
+    };
+    return true;
+  }
+  if(!guard()){
+    var n=0, iv=setInterval(function(){ if(guard() || ++n>40) clearInterval(iv); }, 250);
+  }
+})();
+</script>
