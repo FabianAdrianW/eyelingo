@@ -1957,7 +1957,10 @@ function eylPrefLoad(){
     return '<span class="eylc-cpill" style="'+base+'color:var(--dim2);background:rgba(26,35,64,.05)">Nowe</span>';
   }
   function _bar(a){
-    if(a.total===0) return '';
+    /* Pasek renderujemy ZAWSZE. Gdy go brakowalo, kafel bez fiszek byl o ~13px
+       nizszy od sasiadow i cala siatka "oddychala" przy kazdym przeliczeniu
+       postepu. Pusty material = pasek na zerze, nie brak paska. */
+    if(a.total===0) return '<div style="position:relative;height:6px;background:rgba(26,35,64,.06);border-radius:100px;overflow:hidden;margin-top:7px"></div>';
     var seen=a.pct;                                   // przejrzane = średnia siła (rusza się od 1 oceny)
     var mast=Math.round((a.mastered/a.total)*100);    // opanowane = % w pełni dojrzałych (tylko retrieval)
     return '<div style="position:relative;height:6px;background:rgba(26,35,64,.06);border-radius:100px;overflow:hidden;margin-top:7px">'
@@ -23980,3 +23983,47 @@ window.eylPagedFetch = async function(makeQuery, opts){
   return out;
 };
 </script>
+
+<!-- ═══ EYELINGO — Kafle zestawów i kategorii: niezmienna wielkość ═══
+     OBJAW: kafle raz większe, raz mniejsze — bez powodu widocznego dla oka.
+     TRZY PRZYCZYNY, wszystkie usuwane tutaj:
+       1. Pasek „opanowane” wstrzykiwany PO renderze (lexApplyMastery /
+          [data-mastery]) dokladal ~10–24px wysokosci JUZ PO tym, jak czlowiek
+          zobaczyl liste. Lekarstwo: miejsce na pasek rezerwujemy z gory
+          (min-height), wiec wstrzykniecie niczego nie przesuwa.
+       2. Nazwa bez klamry lamala sie do 2–3 linii i podnosila CALY rzad siatki
+          (grid rozciaga elementy w rzedzie do najwyzszego). Lekarstwo: klamra
+          2 linii + zarezerwowana wysokosc nazwy.
+       3. Część siatek nie miała `grid-auto-rows:1fr`, więc KAZDY rzad miil
+          wlasna wysokosc. Lekarstwo: rowne rzedy we wszystkich siatkach kafli,
+          takze tych budowanych inline (selektor :has).
+     Zasada: wysokosc kafla ma wynikac ze SZKIELETU, nie z tresci ani z tego,
+     co zdazylo sie doladowac. Kafel bez danych ma te sama wysokosc co pelny.
+     Wycofanie: usun ten blok. -->
+<style id="el-tilesize">
+/* ── 1. Rezerwa na pasek opanowania (wstrzykiwany asynchronicznie) ── */
+.lexcat-bar,
+[data-mastery][data-mastery-sm]{min-height:24px}
+[data-mastery]:not([data-mastery-sm]){min-height:26px}
+
+/* ── 2. Nazwa: zawsze dokładnie dwie linie miejsca ── */
+.lexcat-tile .nm{
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;overflow-wrap:anywhere;min-height:2.6em
+}
+.eylc-cat .eylc-cnm{min-height:2.7em}
+.mat-card .mat-card-name{min-height:2.6em}
+
+/* ── 3. Równe rzędy w każdej siatce kafli ── */
+.lexcat-grid,.eylc-grid,.mat-grid{grid-auto-rows:1fr}
+.lexcat-grid>.lexcat-tile,
+.eylc-grid>.eylc-cat,
+.mat-grid>.mat-card{height:100%;box-sizing:border-box}
+/* Siatki kategorii składane inline (bez klasy) — Zestawy Eyelingo i Trener AI. */
+div:has(>.eylc-cat){grid-auto-rows:1fr}
+div:has(>.eylc-cat)>.eylc-cat{height:100%;box-sizing:border-box}
+
+/* ── Stopka zawsze przy dole, treść nigdy nie rozpycha kafla ── */
+.lexcat-tile .mt{margin-top:auto}
+.lexcat-tile .lexcat-bar{margin-top:8px}
+</style>

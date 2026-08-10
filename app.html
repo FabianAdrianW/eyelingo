@@ -1312,7 +1312,7 @@ function openSet(id,name,count,lang){
   curSetKind='set'; curSetId=id; curSetName=name; curSetCount=count; curSetLang=lang||'en'; curSetLangSrc=_eylNormLang(lang);
   var bl=document.getElementById('set-back-label'); if(bl) bl.textContent='Moje zestawy';
   document.getElementById('set-name').textContent=name;
-  document.getElementById('set-meta').textContent=count+' '+plural(count,'fiszka','fiszki','fiszek')+' · '+lexLangFlag(curSetLang)+' '+lexLangInfo(curSetLang).name;
+  document.getElementById('set-meta').innerHTML=count+' '+plural(count,'fiszka','fiszki','fiszek')+' · '+lexLangFlag(curSetLang)+' '+escapeHtml(lexLangInfo(curSetLang).name);
   go('set'); try{ renderSetStatus(); }catch(e){}
 }
 
@@ -1321,7 +1321,7 @@ async function previewSet(id,name,lang){
   var sheet=document.getElementById('set-preview-sheet'), bd=document.getElementById('set-preview-backdrop');
   var list=document.getElementById('set-preview-list'), nm=document.getElementById('set-preview-name');
   var lg=lang||'en', tts=lexTtsCode(lg);
-  if(nm) nm.textContent=(lexLangFlag(lg)+' '+(name||'Zestaw'));
+  if(nm) nm.innerHTML=(lexLangFlag(lg)+' '+escapeHtml(name||'Zestaw'));
   if(list) list.innerHTML=eyelingoSpinner(48);
   if(bd) bd.style.display='block';
   if(sheet) requestAnimationFrame(function(){ sheet.classList.add('open'); });
@@ -1566,7 +1566,7 @@ function lang(){ return _lexLang; }
 
 function lexSel(el,grp){ document.querySelectorAll(grp).forEach(o=>o.classList.remove('sel')); el.classList.add('sel'); }
 function openLexSetup(){
-  document.getElementById('lex-src').textContent=(lexLangFlag(curSetLang)+' '+(curSetName||'Zestaw'));
+  document.getElementById('lex-src').innerHTML=(lexLangFlag(curSetLang)+' '+escapeHtml(curSetName||'Zestaw'));
   var ot=document.getElementById('lex-conduct-target-ot'), od=document.getElementById('lex-conduct-target-od');
   var inf=lexLangInfo(curSetLang), nm=inf.name.charAt(0).toUpperCase()+inf.name.slice(1);
   if(ot) ot.textContent=nm;
@@ -3815,7 +3815,7 @@ async function previewCat(lang,catId,name){
   var sheet=document.getElementById('set-preview-sheet'), bd=document.getElementById('set-preview-backdrop');
   var list=document.getElementById('set-preview-list'), nm=document.getElementById('set-preview-name');
   var lg=lang||'en', tts=lexTtsCode(lg);
-  if(nm) nm.textContent=(lexLangFlag(lg)+' '+(name||'Kategoria'));
+  if(nm) nm.innerHTML=(lexLangFlag(lg)+' '+escapeHtml(name||'Kategoria'));
   if(list) list.innerHTML=eyelingoSpinner(48);
   if(bd) bd.style.display='block';
   if(sheet) requestAnimationFrame(function(){ sheet.classList.add('open'); });
@@ -3852,7 +3852,7 @@ async function eylOpenCat(lang,lvl,catId,catName){
     curSetKind='eyelingo'; curSetId='eyl:'+lang+':'+catId; curSetName=catName; curSetCount=_eylCards.length; curSetLang=lang; curSetLangSrc=_eylNormLang(lang);
     var bl=document.getElementById('set-back-label'); if(bl) bl.textContent='Zestawy Eyelingo';
     document.getElementById('set-name').textContent=catName;
-    document.getElementById('set-meta').textContent=curSetCount+' '+plural(curSetCount,'fiszka','fiszki','fiszek')+' \u00b7 '+eylLangFlag(lang)+' '+eylLangLabel(lang)+(lvl?' \u00b7 '+lvl:'');
+    document.getElementById('set-meta').innerHTML=curSetCount+' '+plural(curSetCount,'fiszka','fiszki','fiszek')+' \u00b7 '+lexLangFlag(lang)+' '+escapeHtml(eylLangLabel(lang))+(lvl?' \u00b7 '+escapeHtml(lvl):'');
     if(b) b.innerHTML=prev;
     go('set'); try{ renderSetStatus(); }catch(e){}
     if(window._brAutoBrowse){ window._brAutoBrowse=false; setTimeout(function(){ try{ openBrowse(); }catch(e){} }, 80); }
@@ -7130,6 +7130,322 @@ window.eylPagedFetch = async function(makeQuery, opts){
   }
   return out;
 };
+</script>
+
+<!-- ═══ EYELINGO — Kafle o stalej wielkosci + usuwanie zestawu (swipe) ═══
+     PROBLEM 1: karty w „Kontynuuj” / „Wznów lekcję” rosly przy dluzszej nazwie.
+       Przyczyna: to elementy flex z `flex:0 0 78%`, ale domyslne `min-width:auto`
+       nie pozwala im zejsc ponizej wlasnej szerokosci min-content. Nazwa ma
+       `white-space:nowrap`, wiec jej min-content = pelna dlugosc tekstu → karta
+       rosla ponad zadane 78%. Lekarstwo: `min-width:0` (nie `overflow`, bo ten
+       juz tam jest i nie wplywa na sizing kontenera blokowego).
+     PROBLEM 2: wiersze listy zmienialy wysokosc, gdy nazwa lamala sie do 2 linii.
+       Lekarstwo: jedna linia + wielokropek w `#mine-list`.
+     FUNKCJA: przesuniecie wiersza w lewo odslania przycisk „Usuń”.
+       Gest NIGDY nie kasuje sam z siebie — kasuje dopiero tapniecie przycisku,
+       a i wtedy przez ~7 s dostepne jest „Cofnij” (odwracalnosc zamiast modala:
+       modale sa odklikiwane odruchowo, cofniecie zostawia kontrole u czlowieka).
+       Sciezka bez gestu (WCAG 2.5.1) — „Usuń zestaw” na ekranie zestawu.
+     REVERT = usun caly blok (od tego komentarza do </script>). -->
+<style id="el-swdel-m">
+  /* ── (B) niezmienna wielkosc kafli ── */
+  .rz-card,.cont-card{min-width:0}
+  .rz-card>*,.cont-card>*{min-width:0}
+  #mine-list .row .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #mine-list .row .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* ── (C) warstwa gestu ── */
+  #mine-list .row{position:relative;overflow:hidden;touch-action:pan-y}
+  .sw-del{position:absolute;top:0;right:0;bottom:0;width:92px;border:none;margin:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    background:var(--error);color:#fff;font-family:inherit;font-size:12px;font-weight:600;
+    cursor:pointer;transform:translateX(100%);will-change:transform}
+  .sw-del:active{background:#8d2626}
+  .sw-del span{line-height:1}
+
+  /* Pasek cofniecia stoi DOKLADNIE tam, gdzie byl wiersz — zmiana zostaje w polu
+     uwagi, nie ucieka do plywajacego toasta na dole ekranu. */
+  .sw-undo{display:flex;align-items:center;gap:12px;background:var(--paper2);
+    border:.5px dashed var(--line2);border-radius:var(--r);padding:15px 16px;
+    margin-bottom:11px;font-size:13px;color:var(--dim)}
+  .sw-undo .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sw-undo .un{flex:0 0 auto;border:none;background:none;font-family:inherit;font-size:13px;
+    font-weight:600;color:var(--navy);text-decoration:underline;text-underline-offset:3px;
+    padding:6px 2px;cursor:pointer}
+  .sw-undo.err{border-style:solid;border-color:var(--error);color:var(--error)}
+  .sw-undo.err .un{color:var(--error)}
+
+  /* Sciezka bez gestu — celowo najcichszy element ekranu zestawu. */
+  .sw-setdel{margin:26px 0 4px}
+  .sw-setdel .lnk{width:100%;background:none;border:none;font-family:inherit;font-size:13px;
+    color:var(--dim2);padding:12px 0;cursor:pointer;text-align:center}
+  .sw-setdel .lnk:active{color:var(--error)}
+  .sw-setdel .q{font-size:13px;color:var(--dim);line-height:1.5;text-align:center;padding:0 4px 12px}
+  .sw-setdel .btns{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .sw-setdel .btns button{font-family:inherit;font-size:14px;font-weight:600;border-radius:var(--r-sm);
+    padding:13px 10px;cursor:pointer;border:1.5px solid var(--line2);background:#fff;color:var(--navy)}
+  .sw-setdel .btns .yes{border-color:var(--error);background:var(--error);color:#fff}
+</style>
+<script id="el-swdel-m-js">
+(function(){
+  if(window._eylSwDel) return; window._eylSwDel=true;
+
+  var W=92, TH=44, CLAIM=12, UNDO_MS=7000;
+  var openR=null, g=null, swallow=0, pending={};
+
+  function esc(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function sidOf(row){
+    try{ var m=(row.getAttribute('onclick')||'').match(/openSet\(\s*'([^']*)'/); return m?m[1]:null; }catch(e){ return null; }
+  }
+  function nameOf(row){ var t=row.querySelector('.body .t'); return t?(t.textContent||'').trim():'Zestaw'; }
+  function rowOf(el){
+    var r=(el&&el.closest)?el.closest('#mine-list .row'):null;
+    return (r && sidOf(r)) ? r : null;                 /* „Nowy zestaw” nie ma onclick w atrybucie */
+  }
+
+  /* ───── rysowanie przesuniecia ───── */
+  function ensureBtn(row){
+    var b=row.querySelector('.sw-del');
+    if(b) return b;
+    b=document.createElement('button');
+    b.type='button'; b.className='sw-del'; b.setAttribute('aria-label','Usu\u0144 zestaw');
+    b.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg><span>Usu\u0144</span>';
+    b.addEventListener('click', function(ev){ ev.stopPropagation(); ev.preventDefault(); askDelete(row); });
+    row.appendChild(b);
+    return b;
+  }
+  function paint(row, dx, anim){
+    var k=row.children;
+    for(var i=0;i<k.length;i++){
+      var el=k[i], isDel=(el.classList && el.classList.contains('sw-del'));
+      el.style.transition = anim ? 'transform .22s cubic-bezier(.22,.61,.36,1)' : 'none';
+      el.style.transform  = 'translateX('+(isDel ? (W+dx) : dx)+'px)';
+    }
+  }
+  function close(row, anim){
+    if(!row) return;
+    paint(row, 0, anim!==false);
+    if(openR===row) openR=null;
+  }
+  function closeOpen(anim){ if(openR) close(openR, anim); }
+  function open(row){
+    if(openR && openR!==row) close(openR, true);
+    ensureBtn(row); paint(row, -W, true); openR=row;
+  }
+
+  /* ───── gest ───── */
+  document.addEventListener('pointerdown', function(e){
+    if(e.pointerType==='mouse' && e.button!==0) return;
+    if(e.target && e.target.closest && e.target.closest('.sw-del')) return;
+    var row=rowOf(e.target);
+    if(!row){ closeOpen(true); return; }
+    g={row:row, x:e.clientX, y:e.clientY, base:(openR===row?-W:0), on:false, pid:e.pointerId};
+  }, true);
+
+  document.addEventListener('pointermove', function(e){
+    if(!g || e.pointerId!==g.pid) return;
+    var dx=e.clientX-g.x, dy=e.clientY-g.y;
+    if(!g.on){
+      if(Math.abs(dy)>Math.abs(dx)) { g=null; return; }        /* palec nalezy do przewijania */
+      if(Math.abs(dx)<CLAIM) return;
+      g.on=true; ensureBtn(g.row);
+      if(openR && openR!==g.row) close(openR, true);
+    }
+    var v=g.base+dx;
+    if(v>0) v=v*0.18;                                          /* gumka w prawo */
+    if(v<-W) v=-W-(-W-v)*0.18;                                 /* gumka w lewo */
+    paint(g.row, v, false);
+  }, true);
+
+  function endGesture(e){
+    if(!g) return;
+    var row=g.row, was=g.on, dx=(e&&typeof e.clientX==='number')?(e.clientX-g.x):0;
+    var v=g.base+dx;
+    g=null;
+    if(!was){ return; }
+    swallow=Date.now();
+    if(v<=-TH) open(row); else close(row, true);
+  }
+  document.addEventListener('pointerup', endGesture, true);
+  document.addEventListener('pointercancel', function(){ if(g){ var r=g.row, was=g.on, b=g.base; g=null; if(was){ swallow=Date.now(); if(b<0) open(r); else close(r,true); } } }, true);
+
+  /* Tapniecie w otwarty wiersz = zamkniecie, nie wejscie w zestaw. */
+  document.addEventListener('click', function(e){
+    if(e.target && e.target.closest && e.target.closest('.sw-del')) return;
+    if(Date.now()-swallow<420){ swallow=0; e.preventDefault(); e.stopPropagation(); return; }
+    /* Konwencja mobilna: gdy cokolwiek jest odsloniete, pierwsze tapniecie ZAMYKA.
+       Bez tego przypadkowe tapniecie w otwarty wiersz wchodziloby w zestaw. */
+    if(openR){ e.preventDefault(); e.stopPropagation(); closeOpen(true); return; }
+  }, true);
+
+  document.addEventListener('scroll', function(){ closeOpen(true); }, true);
+
+  /* ───── usuwanie: okno cofniecia ───── */
+  function askDelete(row){
+    var sid=sidOf(row); if(!sid || pending[sid]) return;
+    close(row, false);
+    var nm=nameOf(row);
+    var strip=document.createElement('div');
+    strip.className='sw-undo'; strip.setAttribute('role','status');
+    strip.innerHTML='<span class="tx">Usuni\u0119to \u201e'+esc(nm)+'\u201d</span><button type="button" class="un">Cofnij</button>';
+    strip.querySelector('.un').addEventListener('click', function(ev){ ev.stopPropagation(); undo(sid); });
+    if(row.parentNode) row.parentNode.insertBefore(strip, row);
+    row.style.display='none';
+    pending[sid]={row:row, strip:strip, name:nm, t:setTimeout(function(){ commit(sid); }, UNDO_MS)};
+    try{ if(navigator.vibrate) navigator.vibrate(8); }catch(e){}
+  }
+  function undo(sid){
+    var p=pending[sid]; if(!p) return;
+    delete pending[sid]; clearTimeout(p.t);
+    if(p.strip && p.strip.parentNode) p.strip.parentNode.removeChild(p.strip);
+    if(p.row) p.row.style.display='';
+  }
+  function commit(sid){
+    var p=pending[sid]; if(!p) return Promise.resolve();
+    delete pending[sid]; clearTimeout(p.t);
+    if(p.strip && p.strip.parentNode) p.strip.parentNode.removeChild(p.strip);
+    return doDelete(sid).then(function(){
+      if(p.row && p.row.parentNode) p.row.parentNode.removeChild(p.row);
+      after();
+    }, function(err){
+      if(p.row) p.row.style.display='';
+      failStrip(p.row, err);
+    });
+  }
+  function flushAll(){ return Promise.all(Object.keys(pending).map(commit)); }
+  function failStrip(row, err){
+    if(!row || !row.parentNode) return;
+    var s=document.createElement('div');
+    s.className='sw-undo err';
+    s.innerHTML='<span class="tx">Nie uda\u0142o si\u0119 usun\u0105\u0107: '+esc((err&&err.message)||err||'b\u0142\u0105d')+'</span>';
+    row.parentNode.insertBefore(s, row);
+    setTimeout(function(){ if(s.parentNode) s.parentNode.removeChild(s); }, 5200);
+  }
+
+  /* ───── usuwanie: baza ───── */
+  function purgeRecent(sid){
+    try{
+      var k=recentsKey(), arr=JSON.parse(localStorage.getItem(k)||'[]')||[];
+      var f=arr.filter(function(x){ return !(x && x.kind!=='eyl' && String(x.id)===String(sid)); });
+      if(f.length!==arr.length) localStorage.setItem(k, JSON.stringify(f));
+    }catch(e){}
+  }
+  /* Powtorki kasujemy TYLKO dla slow, ktorych nie ma juz w zadnym innym zestawie
+     i ktore nie sa fiszkami Eyelingo (flashcard_id != null). Parytet z index.html
+     (purgeDeletedSetReviews). Gdy nie umiemy ustalic, co zostalo — nie ruszamy nic. */
+  function purgeSrs(cards){
+    if(!cards || !cards.length || !UID) return Promise.resolve();
+    return db.from('user_sets').select('user_set_cards(word,translation)').eq('user_id',UID).then(function(r){
+      if(!r || r.error) return;
+      var still={};
+      (r.data||[]).forEach(function(st){ (st.user_set_cards||[]).forEach(function(c){ still[_usrsCK(c.word,c.translation)]=1; }); });
+      var keys=[];
+      cards.forEach(function(c){
+        var k=_usrsCK(c.word||'', c.translation||'');
+        if(!still[k] && keys.indexOf(k)<0) keys.push(k);
+      });
+      if(!keys.length) return;
+      var chain=Promise.resolve();
+      for(var i=0;i<keys.length;i+=200){
+        (function(part){
+          chain=chain.then(function(){
+            return db.from('srs_progress').delete().eq('user_id',UID).is('flashcard_id',null).in('card_key',part);
+          }).catch(function(){});
+        })(keys.slice(i,i+200));
+      }
+      return chain.then(function(){
+        try{ keys.forEach(function(k){ delete PROG[k]; }); }catch(e){}
+      });
+    }, function(){});
+  }
+  async function doDelete(sid){
+    var cards=[];
+    try{ var rc=await db.from('user_set_cards').select('word,translation').eq('set_id',sid); cards=(rc&&rc.data)||[]; }catch(e){}
+    try{ await db.from('user_collection_sets').delete().eq('set_id',sid); }catch(e){}
+    try{ if(UID) await db.from('mobile_lesson_state').delete().eq('user_id',UID).eq('set_id',_setIdNum(sid)); }catch(e){}
+    var r1=await db.from('user_set_cards').delete().eq('set_id',sid);
+    if(r1 && r1.error) throw r1.error;
+    var r2=await db.from('user_sets').delete().eq('id',sid).eq('user_id',UID);
+    if(r2 && r2.error) throw r2.error;
+    purgeRecent(sid);
+    try{ delete _setCardsCache[sid]; }catch(e){}
+    try{ await purgeSrs(cards); }catch(e){}
+  }
+  function after(){
+    try{ renderContinue(); }catch(e){}
+    try{ lexCheckResume(); }catch(e){}
+    try{
+      var sc=document.getElementById('s-mine');
+      if(sc && sc.classList.contains('active') && typeof window.loadMine==='function') window.loadMine();
+    }catch(e){}
+  }
+
+  /* ───── sciezka bez gestu: ekran zestawu ───── */
+  function mountSetDel(){
+    var scroll=document.querySelector('#s-set .scroll'); if(!scroll) return;
+    var el=document.getElementById('sw-setdel');
+    if(!el){ el=document.createElement('div'); el.id='sw-setdel'; el.className='sw-setdel'; scroll.appendChild(el); }
+    paintSetDel(false);
+  }
+  function paintSetDel(confirming){
+    var el=document.getElementById('sw-setdel'); if(!el) return;
+    if(typeof curSetKind==='undefined' || curSetKind!=='set' || !curSetId){ el.style.display='none'; el.innerHTML=''; return; }
+    el.style.display='block';
+    if(!confirming){
+      el.innerHTML='<button type="button" class="lnk">Usu\u0144 zestaw</button>';
+      el.querySelector('.lnk').addEventListener('click', function(){ paintSetDel(true); });
+      return;
+    }
+    el.innerHTML='<div class="q">Usun\u0105\u0107 \u201e'+esc(curSetName||'ten zestaw')+'\u201d? Fiszki tego zestawu i ich post\u0119p powt\u00f3rek znikn\u0105. Tego nie mo\u017cna cofn\u0105\u0107.</div>'
+      +'<div class="btns"><button type="button" class="no">Zostaw</button><button type="button" class="yes">Usu\u0144 zestaw</button></div>';
+    el.querySelector('.no').addEventListener('click', function(){ paintSetDel(false); });
+    el.querySelector('.yes').addEventListener('click', function(){
+      var b=el.querySelector('.yes'); b.disabled=true; b.textContent='Usuwam\u2026';
+      var sid=curSetId;
+      doDelete(sid).then(function(){
+        paintSetDel(false);
+        try{ go('mine'); }catch(e){}
+        try{ if(typeof window.loadMine==='function') window.loadMine(); }catch(e){}
+        try{ renderContinue(); }catch(e){}
+        try{ lexCheckResume(); }catch(e){}
+      }, function(err){
+        el.innerHTML='<div class="q" style="color:var(--error)">Nie uda\u0142o si\u0119 usun\u0105\u0107: '+esc((err&&err.message)||err)+'</div>';
+        setTimeout(function(){ paintSetDel(false); }, 3200);
+      });
+    });
+  }
+
+  /* ───── spiecia ───── */
+  var _lm=window.loadMine;
+  if(typeof _lm==='function'){
+    window.loadMine=function(){
+      openR=null; g=null;
+      var self=this, args=arguments;
+      if(!Object.keys(pending).length) return _lm.apply(self,args);
+      return flushAll().then(function(){ return _lm.apply(self,args); });
+    };
+  }
+  var _os=window.openSet;
+  if(typeof _os==='function'){
+    window.openSet=function(){ var r=_os.apply(this,arguments); try{ mountSetDel(); }catch(e){} return r; };
+  }
+  var _oc=window.eylOpenCat;
+  if(typeof _oc==='function'){
+    window.eylOpenCat=function(){
+      var r=_oc.apply(this,arguments);
+      var hide=function(){ try{ paintSetDel(false); }catch(e){} };
+      if(r&&r.then) r.then(hide,hide); else hide();
+      return r;
+    };
+  }
+
+  /* Domkniecie: gdy karta znika z ekranu, oczekujace usuniecia musza trafic do bazy,
+     inaczej czlowiek widzialby „usunięty” zestaw z powrotem na liscie. */
+  document.addEventListener('visibilitychange', function(){ if(document.hidden) flushAll(); });
+  window.addEventListener('pagehide', function(){ flushAll(); });
+
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ try{ mountSetDel(); }catch(e){} }, 1400); });
+})();
 </script>
 </body>
 </html>
