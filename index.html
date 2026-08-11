@@ -1585,9 +1585,13 @@ var EYL_LOAD_TXT={
 .lp-d1 em,.lp-d2 em{font-style:normal;color:var(--acc)}
 .lp-dark .lp-d1 em,.lp-dark .lp-d2 em{color:var(--acc-hi)}
 
-.lp-lede{font-size:clamp(16.5px,1.4vw,19px);line-height:1.66;color:var(--ink-2);max-width:58ch}
+.lp-lede{font-size:clamp(16.5px,1.4vw,19px);line-height:1.62;color:var(--ink-2);max-width:46ch}
 .lp-body{color:var(--ink-2)}
 .lp-fine{font-size:14px;line-height:1.55;color:var(--ink-3)}
+/* Pogrubienie w tekscie ciaglym = kotwica dla wzroku skanujacego wzorem F.
+   Czytelnik, ktory nie przeczyta zdania, zlapie sama fraze.              */
+.lp-lede b,.lp-cap b,.lp-rail-x b,.lp-cost-x b{color:var(--ink);font-weight:600}
+.lp-dark .lp-lede b,.lp-dark .lp-cap b,.lp-dark .lp-rail-x b,.lp-dark .lp-cost-x b{color:#fff}
 
 /* Znacznik sekcji — numer w monospace na cienkiej linii. Zastepuje pigulke
    z kropka, ktora jest jednym z najczesciej wymienianych sygnalow slopu.   */
@@ -1684,7 +1688,16 @@ var EYL_LOAD_TXT={
 .lp-screen{position:relative;border-radius:12px;overflow:hidden;background:#fff;
   border:1px solid var(--rule);
   box-shadow:0 1px 2px rgba(22,32,60,.04),0 24px 60px -30px rgba(22,32,60,.34)}
-.lp-screen video{display:block;width:100%;height:auto;background:#fff}
+.lp-screen video{display:block;width:100%;height:auto;background:#fff;
+  transform-origin:8.9% 9.2%;will-change:transform;
+  animation:lpZoom 12.74s var(--ease) infinite}
+.lp-screen:hover video{animation-play-state:paused}
+@keyframes lpZoom{
+   0%,13%  {transform:scale(1)}
+  27%,82%  {transform:scale(2.8)}
+  95%,100% {transform:scale(1)}
+}
+@media(prefers-reduced-motion:reduce){.lp-screen video{animation:none}}
 .lp-screen-tag{position:absolute;top:13px;right:13px;display:inline-flex;align-items:center;gap:7px;
   padding:6px 12px;border-radius:999px;background:rgba(14,22,40,.9);
   font-family:var(--f-mono);font-size:10px;font-weight:500;letter-spacing:.1em;
@@ -1713,7 +1726,7 @@ var EYL_LOAD_TXT={
 .lp-cost-row:last-child{border-bottom:1px solid rgba(255,255,255,.22)}
 .lp-cost-name{font-family:var(--f-text);font-size:16.5px;font-weight:600;color:#fff}
 .lp-cost-time{font-family:var(--f-mono);font-size:15px;font-weight:500;color:#fff;white-space:nowrap}
-.lp-cost-x{font-size:15px;line-height:1.58;color:rgba(255,255,255,.86)}
+.lp-cost-x{font-size:15px;line-height:1.55;color:rgba(255,255,255,.86);max-width:42ch}
 .lp-cost-row--us .lp-cost-name{color:var(--acc-hi)}
 .lp-cost-row--us .lp-cost-time{color:var(--acc-hi)}
 .lp-cost-row--us .lp-cost-x{color:#fff}
@@ -1727,7 +1740,7 @@ var EYL_LOAD_TXT={
   line-height:1;color:var(--acc-hi);letter-spacing:-.03em}
 .lp-ev-n sub{font-size:.4em;vertical-align:baseline;bottom:0;position:relative;margin-left:2px;opacity:.75}
 .lp-ev-t{margin-top:16px;font-size:16px;font-weight:500;line-height:1.36;color:#fff}
-.lp-ev-x{margin-top:11px;font-size:14.5px;line-height:1.6;color:rgba(255,255,255,.88)}
+.lp-ev-x{margin-top:11px;font-size:14.5px;line-height:1.55;color:rgba(255,255,255,.88);max-width:34ch}
 .lp-ev-src{margin-top:16px;padding-top:13px;border-top:1px solid rgba(255,255,255,.22);
   font-family:var(--f-mono);font-size:11px;line-height:1.55;color:rgba(255,255,255,.84)}
 
@@ -1754,9 +1767,9 @@ var EYL_LOAD_TXT={
 
 /* lista cech — hairline, bez ikon w kolkach */
 .lp-list{margin-top:34px;border-top:1px solid var(--rule)}
-.lp-list li{padding:19px 0;border-bottom:1px solid var(--rule)}
-.lp-list b{display:block;font-family:var(--f-text);font-size:16px;font-weight:500;color:var(--ink);margin-bottom:5px}
-.lp-list span{display:block;font-size:14.5px;line-height:1.56;color:var(--ink-2)}
+.lp-list li{padding:21px 0;border-bottom:1px solid var(--rule)}
+.lp-list b{display:block;font-family:var(--f-text);font-size:16.5px;font-weight:600;color:var(--ink);margin-bottom:4px;letter-spacing:-.008em}
+.lp-list span{display:block;font-size:14.5px;line-height:1.5;color:var(--ink-2);max-width:44ch}
 .lp-dark .lp-list{border-color:rgba(255,255,255,.16)}
 .lp-dark .lp-list li{border-color:rgba(255,255,255,.16)}
 .lp-dark .lp-list b{color:#fff}
@@ -1773,7 +1786,7 @@ var EYL_LOAD_TXT={
   display:grid;place-items:center;background:var(--paper);border:1px solid var(--rule);
   font-family:var(--f-mono);font-size:13px;font-weight:500;color:var(--acc)}
 .lp-rail-b{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:clamp(12px,3vw,44px);align-items:start}
-.lp-rail-x{color:var(--ink-2);font-size:15.5px;line-height:1.6}
+.lp-rail-x{color:var(--ink-2);font-size:15.5px;line-height:1.58;max-width:46ch}
 @media(max-width:820px){
   .lp-rail-b{grid-template-columns:1fr;gap:10px}
   .lp-rail-i{grid-template-columns:40px 1fr;gap:18px}
@@ -1800,7 +1813,7 @@ var EYL_LOAD_TXT={
   padding:4px 10px;border-radius:999px;border:1px solid var(--rule);color:var(--ink-3);white-space:nowrap}
 .lp-duo-tag--pro{background:var(--acc);border-color:var(--acc);color:#fff}
 .lp-duo-r{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;color:var(--ink-3);margin-top:7px}
-.lp-duo-x{margin-top:18px;font-size:15.5px;line-height:1.6;color:var(--ink-2)}
+.lp-duo-x{margin-top:18px;font-size:15.5px;line-height:1.56;color:var(--ink-2);max-width:42ch}
 .lp-duo-l{margin-top:22px}
 .lp-duo-l li{position:relative;padding-left:22px;font-size:14.5px;line-height:1.5;color:var(--ink-2);margin-top:11px}
 .lp-duo-l li::before{content:'';position:absolute;left:0;top:9px;width:9px;height:1.5px;background:var(--acc)}
@@ -2300,7 +2313,7 @@ function eylPrefLoad(){
           <span><i>patrzysz w ekran.</i></span>
           <span><i><em>Niech coś z tego zostanie.</em></i></span>
         </h1>
-        <p class="lp-lede lp-rv" data-d="1">Eyelingo pokazuje słówka w rogu ekranu, kiedy pracujesz. Nie klikasz, nie przerywasz, nie odkładasz na wieczór. Po tygodniu zauważasz, że część z nich po prostu znasz.</p>
+        <p class="lp-lede lp-rv" data-d="1">Słówka pojawiają się w rogu ekranu, kiedy pracujesz. <b>Nic nie klikasz.</b> Po tygodniu po prostu je znasz.</p>
         <div class="lp-cta lp-rv" data-d="2">
           <button class="lp-btn lp-btn--fill" onclick="showAuth('register')">Zacznij za darmo</button>
           <a class="lp-btn lp-btn--line" href="#lp-jak">Zobacz, jak działa</a>
@@ -2318,7 +2331,7 @@ function eylPrefLoad(){
                  aria-label="Nagranie aplikacji na komputer: fiszka pojawia się w rogu ekranu, chwilę stoi i znika."></video>
           <span class="lp-screen-tag" aria-hidden="true"><i></i>Nagranie aplikacji</span>
         </div>
-        <p class="lp-cap">Tak to wygląda na komputerze. Fiszka stoi kilka sekund i znika sama — nic nie trzeba klikać.</p>
+        <p class="lp-cap">Fiszka podaje kolejne słowo z wybranej kategorii i <b>zapętla ją bez końca</b>. Nie przerywa pracy, a jeśli akurat zasłoni coś ważnego — znika, gdy tylko najedziesz na nią kursorem.</p>
       </div>
     </div>
   </div>
@@ -2345,59 +2358,59 @@ function eylPrefLoad(){
         <span><i>Każda inna metoda</i></span>
         <span><i>chce od Ciebie <em>czasu.</em></i></span>
       </h2>
-      <p class="lp-lede lp-rv" data-d="1">Nie odpuściłeś, bo brakuje Ci silnej woli. Odpuściłeś, bo każda z tych metod wymaga, żebyś przestał robić to, co i tak musisz zrobić.</p>
+      <p class="lp-lede lp-rv" data-d="1"><b>To nie kwestia silnej woli.</b> Każda z nich każe Ci przerwać to, co i tak musisz zrobić.</p>
     </div>
 
     <div class="lp-cost lp-rv" data-d="1">
       <div class="lp-cost-row">
         <div class="lp-cost-name">Aplikacja z serią dni</div>
         <div class="lp-cost-time">15–30 min</div>
-        <div class="lp-cost-x">Pierwszy tydzień idzie świetnie. Potem jeden pominięty dzień i zostaje już tylko wyrzut sumienia.</div>
+        <div class="lp-cost-x">Jeden pominięty dzień i zostaje sam wyrzut sumienia.</div>
       </div>
       <div class="lp-cost-row">
         <div class="lp-cost-name">Kurs online</div>
         <div class="lp-cost-time">2–5 h / tydz.</div>
-        <div class="lp-cost-x">Kupiony w styczniu, otwarty trzy razy. Leży w zakładkach jako przypomnienie, że nie masz czasu.</div>
+        <div class="lp-cost-x">Kupiony w styczniu, otwarty trzy razy.</div>
       </div>
       <div class="lp-cost-row">
         <div class="lp-cost-name">Podcast lub serial</div>
         <div class="lp-cost-time">20–40 min</div>
-        <div class="lp-cost-x">Wymaga pełnego skupienia. Puszczony w tle zamienia się w szum, z którego nic nie zostaje.</div>
+        <div class="lp-cost-x">W tle zamienia się w szum. Nic nie zostaje.</div>
       </div>
       <div class="lp-cost-row">
         <div class="lp-cost-name">Fiszki papierowe i Anki</div>
         <div class="lp-cost-time">10–20 min</div>
-        <div class="lp-cost-x">Algorytm działa świetnie. Problem w tym, że najpierw trzeba usiąść i otworzyć program.</div>
+        <div class="lp-cost-x">Świetny algorytm. Trzeba tylko usiąść i otworzyć.</div>
       </div>
       <div class="lp-cost-row lp-cost-row--us">
         <div class="lp-cost-name">Eyelingo</div>
         <div class="lp-cost-time">0 min</div>
-        <div class="lp-cost-x">Słowa pojawiają się przy pracy, którą i tak wykonujesz. Nie ma czego pomijać, więc nie ma czego rzucać.</div>
+        <div class="lp-cost-x"><b>Nie ma czego pominąć, więc nie ma czego rzucić.</b></div>
       </div>
     </div>
 
     <div class="lp-w--n" style="margin:clamp(64px,7vw,104px) auto 0;padding:0">
-      <h3 class="lp-d3 lp-rv" style="color:#fff">To nie jest obietnica marketingowa. To zbadany mechanizm.</h3>
-      <p class="lp-lede lp-rv" data-d="1" style="margin-top:16px">Uczenie się incydentalne — czyli bez wysiłku i bez zamiaru — jest opisane w literaturze od dekad. Mózg zapamiętuje to, co widzi regularnie w swoim otoczeniu, niezależnie od tego, czy się do tego przyłoży.</p>
+      <h3 class="lp-d3 lp-rv">To nie obietnica marketingowa. To zbadany mechanizm.</h3>
+      <p class="lp-lede lp-rv" data-d="1" style="margin-top:16px">Mózg zapamiętuje to, co widzi regularnie — <b>niezależnie od tego, czy się stara.</b></p>
     </div>
 
     <div class="lp-ev">
       <div class="lp-ev-c lp-rv" data-d="1">
         <div class="lp-ev-n">2<sub>×</sub></div>
         <div class="lp-ev-t">Dwa spotkania i coś zostaje</div>
-        <p class="lp-ev-x">Ślad pamięciowy powstaje już po dwóch kontaktach ze słowem. Eyelingo pokazuje każde z nich wielokrotnie w ciągu dnia.</p>
+        <p class="lp-ev-x">Tyle kontaktów wystarczy, by powstał ślad pamięciowy.</p>
         <div class="lp-ev-src">Bisson i in., Language Learning · 2014</div>
       </div>
       <div class="lp-ev-c lp-rv" data-d="2">
         <div class="lp-ev-n">10<sub>×</sub></div>
         <div class="lp-ev-t">Dziesięć i zostaje na dobre</div>
-        <p class="lp-ev-x">Tyle ekspozycji w naturalnym kontekście wystarczy, żeby słowo weszło do pamięci trwałej. To kwestia kilku dni, nie miesięcy.</p>
+        <p class="lp-ev-x">Tyle ekspozycji i słowo zostaje na stałe. Kilka dni, nie miesięcy.</p>
         <div class="lp-ev-src">Peters, Language Learning Journal · 2016</div>
       </div>
       <div class="lp-ev-c lp-rv" data-d="3">
         <div class="lp-ev-n">150<sub>+</sub></div>
         <div class="lp-ev-t">Słów miesięcznie, bez siadania do nauki</div>
-        <p class="lp-ev-x">Tyle wychodzi przy normalnym dniu pracy z włączoną nakładką. Nie zamiast pracy — obok niej.</p>
+        <p class="lp-ev-x">Tyle wychodzi przy zwykłym dniu pracy. Obok niej, nie zamiast.</p>
         <div class="lp-ev-src">Szacunek własny na podstawie tempa przyswajania — Webb i Chang, Modern Language Journal · 2022</div>
       </div>
     </div>
@@ -2424,12 +2437,12 @@ function eylPrefLoad(){
           <span><i>Słowo to za mało.</i></span>
           <span><i>Potrzebujesz <em>całej reszty.</em></i></span>
         </h2>
-        <p class="lp-lede lp-rv" data-d="1" style="margin-top:22px">Wiesz, że „querer" to „chcieć". I dalej nie umiesz tego użyć, bo nie wiesz, jak się odmienia ani jak brzmi w zdaniu. Dlatego przy każdej karcie masz wszystko naraz.</p>
+        <p class="lp-lede lp-rv" data-d="1" style="margin-top:22px">Wiesz, że „querer" to „chcieć" — i dalej nie umiesz tego użyć. <b>Przy każdej karcie masz wszystko naraz.</b></p>
         <ul class="lp-list lp-rv" data-d="2">
-          <li><b>Usłyszysz, jak to brzmi</b><span>Nagrany lektor, nie robot. Dotykasz głośnika i wiesz, czy akcent pada tam, gdzie myślałeś.</span></li>
-          <li><b>Zobaczysz to w zdaniu</b><span>Każde słowo ma przykład użycia z tłumaczeniem. Znaczenie zapamiętuje się z kontekstu, nie z listy par.</span></li>
-          <li><b>Sprawdzisz odmianę bez wychodzenia</b><span>Przy czasownikach pełna tabela form, rozwijana jednym dotknięciem. Koniec z przełączaniem się do słownika.</span></li>
-          <li><b>Ocenisz szczerze, bez kary</b><span>Trzy przyciski: nie wiedziałem, wiedziałem, łatwe. Algorytm sam ustawia termin powtórki. Nie ma serii, którą można zepsuć.</span></li>
+          <li><b>Wymowa lektora</b><span>Nagrany głos, nie robot.</span></li>
+          <li><b>Zdanie z użyciem</b><span>Znaczenie z kontekstu, nie z listy par.</span></li>
+          <li><b>Pełna odmiana</b><span>Tabela form pod jednym dotknięciem.</span></li>
+          <li><b>Trzy oceny, zero kary</b><span>Nie ma serii, którą da się zepsuć.</span></li>
         </ul>
       </div>
     </div>
@@ -2445,7 +2458,7 @@ function eylPrefLoad(){
         <span><i>Zobaczyć. Przypomnieć sobie.</i></span>
         <span><i><em>Powiedzieć na głos.</em></i></span>
       </h2>
-      <p class="lp-lede lp-rv" data-d="1">Większość aplikacji robi tylko środkowy krok. Samo powtarzanie fiszek nie sprawia, że zaczniesz mówić — a samo osłuchanie nie sprawia, że zapamiętasz.</p>
+      <p class="lp-lede lp-rv" data-d="1"><b>Większość aplikacji robi tylko środkowy krok.</b> Same fiszki nie nauczyą mówić, samo osłuchanie nie zostanie w głowie.</p>
     </div>
 
     <div class="lp-rail">
@@ -2453,21 +2466,21 @@ function eylPrefLoad(){
         <div class="lp-rail-n">01</div>
         <div class="lp-rail-b">
           <h3 class="lp-d3">Słowo samo wchodzi Ci w oko</h3>
-          <p class="lp-rail-x">Pracujesz, a w rogu ekranu co jakiś czas pojawia się fiszka. Nie reagujesz na nią i nie musisz. Mózg rejestruje ją peryferyjnie — tak samo jak zapamiętuje twarze ludzi, których mija codziennie w windzie.</p>
+          <p class="lp-rail-x">Nie reagujesz i nie musisz. Mózg rejestruje je peryferyjnie — tak jak zapamiętuje twarze mijane codziennie w windzie.</p>
         </div>
       </div>
       <div class="lp-rail-i lp-rv" data-d="2">
         <div class="lp-rail-n">02</div>
         <div class="lp-rail-b">
-          <h3 class="lp-d3">Wracasz do niego dokładnie wtedy, kiedy zaczynasz zapominać</h3>
-          <p class="lp-rail-x">Krótka sesja, kilka minut. Algorytm SM-2 — ten sam, na którym stoi Anki — pilnuje terminów: trudne słowa wracają częściej, opanowane coraz rzadziej. Nie ma serii do utrzymania i nikt Cię nie karze za dzień przerwy.</p>
+          <h3 class="lp-d3">Wracasz do niego, gdy zaczynasz zapominać</h3>
+          <p class="lp-rail-x">Kilka minut. Algorytm SM-2 — ten sam co w Anki — pilnuje terminów. <b>Nikt Cię nie karze za dzień przerwy.</b></p>
         </div>
       </div>
       <div class="lp-rail-i lp-rv" data-d="3">
         <div class="lp-rail-n">03</div>
         <div class="lp-rail-b">
-          <h3 class="lp-d3">Używasz go w zdaniu, które sam układasz</h3>
-          <p class="lp-rail-x">Tu wchodzi AI, które zna Twoje fiszki i Twój poziom. Rozmawiasz albo przechodzisz lekcję. W tym momencie słowo przestaje być czymś, co rozpoznajesz, a staje się czymś, czego używasz.</p>
+          <h3 class="lp-d3">Używasz go w własnym zdaniu</h3>
+          <p class="lp-rail-x">Rozmowa albo lekcja z AI, które zna Twoje fiszki. <b>Słowo przestaje być rozpoznawane, a zaczyna być używane.</b></p>
         </div>
       </div>
     </div>
@@ -2522,7 +2535,7 @@ function eylPrefLoad(){
       <span><i>Masz dwa tygodnie</i></span>
       <span><i>i <em>konkretną listę słów.</em></i></span>
     </h2>
-    <p class="lp-lede lp-rv" data-d="1" style="margin:24px auto 0">Rozmowa kwalifikacyjna, prezentacja dla klienta, egzamin. Wrzucasz swoje słowa raz, a Eyelingo podsuwa Ci je przez cały ten czas w tle pracy. W dniu sprawdzianu robisz jedną sesję i wiesz dokładnie, co masz w głowie, a czego nie.</p>
+    <p class="lp-lede lp-rv" data-d="1" style="margin:24px auto 0">Rozmowa o pracę, prezentacja, egzamin. <b>Wrzucasz swoje słowa raz</b>, a Eyelingo podsuwa Ci je w tle przez całe dwa tygodnie.</p>
     <div class="lp-cta lp-rv" data-d="2" style="justify-content:center;margin-top:34px">
       <button class="lp-btn lp-btn--fill" onclick="handleCreateSet()">Wpisz swoje słowa</button>
       <span class="lp-fine">Za darmo, bez karty</span>
@@ -2539,7 +2552,7 @@ function eylPrefLoad(){
         <span><i>Rozmawiaj bez świadków</i></span>
         <span><i>i <em>bez wstydu.</em></i></span>
       </h2>
-      <p class="lp-lede lp-rv" data-d="1">Największa bariera nie jest w słownictwie, tylko w tym, że boisz się palnąć głupstwo przy człowieku. Tu nie ma człowieka. Jest ktoś, kto zna Twoje fiszki, Twój poziom i Twoje wcześniejsze błędy.</p>
+      <p class="lp-lede lp-rv" data-d="1"><b>Bariera nie leży w słownictwie</b>, tylko w strachu przed palnięciem głupstwa przy człowieku. Tu człowieka nie ma.</p>
     </div>
     <div class="lp-duo">
       <div class="lp-duo-c lp-rv" data-d="1">
@@ -2547,7 +2560,7 @@ function eylPrefLoad(){
           <div><div class="lp-duo-n">Rozmowa</div><div class="lp-duo-r">Swobodny partner</div></div>
           <span class="lp-duo-tag">W planie Free</span>
         </div>
-        <p class="lp-duo-x">Pisze i mówi jak native. Pięć minut między spotkaniami wystarczy, żeby przestać się zacinać na pierwszym zdaniu.</p>
+        <p class="lp-duo-x">Pisze i mówi jak native. Pięć minut między spotkaniami wystarczy.</p>
         <ul class="lp-duo-l">
           <li>Wplata w rozmowę słowa, których się właśnie uczysz</li>
           <li>Schodzi na Twój poziom, zamiast popisywać się swoim</li>
@@ -2559,15 +2572,15 @@ function eylPrefLoad(){
           <div><div class="lp-duo-n">Ailex</div><div class="lp-duo-r">Prowadzi lekcje</div></div>
           <span class="lp-duo-tag lp-duo-tag--pro">PRO</span>
         </div>
-        <p class="lp-duo-x">Kiedy chcesz nie tylko pogadać, ale faktycznie ruszyć z poziomu. Prowadzi lekcję krok po kroku i pilnuje, żeby gramatyka szła w parze ze słownictwem.</p>
+        <p class="lp-duo-x">Kiedy chcesz faktycznie ruszyć z poziomu. Lekcja krok po kroku, z gramatyką w parze ze słownictwem.</p>
         <ul class="lp-duo-l">
-          <li>Poprawia spokojnie — pokazuje regułę i przykład, nie samą czerwoną kreskę</li>
+          <li>Poprawia regułą i przykładem, nie czerwoną kreską</li>
           <li>Czytanie, słuchanie i pisanie w jednej lekcji</li>
           <li>Pamięta, co już umiesz, i nie cofa Cię do początku</li>
         </ul>
       </div>
     </div>
-    <p class="lp-fine lp-rv" style="margin-top:22px;text-align:center">To nie jest zwykły czatbot z doklejonym promptem. Oba widzą Twój poziom, Twoje fiszki i całą historię nauki.</p>
+    <p class="lp-fine lp-rv" style="margin-top:22px;text-align:center">To nie czatbot z doklejonym promptem — oba widzą Twój poziom, fiszki i historię nauki.</p>
   </div>
 </section>
 
@@ -2580,8 +2593,8 @@ function eylPrefLoad(){
         <span><i>Czternaście języków,</i></span>
         <span><i>od zera do <em>swobody.</em></i></span>
       </h2>
-      <p class="lp-lede lp-rv" data-d="1" style="margin:22px auto 0">Japoński z romaji, a rosyjski, ukraiński, arabski, chiński i koreański z transliteracją — żeby brak znajomości alfabetu nie zatrzymał Cię na pierwszym dniu.</p>
-      <p class="lp-note-pro lp-rv" data-d="2">Nie wybierasz jednego języka. <b>PRO odblokowuje wszystkie czternaście naraz</b>, na wszystkich poziomach — możesz uczyć się dwóch równolegle albo zmienić zdanie po miesiącu bez dopłaty.</p>
+      <p class="lp-lede lp-rv" data-d="1" style="margin:22px auto 0">Sześć z nich z transliteracją — brak znajomości alfabetu nie zatrzyma Cię na pierwszym dniu.</p>
+      <p class="lp-note-pro lp-rv" data-d="2"><b>PRO odblokowuje wszystkie czternaście naraz.</b> Ucz się dwóch równolegle albo zmień zdanie po miesiącu — bez dopłaty.</p>
     </div>
   </div>
   <div class="lp-langs lp-rv" data-d="2" aria-label="Dostępne języki">
@@ -2651,7 +2664,7 @@ function eylPrefLoad(){
       <div class="lp-plan lp-rv" data-d="1">
         <div class="lp-plan-n">Free</div>
         <div class="lp-plan-p"><b>0 zł</b><i>na zawsze</i></div>
-        <p class="lp-plan-sub">Żeby sprawdzić, czy ten sposób nauki w ogóle do Ciebie pasuje. Bez karty, bez terminu.</p>
+        <p class="lp-plan-sub">Żeby sprawdzić, czy ten sposób nauki do Ciebie pasuje.</p>
         <ul class="lp-plan-l">
           <li>Poziom A1 we wszystkich 14 językach</li>
           <li>Bez limitu — uczysz się tylu języków naraz, ilu chcesz</li>
@@ -2670,7 +2683,7 @@ function eylPrefLoad(){
       <div class="lp-plan lp-plan--pro lp-rv" data-d="2">
         <div class="lp-plan-n">PRO</div>
         <div class="lp-plan-p"><b data-price-m="39 zł" data-price-y="27 zł">39 zł</b><i data-per-m="/ miesiąc" data-per-y="/ miesiąc, płatne rocznie">/ miesiąc</i></div>
-        <p class="lp-plan-sub">Cały katalog, oba tryby AI i tworzenie własnych zestawów bez limitu.</p>
+        <p class="lp-plan-sub">Cały katalog, oba tryby AI, własne zestawy bez limitu.</p>
         <ul class="lp-plan-l">
           <li>Wszystko z planu Free</li>
           <li>Wszystkie 14 języków na poziomach A2–C2 — ponad 56 000 fiszek</li>
@@ -2680,7 +2693,7 @@ function eylPrefLoad(){
           <li>Bez limitu własnych zestawów</li>
         </ul>
         <button class="lp-btn lp-btn--fill" onclick="showAuth('register')">Przejdź na PRO</button>
-        <div class="lp-plan-foot">Rezygnujesz kiedy chcesz — fiszki i postęp zostają u Ciebie, wraca dostęp do A1</div>
+        <div class="lp-plan-foot">Rezygnujesz kiedy chcesz — fiszki i postęp zostają</div>
       </div>
     </div>
   </div>
@@ -2693,7 +2706,7 @@ function eylPrefLoad(){
       <span><i>Jutro też będziesz</i></span>
       <span><i>patrzeć w ten ekran.</i></span>
     </h2>
-    <p class="lp-lede lp-rv" data-d="1" style="margin-left:auto;margin-right:auto">Jedyne pytanie brzmi, czy za miesiąc będziesz umiał o sto pięćdziesiąt słów więcej, czy dokładnie tyle samo co dziś.</p>
+    <p class="lp-lede lp-rv" data-d="1" style="margin-left:auto;margin-right:auto">Pytanie brzmi, czy za miesiąc będziesz umiał <b>o 150 słów więcej</b> — czy tyle samo co dziś.</p>
     <div class="lp-cta lp-rv" data-d="2">
       <button class="lp-btn lp-btn--fill" onclick="showAuth('register')">Zacznij za darmo</button>
       <a class="lp-btn lp-btn--line" href="#cennik">Zobacz cennik</a>
@@ -2709,7 +2722,7 @@ function eylPrefLoad(){
     <div class="lp-foot-grid">
       <div class="lp-foot-brand">
         <img src="logo_transparent.png" alt="Eyelingo" style="height:30px;width:auto;display:block;margin-bottom:16px">
-        <p class="lp-foot-tag">Nauka języków, która działa, kiedy ty robisz coś innego. Dla dorosłych, którzy pracują przy komputerze.</p>
+        <p class="lp-foot-tag">Nauka języków, która działa, kiedy robisz coś innego.</p>
       </div>
       <div class="lp-foot-col">
         <h4>Produkt</h4>
