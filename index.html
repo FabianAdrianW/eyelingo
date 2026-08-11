@@ -1557,8 +1557,11 @@ var EYL_LOAD_TXT={
 /* Sekcja nigdy nie powinna byc wyzsza od okna. Gdy tresci przybywa,
    kurczy sie odstep, nie tekst. */
 @media(min-height:700px){ .lp-s{padding-block:clamp(52px,5.4vw,84px)} }
-@media(max-height:820px){ .lp-s{padding-block:clamp(40px,4.4vw,60px)}
-  .lp-s--tight{padding-block:clamp(34px,3.4vw,48px)} }
+@media(max-height:820px){ .lp-s{padding-block:clamp(34px,3.8vw,52px)}
+  .lp-s--tight{padding-block:clamp(30px,3vw,42px)}
+  .lp-list li{padding:11px 0}
+  .lp-list{margin-top:18px}
+  .lp-split{gap:clamp(26px,3.6vw,52px)} }
 
 /* ── typografia ────────────────────────────────────────────────────────────
    Naglowki w wadze 600 z ujemnym trackingiem. Ciasniejsze swiatlo przy
@@ -1760,7 +1763,7 @@ var EYL_LOAD_TXT={
   .lp-ev-c:first-child{padding-top:0;border-top:0}
 }
 
-.lp-phone{position:relative;width:100%;max-width:296px;margin-inline:auto;
+.lp-phone{position:relative;width:100%;max-width:clamp(212px,30vh,272px);margin-inline:auto;
   border-radius:38px;padding:9px;background:linear-gradient(158deg,#313d5c,#111a2e);
   box-shadow:0 40px 84px -34px rgba(14,22,40,.6),0 0 0 1px rgba(255,255,255,.06)}
 .lp-phone-scr{position:relative;border-radius:30px;overflow:hidden;background:#F7F5F1;aspect-ratio:828/1706}
@@ -1916,6 +1919,33 @@ var EYL_LOAD_TXT={
 .lp-prog{position:fixed;top:0;left:0;height:2px;background:var(--acc);width:0;z-index:60;
   transition:width .1s linear;pointer-events:none}
 
+</style>
+
+<style id="eyl-fit-viewport">
+/* ═══ FISZKA W JEDNYM EKRANIE ═══
+   Decyzja o ocenie musi byc widoczna razem z odpowiedzia. Gdy trzeba
+   przewinac, zeby zobaczyc przyciski, uzytkownik ocenia z pamieci tego,
+   co widzial chwile temu — a to psuje rzetelnosc calego SRS.
+   Kurczymy odstepy i skale, nigdy tresc. Wchodzi tylko przy niskich oknach. */
+@media (max-height:1100px){
+  #tryb-card-flipper,
+  .tryb-card-flipper,
+  .tryb-card-back{ min-height:clamp(150px,21vh,260px)!important }
+  .tryb-card-back{ padding:clamp(14px,2.2vh,26px) 24px!important }
+  #tryb-card-word{ font-size:clamp(28px,4.4vh,44px)!important; margin-bottom:6px!important }
+  #tryb-card-word-ans{ font-size:clamp(20px,3vh,28px)!important; margin-bottom:4px!important }
+  #tryb-card-answer{ font-size:clamp(16px,2.3vh,20px)!important; margin-bottom:6px!important }
+  #tryb-card-example{ margin-bottom:clamp(6px,1.4vh,16px)!important }
+  #tryb-card-image-wrap{ margin:2px auto clamp(6px,1.2vh,14px)!important }
+  #tryb-card-image{ max-height:clamp(88px,15vh,200px)!important }
+  #tryb-flip-nav{ gap:clamp(5px,1vh,10px)!important; margin-top:clamp(7px,1.2vh,14px)!important }
+  #tryb-prog-segments{ height:6px!important }
+}
+@media (max-height:860px){
+  .tryb-card-back{ padding:12px 20px!important }
+  #tryb-card-example{ font-size:12px!important; line-height:1.45!important }
+  .eyl-mastery-note{ display:none!important }
+}
 </style>
 
 </head>
@@ -2430,7 +2460,7 @@ function eylPrefLoad(){
         <ul class="lp-list lp-rv" data-d="2">
           <li><b>Wymowa lektora</b><span>Nagrany głos, nie robot.</span></li>
           <li><b>Zdanie z użyciem</b><span>Znaczenie z kontekstu, nie z listy par.</span></li>
-          <li><b>Pełna odmiana</b><span>Tabela form pod jednym dotknięciem.</span></li>
+          <li><b>Pełna odmiana</b><span>Tabela form pod dotknięciem.</span></li>
           <li><b>Trzy oceny, zero kary</b><span>Nie ma serii, którą da się zepsuć.</span></li>
         </ul>
       </div>
@@ -2491,11 +2521,11 @@ function eylPrefLoad(){
           <span><i>Powiedz, czego chcesz się uczyć.</i></span>
           <span><i><em>Zestaw zrobi się sam.</em></i></span>
         </h2>
-        <p class="lp-lede lp-rv" data-d="1" style="margin-top:22px">Rozmowa o wynajmie mieszkania po niemiecku. Słownictwo z Twojej branży. Pierwsze kanji przed egzaminem. Wpisujesz to zwykłym zdaniem, a zestaw powstaje w kilkanaście sekund — z tłumaczeniami i przykładami.</p>
+        <p class="lp-lede lp-rv" data-d="1" style="margin-top:18px">Wynajem mieszkania po niemiecku. Słownictwo z Twojej branży. Kanji przed egzaminem. <b>Wpisujesz zwykłym zdaniem</b> — reszta dzieje się sama.</p>
         <ul class="lp-list lp-rv" data-d="2">
-          <li><b>Z tematu</b><span>Piszesz własnymi słowami, wybierasz poziom i liczbę słów. Bez przeklikiwania się przez kategorie.</span></li>
-          <li><b>Ze zdjęcia</b><span>Robisz zdjęcie notatki albo listy słówek z zeszytu. Eyelingo odczyta je i zamieni w fiszki.</span></li>
-          <li><b>Z wklejonej listy</b><span>Masz już słowa w arkuszu albo notatniku? Wklej wszystkie naraz.</span></li>
+          <li><b>Z tematu</b><span>Własnymi słowami. Bez przeklikiwania kategorii.</span></li>
+          <li><b>Ze zdjęcia</b><span>Notatka z zeszytu zamienia się w fiszki.</span></li>
+          <li><b>Z wklejonej listy</b><span>Masz je w arkuszu? Wklej wszystkie naraz.</span></li>
         </ul>
         <div class="lp-cta lp-rv" data-d="3" style="margin-top:32px">
           <button class="lp-btn lp-btn--fill" onclick="handleCreateSet()">Stwórz pierwszy zestaw</button>
@@ -9288,8 +9318,9 @@ function trybFlipReveal(backText){
     });
     nav.appendChild(btnRow);
     var _hintMastery=document.createElement('div');
-    _hintMastery.style.cssText='font-size:10.5px;color:var(--dim2);text-align:center;margin-top:4px;line-height:1.45;max-width:420px';
-    _hintMastery.textContent='100% opanowania zdobywasz, gdy przypomnisz sobie słowo po przerwie — nie z samej oceny.';
+    _hintMastery.className='eyl-mastery-note';
+    _hintMastery.style.cssText='font-size:10.5px;color:var(--dim2);text-align:center;margin-top:2px;line-height:1.4;max-width:420px';
+    _hintMastery.textContent='100% opanowania — po przypomnieniu sobie słowa po przerwie.';
     nav.appendChild(_hintMastery);
 
     // Prev / Next navigation
