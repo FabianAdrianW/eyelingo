@@ -1591,12 +1591,11 @@ var EYL_LOAD_TXT={
 .lp-dark .lp-d1 em,.lp-dark .lp-d2 em{color:var(--acc-hi)}
 
 .lp-lede{font-size:clamp(16.5px,1.4vw,19px);line-height:1.62;color:var(--ink-2);max-width:46ch}
-.lp-body{color:var(--ink-2)}
 .lp-fine{font-size:14px;line-height:1.55;color:var(--ink-3)}
 /* Pogrubienie w tekscie ciaglym = kotwica dla wzroku skanujacego wzorem F.
    Czytelnik, ktory nie przeczyta zdania, zlapie sama fraze.              */
-.lp-lede b,.lp-cap b,.lp-rail-x b,.lp-cost-x b{color:var(--ink);font-weight:600}
-.lp-dark .lp-lede b,.lp-dark .lp-cap b,.lp-dark .lp-rail-x b,.lp-dark .lp-cost-x b{color:#fff}
+.lp-lede b,.lp-cap b,.lp-rail-x b{color:var(--ink);font-weight:600}
+.lp-dark .lp-lede b,.lp-dark .lp-cap b,.lp-dark .lp-rail-x b{color:#fff}
 
 /* Znacznik sekcji — numer w monospace na cienkiej linii. Zastepuje pigulke
    z kropka, ktora jest jednym z najczesciej wymienianych sygnalow slopu.   */
@@ -1615,7 +1614,6 @@ var EYL_LOAD_TXT={
 /* ── ciemna strefa (jedyna na stronie) ─────────────────────────────────── */
 .lp-dark{background:var(--dark);color:#fff}
 .lp-dark .lp-lede{color:#fff}
-.lp-dark .lp-body{color:#fff}
 .lp-dark .lp-fine{color:rgba(255,255,255,.86)}
 
 /* ── przyciski ─────────────────────────────────────────────────────────── */
@@ -1695,13 +1693,7 @@ var EYL_LOAD_TXT={
   box-shadow:0 1px 2px rgba(22,32,60,.04),0 24px 60px -30px rgba(22,32,60,.34)}
 .lp-screen video{display:block;width:100%;height:auto;background:#fff;
   transform-origin:0 0;will-change:transform;pointer-events:none;
-  animation:lpZoom 12.74s var(--ease) infinite}
-@keyframes lpZoom{
-   0%,13%  {transform:scale(1)}
-  27%,82%  {transform:scale(3.11)}
-  95%,100% {transform:scale(1)}
-}
-@media(prefers-reduced-motion:reduce){.lp-screen video{animation:none}}
+  transform:scale(1)}
 .lp-screen-tag{position:absolute;top:13px;right:13px;display:inline-flex;align-items:center;gap:7px;
   padding:6px 12px;border-radius:999px;background:rgba(14,22,40,.9);
   font-family:var(--f-mono);font-size:10px;font-weight:500;letter-spacing:.1em;
@@ -1723,19 +1715,28 @@ var EYL_LOAD_TXT={
 .lp-claim{display:grid;grid-template-columns:1.15fr .85fr;gap:clamp(36px,5vw,80px);align-items:end}
 .lp-claim .lp-lede{margin-top:0}
 
-/* porownanie kosztu czasu — wiersze na liniach, nie karty */
-.lp-cost{margin-top:clamp(30px,3.4vw,46px)}
-.lp-cost-row{display:grid;grid-template-columns:minmax(150px,1.1fr) 88px 2fr;gap:clamp(16px,3vw,40px);
-  align-items:baseline;padding-block:14px;border-top:1px solid rgba(255,255,255,.22)}
-.lp-cost-row:last-child{border-bottom:1px solid rgba(255,255,255,.22)}
-.lp-cost-name{font-family:var(--f-text);font-size:16.5px;font-weight:600;color:#fff}
-.lp-cost-time{font-family:var(--f-mono);font-size:15px;font-weight:500;color:#fff;white-space:nowrap}
-.lp-cost-x{font-size:15px;line-height:1.55;color:rgba(255,255,255,.86);max-width:42ch}
-.lp-cost-row--us .lp-cost-name{color:var(--acc-hi)}
-.lp-cost-row--us .lp-cost-time{color:var(--acc-hi)}
-.lp-cost-row--us .lp-cost-x{color:#fff}
-.lp-cost-row--us{background:linear-gradient(90deg,rgba(228,130,60,.10),transparent 62%)}
-
+/* koszt czasu jako wykres — dlugosc slupka zastepuje zdanie opisowe */
+.lp-bars{margin-top:clamp(30px,3.4vw,46px)}
+.lp-bars li{display:grid;grid-template-columns:minmax(140px,1fr) minmax(120px,2.4fr) 88px;
+  gap:clamp(14px,2.4vw,28px);align-items:center;padding-block:15px;
+  border-top:1px solid rgba(255,255,255,.22)}
+.lp-bars li:last-child{border-bottom:1px solid rgba(255,255,255,.22)}
+.lp-bar-n{font-size:16px;font-weight:500;color:#fff}
+.lp-bar{display:block;height:8px;border-radius:999px;background:rgba(255,255,255,.10);overflow:hidden}
+.lp-bar i{display:block;height:100%;width:0;border-radius:999px;background:rgba(255,255,255,.5);
+  transition:width 1.1s var(--ease)}
+.lp-bars.is-visible .lp-bar i{width:var(--w)}
+.lp:not(.lp-js) .lp-bar i{width:var(--w)}
+.lp-bar-t{font-family:var(--f-mono);font-size:14px;font-weight:500;color:#fff;text-align:right;white-space:nowrap}
+.lp-bars li.is-us .lp-bar-n,.lp-bars li.is-us .lp-bar-t{color:var(--acc-hi);font-weight:600}
+.lp-bars li.is-us{background:linear-gradient(90deg,rgba(228,130,60,.12),transparent 70%)}
+.lp-bars li.is-us .lp-bar{background:transparent}
+.lp-bar-note{margin-top:14px;font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:rgba(255,255,255,.7)}
+@media(max-width:720px){
+  .lp-bars li{grid-template-columns:1fr auto;row-gap:8px}
+  .lp-bar{grid-column:1/-1}
+}
 /* badania — trzy dane w rzedzie, oddzielone linia pionowa */
 .lp-ev{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:clamp(30px,3.4vw,48px)}
 .lp-ev-c{padding:0 clamp(18px,2.4vw,34px);border-left:1px solid rgba(255,255,255,.22)}
@@ -1743,10 +1744,10 @@ var EYL_LOAD_TXT={
 .lp-ev-n{font-family:var(--f-disp);font-weight:600;font-size:clamp(42px,5vw,60px);
   line-height:1;color:var(--acc-hi);letter-spacing:-.03em}
 .lp-ev-n sub{font-size:.4em;vertical-align:baseline;bottom:0;position:relative;margin-left:2px;opacity:.75}
-.lp-ev-t{margin-top:12px;font-size:16px;font-weight:600;line-height:1.32;color:#fff}
-.lp-ev-x{margin-top:11px;font-size:14.5px;line-height:1.55;color:rgba(255,255,255,.88);max-width:34ch}
-.lp-ev-src{margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.22);
-  font-family:var(--f-mono);font-size:11px;line-height:1.55;color:rgba(255,255,255,.84)}
+.lp-ev-t{margin-top:10px;font-size:15.5px;font-weight:500;line-height:1.38;color:#fff;max-width:22ch}
+.lp-ev-srcs{margin-top:22px;padding-top:14px;border-top:1px solid rgba(255,255,255,.22);
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.04em;line-height:1.7;
+  color:rgba(255,255,255,.8)}
 
 /* ═══ ARCHETYP: TEKST + TELEFON ════════════════════════════════════════════ */
 .lp-split{display:grid;grid-template-columns:1.06fr .94fr;gap:clamp(44px,6vw,88px);align-items:center}
@@ -1757,8 +1758,6 @@ var EYL_LOAD_TXT={
   .lp-ev{grid-template-columns:1fr}
   .lp-ev-c{padding:26px 0;border-left:0;border-top:1px solid rgba(255,255,255,.22)}
   .lp-ev-c:first-child{padding-top:0;border-top:0}
-  .lp-cost-row{grid-template-columns:1fr auto;row-gap:6px}
-  .lp-cost-x{grid-column:1/-1}
 }
 
 .lp-phone{position:relative;width:100%;max-width:296px;margin-inline:auto;
@@ -2353,7 +2352,7 @@ function eylPrefLoad(){
   </div>
 </div>
 
-<!-- ═══ 02 · CZAS + BADANIA (jedyna ciemna strefa) ══════════════════════════ -->
+<!-- ═══ 02 · CZAS + BADANIA (jedyna ciemna strefa) ══════════════ -->
 <section class="lp-s lp-dark" id="lp-czas">
   <div class="lp-w">
     <div class="lp-mark lp-rv"><b>02</b> Dlaczego tamto nie wyszło</div>
@@ -2362,62 +2361,48 @@ function eylPrefLoad(){
         <span><i>Każda inna metoda</i></span>
         <span><i>chce od Ciebie <em>czasu.</em></i></span>
       </h2>
-      <p class="lp-lede lp-rv" data-d="1"><b>To nie kwestia silnej woli.</b> Każda z nich każe Ci przerwać to, co i tak musisz zrobić.</p>
+      <p class="lp-lede lp-rv" data-d="1">To nie kwestia silnej woli.</p>
     </div>
 
-    <div class="lp-cost lp-rv" data-d="1">
-      <div class="lp-cost-row">
-        <div class="lp-cost-name">Aplikacja z serią dni</div>
-        <div class="lp-cost-time">15–30 min</div>
-        <div class="lp-cost-x">Jeden pominięty dzień i zostaje sam wyrzut sumienia.</div>
-      </div>
-      <div class="lp-cost-row">
-        <div class="lp-cost-name">Kurs online</div>
-        <div class="lp-cost-time">2–5 h / tydz.</div>
-        <div class="lp-cost-x">Kupiony w styczniu, otwarty trzy razy.</div>
-      </div>
-      <div class="lp-cost-row">
-        <div class="lp-cost-name">Podcast lub serial</div>
-        <div class="lp-cost-time">20–40 min</div>
-        <div class="lp-cost-x">W tle zamienia się w szum. Nic nie zostaje.</div>
-      </div>
-      <div class="lp-cost-row">
-        <div class="lp-cost-name">Fiszki papierowe i Anki</div>
-        <div class="lp-cost-time">10–20 min</div>
-        <div class="lp-cost-x">Świetny algorytm. Trzeba tylko usiąść i otworzyć.</div>
-      </div>
-      <div class="lp-cost-row lp-cost-row--us">
-        <div class="lp-cost-name">Eyelingo</div>
-        <div class="lp-cost-time">0 min</div>
-        <div class="lp-cost-x"><b>Nie ma czego pominąć, więc nie ma czego rzucić.</b></div>
-      </div>
-    </div>
-
-    <div class="lp-w--n" style="margin:clamp(38px,4.2vw,58px) auto 0;padding:0">
-      <h3 class="lp-d3 lp-rv">To nie obietnica marketingowa. To zbadany mechanizm.</h3>
-      <p class="lp-lede lp-rv" data-d="1" style="margin-top:16px">Mózg zapamiętuje to, co widzi regularnie — <b>niezależnie od tego, czy się stara.</b></p>
-    </div>
+    <ul class="lp-bars lp-rv" data-d="1">
+      <li>
+        <span class="lp-bar-n">Kurs online</span>
+        <span class="lp-bar"><i style="--w:100%"></i></span>
+        <span class="lp-bar-t">20–40 min</span>
+      </li>
+      <li>
+        <span class="lp-bar-n">Aplikacja z serią dni</span>
+        <span class="lp-bar"><i style="--w:75%"></i></span>
+        <span class="lp-bar-t">15–30 min</span>
+      </li>
+      <li>
+        <span class="lp-bar-n">Fiszki i Anki</span>
+        <span class="lp-bar"><i style="--w:50%"></i></span>
+        <span class="lp-bar-t">10–20 min</span>
+      </li>
+      <li class="is-us">
+        <span class="lp-bar-n">Eyelingo</span>
+        <span class="lp-bar"><i style="--w:0%"></i></span>
+        <span class="lp-bar-t">0 min</span>
+      </li>
+    </ul>
+    <p class="lp-bar-note lp-rv">Dziennie — żeby w ogóle utrzymać postęp</p>
 
     <div class="lp-ev">
       <div class="lp-ev-c lp-rv" data-d="1">
         <div class="lp-ev-n">2<sub>×</sub></div>
-        <div class="lp-ev-t">Dwa spotkania i coś zostaje</div>
-        <p class="lp-ev-x">Tyle kontaktów wystarczy, by powstał ślad pamięciowy.</p>
-        <div class="lp-ev-src">Bisson i in., Language Learning · 2014</div>
+        <div class="lp-ev-t">Tyle kontaktów i powstaje ślad pamięciowy</div>
       </div>
       <div class="lp-ev-c lp-rv" data-d="2">
         <div class="lp-ev-n">10<sub>×</sub></div>
-        <div class="lp-ev-t">Dziesięć i zostaje na dobre</div>
-        <p class="lp-ev-x">Tyle ekspozycji i słowo zostaje na stałe. Kilka dni, nie miesięcy.</p>
-        <div class="lp-ev-src">Peters, Language Learning Journal · 2016</div>
+        <div class="lp-ev-t">Tyle ekspozycji i słowo zostaje na stałe</div>
       </div>
       <div class="lp-ev-c lp-rv" data-d="3">
         <div class="lp-ev-n">150<sub>+</sub></div>
-        <div class="lp-ev-t">Słów miesięcznie, bez siadania do nauki</div>
-        <p class="lp-ev-x">Tyle wychodzi przy zwykłym dniu pracy. Obok niej, nie zamiast.</p>
-        <div class="lp-ev-src">Szacunek własny na podstawie tempa przyswajania — Webb i Chang, Modern Language Journal · 2022</div>
+        <div class="lp-ev-t">Tyle słów miesięcznie — obok pracy, nie zamiast</div>
       </div>
     </div>
+    <p class="lp-ev-srcs lp-rv">Bisson i in. 2014 · Peters 2016 · Webb i Chang 2022 (150+ — szacunek własny)</p>
   </div>
 </section>
 
@@ -2795,6 +2780,8 @@ function eylPrefLoad(){
   // Kazde nagranie ma ruszyc dokladnie wtedy, gdy czytelnik je zobaczy,
   // i dalej chodzic w petli bez zadnej mozliwosci ingerencji.
   var vids=root.querySelectorAll('video');
+  var heroV=root.querySelector('.lp-screen video');
+  if(heroV){ var hp=heroV.play(); if(hp&&hp.catch) hp.catch(function(){}); }
   [].forEach.call(vids,function(v){
     v.muted=true; v.loop=true; v.playsInline=true;
     v.setAttribute('playsinline','');
@@ -2806,12 +2793,37 @@ function eylPrefLoad(){
       es.forEach(function(en){
         var v=en.target;
         if(en.isIntersecting){ var pr=v.play(); if(pr&&pr.catch) pr.catch(function(){}); }
-        else if(!v.paused){ v.pause(); }
+        else if(!v.paused && !v.closest('.lp-screen')){ v.pause(); }
       });
     },{threshold:0.25});
     [].forEach.call(vids,function(v){ vio.observe(v); });
   } else {
     [].forEach.call(vids,function(v){ var pr=v.play(); if(pr&&pr.catch) pr.catch(function(){}); });
+  }
+
+  // ── zoom hero sterowany pozycja w nagraniu ──────────────────────────────
+  // Powiekszenie 3.11x z zaczepieniem w rogu 0 0 stawia fiszke dokladnie
+  // w gornej lewej cwiartce kadru. Faza liczona z currentTime, wiec zoom
+  // wypada zawsze w tym samym miejscu petli — nawet po pauzie czy buforze.
+  var hero=root.querySelector('.lp-screen video');
+  if(hero && !reduce){
+    var Z=3.11, P=[0,.13,.27,.82,.95,1];
+    var ez=function(k){ return k<.5 ? 4*k*k*k : 1-Math.pow(-2*k+2,3)/2; };
+    var phase=function(p){
+      if(p<P[1]) return 1;
+      if(p<P[2]) return 1+(Z-1)*ez((p-P[1])/(P[2]-P[1]));
+      if(p<P[3]) return Z;
+      if(p<P[4]) return Z-(Z-1)*ez((p-P[3])/(P[4]-P[3]));
+      return 1;
+    };
+    var loopZ=function(){
+      var d=hero.duration;
+      if(d && isFinite(d) && d>0){
+        hero.style.transform='scale('+phase((hero.currentTime%d)/d).toFixed(4)+')';
+      }
+      requestAnimationFrame(loopZ);
+    };
+    requestAnimationFrame(loopZ);
   }
 
   // ── plynne przewijanie do kotwic landingu ───────────────────────────────
