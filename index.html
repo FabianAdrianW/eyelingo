@@ -1943,15 +1943,109 @@ var EYL_LOAD_TXT={
 
 
 
-<style id="eyl-grid-sync">
-/* ══ Jedna siatka kategorii w obu katalogach ══
-   Fiszki renderowały minmax(210px), Trener AI minmax(240px) — stąd trzy
-   kolumny w jednym miejscu i dwie w drugim przy tej samej szerokości okna.
-   Jedna wartość dla obu. Wygląd kafli i chipów bez zmian.
-   Wycofanie: usuń ten blok. */
-div:has(> .eylc-cat){
+
+
+<style id="eyl-filters-v2">
+/* ══════ KONTROLKI FILTRUJĄCE — wspólny system dla obu katalogów ══════
+   Problem wyjściowy: Fiszki i Trener AI miały osobne siatki (210 vs 240 px),
+   przez co ten sam katalog układał się w innej liczbie kolumn.
+
+   1. Język i poziom to różne rodzaje wyboru, więc mają różną formę.
+      14 języków — chipy zawijane, wszystkie równej szerokości (miara
+      najdłuższej nazwy), bo równa siatka czyta się jako jeden zbiór.
+      7 poziomów — jeden ciągły tor, bo A1→C2 to skala uporządkowana,
+      a osobne pigułki tę kolejność gubiły.
+
+   2. Zaznaczenie = granat, nie pomarańcz. Wcześniej dwa aktywne filtry
+      świeciły pomarańczem naraz, konkurując z przyciskami akcji.
+
+   3. Pasek „przerobione" zostaje zielony w OBU sekcjach — poprzednio
+      selektor trafiał tylko w Fiszki (eylToggleDone), a Trener AI ma
+      własną funkcję (lexTrenerToggleDone), więc zielenią różniły się
+      obie sekcje. Teraz nie ruszamy go w żadnej.                          */
+
+/* ── 1. Etykieta grupy ─────────────────────────────────────── */
+.eylc-flabel{
+  font-size:10.5px!important;font-weight:600!important;letter-spacing:.1em!important;
+  color:var(--dim2)!important;margin:0 0 10px!important;
+}
+
+/* ── 2. Chipy języka — równa szerokość, hairline, granat po wyborze ────
+   Szerokość ustawia skrypt el-langchips (miara najdłuższej nazwy).
+   Nie nadpisujemy jej — kafle mają tworzyć równą siatkę.               */
+.eylc-chiprow{display:flex!important;gap:7px!important;flex-wrap:wrap!important}
+.eylc-chip,.lexcat-chip{
+  display:inline-flex!important;align-items:center;justify-content:center;gap:8px;
+  padding:9px 14px!important;border-radius:9px!important;
+  border:1px solid var(--border2,#D8D2C0)!important;background:#fff!important;
+  font-size:13.5px!important;font-weight:500!important;color:var(--navy)!important;
+  line-height:1.25!important;white-space:nowrap;box-sizing:border-box;
+  transition:border-color .16s ease,background .16s ease,color .16s ease!important;
+}
+.eylc-chip:hover,.lexcat-chip:hover{
+  border-color:var(--navy)!important;background:rgba(26,35,64,.035)!important;
+}
+.eylc-chip.on,.lexcat-chip.on{
+  background:var(--navy)!important;border-color:var(--navy)!important;color:#fff!important;
+}
+.eylc-chip svg,.eylc-chip img,.lexcat-chip svg,.lexcat-chip img{
+  border-radius:2px;flex:none;box-shadow:0 0 0 1px rgba(26,35,64,.10);
+}
+.eylc-chip.on svg,.eylc-chip.on img{box-shadow:0 0 0 1px rgba(255,255,255,.30)}
+.eylc-chip:focus-visible,.lexcat-chip:focus-visible{
+  outline:2px solid var(--orange)!important;outline-offset:2px!important;
+}
+
+/* ── 3. Poziom — jeden ciągły tor zamiast siedmiu osobnych pigułek ─────
+   Wiersz poziomu nie ma klasy .eylc-langrow, więc rozpoznajemy go przez
+   :not() — dzięki temu skrypt równający języki go nie dotyka.          */
+.eylc-chiprow:not(.eylc-langrow){
+  display:inline-flex!important;flex-wrap:nowrap!important;gap:2px!important;
+  padding:3px!important;border-radius:11px!important;
+  background:var(--paper2,#F0EEE9)!important;border:1px solid var(--border2,#D8D2C0)!important;
+  max-width:100%;overflow-x:auto;scrollbar-width:none;
+}
+.eylc-chiprow:not(.eylc-langrow)::-webkit-scrollbar{display:none}
+.eylc-chiprow:not(.eylc-langrow) .eylc-chip{
+  width:auto!important;border:0!important;background:transparent!important;
+  border-radius:8px!important;padding:7px 15px!important;
+  color:#5E584F!important;font-weight:500!important;
+}
+.eylc-chiprow:not(.eylc-langrow) .eylc-chip:hover{
+  background:rgba(26,35,64,.05)!important;color:var(--navy)!important;
+}
+.eylc-chiprow:not(.eylc-langrow) .eylc-chip.on{
+  background:var(--navy)!important;color:#fff!important;
+  box-shadow:0 1px 2px rgba(26,35,64,.16)!important;
+}
+
+/* ── 4. Siatka kategorii — identyczna w obu katalogach ────────────── */
+div:has(> .eylc-cat),
+.eylc-grid,.lexcat-grid,.mat-grid{
   grid-template-columns:repeat(auto-fill,minmax(224px,1fr))!important;
   gap:10px!important;
+}
+
+/* ── 5. Kafel kategorii ──────────────────────────────────── */
+.eylc-cat{
+  border:1px solid var(--border2,#D8D2C0)!important;border-radius:12px!important;
+  box-shadow:none!important;padding:15px 16px!important;
+  transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease!important;
+}
+.eylc-cat:hover{
+  border-color:var(--navy)!important;transform:translateY(-1px);
+  box-shadow:0 4px 14px -6px rgba(26,35,64,.22)!important;
+}
+
+/* ── 6. Odzyskana przestrzeń po prawej ────────────────────────
+   Marginesy sięgały 128 px — prawie cała kolumna oddana pustce.        */
+@media (min-width:1024px){
+  :root{ --eyl-gutter-r: clamp(20px,1.6vw,34px)!important; }
+  #mat-main-content{ padding-right: calc(clamp(16px,1.6vw,26px) + var(--eyl-gutter-r))!important; }
+}
+@media (min-width:769px) and (max-width:1023px){
+  #mat-main-content{ padding-right:26px!important; }
+  #lex-catalog-inline{ padding-right:16px!important; }
 }
 </style>
 
