@@ -1707,13 +1707,6 @@ var EYL_LOAD_TXT={
 .lp-cap{margin-top:15px;font-size:13.5px;line-height:1.55;color:var(--ink-3)}
 .lp-dark .lp-cap{color:rgba(255,255,255,.86)}
 
-/* ── pasek prywatnosci pod hero ──────────────────────────────────────────── */
-.lp-privacy{border-block:1px solid var(--rule);background:var(--paper-2)}
-.lp-privacy-in{display:flex;flex-wrap:wrap;align-items:center;gap:12px 30px;padding-block:19px;
-  font-family:var(--f-mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
-.lp-privacy-in span{display:inline-flex;align-items:center;gap:9px}
-.lp-privacy-in svg{width:14px;height:14px;stroke:var(--acc);stroke-width:2;fill:none;flex:none}
-
 /* ═══ SEKCJA 02 — CZAS + BADANIA (jedyna ciemna) ═══════════════════════════ */
 .lp-claim{display:grid;grid-template-columns:1.15fr .85fr;gap:clamp(36px,5vw,80px);align-items:end}
 .lp-claim .lp-lede{margin-top:0}
@@ -1945,6 +1938,125 @@ var EYL_LOAD_TXT={
   .tryb-card-back{ padding:12px 20px!important }
   #tryb-card-example{ font-size:12px!important; line-height:1.45!important }
   .eyl-mastery-note{ display:none!important }
+}
+</style>
+
+<style id="eyl-filters-v2">
+/* ══════ KONTROLKI FILTRUJĄCE — wspólny system dla obu katalogów ══════
+   Problem wyjściowy: Fiszki i Trener AI miały osobne siatki (210px vs 240px),
+   przez co ten sam katalog układał się w innej liczbie kolumn.
+
+   Trzy decyzje projektowe:
+
+   1. Język i poziom to różne rodzaje wyboru, więc dostają różną formę.
+      14 języków to zbiór otwarty — chipy zawijane, naturalna szerokość.
+      7 poziomów to skala uporządkowana — jeden ciągły tor, bo A1→C2 ma
+      kolejność, a osobne pigułki tę kolejność gubiły.
+
+   2. Zaznaczenie = granat, nie pomarańcz. Wcześniej dwa aktywne filtry
+      świeciły pomarańczem naraz, konkurując z przyciskami akcji. Pomarańcz
+      wraca do roli akcentu jednorazowego (Design Bible §6.6).
+
+   3. Chipy języka przestają mieć wyrównaną szerokość. Kafel „Włoski"
+      rozciągnięty do miary „Niderlandzki" to 40% pustego pola — przy
+      czternastu pozycjach robi się z tego ściana. Naturalna szerokość
+      daje też kształt słowa jako dodatkowy punkt zaczepienia dla oka.      */
+
+/* ── 1. Etykieta grupy ─────────────────────────────────────── */
+.eylc-flabel{
+  font-size:10.5px!important;font-weight:600!important;letter-spacing:.1em!important;
+  color:var(--dim2)!important;margin:0 0 10px!important;
+}
+
+/* ── 2. Chipy języka — naturalna szerokość, hairline, granat po wyborze ── */
+.eylc-chiprow{display:flex!important;gap:7px!important;flex-wrap:wrap!important}
+.eylc-chiprow.eylc-langrow .eylc-chip,
+.eylc-chip,
+.lexcat-chip{
+  width:auto!important;                     /* zdejmuje wyrównanie z el-langchips */
+  display:inline-flex!important;align-items:center;gap:8px;
+  padding:8px 14px!important;border-radius:9px!important;
+  border:1px solid var(--border2,#D8D2C0)!important;background:#fff!important;
+  font-size:13.5px!important;font-weight:500!important;color:var(--navy)!important;
+  line-height:1.25!important;white-space:nowrap;
+  transition:border-color .16s ease,background .16s ease,color .16s ease!important;
+}
+.eylc-chip:hover,.lexcat-chip:hover{
+  border-color:var(--navy)!important;background:rgba(26,35,64,.035)!important;
+}
+.eylc-chip.on,.lexcat-chip.on{
+  background:var(--navy)!important;border-color:var(--navy)!important;color:#fff!important;
+}
+.eylc-chip svg,.eylc-chip img,.lexcat-chip svg,.lexcat-chip img{
+  border-radius:2px;flex:none;box-shadow:0 0 0 1px rgba(26,35,64,.10);
+}
+.eylc-chip.on svg,.eylc-chip.on img{box-shadow:0 0 0 1px rgba(255,255,255,.30)}
+.eylc-chip:focus-visible,.lexcat-chip:focus-visible{
+  outline:2px solid var(--orange)!important;outline-offset:2px!important;
+}
+
+/* ── 3. Poziom — jeden ciągły tor zamiast siedmiu osobnych pigułek ─────
+   Skala CEFR jest uporządkowana. Wspólny tor pokazuje, że to jedna oś,
+   a nie siedem niezależnych opcji — i od razu mówi, gdzie na niej jesteś. */
+.eylc-chiprow:not(.eylc-langrow){
+  display:inline-flex!important;flex-wrap:nowrap!important;gap:2px!important;
+  padding:3px!important;border-radius:11px!important;
+  background:var(--paper2,#F0EEE9)!important;border:1px solid var(--border2,#D8D2C0)!important;
+  max-width:100%;overflow-x:auto;scrollbar-width:none;
+}
+.eylc-chiprow:not(.eylc-langrow)::-webkit-scrollbar{display:none}
+.eylc-chiprow:not(.eylc-langrow) .eylc-chip{
+  border:0!important;background:transparent!important;border-radius:8px!important;
+  padding:7px 15px!important;color:#5E584F!important;font-weight:500!important;
+}
+.eylc-chiprow:not(.eylc-langrow) .eylc-chip:hover{
+  background:rgba(26,35,64,.05)!important;color:var(--navy)!important;
+}
+.eylc-chiprow:not(.eylc-langrow) .eylc-chip.on{
+  background:var(--navy)!important;color:#fff!important;
+  box-shadow:0 1px 2px rgba(26,35,64,.16)!important;
+}
+
+/* ── 4. Siatka kategorii — identyczna w obu katalogach ──────────────
+   Fiszki miały minmax(210px), Trener AI minmax(240px) — stąd 3 kolumny
+   w jednym i 2 w drugim. Jedna wartość dla obu.                         */
+div:has(> .eylc-cat),
+.eylc-grid,.lexcat-grid,.mat-grid{
+  grid-template-columns:repeat(auto-fill,minmax(228px,1fr))!important;
+  gap:12px!important;
+}
+
+/* ── 5. Kafel kategorii ──────────────────────────────────── */
+.eylc-cat{
+  border:1px solid var(--border2,#D8D2C0)!important;border-radius:12px!important;
+  box-shadow:none!important;padding:15px 16px!important;
+  transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease!important;
+}
+.eylc-cat:hover{
+  border-color:var(--navy)!important;transform:translateY(-1px);
+  box-shadow:0 4px 14px -6px rgba(26,35,64,.22)!important;
+}
+
+/* ── 6. Odzyskana przestrzeń po prawej ────────────────────────
+   Marginesy sięgały 128 px po prawej stronie. Przy szerokości kafla 228 px
+   to prawie cała kolumna oddana pustce. Zwężone — treść dostaje kolumnę
+   więcej, a oddech zostaje.                                              */
+@media (min-width:1024px){
+  :root{ --eyl-gutter-r: clamp(20px,1.6vw,34px)!important; }
+  #mat-main-content{ padding-right: calc(clamp(16px,1.6vw,26px) + var(--eyl-gutter-r))!important; }
+}
+@media (min-width:769px) and (max-width:1023px){
+  #mat-main-content{ padding-right:26px!important; }
+  #lex-catalog-inline{ padding-right:16px!important; }
+}
+
+/* ── 7. Sekcja „przerobione" — spokój zamiast zieleni ──────────────
+   Ukonczony materiał nie jest ważniejszy od tego, co przed uzytkownikiem.
+   Zwiniety pasek ma informować, nie przyciagać wzroku.                    */
+#lex-catalog-inline button[onclick*="DoneOpen"],
+button[onclick="eylToggleDone()"]{
+  background:transparent!important;border:1px dashed var(--border2,#D8D2C0)!important;
+  border-radius:11px!important;padding:11px 14px!important;
 }
 </style>
 
@@ -2370,18 +2482,6 @@ function eylPrefLoad(){
   </div>
 </section>
 
-<!-- ═══ pasek prywatności ═══════════════════════════════════════════════════ -->
-<div class="lp-privacy">
-  <div class="lp-w">
-    <div class="lp-privacy-in">
-      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Bez kamery</span>
-      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Bez nagrywania ekranu</span>
-      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Bez czytania Twoich okien</span>
-      <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Dane w Unii Europejskiej</span>
-    </div>
-  </div>
-</div>
-
 <!-- ═══ 02 · CZAS + BADANIA (jedyna ciemna strefa) ══════════════ -->
 <section class="lp-s lp-dark" id="lp-czas">
   <div class="lp-w">
@@ -2474,10 +2574,11 @@ function eylPrefLoad(){
     <div class="lp-mark lp-rv"><b>04</b> Jak to się układa w całość</div>
     <div class="lp-claim">
       <h2 class="lp-d2 lp-lines lp-rv">
-        <span><i>Zobaczyć. Przypomnieć sobie.</i></span>
+        <span><i>Zobaczyć.</i></span>
+        <span><i>Przypomnieć sobie.</i></span>
         <span><i><em>Powiedzieć na głos.</em></i></span>
       </h2>
-      <p class="lp-lede lp-rv" data-d="1"><b>Większość aplikacji robi tylko środkowy krok.</b> Same fiszki nie nauczyą mówić, samo osłuchanie nie zostanie w głowie.</p>
+      <p class="lp-lede lp-rv" data-d="1"><b>Większość aplikacji robi tylko środkowy krok.</b> Same fiszki nie nauczą mówić, samo osłuchanie nie zostanie w głowie.</p>
     </div>
 
     <div class="lp-rail">
