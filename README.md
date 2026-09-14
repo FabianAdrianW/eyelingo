@@ -28,12 +28,6 @@ This isn't a feature I bolted on. It came out of my MSc research on peripheral a
 
 **The other deliberate decision: no gamification.** No XP, no streaks, no leaderboards, no badges — they were designed out, not left out. The user is a working professional aged 30–50 who wants the language, not a daily-engagement habit loop. Removing the retention tricks means the product has to actually teach, which is the point.
 
-<!-- ════════════════════════════════════════════════════════════════
-     ▸ VIDEO SLOT 1 — desktop.mp4 (the ambient overlay in action)
-     This is the money shot. Put your cursor on the EMPTY LINE below this
-     comment, then drag desktop.mp4 into the editor and wait for it to upload.
-     ════════════════════════════════════════════════════════════════ -->
-
 
 
 https://github.com/user-attachments/assets/878b37f7-b109-4937-8a7a-aec6f8104715
@@ -84,22 +78,12 @@ That discipline — not raw coding speed — is why one person could ship this a
 
 A full walkthrough of the app — lessons, review, grammar and the AI conversation partner.
 
-<!-- ════════════════════════════════════════════════════════════════
-     ▸ VIDEO SLOT 2 — eyelingo-tour.mp4
-     Put your cursor on the EMPTY LINE below, then drag eyelingo-tour.mp4 in.
-     ════════════════════════════════════════════════════════════════ -->
-
 
 https://github.com/user-attachments/assets/a0bd4199-f0ef-4184-8177-c5f5b3f3b36e
 
 
 
 **A lesson with Lex, the AI tutor**
-
-<!-- ════════════════════════════════════════════════════════════════
-     ▸ VIDEO SLOT 3 — eyelingo-lesson-lex.mp4
-     Put your cursor on the EMPTY LINE below, then drag eyelingo-lesson-lex.mp4 in.
-     ════════════════════════════════════════════════════════════════ -->
 
 
 
