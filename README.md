@@ -35,7 +35,7 @@ This isn't a feature I bolted on. It came out of my MSc research on peripheral a
      ════════════════════════════════════════════════════════════════ -->
 
 
-https://github.com/user-attachments/assets/c8fe4fb5-fcef-473b-91fe-afab933e3d71
+https://github.com/user-attachments/assets/15cdd293-38db-4526-bb77-ec867758db5c
 
 
 
@@ -82,27 +82,15 @@ That discipline — not raw coding speed — is why one person could ship this a
 
 ## See it in action
 
-**An AI-generated lesson**
+A full walkthrough of the app — lessons, review, grammar and the AI conversation partner.
 
 <!-- ════════════════════════════════════════════════════════════════
-     ▸ VIDEO SLOT 2 — ai-zestaw.mp4
-     Put your cursor on the EMPTY LINE below, then drag ai-zestaw.mp4 in.
+     ▸ VIDEO SLOT 2 — eyelingo-tour.mp4
+     Put your cursor on the EMPTY LINE below, then drag eyelingo-tour.mp4 in.
      ════════════════════════════════════════════════════════════════ -->
 
 
-https://github.com/user-attachments/assets/7d37ab44-cf40-4efd-a3d2-642dcd9a0ec8
-
-
-
-**A spaced-repetition review session**
-
-<!-- ════════════════════════════════════════════════════════════════
-     ▸ VIDEO SLOT 3 — sesja.mp4
-     Put your cursor on the EMPTY LINE below, then drag sesja.mp4 in.
-     ════════════════════════════════════════════════════════════════ -->
-
-
-https://github.com/user-attachments/assets/689a3d75-c0b7-4734-9cc4-61b46ad92192
+https://github.com/user-attachments/assets/8871c3d6-f569-4b0b-9fa6-61e735a22463
 
 
 
