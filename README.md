@@ -28,12 +28,18 @@ This isn't a feature I bolted on. It came out of my MSc research on peripheral a
 
 **The other deliberate decision: no gamification.** No XP, no streaks, no leaderboards, no badges — they were designed out, not left out. The user is a working professional aged 30–50 who wants the language, not a daily-engagement habit loop. Removing the retention tricks means the product has to actually teach, which is the point.
 
-<!-- ▸ SCREENSHOTS GO HERE — this is the highest-value addition to the whole README.
-     1. The ambient overlay sitting over a normal desktop at work — lead with this one.
-        It's the "oh, I get it" shot, and the mechanism genuinely can't be understood from text.
-     2. A lesson in progress.
-     3. The placement / evaluation flow.
-     Put the files in /docs/screenshots/ and swap them in here. -->
+<!-- ════════════════════════════════════════════════════════════════
+     ▸ VIDEO SLOT 1 — desktop.mp4 (the ambient overlay in action)
+     This is the money shot. Put your cursor on the EMPTY LINE below this
+     comment, then drag desktop.mp4 into the editor and wait for it to upload.
+     ════════════════════════════════════════════════════════════════ -->
+
+
+https://github.com/user-attachments/assets/c8fe4fb5-fcef-473b-91fe-afab933e3d71
+
+
+
+
 
 ## How I work — and what this repo is evidence of
 
@@ -73,6 +79,32 @@ That discipline — not raw coding speed — is why one person could ship this a
 | `nauka/` | SEO content hub |
 | `freak/` | A standalone interactive piece I built as a job application — separate from the product |
 | `sitemap.xml`, `robots.txt` | SEO plumbing |
+
+## See it in action
+
+**An AI-generated lesson**
+
+<!-- ════════════════════════════════════════════════════════════════
+     ▸ VIDEO SLOT 2 — ai-zestaw.mp4
+     Put your cursor on the EMPTY LINE below, then drag ai-zestaw.mp4 in.
+     ════════════════════════════════════════════════════════════════ -->
+
+
+https://github.com/user-attachments/assets/7d37ab44-cf40-4efd-a3d2-642dcd9a0ec8
+
+
+
+**A spaced-repetition review session**
+
+<!-- ════════════════════════════════════════════════════════════════
+     ▸ VIDEO SLOT 3 — sesja.mp4
+     Put your cursor on the EMPTY LINE below, then drag sesja.mp4 in.
+     ════════════════════════════════════════════════════════════════ -->
+
+
+https://github.com/user-attachments/assets/689a3d75-c0b7-4734-9cc4-61b46ad92192
+
+
 
 ## A note on scope
 
