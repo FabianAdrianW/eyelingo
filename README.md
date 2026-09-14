@@ -18,6 +18,23 @@ Eyelingo helps adults actually *use* a language they already half-know, instead 
 
 I designed it, built it, and shipped it on my own, from the first idea to paying users. This repository is that product.
 
+## The idea it's built on
+
+Most vocabulary exposure shouldn't cost you dedicated time. The desktop companion surfaces semi-transparent flashcards in your **peripheral vision while you work** — you aren't studying, you're just occasionally noticing a word. The lesson engine then knows exactly what the ambient layer has already seeded, and converts that passive exposure into tested, retained knowledge.
+
+*Ambient sows, the lesson reaps.*
+
+This isn't a feature I bolted on. It came out of my MSc research on peripheral attention in vocabulary acquisition — the product started as the research instrument and grew up. It's also the one mechanism here that isn't commodity: anyone can wrap an LLM in a lesson UI, but the ambient layer is what makes the rest of the system worth building.
+
+**The other deliberate decision: no gamification.** No XP, no streaks, no leaderboards, no badges — they were designed out, not left out. The user is a working professional aged 30–50 who wants the language, not a daily-engagement habit loop. Removing the retention tricks means the product has to actually teach, which is the point.
+
+<!-- ▸ SCREENSHOTS GO HERE — this is the highest-value addition to the whole README.
+     1. The ambient overlay sitting over a normal desktop at work — lead with this one.
+        It's the "oh, I get it" shot, and the mechanism genuinely can't be understood from text.
+     2. A lesson in progress.
+     3. The placement / evaluation flow.
+     Put the files in /docs/screenshots/ and swap them in here. -->
+
 ## How I work — and what this repo is evidence of
 
 I treat a language model as an **executor, not an oracle**. My job is to decide what has to exist and how to tell whether it came out right; the model does the producing. Concretely, that means:
@@ -35,6 +52,7 @@ That discipline — not raw coding speed — is why one person could ship this a
 |---|---|---|
 | **AI lesson engine** | Multi-step, state-machine lesson flow: start → generate → evaluate answer → complete/resume, with server-side state | Serverless edge functions (Deno / TypeScript), Anthropic Claude via OpenRouter |
 | **Adaptive review** | SM-2 spaced repetition over ~56,000 items, per-item memory model from response-latency and exposure signals, CEFR-keyed difficulty | PostgreSQL |
+| **Ambient layer** | Peripheral flashcard overlays during normal computer work, feeding the same knowledge state the lessons read from | PyQt6 desktop companion |
 | **Grammar engine** | Rule banks A1–C2 across 14 languages, prerequisite graph, progress tracking | JSON grammar banks + `grammar-engine.js` |
 | **Data** | Normalised schema, Row-Level Security on every table, RPC functions, single source of truth shared by 3 clients | Supabase / PostgreSQL (EU region) |
 | **Clients** | Vanilla-JS single-page web app, installable offline-first PWA, PyQt6 desktop companion | JS / HTML / CSS, Python |
@@ -47,13 +65,13 @@ That discipline — not raw coding speed — is why one person could ship this a
 |---|---|
 | `index.html` | The web application (single-page, vanilla JS) |
 | `app.html` / `eyelingo-app.html` | Mobile PWA surface |
-| `fiszki_app.py` | Desktop companion app (PyQt6) |
+| `fiszki_app.py` | Desktop companion app (PyQt6) — the ambient overlay layer |
 | `grammar-engine.js`, `data/grammar/`, `grammar-bank.*.json` | Grammar engine and per-language rule banks |
 | `.github/workflows/` | CI: cross-platform build and release automation |
 | `installer/`, `eyelingo.spec` | Desktop packaging |
 | `service-worker.js`, `manifest.json` | PWA / offline support |
 | `nauka/` | SEO content hub |
-| `freak/` | A small interactive piece I built as a job application — a recruitment puzzle, not part of the product |
+| `freak/` | A standalone interactive piece I built as a job application — separate from the product |
 | `sitemap.xml`, `robots.txt` | SEO plumbing |
 
 ## A note on scope
