@@ -35,8 +35,8 @@ This isn't a feature I bolted on. It came out of my MSc research on peripheral a
      ════════════════════════════════════════════════════════════════ -->
 
 
-https://github.com/user-attachments/assets/15cdd293-38db-4526-bb77-ec867758db5c
 
+https://github.com/user-attachments/assets/878b37f7-b109-4937-8a7a-aec6f8104715
 
 
 
@@ -90,8 +90,20 @@ A full walkthrough of the app — lessons, review, grammar and the AI conversati
      ════════════════════════════════════════════════════════════════ -->
 
 
-https://github.com/user-attachments/assets/8871c3d6-f569-4b0b-9fa6-61e735a22463
+https://github.com/user-attachments/assets/a0bd4199-f0ef-4184-8177-c5f5b3f3b36e
 
+
+
+**A lesson with Lex, the AI tutor**
+
+<!-- ════════════════════════════════════════════════════════════════
+     ▸ VIDEO SLOT 3 — eyelingo-lesson-lex.mp4
+     Put your cursor on the EMPTY LINE below, then drag eyelingo-lesson-lex.mp4 in.
+     ════════════════════════════════════════════════════════════════ -->
+
+
+
+https://github.com/user-attachments/assets/ffaf20c4-19ca-48f8-bedf-72cbdc790173
 
 
 ## A note on scope
