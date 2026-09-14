@@ -5,7 +5,7 @@
 <!-- Audyt bezp. WEB-1: CSP. Blokuje eksfiltrację danych do obcych domen przy ewentualnym XSS.
      Gdyby coś przestało działać — usuń tę jedną linię <meta> poniżej i zgłoś, co padło. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://images.pexels.com https://sntlgkhktscezxpxrchl.supabase.co; media-src 'self' data: blob: https://sntlgkhktscezxpxrchl.supabase.co; connect-src 'self' https://sntlgkhktscezxpxrchl.supabase.co wss://sntlgkhktscezxpxrchl.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- SEO-F1: PWA duplikuje tresc landingu — poza indeksem, link equity idzie na / -->
 <meta name="robots" content="noindex, follow">
 <link rel="canonical" href="https://www.eyelingo.app/">
@@ -20,10 +20,15 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{--navy:#1a2340;--navy2:#0f1729;--orange:#c96a2a;--orange2:#e07830;--paper:#f8f7f4;--paper2:#f0eee9;--white:#fff;
-    --dim:#5b6478;--dim2:#8b93a6;--line:#e7e3da;--line2:#d9d4c8;--success:#0F6E56;--error:#A32D2D;--r:14px;--r-sm:10px;
+    --dim:#5b6478;--dim2:#646c80;--line:#e7e3da;--line2:#d9d4c8;--success:#0F6E56;--error:#A32D2D;--r:14px;--r-sm:10px;
+    /* Audyt 2026-09: --dim2 mialo 2,87:1 na --paper (wymog AA: 4,5). Nowa wartosc: 4,90.
+       --orange zostaje kolorem WYPELNIEN; tekst i cienkie ikony ida na --orange-ink,
+       a wypelnienia z bialym tekstem na --orange-btn (biel na #c96a2a = 3,76 — nie przechodzi). */
+    --orange-ink:#a85218;--orange-btn:#b85c20;
+    --ok:#2f6b2f;--ok-solid:#4f8a3f;--ok-bg:#eef5e6;--ok-line:#cfe3bf;
     /* Bursztyn = semantyka PRO (parytet z index.html: --premium/--premium-bg).
        Pomarańcz zostaje wyłącznie kolorem akcji, więc status nie udaje przycisku. */
-    --premium:#B47B0E;--premium-bg:#FFF4E0;
+    --premium:#96660B;--premium-bg:#FFF4E0;
     --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);font-family:'Inter',sans-serif;}
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;background:#2a2e3a;overflow:hidden;font-family:'Inter',sans-serif}
@@ -40,7 +45,7 @@
   .tb-right{display:flex;align-items:center;gap:9px;flex-shrink:0}
   /* Świadomość PRO: trwała, cicha, informacyjna. Bez cienia i bez pomarańczu —
      nie ma wyglądać na przycisk ani konkurować z jedynym akcentem akcji. */
-  .pro-pill{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:700;letter-spacing:.9px;
+  .pro-pill{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;letter-spacing:.9px;
     padding:4px 9px;border-radius:100px;background:var(--premium-bg);color:var(--premium);line-height:1;flex-shrink:0}
   .plan-row{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:12px;background:var(--paper);
     border:1px solid var(--line);margin-bottom:4px}
@@ -66,17 +71,16 @@
   .big .ic.navy{background:rgba(26,35,64,.08);color:var(--navy)}.big .ic.orange{background:rgba(201,106,42,.10);color:var(--orange)}
   .big .body{flex:1}.big .t{font-size:16px;font-weight:600;color:var(--navy)}.big .d{font-size:12.5px;color:var(--dim2);margin-top:3px}
   .big .chev{color:var(--line2)}
-  .soon-badge{font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--orange);background:#fff3e9;padding:3px 7px;border-radius:6px;margin-left:8px;vertical-align:middle}
 
   .resume{display:flex;align-items:center;gap:13px;background:#fffaf6;border:1.5px solid var(--orange);border-radius:var(--r);padding:14px 16px;cursor:pointer;margin-bottom:20px;transition:.15s}
   .rz-head{font-family:'DM Sans';font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin:0 0 10px}
   .rz-scroller{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px;margin:0 -2px}
   .rz-scroller::-webkit-scrollbar{display:none}
-  .rz-card{scroll-snap-align:center;flex:0 0 82%;text-align:left;background:#fff;border:2px solid var(--orange);border-radius:var(--r);padding:16px 18px;cursor:pointer;font-family:inherit;transition:transform .12s}
+  .rz-card{scroll-snap-align:center;flex:0 0 82%;text-align:left;background:#fff;border:1.5px solid var(--line2);border-radius:var(--r);padding:16px 18px;cursor:pointer;font-family:inherit;transition:transform .12s}
   .rz-card.solo{flex:0 0 100%}
   .rz-card:active{transform:scale(.985)}
   .rz-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-  .rz-eyebrow{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--orange);display:flex;align-items:center}
+  .rz-eyebrow{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--navy);display:flex;align-items:center}
   .rz-flag{font-size:18px;line-height:1}
   .rz-name{font-family:'DM Sans';font-size:18px;font-weight:600;color:var(--navy);margin-bottom:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .rz-bar{height:6px;background:var(--paper2);border-radius:3px;overflow:hidden;margin-bottom:7px}
@@ -84,7 +88,7 @@
   .rz-meta{font-size:12px;color:var(--dim2)}
   .rz-dots{display:flex;gap:6px;justify-content:center;margin-top:12px}
   .rz-dot{width:6px;height:6px;border-radius:50%;background:var(--line);transition:.18s}
-  .rz-dot.on{background:var(--orange);width:18px;border-radius:3px}
+  .rz-dot.on{background:var(--navy);width:18px;border-radius:3px}
   .resume:active{transform:scale(.99)}.resume .body{flex:1;min-width:0}.resume .t{font-size:13.5px;font-weight:600;color:var(--navy)}.resume .d{font-size:11.5px;color:var(--dim2);margin-top:1px}
 
   .row{display:flex;align-items:center;gap:14px;background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:15px 16px;cursor:pointer;transition:.15s;margin-bottom:11px}
@@ -114,11 +118,11 @@
   .imm-bar{display:flex;align-items:center;gap:12px;padding:calc(var(--safe-top) + 14px) 18px 8px;flex-shrink:0}
   .icon-btn{width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--dim);display:flex;align-items:center;justify-content:center;cursor:pointer}
   .icon-btn:active{background:var(--paper2)}
-  .imm-title{flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .imm-title{flex:1;text-align:center;font-size:14px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   .flip-stage{flex:1;display:flex;flex-direction:column;justify-content:center;padding:10px 22px;min-height:0}
-  .flip{position:relative;width:100%;min-height:340px;cursor:pointer}
-  .face{position:absolute;inset:0;min-height:340px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 28px;text-align:center;transition:opacity .28s,transform .28s;background:#fff;border:1.5px solid var(--line);box-shadow:0 12px 36px rgba(26,35,64,.09)}
+  .flip{position:relative;width:100%;min-height:clamp(228px,38vh,340px);cursor:pointer}
+  .face{position:absolute;inset:0;min-height:clamp(228px,38vh,340px);border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 28px;text-align:center;transition:opacity .28s,transform .28s;background:#fff;border:1.5px solid var(--line);box-shadow:0 12px 36px rgba(26,35,64,.09)}
   .face.front{opacity:1;transform:none;z-index:2}
   .face.back{opacity:0;transform:translateY(8px);pointer-events:none;border-top:3px solid var(--orange);z-index:1}
   .flip.flipped .front{opacity:0;transform:translateY(-8px);pointer-events:none}
@@ -137,13 +141,11 @@
   .thumb{flex-shrink:0;padding:14px 18px calc(var(--safe-bot) + 16px)}
   .btn{width:100%;border:none;border-radius:var(--r-sm);font-family:inherit;font-size:15.5px;font-weight:600;padding:16px;cursor:pointer;transition:.15s}
   .btn:active{transform:scale(.98)}.btn:disabled{opacity:.55}
-  .btn-orange{background:var(--orange);color:#fff}.btn-orange:active{background:var(--orange2)}
+  .btn-orange{background:var(--orange-btn);color:#fff}.btn-orange:active{background:var(--orange)}
   .btn-navy{background:var(--navy);color:#fff}
   .btn-ghost{background:transparent;border:.5px solid var(--line2);color:var(--dim)}
 
-  .tabbar{display:flex;flex-shrink:0;border-top:.5px solid var(--line);background:rgba(248,247,244,.92);backdrop-filter:blur(12px);padding:8px 30px calc(var(--safe-bot) + 8px)}
-  .tab{flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0;color:var(--dim2);font-family:inherit;font-size:11px;font-weight:500;transition:.15s}
-  .tab.active{color:var(--navy)}.tab.active .ti{color:var(--orange)}
+  /* .tabbar/.tab usuniete w audycie 2026-09 — zero markupu od czasu przejscia na jeden ekran */
   .hide{display:none!important}
   .mb4{margin-bottom:4px}.mb8{margin-bottom:8px}.mb16{margin-bottom:16px}.mb24{margin-bottom:24px}
   .note{font-size:11.5px;color:var(--dim2);text-align:center;padding:12px 24px}
@@ -161,7 +163,8 @@
   .inp:focus{border-color:var(--orange)}
   .login .err{font-size:13px;color:var(--error);text-align:center;min-height:20px;margin-bottom:6px}
   .login .alt{text-align:center;margin-top:18px;font-size:13px;color:var(--dim)}
-  .login .alt a{color:var(--orange);font-weight:600;cursor:pointer}
+  .login #li-reset{margin-top:12px}
+  .login .alt a{color:var(--orange-ink);font-weight:600;cursor:pointer}
   /* ===== LEX setup ===== */
   .field{margin-top:22px}.field .lab{font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:10px}
   .opt3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -173,19 +176,15 @@
   .sub{font-size:14px;color:var(--dim);line-height:1.5}
   /* ===== LEX run ===== */
   .lex-portionbar{flex:1;height:4px;background:var(--line2);border-radius:2px;overflow:hidden}
-  .lex-portionbar i{display:block;height:100%;width:0%;background:var(--orange);border-radius:2px;transition:width .4s}
+  .lex-portionbar i{display:block;height:100%;width:0%;background:var(--navy);border-radius:2px;transition:width .4s}
   #lex-stage{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 18px calc(var(--safe-bot) + 20px)}
   #lex-stage::-webkit-scrollbar{display:none}
-  /* Tablica lekcji — pływający przycisk (lewy dół) + dolny arkusz */
-  #lex-board-fab{display:none;position:absolute;right:18px;bottom:24px;z-index:42;width:52px;height:52px;border-radius:50%;border:1px solid rgba(26,35,64,.12);background:rgba(255,255,255,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 6px 20px rgba(26,35,64,.16);color:var(--navy);align-items:center;justify-content:center;cursor:pointer;opacity:.62;transition:opacity .2s,transform .15s}
+  /* Tablica lekcji — pływający przycisk (prawy dół) + dolny arkusz */
+  #lex-board-fab{display:none;position:absolute;right:18px;bottom:24px;z-index:42;width:52px;height:52px;border-radius:50%;border:1px solid rgba(26,35,64,.12);background:rgba(255,255,255,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 6px 20px rgba(26,35,64,.16);color:var(--navy);align-items:center;justify-content:center;cursor:pointer;opacity:.82;transition:opacity .2s,transform .15s}
   #lex-board-fab:active{transform:scale(.94);opacity:1}
   /* Znacznik regul: osobny od licznika slow, zeby jedno spojrzenie
      odpowiadalo na pytanie „czy jest tu regula". Granat, nie pomarancz. */
-  #lex-board-badge-gram{position:absolute;bottom:-4px;left:-4px;min-width:19px;height:19px;padding:0 4px;
-    border-radius:10px;background:var(--navy,#1a2340);color:#fff;font-size:10px;font-weight:600;
-    display:none;align-items:center;justify-content:center;gap:2px;line-height:19px;
-    box-shadow:0 1px 4px rgba(26,35,64,.28)}
-  #lex-board-badge{position:absolute;top:-5px;right:-5px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--orange);color:#fff;font-size:11px;font-weight:600;display:none;align-items:center;justify-content:center;line-height:20px}
+  #lex-board-badge{position:absolute;top:-5px;right:-5px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--navy);color:#fff;font-size:11px;font-weight:600;display:none;align-items:center;justify-content:center;line-height:20px}
   #lex-board-backdrop{display:none;position:absolute;inset:0;background:rgba(26,35,64,.28);z-index:43;animation:fade .2s ease}
   #lex-board-sheet{position:absolute;left:0;right:0;bottom:0;z-index:44;background:#fff;border-top:.5px solid var(--line);border-radius:22px 22px 0 0;box-shadow:0 -12px 34px rgba(26,35,64,.14);display:flex;flex-direction:column;max-height:74%;transform:translateY(110%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
   #lex-board-sheet.open{transform:translateY(0)}
@@ -200,7 +199,7 @@
   .lbw.rev{background:#fffaf6;border-color:rgba(201,106,42,.28)}
   .lbw .w{flex:1;font-size:15px;font-weight:600;color:var(--navy);min-width:0;word-break:break-word}
   .lbw .t{font-size:14px;color:var(--dim);text-align:right}
-  .lbw .hidden-pill{font-size:11px;color:#a39d90;border:1px dashed var(--line2);border-radius:100px;padding:4px 12px;white-space:nowrap}
+  .lbw .hidden-pill{font-size:11px;color:#6b6458;border:1px dashed var(--line2);border-radius:100px;padding:4px 12px;white-space:nowrap}
   .lbw .spk{width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--dim2);border:none;background:none;cursor:pointer}
   .lbw .spk:active{color:var(--orange)}
   .lbsh-empty{text-align:center;color:var(--dim2);font-size:12.5px;padding:34px 22px;line-height:1.6}
@@ -221,14 +220,14 @@
   .lexx-introcard{background:#fff}
   .lexx-introtext{font-size:15px;line-height:1.6;color:var(--ink);margin:6px 0 14px}
   .lexx-ex-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-  .lexx-eyebrow,.lexx-badge{font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--orange)}
+  .lexx-eyebrow,.lexx-badge{font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--orange-ink)}
   .lexx-badge{color:var(--dim2)}
   .lexx-obj{font-size:16.5px;font-weight:600;color:var(--navy);line-height:1.4;margin-bottom:14px}
   .lexx-q{font-size:16px;line-height:1.7;color:var(--ink);margin:4px 0 14px}
   .lexx-cloze{line-height:2.2}
   .lexx-prompt{font-size:14px;color:var(--dim);line-height:1.5;margin-bottom:14px}
   .lexx-scene{background:var(--paper2);border-radius:12px;padding:13px 15px;margin-bottom:14px}
-  .lexx-scene-src{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--orange)}
+  .lexx-scene-src{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--orange-ink)}
   .lexx-scene-line{display:flex;align-items:flex-start;gap:8px;margin-top:6px}
   .lexx-scene-txt{flex:1;font-size:15px;line-height:1.55;color:var(--ink)}
   .lexx-sceneaudio{flex-shrink:0;width:30px;height:30px;border-radius:50%;border:1px solid var(--line2);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--navy)}
@@ -247,8 +246,8 @@
   .lexx-gapfill{display:inline-block;min-width:80px;border-bottom:2px solid var(--orange)}
   .lexx-check{width:100%;border:none;border-radius:var(--r-sm);background:var(--navy);color:#fff;font-family:inherit;font-size:15px;font-weight:600;padding:14px;cursor:pointer;margin-top:16px;transition:.15s}
   .lexx-check:active{transform:scale(.99)}.lexx-check:disabled{opacity:.6}
-  .lexx-next{width:100%;border:none;border-radius:var(--r-sm);background:var(--orange);color:#fff;font-family:inherit;font-size:15.5px;font-weight:600;padding:15px;cursor:pointer;margin-top:14px;transition:.15s}
-  .lexx-next:active{transform:scale(.99);background:var(--orange2)}
+  .lexx-next{width:100%;border:none;border-radius:var(--r-sm);background:var(--orange-btn);color:#fff;font-family:inherit;font-size:15.5px;font-weight:600;padding:15px;cursor:pointer;margin-top:14px;transition:.15s}
+  .lexx-next:active{transform:scale(.99);background:var(--orange)}
   .lexx-fb{display:none;font-size:14px;line-height:1.55;padding:13px 15px;border-radius:var(--r-sm);margin-top:14px}
   .lexx-fb.ok{background:var(--success-bg);color:var(--success)}
   .lexx-fb.bad{background:#f7e7e3;color:var(--error)}
@@ -259,22 +258,23 @@
   .lexx-hintph{font-size:13px;color:var(--dim2)}
   .lexx-seg{display:flex;gap:4px;margin-bottom:14px}
   .lexx-seg span{height:4px;flex:1;border-radius:2px;background:var(--line2)}
-  .lexx-seg span.done{background:var(--orange)}.lexx-seg span.cur{background:var(--navy)}
+  .lexx-seg span.done{background:var(--navy)}.lexx-seg span.cur{background:var(--navy)}
+  .lexx-seg span.cur{box-shadow:0 0 0 2px rgba(26,35,64,.16)}
   .lexx-dots{display:flex;gap:5px;justify-content:center;margin:4px 0 16px}
   .lexx-dots span{width:7px;height:7px;border-radius:50%;background:var(--line2)}
-  .lexx-dots span.done{background:var(--orange)}.lexx-dots span.cur{background:var(--navy)}
+  .lexx-dots span.done{background:var(--navy)}.lexx-dots span.cur{background:var(--navy)}
   .lexx-items{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
   .lexx-chip{display:inline-flex;align-items:center;gap:6px;background:var(--paper2);border-radius:100px;padding:8px 14px;font-size:14px;font-weight:600;color:var(--navy);cursor:pointer}
   .lexx-chip .tr{font-size:12px;font-weight:400;color:var(--dim2)}
-  .lexx-target{display:inline-block;background:rgba(201,106,42,.12);color:var(--orange);border-radius:6px;padding:2px 9px;font-weight:600;font-size:14px}
+  .lexx-target{display:inline-block;background:rgba(201,106,42,.12);color:var(--orange-ink);border-radius:6px;padding:2px 9px;font-weight:600;font-size:14px}
   .lexx-tilezone{min-height:48px;display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start;padding:12px;background:var(--paper2);border-radius:10px;margin-bottom:12px}
   .lexx-tilepool{display:flex;flex-wrap:wrap;gap:8px}
   .lexx-tile{border:1px solid var(--line2);background:#fff;border-radius:8px;padding:9px 13px;font-family:inherit;font-size:15px;color:var(--navy);cursor:pointer;transition:.12s}
   .lexx-tile:active{transform:scale(.96)}
   .lexx-tile.placed{background:var(--navy);color:#fff;border-color:var(--navy)}
 
-  .due-pill{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:100px;background:var(--orange);color:#fff;font-size:11px;font-weight:600;margin-left:8px;vertical-align:middle}
-  .tab .tab-due{display:inline-block;min-width:15px;height:15px;line-height:15px;padding:0 4px;border-radius:100px;background:var(--orange);color:#fff;font-size:9px;font-weight:700;margin-left:5px;vertical-align:top}
+  .due-pill{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:100px;background:var(--orange-btn);color:#fff;font-size:11px;font-weight:600;margin-left:8px;vertical-align:middle}
+  .tab .tab-due{display:inline-block;min-width:15px;height:15px;line-height:15px;padding:0 4px;border-radius:100px;background:var(--orange-btn);color:#fff;font-size:9px;font-weight:700;margin-left:5px;vertical-align:top}
   .eyl-h{font-family:'DM Sans';font-size:21px;font-weight:600;color:var(--navy);margin:6px 0 14px;letter-spacing:-.2px}
   .eyl-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px}
   .eyl-grid.lvl{grid-template-columns:1fr 1fr 1fr}
@@ -284,26 +284,26 @@
   .eyl-tile .lb{font-size:14px;font-weight:600;color:var(--navy);line-height:1.25}
   .eyl-tile.lvl{justify-content:center;padding:18px 10px}.eyl-tile.lvl .lb{font-family:'DM Sans';font-size:19px}
   .eyl-tile.cat{flex-direction:row;align-items:center}.eyl-tile.cat .ic{width:34px;height:34px;border-radius:10px;background:var(--paper2);color:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  .eyl-tile.done{background:#eef5e6;border-color:#8fae5e}
+  .eyl-tile.done{background:#eef5e6;border-color:#cfe3bf}
   .eyl-flabel{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--dim2);margin:16px 0 8px}
   .eyl-chiprow{display:flex;gap:8px;flex-wrap:wrap}
   .eyl-chiprow.lang{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .eyl-chiprow.lang .eyl-chip{width:100%;text-align:center;padding-left:8px;padding-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .eyl-chip{padding:8px 14px;border-radius:100px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;color:var(--navy);font-family:inherit;cursor:pointer}
-  .eyl-chip.on{background:var(--orange);border-color:var(--orange);color:#fff}
-  .eyl-chip.done{background:#eef5e6;border-color:#cfe3bf;color:#3b7d3b}
-  .eyl-chip.done.on{background:#3b7d3b;border-color:#3b7d3b;color:#fff}
+  .eyl-chip.on{background:var(--orange-btn);border-color:var(--orange-btn);color:#fff}
+  .eyl-chip.done{background:#eef5e6;border-color:#cfe3bf;color:#2f6b2f}
+  .eyl-chip.done.on{background:#2f6b2f;border-color:#2f6b2f;color:#fff}
   .eyl-langprog{margin:14px 0 4px;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:13px 14px}
   .eyl-langprog-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:11px}
   .eyl-langprog-lang{font-size:14px;font-weight:700;color:var(--navy)}
-  .eyl-langprog-pct{font-size:12.5px;font-weight:600;color:var(--orange);white-space:nowrap}
+  .eyl-langprog-pct{font-size:12.5px;font-weight:600;color:var(--orange-ink);white-space:nowrap}
   .eyl-ladder{display:flex;gap:6px;align-items:flex-end}
   .eyl-rung{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px}
   .eyl-rung .bar{width:100%;height:34px;background:var(--paper2);border-radius:5px;overflow:hidden;display:flex;align-items:flex-end}
   .eyl-rung .bar i{display:block;width:100%;background:var(--orange);transition:height .4s;border-radius:5px 5px 0 0}
-  .eyl-rung.done .bar i{background:#6aa84f}
+  .eyl-rung.done .bar i{background:#4f8a3f}
   .eyl-rung b{font-size:10px;font-weight:700;color:var(--dim2)}
-  .eyl-rung.done b{color:#3b7d3b}
+  .eyl-rung.done b{color:#2f6b2f}
   .eyl-catlist{display:flex;flex-direction:column;gap:8px;margin-top:18px}
   .eyl-cat{display:flex;align-items:center;gap:11px;background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:13px 14px;cursor:pointer;transition:.15s}
   .eyl-cat:active{transform:scale(.99)}
@@ -312,17 +312,17 @@
   .eyl-cat .lb{font-size:14px;font-weight:600;color:var(--navy);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .eyl-cat .mt{font-size:11px;color:var(--dim2)}
   .lex-adjust-link{display:block;width:100%;text-align:left;margin-top:12px;padding:13px 14px;border:1px dashed var(--line);border-radius:var(--r);background:transparent;color:var(--dim);font-size:13px;font-weight:500;font-family:inherit;cursor:pointer}
-  .pw-grades{display:grid;grid-template-columns:1fr;gap:9px;padding:6px 22px calc(var(--safe-bot) + 16px)}
+  .pw-grades{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:6px 22px calc(var(--safe-bot) + 16px)}
   .pw-g{border:none;border-radius:13px;padding:14px 10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;color:#fff;display:flex;flex-direction:column;align-items:center;gap:2px;transition:.12s}
   .pw-g:active{transform:scale(.97)}
   .pw-g .ph{font-size:10.5px;font-weight:500;opacity:.85}
-  .pw-g.q1{background:#A32D2D}.pw-g.q2{background:#c07f24}.pw-g.q3{background:#3b7d3b}.pw-g.q4{background:#2b6cb0}
+  .pw-g.q1{background:#A32D2D}.pw-g.q2{background:#a06714}.pw-g.q3{background:#2f6b2f}.pw-g.q4{background:#2b6cb0}
   .pw-hint{text-align:center;font-size:12.5px;color:var(--dim2);padding:6px 22px 2px}
   /* ── Swipe affordance (zmiana kategorii) ── */
   @keyframes eylChev{0%,100%{opacity:.4;transform:translateX(0)}50%{opacity:1;transform:translateX(3px)}}
   @keyframes eylEnterR{from{transform:translateX(34px);opacity:0}to{transform:translateX(0);opacity:1}}
   @keyframes eylEnterL{from{transform:translateX(-34px);opacity:0}to{transform:translateX(0);opacity:1}}
-  .eyl-swipe-cue{display:flex;align-items:center;justify-content:center;gap:9px;margin-top:11px;padding:9px 16px;background:#fff5ec;border:1px solid #ffe1c6;border-radius:24px;font-size:12px;font-weight:600;color:var(--orange)}
+  .eyl-swipe-cue{display:flex;align-items:center;justify-content:center;gap:9px;margin-top:11px;padding:9px 16px;background:#fff5ec;border:1px solid #ffe1c6;border-radius:24px;font-size:12px;font-weight:600;color:var(--orange-ink)}
   .eyl-swipe-cue svg{animation:eylChev 1.3s ease-in-out infinite}
   .eyl-swipe-cue svg.l{animation-direction:reverse}
   .eyl-enter-r{animation:eylEnterR .2s ease}
@@ -360,14 +360,14 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   /* ===== Redesign: status / postęp / nawigacja / ocena ===== */
   .st-pill{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:3px 8px;border-radius:100px;vertical-align:1px}
   .st-pill.new{background:var(--paper2);color:var(--dim)}
-  .st-pill.prog{background:#fff3e9;color:var(--orange)}
-  .st-pill.done{background:#eef5e6;color:#3b7d3b}
+  .st-pill.prog{background:#fff3e9;color:var(--orange-ink)}
+  .st-pill.done{background:#eef5e6;color:#2f6b2f}
   .st-bar{position:relative;height:6px;background:var(--paper2);border-radius:3px;overflow:hidden;margin-top:8px}
   .st-bar i.seen{position:absolute;inset:0;height:100%;border-radius:3px;background:rgba(201,106,42,.22);transition:width .35s}
-  .st-bar b.mast{position:absolute;inset:0;height:100%;border-radius:3px;background:#6aa84f;transition:width .35s}
+  .st-bar b.mast{position:absolute;inset:0;height:100%;border-radius:3px;background:#4f8a3f;transition:width .35s}
   .row.mine{border-left:3px solid var(--navy)}
   .eyl-cat.eyl{border-left:3px solid var(--orange)}
-  .eyl-cat.done{background:#f0f7ec;border-color:#cfe3bf}
+  .eyl-cat.done{background:#eef5e6;border-color:#cfe3bf}
   .catnav{display:flex;flex-direction:column;align-items:center;gap:4px;margin:2px 0 14px}
   .catnav .pos{font-size:12px;font-weight:600;color:var(--navy)}
   .catnav .swipehint{font-size:11px;color:var(--dim2)}
@@ -380,13 +380,13 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   .br-end-h{font-family:'DM Sans';font-size:20px;font-weight:600;color:var(--navy);margin-bottom:14px}
   .br-end-pct{margin-bottom:16px}
   .br-end-bar{height:7px;background:var(--paper2);border-radius:4px;overflow:hidden;margin-bottom:7px}
-  .br-end-bar i{display:block;height:100%;background:var(--orange);border-radius:4px;transition:width .4s}
-  .br-end-bar.done i{background:#6aa84f}
+  .br-end-bar i{display:block;height:100%;background:var(--ok-solid);border-radius:4px;transition:width .4s}
+  .br-end-bar.done i{background:var(--ok)}
   .br-end-pct span{font-size:12.5px;color:var(--dim2)}
   .br-end-rec{font-size:13.5px;color:var(--navy);line-height:1.5;margin-bottom:22px}
   .br-end-actions{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
   .br-end-btn{width:100%;text-align:left;border-radius:14px;padding:15px 16px;cursor:pointer;font-family:inherit;border:1.5px solid var(--line2);background:#fff;transition:.15s}
-  .br-end-btn.primary{border:none;background:var(--orange);box-shadow:0 7px 20px rgba(216,90,48,.22)}
+  .br-end-btn.primary{border:none;background:var(--orange-btn);box-shadow:0 7px 20px rgba(184,92,32,.22)}
   .br-end-btn.primary .t{color:#fff}
   .br-end-btn.primary .d{color:rgba(255,255,255,.85)}
   .br-end-btn .t{display:block;font-size:15px;font-weight:600;color:var(--navy);margin-bottom:2px}
@@ -401,42 +401,42 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   .catnav button{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;background:#fff;border:.5px solid var(--line2);border-radius:12px;padding:11px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--navy);cursor:pointer;transition:.12s}
   .catnav button:active{background:var(--paper2)}.catnav button:disabled{opacity:.4}
   .catnav .pos{flex:0 0 auto;font-size:11px;color:var(--dim2);font-weight:600;padding:0 2px;white-space:nowrap}
-  .action.know{border:.5px solid #cfe0bd;background:#f3f8ec}
-  .action.know .ic{background:rgba(106,168,79,.16);color:#3b7d3b}
-  .br-grades{display:none;grid-template-columns:repeat(3,1fr);gap:7px;padding:2px 20px 8px}
+  .action.know{border:.5px solid #cfe3bf;background:#eef5e6}
+  .action.know .ic{background:rgba(106,168,79,.16);color:#2f6b2f}
+  .br-grades{display:none;grid-template-columns:repeat(2,1fr);gap:10px;padding:2px 20px 10px}
   .br-g{border:none;border-radius:12px;padding:11px 4px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;color:#fff;display:flex;flex-direction:column;align-items:center;gap:1px;transition:.12s}
   .br-g:active{transform:scale(.96)}
   .br-g .ph{font-size:9px;font-weight:500;opacity:.85}
-  .br-g.q1{background:#A32D2D}.br-g.q2{background:#c07f24}.br-g.q3{background:#3b7d3b}.br-g.q4{background:#2b6cb0}
+  .br-g.q1{background:#A32D2D}.br-g.q2{background:#a06714}.br-g.q3{background:#2f6b2f}.br-g.q4{background:#2b6cb0}
   .br-hint{text-align:center;font-size:12px;color:var(--dim2);padding:2px 22px}
-  .br-note{display:none;text-align:center;font-size:10.5px;color:var(--dim2);padding:0 22px 4px;line-height:1.45}
-  .br-graded{display:inline-block;margin-left:8px;font-size:11px;color:#3b7d3b;font-weight:600}
+  .br-note{display:none;text-align:center;font-size:12px;color:var(--dim);padding:0 22px 10px;line-height:1.5}
+  .br-graded{display:inline-block;margin-left:8px;font-size:11px;color:#2f6b2f;font-weight:600}
   .cont-card{scroll-snap-align:center;flex:0 0 78%;text-align:left;background:#fff;border:1.5px solid var(--line2);border-radius:var(--r);padding:15px 17px;cursor:pointer;font-family:inherit;transition:transform .12s}
   .cont-card:active{transform:scale(.985)}.cont-card.solo{flex:0 0 100%}
   .cont-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
   .cont-eyebrow{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:5px}
-  .cont-eyebrow.mine{color:var(--navy)}.cont-eyebrow.eyl{color:var(--orange)}
+  .cont-eyebrow.mine{color:var(--navy)}.cont-eyebrow.eyl{color:var(--orange-ink)}
   .cont-name{font-family:'DM Sans';font-size:17px;font-weight:600;color:var(--navy);margin-bottom:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 <style id="gram-card-css">
 /* Karta „Nowa struktura" — segmentacja wizualna zamiast sciany tekstu.
    Kazdy blok = inna funkcja dydaktyczna, inny ciezar wizualny, inny rytm. */
-.gram-card{background:#fff;border:1px solid var(--line,#e8e3da);border-left:3px solid var(--orange,#c96a2a);
+.gram-card{background:#fff;border:1px solid var(--line,#e7e3da);border-left:3px solid var(--orange,#c96a2a);
   border-radius:14px;padding:18px 20px;margin-bottom:16px}
 .gram-eyebrow{font-size:10px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
-  color:var(--orange,#c96a2a);margin-bottom:7px}
+  color:var(--orange-ink,#a85218);margin-bottom:7px}
 .gram-title{font-family:'DM Sans',system-ui,sans-serif;font-size:17px;font-weight:600;
   color:var(--navy,#1a2340);line-height:1.35;margin-bottom:10px}
-.gram-rule{font-size:14.5px;line-height:1.65;color:var(--dim,#4a5268);margin-bottom:14px}
+.gram-rule{font-size:14.5px;line-height:1.65;color:var(--dim,#5b6478);margin-bottom:14px}
 
 /* Wzorzec — siatka, nie proza. Wyrownanie kolumn robi robote za czytelnika. */
-.gram-para{background:var(--paper,#faf7f2);border-radius:10px;padding:4px 2px;margin-bottom:14px;overflow-x:auto}
+.gram-para{background:var(--paper,#f8f7f4);border-radius:10px;padding:4px 2px;margin-bottom:14px;overflow-x:auto}
 .gram-prow{display:flex;align-items:baseline;gap:10px;padding:7px 12px;border-bottom:1px solid rgba(26,35,64,.055)}
 .gram-prow:last-child{border-bottom:0}
 .gram-phead{padding-top:9px;padding-bottom:6px}
 .gram-phead .gram-pcell{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--dim2,#8b93a7)}
-.gram-pcell{flex:1 1 0;min-width:0;font-size:13.5px;line-height:1.45;color:var(--dim,#4a5268);
+  color:var(--dim2,#646c80)}
+.gram-pcell{flex:1 1 0;min-width:0;font-size:13.5px;line-height:1.45;color:var(--dim,#5b6478);
   font-variant-numeric:tabular-nums}
 .gram-pkey{font-weight:600;color:var(--navy,#1a2340)}
 
@@ -446,12 +446,12 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 .gram-ex:last-child{margin-bottom:0}
 .gram-ex:active{border-left-color:var(--orange,#c96a2a)}
 .gram-ex-t{font-size:14.5px;font-weight:600;color:var(--navy,#1a2340);line-height:1.45}
-.gram-ex-p{font-size:12.5px;color:var(--dim2,#8b93a7);line-height:1.45;margin-top:2px}
+.gram-ex-p{font-size:12.5px;color:var(--dim2,#646c80);line-height:1.45;margin-top:2px}
 
 /* Typowy blad — jedyny blok z ostrzegawczym tlem. Uzyty raz, wiec dziala. */
 .gram-warn{display:flex;gap:9px;align-items:flex-start;background:#fdf4ec;border-radius:10px;
   padding:11px 13px;font-size:13px;line-height:1.55;color:#8a4a18}
-.gram-warn-ic{flex:0 0 17px;height:17px;border-radius:50%;background:var(--orange,#c96a2a);color:#fff;
+.gram-warn-ic{flex:0 0 17px;height:17px;border-radius:50%;background:var(--orange-btn,#b85c20);color:#fff;
   font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
 
 /* Wariant w Zeszycie/Tablicy — bez ramki, ciasniej */
@@ -459,12 +459,12 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 .gram-inline .gram-eyebrow{display:none}
 /* Sciaga w cwiczeniu — wzorzec struktury dostepny w trakcie zadania.
    Bez akcentu pomaranczowego: to rusztowanie, nie akcja (RZ-9). */
-.gram-sc{border:1px solid var(--line,#e8e3da);border-radius:10px;background:var(--paper,#faf7f2);margin:0 0 14px}
+.gram-sc{border:1px solid var(--line,#e7e3da);border-radius:10px;background:var(--paper,#f8f7f4);margin:0 0 14px}
 .gram-sc-h{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;padding:9px 11px;cursor:pointer;
   font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--dim2,#8a8378);text-align:left}
+  color:var(--dim2,#646c80);text-align:left}
 .gram-sc-name{font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--navy,#1a2340)}
-.gram-sc-arw{margin-left:auto;font-size:10px;color:var(--dim2,#8a8378)}
+.gram-sc-arw{margin-left:auto;font-size:10px;color:var(--dim2,#646c80)}
 .gram-sc-arw::after{content:'\25BE'}
 .gram-sc.open .gram-sc-arw::after{content:'\25B4'}
 .gram-sc-b{display:none;padding:0 11px 11px}
@@ -478,47 +478,47 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 .gram-map-ov{position:fixed;inset:0;z-index:9999;background:rgba(26,35,64,.42);display:flex;align-items:flex-end;justify-content:center}
 .phone .gram-map-ov{position:absolute}
 .gram-map-card{width:100%;max-width:560px;max-height:86%;display:flex;flex-direction:column;
-  background:var(--paper,#faf7f2);border-radius:16px 16px 0 0;box-shadow:0 -8px 40px rgba(26,35,64,.18)}
+  background:var(--paper,#f8f7f4);border-radius:16px 16px 0 0;box-shadow:0 -8px 40px rgba(26,35,64,.18)}
 @media(min-width:700px){.gram-map-ov{align-items:center}.gram-map-card{border-radius:16px;max-height:78%}}
 .gram-map-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px 11px;
-  font-size:13px;font-weight:600;color:var(--navy,#1a2340);border-bottom:1px solid var(--line,#e8e3da)}
-.gram-map-x{background:none;border:0;font-size:21px;line-height:1;color:var(--dim2,#8a8378);cursor:pointer;padding:0 2px}
+  font-size:13px;font-weight:600;color:var(--navy,#1a2340);border-bottom:1px solid var(--line,#e7e3da)}
+.gram-map-x{background:none;border:0;font-size:21px;line-height:1;color:var(--dim2,#646c80);cursor:pointer;padding:0 2px}
 .gram-map-body{overflow:auto;padding:4px 18px}
-.gram-map-lead{font-size:11px;color:var(--dim2,#8a8378);margin:11px 0 0}
-.gram-map-sec{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2,#8a8378);margin:16px 0 4px}
-.gram-map-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line,#e8e3da)}
-.gram-map-lvl{flex:0 0 auto;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--dim2,#8a8378);
-  border:1px solid var(--line,#e8e3da);border-radius:4px;padding:1px 4px}
+.gram-map-lead{font-size:11px;color:var(--dim2,#646c80);margin:11px 0 0}
+.gram-map-sec{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2,#646c80);margin:16px 0 4px}
+.gram-map-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line,#e7e3da)}
+.gram-map-lvl{flex:0 0 auto;font-size:9.5px;font-weight:700;letter-spacing:.06em;color:var(--dim2,#646c80);
+  border:1px solid var(--line,#e7e3da);border-radius:4px;padding:1px 4px}
 .gram-map-nm{flex:1 1 auto;font-size:12.5px;line-height:1.4;color:var(--navy,#1a2340)}
-.gram-map-tag{flex:0 0 auto;font-size:10px;color:var(--dim2,#8a8378)}
-.gram-map-item{border-bottom:1px solid var(--line,#e8e3da)}
+.gram-map-tag{flex:0 0 auto;font-size:10px;color:var(--dim2,#646c80)}
+.gram-map-item{border-bottom:1px solid var(--line,#e7e3da)}
 .gram-map-item .gram-map-row{border-bottom:0;cursor:pointer}
-.gram-map-chev{flex:0 0 auto;font-size:10px;color:var(--dim2,#8a8378)}
+.gram-map-chev{flex:0 0 auto;font-size:10px;color:var(--dim2,#646c80)}
 .gram-map-chev::after{content:'\25BE'}
 .gram-map-item.open .gram-map-chev::after{content:'\25B4'}
 .gram-map-rule{display:none;padding:0 0 10px}
 .gram-map-item.open .gram-map-rule{display:block}
 .gram-map-rule .gram-card{margin:0}
-.gram-map-more{font-size:11px;color:var(--dim2,#8a8378);padding:7px 0 0}
-.gram-map-btn{flex:0 0 auto;background:none;border:1px solid var(--line,#e8e3da);border-radius:7px;
+.gram-map-more{font-size:11px;color:var(--dim2,#646c80);padding:7px 0 0}
+.gram-map-btn{flex:0 0 auto;background:none;border:1px solid var(--line,#e7e3da);border-radius:7px;
   padding:4px 9px;font-family:inherit;font-size:11px;color:var(--navy,#1a2340);cursor:pointer}
 .gram-map-btn:hover{border-color:var(--navy,#1a2340)}
 .gram-map-det{margin:16px 0 4px}
-.gram-map-det>summary{cursor:pointer;font-size:11.5px;color:var(--dim2,#8a8378);padding:6px 0;list-style:none}
+.gram-map-det>summary{cursor:pointer;font-size:11.5px;color:var(--dim2,#646c80);padding:6px 0;list-style:none}
 .gram-map-det>summary::-webkit-details-marker{display:none}
 .gram-map-det>summary::before{content:'\25B8  '}
 .gram-map-det[open]>summary::before{content:'\25BE  '}
-.gram-map-foot{padding:11px 18px 16px;font-size:11px;line-height:1.5;color:var(--dim2,#8a8378);border-top:1px solid var(--line,#e8e3da)}
-.gram-map-empty{padding:18px 0;font-size:12px;color:var(--dim2,#8a8378)}
+.gram-map-foot{padding:11px 18px 16px;font-size:11px;line-height:1.5;color:var(--dim2,#646c80);border-top:1px solid var(--line,#e7e3da)}
+.gram-map-empty{padding:18px 0;font-size:12px;color:var(--dim2,#646c80)}
 .gram-ctx{margin:0 0 10px;padding:9px 11px;border-radius:9px;background:rgba(26,35,64,.045)}
-.gram-ctx-lab{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2,#8a8378);margin-bottom:5px}
+.gram-ctx-lab{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2,#646c80);margin-bottom:5px}
 .gram-ex-n{font-size:14px;line-height:1.5;margin-top:1px;color:var(--navy,#1a2340);unicode-bidi:isolate}
 /* Pismo pisane od prawej (arabski) wymieszane z lacinka rozjezdza sie bez
    izolacji kierunku — nawiasy i przecinki laduja po zlej stronie komorki. */
 .gram-pcell,.gram-ex-t,.gram-ctx .gram-ex-t{unicode-bidi:isolate}
 .gram-ctx .gram-ex{margin:0}
-.gram-map-horizon{margin:10px 0 0;padding:8px 10px;border:1px dashed var(--line,#e8e3da);border-radius:8px;
-  font-size:11px;line-height:1.5;color:var(--dim2,#8a8378)}
+.gram-map-horizon{margin:10px 0 0;padding:8px 10px;border:1px dashed var(--line,#e7e3da);border-radius:8px;
+  font-size:11px;line-height:1.5;color:var(--dim2,#646c80)}
 </style>
 
 <style id="lex-gram-board-css">
@@ -527,7 +527,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   .lbsh-sec{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2);margin:14px 2px 7px}
   .lbsh-sec:first-child{margin-top:2px}
   .lbg{background:#fff;border:.5px solid var(--line);border-left:3px solid var(--orange);border-radius:10px;overflow:hidden;margin-bottom:7px}
-  .lbg-head{display:flex;align-items:center;gap:8px;padding:11px 12px;cursor:pointer;color:var(--orange)}
+  .lbg-head{display:flex;align-items:center;gap:8px;padding:11px 12px;cursor:pointer;color:var(--orange-ink)}
   .lbg-head:active{background:var(--paper)}
   .lbg-name{flex:1;font-size:13px;font-weight:500;color:var(--navy);line-height:1.35}
   .lbg-arw{color:var(--dim2);font-size:11px}
@@ -547,6 +547,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
     <input class="inp hide" id="li-name" type="text" placeholder="Nazwa użytkownika">
     <div class="err" id="li-err"></div>
     <button class="btn btn-orange" id="li-btn" onclick="doAuth()">Zaloguj się</button>
+    <div class="alt" id="li-reset"><a onclick="doReset()">Nie pamiętam hasła</a></div>
     <div class="alt" id="li-alt">Nie masz konta? <a onclick="toggleAuthMode()">Załóż konto</a></div>
     <div style="font-size:11px;color:rgba(107,115,148,.9);margin-top:14px;line-height:1.5;text-align:center">Zakładając konto, akceptujesz <a href="https://fabianadrianw.github.io/eyelingo/regulamin.html" target="_blank" rel="noopener" style="color:#c96a2a;text-decoration:none">Regulamin</a> i <a href="https://fabianadrianw.github.io/eyelingo/prywatnosc.html" target="_blank" rel="noopener" style="color:#c96a2a;text-decoration:none">Politykę Prywatności</a>.</div>
   </div>
@@ -559,7 +560,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       </div>
       <div class="tb-right">
         <span class="pro-pill" id="pro-pill" style="display:none">PRO</span>
-        <div class="avatar" id="avatar" onclick="askLogout()">FA</div>
+        <button class="avatar" id="avatar" aria-label="Profil i konto" onclick="askLogout()">FA</button>
       </div>
     </div>
 
@@ -569,30 +570,26 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
       <section class="screen active" id="s-ucz">
         <div class="scroll">
           <div class="mb16" style="padding-top:6px"><div class="h1">Ucz się</div>
-            <div class="sub" style="margin-top:4px">Wybierz zestaw — przejdź do przeglądania fiszek albo lekcji z Ailexem.</div></div>
+            <div class="sub" style="margin-top:4px">Najpierw powtórki, potem nowy materiał — tak słowa zostają w pamięci.</div></div>
+          <div class="day" id="day-state" aria-live="polite"><div class="day-skel"></div></div>
           <div id="lex-resume-wrap" style="display:none;margin-bottom:22px"></div>
           <div id="continue-wrap" style="display:none;margin-bottom:22px"></div>
-          <div class="big" id="ucz-powt-tile" onclick="openPowt()">
-            <div class="ic navy"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></div>
-            <div class="body"><div class="t">Powtórki <span class="due-pill" id="ucz-due-pill" style="display:none">0</span></div><div class="d">Słowa, które dziś dojrzały do powtórki</div></div>
-            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-          </div>
           <div class="big" onclick="openEyl()">
-            <div class="ic orange"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div>
-            <div class="body"><div class="t">Zestawy Eyelingo</div><div class="d">Język → poziom → kategoria</div></div>
+            <div class="ic navy"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div>
+            <div class="body"><div class="t">Zestawy Eyelingo</div><div class="d">Gotowe zestawy w 14 językach, A1–C2</div></div>
             <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           </div>
           <div class="big" onclick="go('mine')">
             <div class="ic navy"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></div>
-            <div class="body"><div class="t">Moje zestawy</div><div class="d">Wszystkie zestawy z Twojego konta</div></div>
+            <div class="body"><div class="t">Moje zestawy</div><div class="d">Twoje fiszki — własne, z tematu i ze zdjęć</div></div>
             <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           </div>
           <div class="big" onclick="alexOpen()">
-            <div class="ic orange"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg></div>
-            <div class="body"><div class="t">Swobodna rozmowa</div><div class="d">Partner wplata Twoje słowa i dopasowuje poziom</div></div>
+            <div class="ic navy"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"/></svg></div>
+            <div class="body"><div class="t">Rozmowa</div><div class="d">Partner wplata Twoje słowa i dopasowuje poziom</div></div>
             <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           </div>
-          <div class="note">Wszystko działa na żywych danych Twojego konta — zestawy, postęp i powtórki są wspólne ze stroną i desktopem.</div>
+          <div class="note">Postęp, zestawy i powtórki są wspólne ze stroną i aplikacją na komputer.</div>
         </div>
       </section>
 
@@ -610,28 +607,19 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
           <div style="height:14px"></div>
           <div id="set-status"></div>
           <div id="eyl-catnav" style="display:none"></div>
-          <div class="action primary" onclick="openBrowse()">
+          <div class="set-lead-note" id="set-lead-note"></div>
+          <div class="action primary" id="act-browse" onclick="openBrowse()">
             <div class="ic orange"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></div>
             <div class="body"><div class="t">Przeglądaj fiszki</div><div class="d">Zacznij tutaj — zobacz, co już znasz</div></div></div>
-          <div class="action" onclick="lexStart()">
+          <div class="action" id="act-lex" onclick="lexStart()">
             <div class="ic navy"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"/></svg></div>
             <div class="body"><div class="t">Ucz się z Ailexem</div><div class="d">Ailex utrwala te słowa — wydobywasz je z pamięci</div></div></div>
-          <button class="lex-adjust-link" onclick="openLexSetup()">Dostosuj lekcję — poziom przykładów, język prowadzenia</button>
-          <div class="dir-row"><span class="lbl">Kierunek kart</span>
+          <button class="lex-adjust-link" onclick="openLexSetup()">Ustawienia lekcji — poziom przykładów, język prowadzenia</button>
+          <div class="dir-row"><span class="lbl">Kierunek fiszek</span>
             <button class="dir-btn" id="dirbtn" onclick="toggleDir()">Obcy <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Polski</button></div>
           <div class="action know" onclick="markKnownCurrent()" style="margin-top:12px">
             <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
-            <div class="body"><div class="t">Już znam ten materiał</div><div class="d">Oznacz słowa jako opanowane — pomijasz powtórki</div></div></div>
-        </div>
-      </section>
-
-      <!-- W PRZYGOTOWANIU -->
-      <section class="screen" id="s-soon">
-        <div class="backbar"><button class="back" onclick="go('ucz')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Ucz się</button></div>
-        <div class="empty" style="margin:auto 0">
-          <div style="width:56px;height:56px;border-radius:16px;background:#fff3e9;display:flex;align-items:center;justify-content:center;margin:0 auto 16px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.7"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg></div>
-          <div class="h2" id="soon-title">W przygotowaniu</div>
-          <div class="sub" id="soon-desc" style="max-width:280px;margin:0 auto"></div>
+            <div class="body"><div class="t">Już znam ten materiał</div><div class="d">Odkłada te słowa na około dwa miesiące</div></div></div>
         </div>
       </section>
 
@@ -647,27 +635,27 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 
   <!-- IMMERSIVE: LEX SETUP -->
   <div class="immersive" id="imm-lexsetup">
-    <div class="imm-bar"><button class="icon-btn" onclick="closeImm('imm-lexsetup')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="imm-title">Lekcja z Ailexem</div><div style="width:36px"></div></div>
+    <div class="imm-bar"><button class="icon-btn" aria-label="Zamknij ustawienia lekcji" onclick="closeImm('imm-lexsetup')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="imm-title">Lekcja z Ailexem</div><div style="width:44px"></div></div>
     <div class="scroll" style="padding-top:8px">
       <div class="src-chip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.8"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"/></svg>
-        <div><div class="nm" id="lex-src">Zestaw</div><div class="ch">Lex utrwali słowa z tego zestawu</div></div></div>
+        <div><div class="nm" id="lex-src">Zestaw</div><div class="ch">Ailex utrwali słowa z tego zestawu</div></div></div>
       <div class="field"><div class="lab">Poziom języka w przykładach Ailexa</div>
         <div class="sub" style="font-size:12px;margin-bottom:10px">Jak trudne mają być zdania Ailexa. Nie dotyczy słów z zestawu — te zostają.</div>
         <div class="opt3" id="lex-exlvl">
-          <div class="opt" data-v="basic" onclick="lexSel(this,'#lex-exlvl .opt')"><div class="ot">Podstawowy</div><div class="od">Proste zdania</div></div>
-          <div class="opt sel" data-v="intermediate" onclick="lexSel(this,'#lex-exlvl .opt')"><div class="ot">Średniozaaw.</div><div class="od">B1–B2</div></div>
+          <div class="opt" data-v="basic" onclick="lexSel(this,'#lex-exlvl .opt')"><div class="ot">Prosty</div><div class="od">A1–A2</div></div>
+          <div class="opt sel" data-v="intermediate" onclick="lexSel(this,'#lex-exlvl .opt')"><div class="ot">Średni</div><div class="od">B1–B2</div></div>
           <div class="opt" data-v="advanced" onclick="lexSel(this,'#lex-exlvl .opt')"><div class="ot">Zaawansowany</div><div class="od">C1–C2</div></div>
         </div></div>
       <div class="field"><div class="lab">Język prowadzenia lekcji</div>
         <div class="opt2" id="lex-conduct">
-          <div class="opt sel" data-v="pl" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot">Polski</div><div class="od">Lex tłumaczy po polsku</div></div>
-          <div class="opt" data-v="target" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot" id="lex-conduct-target-ot">Angielski</div><div class="od" id="lex-conduct-target-od">Lex prowadzi po angielsku</div></div>
+          <div class="opt sel" data-v="pl" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot">Polski</div><div class="od">Ailex tłumaczy po polsku</div></div>
+          <div class="opt" data-v="target" onclick="lexSel(this,'#lex-conduct .opt')"><div class="ot" id="lex-conduct-target-ot">Angielski</div><div class="od" id="lex-conduct-target-od">Ailex prowadzi po angielsku</div></div>
         </div></div>
       <div class="field" id="lex-script-field" style="display:none"><div class="lab">Pismo lekcji</div>
-        <div class="sub" style="font-size:12px;margin-bottom:10px">W jakim piśmie Lex ma prowadzić lekcję. Zapamiętujemy Twój wybór — zmienisz, kiedy chcesz.</div>
+        <div class="sub" style="font-size:12px;margin-bottom:10px">W jakim piśmie Ailex ma prowadzić lekcję. Zapamiętujemy Twój wybór — zmienisz, kiedy chcesz.</div>
         <div class="opt2" id="lex-script">
-          <div class="opt sel" data-v="native" onclick="lexSel(this,'#lex-script .opt')"><div class="ot">Pismo oryginalne</div><div class="od">pismo oryginalne</div></div>
-          <div class="opt" data-v="romaji" onclick="lexSel(this,'#lex-script .opt')"><div class="ot">Transliteracja</div><div class="od">Zapis łaciński</div></div>
+          <div class="opt sel" data-v="native" onclick="lexSel(this,'#lex-script .opt')"><div class="ot">Pismo oryginalne</div><div class="od">日本語 · 한국어 · العربية</div></div>
+          <div class="opt" data-v="romaji" onclick="lexSel(this,'#lex-script .opt')"><div class="ot">Transliteracja</div><div class="od">rōmaji · pinyin · zapis łaciński</div></div>
         </div></div>
     </div>
     <div class="thumb"><button class="btn btn-orange" onclick="lexStart()">Zaczynamy →</button></div>
@@ -675,13 +663,12 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
 
   <!-- IMMERSIVE: LEX RUN -->
   <div class="immersive" id="imm-lex">
-    <div class="imm-bar"><button class="icon-btn" onclick="lexQuit()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="lex-portionbar"><i id="lex-portionfill"></i></div></div>
+    <div class="imm-bar"><button class="icon-btn" aria-label="Zakończ lekcję" onclick="lexQuit()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="lex-portionbar"><i id="lex-portionfill"></i></div></div>
     <div id="lex-stage"></div>
     <!-- Tablica lekcji: słowa z bieżącej lekcji (czyta _lexVocab), tłumaczenia ukryte do tapnięcia -->
     <button id="lex-board-fab" onclick="lexBoardToggle()" aria-label="Tablica lekcji — reguły i słowa z tej lekcji">
       <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3M7 9h6M7 13h4"/></svg>
       <span id="lex-board-badge">0</span>
-      <span id="lex-board-badge-gram" aria-hidden="true"></span>
     </button>
     <div id="lex-board-backdrop" onclick="lexBoardToggle()"></div>
     <div id="lex-board-sheet">
@@ -708,30 +695,32 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   <!-- IMMERSIVE: PRZEGLĄDANIE (real) -->
   <div class="immersive" id="imm-browse">
     <div class="imm-bar">
-      <button class="icon-btn" onclick="brClose()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <button class="icon-btn" aria-label="Zamknij przeglądanie" onclick="brClose()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       <div class="imm-title" id="br-title">Przeglądanie</div>
-      <button class="dir-btn" id="br-dir" onclick="toggleDir(true)" style="font-size:11px">Obcy → PL</button>
+      <button class="dir-btn" id="br-dir" aria-label="Zmień kierunek fiszek" onclick="toggleDir(true)" style="font-size:11px">Obcy → Polski</button>
     </div>
     <div class="flip-stage" id="br-stage">
       <div class="flip" id="flip" onclick="doFlip()">
         <div class="face front"><div class="kic" id="br-kic">Słowo</div><div class="word" id="br-front"></div><div class="tap">Dotknij, aby obrócić</div></div>
         <div class="face back"><div class="cue" id="br-back-cue"></div><div class="kic" id="br-kic-back">Tłumaczenie</div><div class="word" id="br-back"></div>
-          <button class="speak" id="br-speak" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div>
+          <button class="speak" id="br-speak" aria-label="Posłuchaj wymowy" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div>
       </div>
     </div>
-    <div class="br-hint" id="br-hint">Dotknij kartę, aby zobaczyć tłumaczenie i ocenić.</div>
+    <div class="br-hint" id="br-hint">Dotknij kartę, aby zobaczyć tłumaczenie.</div>
     <div style="text-align:center"><button class="eyl-conjbtn" onclick="event.stopPropagation();eylConjOpen(event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h10M4 17h7"/></svg>Odmiana</button></div>
     <div id="eyl-ex-host"></div>
+    <!-- Audyt 2026-09 (P0-3): te same trzy wypelnione przyciski stały tu i w Powtorkach,
+         a robily co innego (deklaracja vs pelny SM-2). Tu zostaje TRIAZ: dwa przyciski
+         obrysowe, inny ksztalt, inna waga. Ocena wazona jest juz tylko w Powtorkach. -->
     <div class="br-grades" id="br-grades">
-      <button class="br-g q1" onclick="brGrade(1)">Nie wiedziałem<span class="ph">znów wkrótce</span></button>
-      <button class="br-g q3" onclick="brGrade(3)">Wiedziałem<span class="ph">za kilka dni</span></button>
-      <button class="br-g q4" onclick="brGrade(4)">Łatwe<span class="ph">dłuższa przerwa</span></button>
+      <button class="br-t no" onclick="brGrade(1)">Jeszcze nie znam</button>
+      <button class="br-t yes" onclick="brGrade(3)">Znam</button>
     </div>
-    <div class="br-note" id="br-note">100% opanowania pojawia się po udanej powtórce — nie z samej oceny.</div>
+    <div class="br-note" id="br-note">To przegląd, nie test. Pełne opanowanie liczymy dopiero po udanej powtórce.</div>
     <div class="flip-nav">
-      <button class="nav-arrow" id="br-prev" onclick="brNav(-1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <button class="nav-arrow" id="br-prev" aria-label="Poprzednia fiszka" onclick="brNav(-1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
       <div class="flip-count" id="br-count">—</div>
-      <button class="nav-arrow" id="br-next" onclick="brNav(1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+      <button class="nav-arrow" id="br-next" aria-label="Następna fiszka" onclick="brNav(1)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
     </div>
     <div class="br-end" id="br-end" style="display:none"></div>
   </div>
@@ -739,9 +728,9 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   <!-- IMMERSIVE: POWTÓRKI SM-2 (real) -->
   <div class="immersive" id="imm-powt">
     <div class="imm-bar">
-      <button class="icon-btn" onclick="closePowt()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <button class="icon-btn" aria-label="Zamknij powtórki" onclick="closePowt()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       <div class="imm-title" id="pw-title">Powtórki</div>
-      <button class="dir-btn" id="pw-dir" onclick="pwToggleDir()" style="font-size:11px">Obcy → PL</button>
+      <button class="dir-btn" id="pw-dir" aria-label="Zmień kierunek fiszek" onclick="pwToggleDir()" style="font-size:11px">Obcy → Polski</button>
     </div>
     <div class="flip-stage" id="pw-stage"></div>
     <div class="pw-hint" id="pw-hint"></div>
@@ -752,24 +741,28 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   <!-- IMMERSIVE: ROZMOWA Z ALEXEM (AI Partner) -->
   <div class="immersive" id="imm-alex">
     <div class="imm-bar">
-      <button class="icon-btn" onclick="alexClose()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <button class="icon-btn" aria-label="Zamknij rozmowę" onclick="alexClose()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       <div class="imm-title">Rozmowa</div>
       <button class="icon-btn" onclick="alexReset()" title="Nowa rozmowa"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
     </div>
-    <div style="padding:8px 16px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line)">
-      <select id="alex-lang" onchange="alexLangChange()" style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--line2);font-size:12.5px;background:var(--paper);color:var(--navy)">
+    <!-- Audyt 2026-09 (W2-3): jedyne natywne kontrolki w calej apce, bez etykiet i 28 px wysokie.
+         Uzytkownik widzial dwa dropdowny i nie wiedzial, czym steruja. -->
+    <div style="padding:10px 16px 12px;display:flex;gap:10px;align-items:flex-end;border-bottom:1px solid var(--line)">
+      <label style="flex:1;min-width:0"><span class="alex-flab">Język</span>
+      <select id="alex-lang" class="alex-sel" aria-label="Język rozmowy" onchange="alexLangChange()">
         <option value="en">Angielski</option><option value="es">Hiszpański</option><option value="de">Niemiecki</option><option value="fr">Francuski</option><option value="it">Włoski</option><option value="nl">Niderlandzki</option><option value="pt">Portugalski</option><option value="no">Norweski</option><option value="ru">Rosyjski</option><option value="uk">Ukraiński</option><option value="ar">Arabski</option><option value="jp">Japoński</option><option value="zh">Chiński</option><option value="ko">Koreański</option>
-      </select>
-      <select id="alex-level" onchange="alexLevelChange()" style="flex:1;padding:7px 9px;border-radius:8px;border:1px solid var(--line2);font-size:12.5px;background:var(--paper);color:var(--navy)">
+      </select></label>
+      <label style="flex:0 0 104px"><span class="alex-flab">Poziom</span>
+      <select id="alex-level" class="alex-sel" aria-label="Poziom rozmowy" onchange="alexLevelChange()">
         <option value="A1">A1</option><option value="A2">A2</option><option value="B1" selected>B1</option><option value="B2">B2</option><option value="C1">C1</option><option value="C2">C2</option>
-      </select>
+      </select></label>
     </div>
-    <div id="alex-msgs" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch"></div>
+    <div id="alex-msgs" aria-live="polite" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch"></div>
     <div id="alex-hints" style="padding:0 12px 6px;display:flex;flex-wrap:wrap;gap:6px"></div>
     <div style="padding:2px 16px 0;text-align:right"><span id="alex-limit" style="font-size:11px;color:var(--dim2)"></span></div>
     <div style="padding:10px 12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:flex-end">
-      <textarea id="alex-input" rows="1" placeholder="Napisz w wybranym języku..." style="flex:1;resize:none;padding:9px 12px;border-radius:12px;border:1px solid var(--line2);font-size:14px;font-family:inherit;background:#fff;color:var(--navy);max-height:90px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();alexSend();}"></textarea>
-      <button id="alex-send" onclick="alexSend()" style="flex-shrink:0;background:var(--orange);color:#fff;border:none;border-radius:12px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer">Wyślij</button>
+      <textarea id="alex-input" rows="1" placeholder="Napisz w wybranym języku…" style="flex:1;resize:none;padding:9px 12px;border-radius:12px;border:1px solid var(--line2);font-size:14px;font-family:inherit;background:#fff;color:var(--navy);max-height:90px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();alexSend();}"></textarea>
+      <button id="alex-send" onclick="alexSend()" style="flex-shrink:0;background:var(--orange-btn);color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:14px;font-weight:600;cursor:pointer">Wyślij</button>
     </div>
   </div>
 
@@ -785,6 +778,21 @@ function track(ev,props){try{EYL_AN.buf.push({event:ev,props:props||{},session:E
 function eylFlush(){try{if(!EYL_AN.buf.length)return;var b=EYL_AN.buf;EYL_AN.buf=[];var tok=window._eylTok||EYL_AN.anon;fetch(EYL_AN.base+'/rest/v1/rpc/track_events',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','apikey':EYL_AN.anon,'Authorization':'Bearer '+tok},body:JSON.stringify({p_batch:b})}).catch(function(){});}catch(_e){}}
 try{document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')eylFlush();});window.addEventListener('pagehide',function(){eylFlush();});}catch(_e){}
 let db=null;
+/* Audyt 2026-09 (P2-4): natywne alert() w trybie standalone na iOS wygladaja jak blad systemu,
+   nie jak element produktu, i lamia spojnosc z arkuszami uzywanymi wszedzie indziej.
+   Modal blokujacy zostaje wylacznie przy potwierdzeniach destrukcyjnych (Design Bible §6.7). */
+function eylToast(msg,kind){
+  try{
+    var t=document.getElementById('eyl-toast');
+    if(!t){ t=document.createElement('div'); t.id='eyl-toast'; t.setAttribute('role','status'); t.setAttribute('aria-live','polite'); document.body.appendChild(t); }
+    t.className='eyl-toast'+(kind==='err'?' err':'');
+    t.textContent=String(msg||'');
+    requestAnimationFrame(function(){ t.classList.add('on'); });
+    try{ clearTimeout(window._eylToastT); }catch(_e){}
+    window._eylToastT=setTimeout(function(){ t.classList.remove('on'); }, 3400);
+  }catch(e){}
+}
+window.eylToast=eylToast;
 try{ var _c=(window.supabase&&(supabase.createClient||(supabase.default&&supabase.default.createClient))); if(_c) db=_c(SUPABASE_URL,SUPABASE_KEY); }catch(e){}
 
 let UID=null, USER_EMAIL='';
@@ -833,6 +841,7 @@ function toggleAuthMode(){
   document.getElementById('li-name').classList.toggle('hide',!isSignup);
   document.getElementById('li-btn').textContent=isSignup?'Załóż konto':'Zaloguj się';
   document.getElementById('li-alt').innerHTML=isSignup?'Masz już konto? <a onclick="toggleAuthMode()">Zaloguj się</a>':'Nie masz konta? <a onclick="toggleAuthMode()">Załóż konto</a>';
+  var _rs=document.getElementById('li-reset'); if(_rs) _rs.classList.toggle('hide',isSignup);
   showLoginErr('');
 }
 function showLoginErr(m){ document.getElementById('li-err').textContent=m||''; }
@@ -904,6 +913,20 @@ function eylAuthErrText(e, mode){
 }
 window.eylAuthErrText = eylAuthErrText;
 
+/* Audyt 2026-09 (W2-6): apka nie miala ZADNEJ sciezki odzyskania hasla. Uzytkownik
+   dostawal „Nieprawidlowy e-mail lub haslo" i konczyl w slepej uliczce — komunikat
+   nie odsylal nawet na strone. Link korzysta z Site URL skonfigurowanego w Supabase. */
+async function doReset(){
+  var email=(document.getElementById('li-email').value||'').trim();
+  if(!email){ showLoginErr('Wpisz najpierw swój e-mail — wyślemy na niego link.'); return; }
+  var a=document.querySelector('#li-reset a'); if(a) a.textContent='Wysyłam…';
+  try{
+    var r=await db.auth.resetPasswordForEmail(email);
+    if(r && r.error){ showLoginErr('Nie udało się wysłać linku. Napisz do nas: eyelingo.app@gmail.com'); }
+    else { showLoginErr(''); if(a) a.textContent='Link wysłany — sprawdź skrzynkę'; return; }
+  }catch(e){ showLoginErr('Brak połączenia. Spróbuj ponownie.'); }
+  if(a) a.textContent='Nie pamiętam hasła';
+}
 async function doAuth(){
   var email=(document.getElementById('li-email').value||'').trim();
   var pass=document.getElementById('li-pass').value||'';
@@ -947,7 +970,7 @@ async function askLogout(){
   ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
   var sheet=document.createElement('div');
   sheet.style.cssText='background:#fff;width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;flex-direction:column;gap:10px;font-family:Inter,sans-serif';
-  sheet.innerHTML='<div style="font-family:DM Sans,sans-serif;font-weight:600;font-size:15px;color:#1a2340;text-align:center;padding:6px 0 4px">Konto</div>';
+  sheet.innerHTML='<div style="font-family:DM Sans,sans-serif;font-weight:600;font-size:16px;color:#1a2340;text-align:center;padding:6px 0 4px">Profil</div>';
   /* Status planu na górze arkusza: to jedyne miejsce w apce, gdzie użytkownik
      świadomie szuka informacji „co ja właściwie mam". Konkret zamiast plakietki:
      co jest włączone / co odblokowuje PRO — i skąd (konto jest wspólne z www). */
@@ -958,7 +981,7 @@ async function askLogout(){
     var pro=!!window._eylPro;
     var ic=pro
       ? '<span class="pro-pill" style="margin-right:2px">PRO</span>'
-      : '<span style="width:28px;height:28px;border-radius:9px;background:#f0eee9;color:#8b93a6;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>';
+      : '<span style="width:28px;height:28px;border-radius:9px;background:#f0eee9;color:#646c80;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>';
     row.innerHTML=ic+'<div style="flex:1;min-width:0"><div class="pt">'+(pro?'PRO aktywne':'Plan darmowy')+'</div>'
       +'<div class="pd">'+(pro
         ? escapeHtml(eylProUntilText())+' · lekcje z Ailexem i rozmowa bez limitu, zestawy z AI, własne zestawy bez limitu'
@@ -966,23 +989,46 @@ async function askLogout(){
       +'</div></div>';
     sheet.appendChild(row);
   })();
-  var bLogout=document.createElement('button');
-  bLogout.textContent='Wyloguj się';
-  bLogout.style.cssText='padding:13px;border-radius:12px;border:1.5px solid rgba(26,35,64,.18);background:#fff;color:#1a2340;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer';
-  bLogout.onclick=async function(){ ov.remove(); try{ await db.auth.signOut(); }catch(e){} location.reload(); };
-  var bDelete=document.createElement('button');
-  bDelete.textContent='Usuń konto';
-  bDelete.style.cssText='padding:13px;border-radius:12px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer';
-  bDelete.onclick=function(){ ov.remove(); eylDeleteAccountMobile(); };
-  var bWeb=document.createElement('button');
-  bWeb.textContent='Otwórz pełną wersję strony';
-  bWeb.style.cssText='padding:13px;border-radius:12px;border:1.5px solid rgba(26,35,64,.18);background:#fff;color:#1a2340;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer';
-  bWeb.onclick=function(){ ov.remove(); location.href='index.html?web=1'; };
-  var bCancel=document.createElement('button');
-  bCancel.textContent='Anuluj';
-  bCancel.style.cssText='padding:12px;border:none;background:transparent;color:rgba(107,115,148,.9);font-size:14px;font-family:Inter,sans-serif;cursor:pointer';
-  bCancel.onclick=function(){ ov.remove(); };
-  sheet.appendChild(bWeb); sheet.appendChild(bLogout); sheet.appendChild(bDelete); sheet.appendChild(bCancel);
+  /* Audyt 2026-09 (P1-4): arkusz byl plaska lista czterech przyciskow, w ktorej „Usun konto"
+     mialo dokladnie te sama wage co „Wyloguj sie" i bylo o JEDNO dotkniecie od awatara.
+     Poza tym po zalogowaniu nigdzie nie bylo Regulaminu ani Polityki Prywatnosci (RODO).
+     Teraz: trzy sekcje + strefa destrukcyjna za swiadomym ujawnieniem. */
+  var _ST={
+    row:'display:flex;align-items:center;min-height:52px;padding:14px;border-radius:12px;border:1px solid rgba(26,35,64,.14);background:#fff;color:#1a2340;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer;text-align:left;width:100%;text-decoration:none',
+    danger:'display:flex;align-items:center;min-height:52px;padding:14px;border-radius:12px;border:1.5px solid #A32D2D;background:#fff;color:#A32D2D;font-size:15px;font-weight:500;font-family:Inter,sans-serif;cursor:pointer;text-align:left;width:100%',
+    quiet:'min-height:44px;padding:12px;border:none;background:transparent;color:#646c80;font-size:13.5px;font-family:Inter,sans-serif;cursor:pointer'
+  };
+  function _sec(t){ var d=document.createElement('div'); d.textContent=t;
+    d.style.cssText='font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#646c80;padding:12px 4px 2px'; return d; }
+  function _btn(label,kind,fn){ var b=document.createElement('button'); b.type='button'; b.textContent=label;
+    b.style.cssText=_ST[kind]; b.onclick=fn; return b; }
+  function _link(label,href){ var a=document.createElement('a'); a.textContent=label; a.href=href;
+    a.target='_blank'; a.rel='noopener'; a.style.cssText=_ST.row; return a; }
+
+  sheet.appendChild(_sec('Aplikacja'));
+  sheet.appendChild(_btn('Otwórz pełną wersję strony','row',function(){ ov.remove(); location.href='index.html?web=1'; }));
+
+  sheet.appendChild(_sec('Pomoc i dokumenty'));
+  sheet.appendChild(_link('Napisz do nas','mailto:eyelingo.app@gmail.com'));
+  sheet.appendChild(_link('Regulamin','https://fabianadrianw.github.io/eyelingo/regulamin.html'));
+  sheet.appendChild(_link('Polityka prywatności','https://fabianadrianw.github.io/eyelingo/prywatnosc.html'));
+
+  sheet.appendChild(_sec('Konto'));
+  sheet.appendChild(_btn('Wyloguj się','row',async function(){ ov.remove(); try{ await db.auth.signOut(); }catch(e){} location.reload(); }));
+
+  var dz=document.createElement('div');
+  dz.style.cssText='display:flex;flex-direction:column;gap:10px;margin-top:2px';
+  var dzT=_btn('Zarządzaj kontem','quiet',function(){
+    dzT.style.display='none';
+    var w=document.createElement('div');
+    w.textContent='Usunięcie konta jest nieodwracalne — kasujemy postęp, zestawy i pozostałe dane.';
+    w.style.cssText='font-size:12.5px;color:#5b6478;line-height:1.5;padding:2px 4px 4px';
+    dz.appendChild(w);
+    dz.appendChild(_btn('Usuń konto','danger',function(){ ov.remove(); eylDeleteAccountMobile(); }));
+  });
+  dz.appendChild(dzT); sheet.appendChild(dz);
+
+  sheet.appendChild(_btn('Zamknij','quiet',function(){ ov.remove(); }));
   ov.appendChild(sheet); document.body.appendChild(ov);
 }
 async function eylDeleteAccountMobile(){
@@ -990,7 +1036,7 @@ async function eylDeleteAccountMobile(){
   if(!confirm('Na pewno chcesz trwale usunąć konto? Tego nie da się cofnąć.')) return;
   try{
     var sess=(await db.auth.getSession()).data.session;
-    if(!sess){ alert('Sesja wygasła — zaloguj się ponownie.'); return; }
+    if(!sess){ eylToast('Sesja wygasła — zaloguj się ponownie.','err'); return; }
     var r=await fetch(SUPABASE_URL+'/functions/v1/delete-account',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+sess.access_token,'apikey':SUPABASE_KEY}});
     if(!r.ok){ alert('Nie udało się usunąć konta ('+r.status+'). Napisz do nas: eyelingo.app@gmail.com'); return; }
     try{ localStorage.clear(); }catch(e){}
@@ -1008,7 +1054,6 @@ function go(name){
   if(name==='ucz'){ try{ homeRefresh(); }catch(e){} }
 }
 function closeImm(id){ document.getElementById(id).classList.remove('active'); }
-function soon(title,desc){ document.getElementById('soon-title').textContent=title; document.getElementById('soon-desc').textContent=desc; go('soon'); }
 
 /* ═══════════════ SILNIK POSTĘPU (PROG) — wspólny ze stroną przez srs_progress ═══════════════ */
 var PROG={}, PROG_READY=false, MASTER_REPS=3, MASTER_IV=21;
@@ -1047,7 +1092,7 @@ function aggKeys(keys){
 }
 function pillHtml(a){
   if(a.status==='done') return '<span class="st-pill done"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M20 6L9 17l-5-5"/></svg>Opanowane</span>';
-  if(a.status==='prog') return '<span class="st-pill prog">W toku \u00b7 '+a.pct+'%</span>';
+  if(a.status==='prog') return '<span class="st-pill prog">W toku</span>';
   if(a.status==='new')  return '<span class="st-pill new">Nowe</span>';
   return '';
 }
@@ -1069,32 +1114,60 @@ function openRecent(i){
   if(r.kind==='eyl'){ var p=String(r.id).split(':'); eylOpenCat(p[1]||r.lang||'en', r.level||null, p[2], r.name||'Kategoria'); }
   else { openSet(r.id, r.name||'Zestaw', r.count||0, r.lang||'en'); }
 }
+/* Audyt 2026-09 (W2-1): ekran glowny mial DWA poziome railsy — „Kontynuuj lekcje" (.rz-card,
+   82% szerokosci) i „Kontynuuj zestaw" (.cont-card, 78%) — o roznych obrysach, roznych paskach
+   postepu i tym samym slowie w naglowku. Zestaw z przerwana lekcja trafial do OBU naraz,
+   z dwoma roznymi miernikami („Porcja 2 z 6" i „8 / 20 opanowanych"). To nie byla taksonomia,
+   tylko duplikat. Teraz jeden rail „W toku": lekcje pierwsze, zestawy po nich, bez powtorzen,
+   jeden komponent karty i jeden typ paska (.st-bar). */
 function renderContinue(){
   var wrap=document.getElementById('continue-wrap'); if(!wrap) return;
+  var rz=document.getElementById('lex-resume-wrap'); if(rz){ rz.style.display='none'; rz.innerHTML=''; }
   wrap.style.display='none'; wrap.innerHTML='';
-  var recents=getRecents(); if(!recents.length) return;
-  var items=[];
-  recents.forEach(function(r,i){
-    var keys=r.keys||[]; if(!keys.length) return;
-    var a=aggKeys(keys);
-    if(a.status!=='done' && a.total>0) items.push({i:i,r:r,a:a});
+
+  var out=[], seen={};
+  (window._lexResumeSnaps||[]).forEach(function(sn,i){
+    if(!sn||!sn.set_id) return;
+    var tot=sn.portionTarget||1, cur=Math.min((sn.portionNum||0)+1,tot);
+    var pct=Math.max(6, Math.round(((sn.portionNum||0))/tot*100));
+    seen[String(sn.set_id)]=1;
+    out.push({lesson:true, lang:(sn.lang||'en'), name:(sn.set_name||'Twój zestaw'),
+      bar:'<div class="st-bar"><i class="seen" style="width:'+pct+'%"></i></div>',
+      meta:'Porcja '+cur+' z '+tot, go:'lexResumeBy('+i+')'});
   });
-  if(!items.length) return;
-  items=items.slice(0,6);
-  var single=items.length===1;
-  var cards=items.map(function(o){
-    var r=o.r,a=o.a,eyl=(r.kind==='eyl');
-    var flag=(typeof eylFlagSvg==='function')?eylFlagSvg(r.lang||'en',18):((typeof lexLangFlag==='function')?lexLangFlag(r.lang||'en'):'');
-    var meta=(a.status==='prog')?('W toku \u00b7 '+a.pct+'% \u00b7 '+a.mastered+' / '+a.total):('Wr\u00f3\u0107 do nauki \u00b7 0 / '+a.total);
-    return '<button class="cont-card'+(single?' solo':'')+'" onclick="openRecent('+o.i+')">'
-      +'<div class="cont-top"><span class="cont-eyebrow '+(eyl?'eyl':'mine')+'">'+(eyl?'Zestawy Eyelingo':'Moje zestawy')+'</span><span class="rz-flag">'+flag+'</span></div>'
-      +'<div class="cont-name">'+esc(r.name||'Zestaw')+'</div>'
-      +barHtml(a)
-      +'<div class="rz-meta" style="margin-top:7px">'+meta+'</div>'
-      +'</button>';
+  getRecents().forEach(function(r,i){
+    if(!r||!r.id||seen[String(r.id)]) return;
+    var keys=r.keys||[]; if(!keys.length) return;
+    var a=aggKeys(keys); if(a.status==='done'||!a.total) return;
+    seen[String(r.id)]=1;
+    out.push({lesson:false, lang:(r.lang||'en'), name:(r.name||'Zestaw'), bar:barHtml(a),
+      meta:(a.status==='prog')?(a.mastered+' / '+a.total+' opanowanych'):('Wróć do nauki \u00b7 0 / '+a.total),
+      go:'openRecent('+i+')'});
+  });
+  if(!out.length) return;
+  out=out.slice(0,6);
+
+  var single=out.length===1;
+  var PLAY='<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="margin-right:5px;vertical-align:-1px"><polygon points="6 4 20 12 6 20"/></svg>';
+  var cards=out.map(function(o){
+    var flag=(typeof eylFlagSvg==='function')?eylFlagSvg(o.lang,18):((typeof lexLangFlag==='function')?lexLangFlag(o.lang):'');
+    return '<button class="rz-card'+(single?' solo':'')+'" onclick="'+o.go+'">'
+      +'<div class="rz-top"><span class="rz-eyebrow">'+(o.lesson?PLAY+'Lekcja':'Zestaw')+'</span><span class="rz-flag">'+flag+'</span></div>'
+      +'<div class="rz-name">'+esc(o.name)+'</div>'+o.bar
+      +'<div class="rz-meta" style="margin-top:8px">'+o.meta+'</div></button>';
   }).join('');
-  wrap.innerHTML='<div class="rz-head">Kontynuuj zestaw</div><div class="rz-scroller">'+cards+'</div>';
+  var dots=single?'':('<div class="rz-dots">'+out.map(function(_,i){return '<span class="rz-dot'+(i===0?' on':'')+'"></span>';}).join('')+'</div>');
+  wrap.innerHTML='<div class="rz-head">W toku</div><div class="rz-scroller" id="rz-scroller">'+cards+'</div>'+dots;
   wrap.style.display='block';
+
+  var sc=document.getElementById('rz-scroller');
+  if(sc && !single){
+    sc.addEventListener('scroll', function(){
+      var cw=sc.scrollWidth/out.length;
+      var idx=Math.max(0,Math.min(out.length-1,Math.round(sc.scrollLeft/cw)));
+      wrap.querySelectorAll('.rz-dot').forEach(function(d,di){ d.classList.toggle('on', di===idx); });
+    },{passive:true});
+  }
 }
 function homeRefresh(){ try{ lexCheckResume(); }catch(e){} try{ renderContinue(); }catch(e){} }
 
@@ -1122,6 +1195,8 @@ async function renderSetStatus(){
       +(a.total?'<div class="ss-num">'+a.mastered+' / '+a.total+' opanowane'+(a.touched>a.mastered?(' \u00b7 '+a.touched+' przejrzane'):'')+'</div>':'')
       +barHtml(a)+'</div>';
   }
+  try{ setPrimaryAction(a); }catch(e){}
+  try{ _dirSync(); }catch(e){}
   if(curSetKind==='eyelingo' && Array.isArray(window._eylNavList) && window._eylNavList.length && nav){
     var catId=String(curSetId).split(':')[2];
     var idx=-1; for(var i=0;i<window._eylNavList.length;i++){ if(String(window._eylNavList[i].id)===String(catId)){ idx=i; break; } }
@@ -1132,6 +1207,27 @@ async function renderSetStatus(){
       nav.style.display='block';
     }
   }
+}
+/* Audyt 2026-09 (P1-3): „Przegladaj fiszki" bylo primary ZAWSZE, takze przy 95% opanowania.
+   brShowEnd() mial juz logike stref, ale dopiero PO przejrzeniu talii — czyli po decyzji.
+   Tutaj ta sama logika steruje wyborem, zanim user go dokona. */
+function setPrimaryAction(a){
+  var b=document.getElementById('act-browse'), l=document.getElementById('act-lex');
+  if(!b||!l) return;
+  var lead = (!a || !a.total || !a.touched) ? 'browse' : (a.pct>=90 ? 'none' : 'lex');
+  b.classList.toggle('primary', lead==='browse');
+  l.classList.toggle('primary', lead==='lex');
+  var bi=b.querySelector('.ic'), li=l.querySelector('.ic');
+  if(bi) bi.className='ic '+(lead==='browse'?'orange':'navy');
+  if(li) li.className='ic '+(lead==='lex'?'orange':'navy');
+  var bd=b.querySelector('.d');
+  if(bd) bd.textContent = (lead==='browse')
+    ? 'Zacznij tutaj — zobacz, co już znasz'
+    : 'Odśwież pamięć bez oceniania';
+  var note=document.getElementById('set-lead-note');
+  if(note) note.textContent = (lead==='none')
+    ? 'Ten materiał masz opanowany. Wróci sam w powtórkach — nic tu nie musisz robić.'
+    : '';
 }
 async function eylJump(delta){
   if(window._eylNavBusy) return;                       // guard — bez nakładających się przeładowań (koniec zawieszania)
@@ -1176,7 +1272,7 @@ async function markKnownBulk(cards, lang){
 }
 async function markKnownCurrent(){
   if(!curSetCards||!curSetCards.length){ await loadCurSetCards(); }
-  if(!curSetCards.length){ alert('Brak s\u0142\u00f3w w tym zestawie.'); return; }
+  if(!curSetCards.length){ eylToast('Brak s\u0142\u00f3w w tym zestawie.','err'); return; }
   if(!confirm('Oznaczy\u0107 wszystkie s\u0142owa ('+curSetCards.length+') jako znane? Trafi\u0105 do d\u0142ugich powt\u00f3rek i znikn\u0105 z dzisiejszej kolejki. Zawsze mo\u017cesz je p\u00f3\u017aniej powt\u00f3rzy\u0107.')) return;
   await markKnownBulk(curSetCards, curSetLangSrc);
   try{ await renderSetStatus(); }catch(e){}
@@ -1191,7 +1287,7 @@ function brShowGrades(show){
   try{ if(typeof eylExSync==='function') eylExSync(!!show); }catch(e){}
   var g=document.getElementById('br-grades'); if(g) g.style.display=show?'grid':'none';
   var n=document.getElementById('br-note'); if(n) n.style.display=show?'block':'none';
-  var h=document.getElementById('br-hint'); if(h) h.textContent=show?'Jak Ci posz\u0142o? Ocena zapisze post\u0119p.':'Dotknij kart\u0119, aby zobaczy\u0107 t\u0142umaczenie i oceni\u0107.';
+  var h=document.getElementById('br-hint'); if(h) h.textContent=show?'Znasz to s\u0142owo?':'Dotknij kart\u0119, aby zobaczy\u0107 t\u0142umaczenie.';
 }
 // Przeglądaj = SAMOOCENA (deklaracja), nie test. Deklaracja NIE daje „opanowane” — to wymaga
 // retrievalu w Powtórkach/Lexie (Pedagogy §1.4/§2.1). Pasek rusza się od 1 przejścia, ale pułap
@@ -1260,7 +1356,7 @@ function brShowEnd(){
   var el=document.getElementById('br-end'); if(!el) return;
   el.innerHTML='<div class="br-end-card">'
     +'<div class="br-end-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.7"><path d="M20 6L9 17l-5-5"/></svg></div>'
-    +'<div class="br-end-h">Koniec talii</div>'
+    +'<div class="br-end-h">Przejrzane wszystkie fiszki</div>'
     +'<div class="br-end-pct"><div class="br-end-bar'+(a.status==='done'?' done':'')+'"><i style="width:'+Math.max(pct,(a.touched?6:0))+'%"></i></div><span>Opanowane '+pct+'% tego materia\u0142u</span></div>'
     +'<div class="br-end-rec">'+rec+'</div>'
     +'<div class="br-end-actions">'+body+'</div>'
@@ -1287,7 +1383,7 @@ async function loadMine(){
   try{
     var {data,error}=await db.from('user_sets').select('id,name,lang,user_set_cards(count)').eq('user_id',UID).order('name',{ascending:true});
     if(error) throw error;
-    if(!data||!data.length){ box.innerHTML='<div class="empty"><div class="h2">Brak zestawów</div><div class="sub">Nie masz jeszcze własnych zestawów. Utwórz je na stronie Eyelingo — pojawią się tutaj automatycznie.</div></div>'; return; }
+    if(!data||!data.length){ box.innerHTML='<div class="empty"><div class="h2">Brak zestawów</div><div class="sub">Zacznij od „Nowy zestaw\u201d powyżej — wpisz własne pary słów albo sfotografuj stronę podręcznika. Zestawy z konta www i desktopu pojawią się tu automatycznie.</div></div>'; return; }
     box.innerHTML=data.map(function(s){
       var cnt=(s.user_set_cards&&s.user_set_cards[0]&&s.user_set_cards[0].count)||0;
       var nm=escapeHtml(s.name||'Bez nazwy');
@@ -1343,11 +1439,27 @@ function closeSetPreview(){ var s=document.getElementById('set-preview-sheet'), 
 
 /* ===== kierunek ===== */
 let dir='foreign';
+/* Audyt 2026-09: „Obcy" jako rzeczownik brzmial obco, a dwa miejsca uzywaly dwoch
+   formatow tej samej kontrolki („Obcy → Polski" vs „Obcy → PL"). Teraz jedna nazwa:
+   realny jezyk zestawu, z fallbackiem na „Obcy", gdy jezyk nieznany. */
+function _dirLang(){
+  try{
+    var l=(typeof curSetLangSrc!=='undefined'&&curSetLangSrc)||(typeof curSetLang!=='undefined'&&curSetLang)||'';
+    var n=(typeof eylLangLabel==='function')?eylLangLabel(l):'';
+    return n||'Obcy';
+  }catch(e){ return 'Obcy'; }
+}
+function _dirSync(){
+  var L=_dirLang();
+  var ARR=' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> ';
+  var b=document.getElementById('dirbtn');
+  if(b) b.innerHTML=(dir==='foreign'?L:'Polski')+ARR+(dir==='foreign'?'Polski':L);
+  var br=document.getElementById('br-dir');
+  if(br) br.textContent=(dir==='foreign'?(L+' → Polski'):('Polski → '+L));
+}
 function toggleDir(inBrowse){
   dir=dir==='foreign'?'pl':'foreign';
-  var b=document.getElementById('dirbtn');
-  if(b) b.innerHTML=(dir==='foreign'?'Obcy':'Polski')+' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> '+(dir==='foreign'?'Polski':'Obcy');
-  var br=document.getElementById('br-dir'); if(br) br.textContent=dir==='foreign'?'Obcy → PL':'PL → Obcy';
+  try{ _dirSync(); }catch(e){}
   if(inBrowse) renderCard();
 }
 
@@ -1377,7 +1489,7 @@ function restoreFlipMarkup(){
     '<div class="flip" id="flip" onclick="doFlip()">'
     +'<div class="face front"><div class="kic" id="br-kic">Słowo</div><div class="word" id="br-front"></div><div class="rmj" id="br-front-rmj" style="display:none"></div><div class="tap">Dotknij, aby obrócić</div></div>'
     +'<div class="face back"><div class="cue" id="br-back-cue"></div><div class="rmj" id="br-back-cue-rmj" style="display:none"></div><div class="kic" id="br-kic-back">Tłumaczenie</div><div class="word" id="br-back"></div><div class="rmj" id="br-back-rmj" style="display:none"></div>'
-    +'<button class="speak" id="br-speak" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div></div>';
+    +'<button class="speak" id="br-speak" aria-label="Posłuchaj wymowy" onclick="event.stopPropagation();speakCard()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button></div></div>';
 }
 window.eylConjGetCard=function(){ try{ return CARDS[bi]||null; }catch(e){ return null; } };
 /* Talia dla prefetchu zdan w kontekscie — 2 karty do przodu. */
@@ -1460,15 +1572,19 @@ function lexBoardRender(){
   // Slowa i reguly liczymy OSOBNO. Wspolna suma nie odpowiadala na pytanie,
   // po co tu wchodzic — a to jedyne pytanie, jakie uzytkownik sobie zadaje.
   if(badge){ if(items.length){ badge.style.display='flex'; badge.textContent=String(items.length); } else badge.style.display='none'; }
-  var gbadge=document.getElementById('lex-board-badge-gram');
-  if(gbadge){
-    if(_lexGramBoard.length){
-      gbadge.style.display='flex';
-      gbadge.innerHTML='<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg><span>'+_lexGramBoard.length+'</span>';
-    } else gbadge.style.display='none';
-  }
+  /* Audyt 2026-09 (W3-2): drugi badge (lewy dol) byl aria-hidden i wizualnie nieodkrywalny —
+     trzecia informacja na kolku 52 px. Sygnal o nowej strukturze idzie teraz toastem,
+     ktory user na pewno zauwazy, a reguly maja swoja sekcje „Struktury" w arkuszu. */
+  try{
+    var _gn=_lexGramBoard.length, _gs=(window._lexGramSeen||0);
+    var _open=(document.getElementById('lex-board-sheet')||{classList:{contains:function(){return false;}}}).classList.contains('open');
+    if(_gn>_gs){
+      window._lexGramSeen=_gn;
+      if(_gs>0 || _gn===1){ if(!_open && typeof eylToast==='function') eylToast('Nowa struktura w Tablicy lekcji'); }
+    }
+  }catch(e){}
   if(!list) return;
-  if(!items.length && !gram){ list.innerHTML='<div class="lbsh-empty">Lex zbierze tu słowa i reguły, gdy tylko zaczniecie pierwszą porcję.</div>'; return; }
+  if(!items.length && !gram){ list.innerHTML='<div class="lbsh-empty">Ailex zbierze tu słowa i reguły, gdy tylko zaczniecie pierwszą porcję.</div>'; return; }
   list.innerHTML=gram+items.map(function(it){
     var key=String(it.word).toLowerCase().trim();
     var rev=_lexBoardShowAll||_lexBoardRevealed[key];
@@ -1494,7 +1610,7 @@ function lexBoardToggleAll(){
   if(eye){ var t=eye.querySelector('span'); if(t) t.textContent=_lexBoardShowAll?'widoczne':'ukryte'; }
   lexBoardRender();
 }
-function lexBoardReset(){ _lexBoardRevealed={}; _lexBoardShowAll=false; var eye=document.getElementById('lex-board-eye'); if(eye){ var t=eye.querySelector('span'); if(t) t.textContent='ukryte'; } }
+function lexBoardReset(){ window._lexGramSeen=0; _lexBoardRevealed={}; _lexBoardShowAll=false; var eye=document.getElementById('lex-board-eye'); if(eye){ var t=eye.querySelector('span'); if(t) t.textContent='ukryte'; } }
 function lexBoardFabShow(on){ var f=document.getElementById('lex-board-fab'); if(f) f.style.display=on?'flex':'none'; if(!on) lexBoardClose(); }
 function lexBoardOpen(){ var s=document.getElementById('lex-board-sheet'), b=document.getElementById('lex-board-backdrop'); if(!s) return; lexBoardRender(); if(b) b.style.display='block'; requestAnimationFrame(function(){ s.classList.add('open'); }); }
 function lexBoardClose(){ var s=document.getElementById('lex-board-sheet'), b=document.getElementById('lex-board-backdrop'); if(s) s.classList.remove('open'); if(b) b.style.display='none'; }
@@ -1575,7 +1691,7 @@ function openLexSetup(){
   var ot=document.getElementById('lex-conduct-target-ot'), od=document.getElementById('lex-conduct-target-od');
   var inf=lexLangInfo(curSetLang), nm=inf.name.charAt(0).toUpperCase()+inf.name.slice(1);
   if(ot) ot.textContent=nm;
-  if(od) od.textContent='Lex prowadzi po '+inf.adv;
+  if(od) od.textContent='Ailex prowadzi po '+inf.adv;
   (async function(){
     var sf=document.getElementById('lex-script-field');
     if(sf){
@@ -2904,7 +3020,7 @@ async function lexStart(){
     try{ if(_lexScript!==window._lexScriptShown) saveJpScriptPref(_lexScript); }catch(e){}
   }
   closeImm('imm-lexsetup'); document.getElementById('imm-lex').classList.add('active');
-  lexLoading('Lex przygotowuje lekcję z Twojego zestawu…');
+  lexLoading('Ailex przygotowuje lekcję z Twojego zestawu…');
   try{
     if(curSetKind==='eyelingo'){
       lexSourceWords=(_eylCards||[]).filter(function(c){return c.word;}).map(function(c){return {word:c.word,translation:c.translation||'',romaji:(c.romaji||'')};});
@@ -2983,6 +3099,7 @@ async function lexClearCheckpoint(){
 async function lexCheckResume(){
   var wrap=document.getElementById('lex-resume-wrap'); if(!wrap) return;
   wrap.style.display='none'; wrap.innerHTML='';
+  window._lexResumeSnaps=[];            /* reset — inaczej znikniete lekcje zostawaly w railu */
   try{
     var sess=(await db.auth.getSession()).data.session; if(!sess) return;
     var {data,error}=await db.from('mobile_lesson_state')
@@ -2993,34 +3110,11 @@ async function lexCheckResume(){
     if(!snaps.length) return;
     window._lexResumeSnaps=snaps;
     window._lexResumeSnap=snaps[0];
-    lexRenderResumeCarousel(wrap, snaps);
-    wrap.style.display='block';
+    try{ renderContinue(); }catch(e){}   /* jeden wspolny rail — patrz renderContinue() */
   }catch(e){}
 }
 function lexResumeBy(i){ var s=(window._lexResumeSnaps||[])[i]; if(s) resumeLesson(s); }
-function lexRenderResumeCarousel(wrap, snaps){
-  var single=snaps.length===1;
-  var cards=snaps.map(function(s,i){
-    var tot=s.portionTarget||1; var cur=Math.min((s.portionNum||0)+1, tot);
-    var pct=Math.max(6, Math.round(((s.portionNum||0))/tot*100));
-    var flag=(typeof eylFlagSvg==='function')?eylFlagSvg(s.lang||'en',18):((typeof lexLangFlag==='function')?lexLangFlag(s.lang||'en'):'');
-    return '<button class="rz-card'+(single?' solo':'')+'" onclick="lexResumeBy('+i+')">'
-      +'<div class="rz-top"><span class="rz-eyebrow"><svg width="11" height="11" viewBox="0 0 24 24" fill="var(--orange)" style="vertical-align:-1px;margin-right:5px"><polygon points="6 4 20 12 6 20"/></svg>Wznów lekcję</span><span class="rz-flag">'+flag+'</span></div>'
-      +'<div class="rz-name">'+esc(s.set_name||'Twój zestaw')+'</div>'
-      +'<div class="rz-bar"><i style="width:'+pct+'%"></i></div>'
-      +'<div class="rz-meta">Porcja '+cur+' z '+tot+'</div>'
-      +'</button>';
-  }).join('');
-  var dots=single?'':('<div class="rz-dots">'+snaps.map(function(_,i){return '<span class="rz-dot'+(i===0?' on':'')+'"></span>';}).join('')+'</div>');
-  wrap.innerHTML='<div class="rz-head">Kontynuuj lekcje</div><div class="rz-scroller" id="rz-scroller">'+cards+'</div>'+dots;
-  var sc=document.getElementById('rz-scroller');
-  if(sc && !single){
-    sc.addEventListener('scroll', function(){
-      var cw=sc.scrollWidth/snaps.length; var idx=Math.max(0,Math.min(snaps.length-1, Math.round(sc.scrollLeft/cw)));
-      var ds=wrap.querySelectorAll('.rz-dot'); ds.forEach(function(d,di){ d.classList.toggle('on', di===idx); });
-    }, {passive:true});
-  }
-}
+function lexRenderResumeCarousel(){ try{ renderContinue(); }catch(e){} }
 async function resumeLesson(snap){
   if(!snap||!snap.set_id) return;
   curSetId=snap.set_id; curSetName=snap.set_name||''; curSetCount=snap.set_count||0;
@@ -3501,9 +3595,9 @@ function lexNext(){
   }
   // Koniec etapu (ale nie koniec lekcji) → checkpoint
   if(_lexPortionNum % LEX_STAGE_PORTIONS === 0){ lexStageCheckpoint(); return; }
-  lexLoading('Lex układa następną porcję…'); lexGeneratePortion();
+  lexLoading('Ailex układa następną porcję…'); lexGeneratePortion();
 }
-window.lexContinueStage=function(){ lexLoading('Lex układa następny etap…'); lexGeneratePortion(); };
+window.lexContinueStage=function(){ lexLoading('Ailex układa następny etap…'); lexGeneratePortion(); };
 function lexStageCheckpoint(){
   try{ lexSaveCheckpoint(lexCheckpointSnap()); }catch(e){}
   if(navigator.vibrate) navigator.vibrate([6,30,6]);
@@ -3581,7 +3675,7 @@ function lexRenderReflection(){
 window.lexReflectSubmit=async function(){
   var t=document.getElementById('lexx-reflect-in'); var v=(t&&t.value||'').trim();
   if(!v){ var fb0=document.getElementById('lexx-reflect-fb'); if(fb0){ fb0.className='lexx-fb neutral'; fb0.style.display='block'; fb0.textContent='Napisz choć jedno zdanie — nawet niedoskonałe.'; } return; }
-  var btn=document.getElementById('lexx-reflect-btn'); if(btn){ btn.disabled=true; btn.textContent='Lex czyta…'; }
+  var btn=document.getElementById('lexx-reflect-btn'); if(btn){ btn.disabled=true; btn.textContent='Ailex czyta…'; }
   var _beg=lexBeginnerLvl();
   var prompt=_beg
     ? ('Jesteś Ailexem — cierpliwym trenerem języka '+langGen()+'. Uczeń POCZĄTKUJĄCY (poziom '+lexLevel+') ułożył jedno z pierwszych własnych zdań: "'+v+'". '
@@ -3627,7 +3721,7 @@ async function lexEndLesson(){
   var listHtml='';
   if(moved.length){
     var rows=moved.slice(0,14).map(function(mv){
-      var col=mv.tier==='done'?'#3b7d3b':(mv.tier==='near'?'#c6781f':'var(--orange)');
+      var col=mv.tier==='done'?'#2f6b2f':(mv.tier==='near'?'#c6781f':'var(--orange)');
       return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#fff;border:1px solid var(--border2,#eee);border-radius:12px;margin-bottom:7px">'
         +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(mv.word)+'</div>'
         +(mv.translation?('<div style="font-size:11.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(mv.translation)+'</div>'):'')+'</div>'
@@ -3746,7 +3840,13 @@ function openEyl(){
   go('eyelingo'); eylRenderBrowse();
 }
 function eylBack(){ go('ucz'); }
-function eylPickLang(c){ _eylState.lang=c; _eylState.level=null; eylPrefSave(c,null); eylRenderBrowse(); }
+function eylPickLang(c){ window._eylLangOpen=false; _eylState.lang=c; _eylState.level=null; eylPrefSave(c,null); eylRenderBrowse(); }
+window.eylToggleLang=function(){
+  window._eylLangOpen=!window._eylLangOpen;
+  var r=document.getElementById('eyl-langrow'); if(r) r.style.display=window._eylLangOpen?'grid':'none';
+  var b=document.querySelector('.eyl-langpick'); if(b) b.setAttribute('aria-expanded', window._eylLangOpen?'true':'false');
+  var c=document.querySelector('.eyl-langpick .cv'); if(c) c.style.transform='rotate('+(window._eylLangOpen?'180deg':'0deg')+')';
+};
 function eylPickLvl(l){ _eylState.level=l||null; eylPrefSave(_eylState.lang,_eylState.level); eylRenderBrowse(); }
 
 async function eylRenderBrowse(){
@@ -3769,16 +3869,25 @@ async function eylRenderBrowse(){
   window._eylNavList=list; window._eylNavLevel=_eylState.level||null; window._eylNavLang=_eylState.lang;
 
   var html='<div class="eyl-h">Zestawy Eyelingo</div>';
-  html+='<div class="eyl-flabel">Język</div><div class="eyl-chiprow lang">'+langs.map(function(c){ return '<button class="eyl-chip'+(c===_eylState.lang?' on':'')+'" onclick="eylPickLang(\''+esc(c)+'\')">'+eylLangFlag(c)+' '+esc(eylLangLabel(c))+'</button>'; }).join('')+'</div>';
+  /* Audyt 2026-09 (W2-2): 14 jezykow w siatce 2-kolumnowej to bylo SIEDEM rzedow chipow
+     na samej gorze ekranu — ok. 300 px przewijania przed pierwsza kategoria, przy wyborze,
+     ktorego uzytkownik dokonuje raz i praktycznie nie zmienia. Teraz: jeden wiersz + „zmien". */
+  var _lOpen=!!window._eylLangOpen;
+  html+='<button class="eyl-langpick" onclick="eylToggleLang()" aria-expanded="'+(_lOpen?'true':'false')+'">'
+    +'<span class="lb">Język</span>'
+    +'<span class="vl">'+eylLangFlag(_eylState.lang)+' '+esc(eylLangLabel(_eylState.lang))+'</span>'
+    +'<svg class="cv" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform:rotate('+(_lOpen?'180deg':'0deg')+')"><path d="M6 9l6 6 6-6"/></svg></button>';
+  html+='<div class="eyl-chiprow lang" id="eyl-langrow" style="margin-top:10px;'+(_lOpen?'':'display:none')+'">'
+    +langs.map(function(c){ return '<button class="eyl-chip'+(c===_eylState.lang?' on':'')+'" onclick="eylPickLang(\''+esc(c)+'\')">'+eylLangFlag(c)+' '+esc(eylLangLabel(c))+'</button>'; }).join('')+'</div>';
   if(_lvlAggs.length){
     var _wk=_eylWorkingLevel(_lvlAggs);
     var _allDone=_lvlAggs.every(function(x){return x.agg.status==='done';});
-    var _headTxt=_allDone?'Cały materiał opanowany \u2713':('Pracujesz na '+esc(_wk.level)+' \u00b7 '+_wk.agg.pct+'%');
+    var _headTxt=_allDone?'Cały materiał opanowany \u2713':('Pracujesz na '+esc(_wk.level));
     var _ladder='<div class="eyl-ladder">'+_lvlAggs.map(function(x){ var cls=(x.agg.status==='done')?' done':''; var w=Math.max(x.agg.status==='prog'?6:0,x.agg.pct); return '<div class="eyl-rung'+cls+'"><div class="bar"><i style="height:'+w+'%"></i></div><b>'+esc(x.level)+'</b></div>'; }).join('')+'</div>';
     html+='<div class="eyl-langprog"><div class="eyl-langprog-top"><span class="eyl-langprog-lang">'+eylLangFlag(_eylState.lang)+' '+esc(eylLangLabel(_eylState.lang))+'</span><span class="eyl-langprog-pct">'+_headTxt+'</span></div>'+_ladder+'</div>';
   }
   if(levels.length){
-    html+='<div class="eyl-flabel">Poziom</div><div class="eyl-chiprow"><button class="eyl-chip'+(!_eylState.level?' on':'')+'" onclick="eylPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ var la=_lvlAggMap[lv]; var pc=(la&&la.total)?(' \u00b7 '+la.pct+'%'):''; var dn=(la&&la.status==='done')?' done':''; return '<button class="eyl-chip'+dn+(_eylState.level===lv?' on':'')+'" onclick="eylPickLvl(\''+lv+'\')">'+lv+pc+'</button>'; }).join('')+'</div>';
+    html+='<div class="eyl-flabel">Poziom</div><div class="eyl-chiprow"><button class="eyl-chip'+(!_eylState.level?' on':'')+'" onclick="eylPickLvl(\'\')">Wszystkie</button>'+levels.map(function(lv){ var la=_lvlAggMap[lv]; var pc='';   /* procent jest juz w slupkach drabiny — Design Bible §6.10 */ var dn=(la&&la.status==='done')?' done':''; return '<button class="eyl-chip'+dn+(_eylState.level===lv?' on':'')+'" onclick="eylPickLvl(\''+lv+'\')">'+lv+pc+'</button>'; }).join('')+'</div>';
   }
   if(!list.length){ html+='<div class="empty" style="margin-top:20px"><div class="h2">Brak kategorii</div><div class="sub">Na tym poziomie nie ma jeszcze zestawów.</div></div>'; b.innerHTML=html; return; }
   function _eylCatCard(c){
@@ -3799,9 +3908,9 @@ async function eylRenderBrowse(){
     var dOpen=!!window._eylDoneOpen;
     html+='<div class="eyl-doneacc" style="margin-top:18px;margin-bottom:14px">'
       +'<button class="eyl-doneacc-h" onclick="eylToggleDone()" style="width:100%;display:flex;align-items:center;gap:9px;background:#f4f7f2;border:1px solid #e2ebe0;border-radius:14px;padding:13px 15px;cursor:pointer;font-family:inherit">'
-        +'<span style="width:24px;height:24px;border-radius:8px;background:#e4efe1;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b7d3b" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg></span>'
+        +'<span style="width:24px;height:24px;border-radius:8px;background:#e4efe1;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6b2f" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg></span>'
         +'<span style="flex:1;text-align:left;font-size:13.5px;font-weight:600;color:var(--navy)">Zestawy przerobione</span>'
-        +'<span style="font-size:12px;font-weight:700;color:#3b7d3b;background:#e4efe1;border-radius:20px;padding:2px 9px">'+doneC.length+'</span>'
+        +'<span style="font-size:12px;font-weight:700;color:#2f6b2f;background:#e4efe1;border-radius:20px;padding:2px 9px">'+doneC.length+'</span>'
         +'<svg class="eyl-doneacc-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--dim2)" stroke-width="2" style="transition:transform .25s;transform:rotate('+(dOpen?'180deg':'0deg')+')"><path d="M6 9l6 6 6-6"/></svg>'
       +'</button>'
       +'<div class="eyl-doneacc-body" id="eyl-doneacc-body" style="display:'+(dOpen?'block':'none')+';margin-top:10px">'
@@ -3851,7 +3960,7 @@ async function eylOpenCat(lang,lvl,catId,catName){
       cards=(await q.limit(500)).data||[];
     }
     cards=(cards||[]).filter(function(c){return c.word||c.translation;});
-    if(!cards.length){ if(b) b.innerHTML=prev; alert('Ta kategoria nie ma jeszcze fiszek dla tego języka.'); return; }
+    if(!cards.length){ if(b) b.innerHTML=prev; eylToast('Ta kategoria nie ma jeszcze fiszek dla tego języka.','err'); return; }
     _eylCards=cards.map(function(c){ return {word:c.word||'',translation:c.translation||'',romaji:(c.romaji||''),flashcard_id:(c.id!=null?c.id:null)}; });
     window._eylCurLevel=(lvl||null);
     curSetKind='eyelingo'; curSetId='eyl:'+lang+':'+catId; curSetName=catName; curSetCount=_eylCards.length; curSetLang=lang; curSetLangSrc=_eylNormLang(lang);
@@ -3861,7 +3970,7 @@ async function eylOpenCat(lang,lvl,catId,catName){
     if(b) b.innerHTML=prev;
     go('set'); try{ renderSetStatus(); }catch(e){}
     if(window._brAutoBrowse){ window._brAutoBrowse=false; setTimeout(function(){ try{ openBrowse(); }catch(e){} }, 80); }
-  }catch(e){ if(b) b.innerHTML=prev; alert('Nie uda\u0142o si\u0119 wczyta\u0107 fiszek. Spr\u00f3buj ponownie.'); }
+  }catch(e){ if(b) b.innerHTML=prev; eylToast('Nie uda\u0142o si\u0119 wczyta\u0107 fiszek. Spr\u00f3buj ponownie.','err'); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -4088,18 +4197,42 @@ async function _pwFetchDue(limit){
     return rows;
   }catch(e){ return []; }
 }
+/* Audyt 2026-09 (P1-1): powtorki byly jednym z czterech rownorzednych kafli, a liczba
+   dojrzalych slow miala 11 px. Design Bible §6.10 chce mechaniki PULL — wiec liczba staje sie
+   naglowkiem dnia, a „Zacznij powtorke" jest JEDYNYM pomaranczowym CTA na ekranie glownym.
+   Przy n=0 karta nie zaprasza do pustego ekranu, tylko mowi wprost, ze nie ma nic do zrobienia. */
 async function refreshDueBadge(){
+  var box=document.getElementById('day-state');
   try{
     var rows=await _pwFetchDue(5000);
     var n=rows.length;
     var p1=document.getElementById('ucz-due-pill'), p2=document.getElementById('tab-due-pill');
     [p1,p2].forEach(function(p){ if(!p) return; if(n>0){ p.style.display='inline-block'; p.textContent=String(n>99?'99+':n); } else { p.style.display='none'; } });
-    var pt=document.getElementById('ucz-powt-tile'); if(pt){ pt.classList.toggle('due-active', n>0); }
-  }catch(e){}
+    if(box){
+      if(n>0){
+        box.className='day due';
+        box.innerHTML='<div class="day-head"><span class="day-n">'+(n>999?'999+':n)+'</span>'
+          +'<span class="day-lb">'+plural(n,'słowo dojrzało','słowa dojrzały','słów dojrzało')+'<br>do powtórki</span></div>'
+          +'<div class="day-sub">Powtórka to jedyny moment, w którym słowo naprawdę przechodzi do opanowanych.</div>'
+          +'<button class="btn btn-orange day-cta" onclick="openPowt()">Zacznij powtórkę</button>';
+      } else {
+        box.className='day';
+        box.innerHTML='<div class="day-head"><span class="day-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></span>'
+          +'<div class="day-t">Na dziś nic do powtórki</div></div>'
+          +'<div class="day-sub">Nowe słowa dojrzeją same — wróć jutro albo weź się za nowy materiał.</div>'
+          +'<button class="btn btn-ghost day-cta" onclick="openPowt()">Otwórz powtórki</button>';
+      }
+    }
+  }catch(e){
+    if(box){ box.className='day';
+      box.innerHTML='<div class="day-t">Nie udało się sprawdzić powtórek</div>'
+        +'<div class="day-sub">Sprawdź połączenie i spróbuj ponownie.</div>'
+        +'<button class="btn btn-ghost day-cta" onclick="refreshDueBadge()">Spróbuj ponownie</button>'; }
+  }
 }
 function pwToggleDir(){
   _pwDir=_pwDir==='foreign'?'pl':'foreign';
-  var d=document.getElementById('pw-dir'); if(d) d.textContent=_pwDir==='foreign'?'Obcy → PL':'PL → Obcy';
+  var d=document.getElementById('pw-dir'); if(d) d.textContent=_pwDir==='foreign'?'Obcy → Polski':'Polski → Obcy';
   if(_pwQueue.length && _pwIdx<_pwQueue.length){ _pwFlipped=false; pwRenderCard(); }
 }
 async function openPowt(){
@@ -4129,7 +4262,7 @@ function pwRenderEmpty(){
   document.getElementById('pw-grades').style.display='none';
   document.getElementById('pw-hint').textContent='';
   document.getElementById('pw-title').textContent='Powtórki';
-  if(stage) stage.innerHTML='<div class="empty" style="margin:auto"><div style="width:54px;height:54px;border-radius:15px;background:#eef5e6;display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3b7d3b" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg></div><div class="h2">Na dziś nic do powtórki</div><div class="sub" style="max-width:260px;margin:6px auto 0">Wszystko opanowane na teraz. Wróć później albo poucz się z Ailexem — nowe słowa trafią tu automatycznie.</div></div>';
+  if(stage) stage.innerHTML='<div class="empty" style="margin:auto"><div style="width:54px;height:54px;border-radius:15px;background:#eef5e6;display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2f6b2f" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg></div><div class="h2">Na dziś nic do powtórki</div><div class="sub" style="max-width:260px;margin:6px auto 0">Wszystko opanowane na teraz. Wróć później albo poucz się z Ailexem — nowe słowa trafią tu automatycznie.</div></div>';
 }
 function pwRenderCard(){
   if(typeof _pwBlockGate==='function' && _pwBlockGate()) return;
@@ -4164,8 +4297,12 @@ function pwReveal(){
   document.getElementById('pw-hint').textContent='Jak Ci poszło?';
   var g=document.getElementById('pw-grades');
   g.style.display='grid';
+  /* Audyt 2026-09: brakowal stopien „Prawie" (styl .pw-g.q2 istnial, nigdy sie nie renderowal).
+     Bez niego kto „prawie wiedzial" musial wybierac miedzy resetem a skokiem interwalu —
+     SM-2 tracil dokladnie te informacje, na ktorej stoi. */
   g.innerHTML=''
     +'<button class="pw-g q1" onclick="pwGrade(1)">Nie wiedziałem<span class="ph">znów wkrótce</span></button>'
+    +'<button class="pw-g q2" onclick="pwGrade(2)">Prawie<span class="ph">za dzień, dwa</span></button>'
     +'<button class="pw-g q3" onclick="pwGrade(3)">Wiedziałem<span class="ph">za kilka dni</span></button>'
     +'<button class="pw-g q4" onclick="pwGrade(4)">Łatwe<span class="ph">dłuższa przerwa</span></button>';
 }
@@ -4183,7 +4320,7 @@ async function pwGrade(q){
   var g=document.getElementById('pw-grades'); if(g) g.style.display='none';
   if(navigator.vibrate) navigator.vibrate(6);
   try{
-    await srsUpsertCanon(r.word||'', r.translation||'', (({1:0,3:4,4:5})[q]!=null?({1:0,3:4,4:5})[q]:2), {  // parytet EF z web rateCard qMap
+    await srsUpsertCanon(r.word||'', r.translation||'', (({1:0,2:3,3:4,4:5})[q]!=null?({1:0,2:3,3:4,4:5})[q]:2), {  // parytet EF z web rateCard qMap
       card_key:r.card_key, lang:(r.lang||''), flashcard_id:(r.flashcard_id!=null?r.flashcard_id:null),
       cur:{ease_factor:r.ease_factor,repetitions:r.repetitions,interval_days:r.interval_days}
     });
@@ -4223,7 +4360,7 @@ async function pwRenderDone(){
   var listHtml='';
   if(moved.length){
     var rows=moved.slice(0,40).map(function(mv){
-      var col=mv.tier==='done'?'#3b7d3b':(mv.tier==='near'?'#c6781f':'var(--orange)');
+      var col=mv.tier==='done'?'#2f6b2f':(mv.tier==='near'?'#c6781f':'var(--orange)');
       return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#fff;border:1px solid var(--border2,#eee);border-radius:12px;margin-bottom:7px">'
         +'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(mv.word)+'</div>'
         +(mv.translation?('<div style="font-size:11.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(mv.translation)+'</div>'):'')+'</div>'
@@ -5120,7 +5257,7 @@ async function alexSend(){
   .ns-x{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(26,35,64,.72);color:#fff;font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
   .ns-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:9px;border-radius:var(--r-sm);font-family:inherit;font-size:15px;font-weight:600;padding:15px;cursor:pointer;transition:.15s;margin-bottom:10px;border:none}
   .ns-btn:active{transform:scale(.98)}
-  .ns-btn.pri{background:var(--orange);color:#fff}
+  .ns-btn.pri{background:var(--orange-btn);color:#fff}
   .ns-btn.sec{background:#fff;border:.5px solid var(--line2);color:var(--navy)}
   .ns-btn.go{background:var(--navy);color:#fff}
   .ns-btn:disabled{opacity:.45}
@@ -5256,7 +5393,7 @@ async function alexSend(){
     d.className='immersive'; d.id='imm-newset';
     d.innerHTML='<div class="imm-bar">'
       +'<button class="icon-btn" id="ns-left" aria-label="Wróć">'+ico(I_CLOSE,22)+'</button>'
-      +'<div class="imm-title" id="ns-title">Nowy zestaw</div><div style="width:36px"></div></div>'
+      +'<div class="imm-title" id="ns-title">Nowy zestaw</div><div style="width:44px"></div></div>'
       +'<div class="scroll" id="ns-body" style="padding:4px 18px calc(var(--safe-bot) + 24px)"></div>';
     host.appendChild(d);
     /* Wyjście z edytora z wypełnionymi wierszami = utrata pracy. Pytamy raz,
@@ -5268,7 +5405,7 @@ async function alexSend(){
   }
   function bar(title, back){
     $('ns-title').textContent=title;
-    $('ns-left').innerHTML=ico(back?I_BACK:I_CLOSE,22);
+    $('ns-left').innerHTML=ico(back?I_BACK:I_CLOSE,22); $('ns-left').setAttribute('aria-label', back?'Wróć':'Zamknij');
   }
 
   window.eylNewSetClose=function(){ var e=$('imm-newset'); if(e) e.classList.remove('active'); };
@@ -5710,16 +5847,13 @@ async function alexSend(){
       var r=await db.from('user_sets').select('id',{count:'exact',head:true}).eq('user_id',UID);
       var n=(r&&typeof r.count==='number')?r.count:0;
       m.textContent = (n>=FREE_SETS)
-        ? ('Wersja darmowa · limit '+FREE_SETS+' własnych zestawów wykorzystany')
-        : ('Ręcznie bez opłat · własne zestawy: '+n+' z '+FREE_SETS+' · z AI w PRO');
+        ? ('Masz '+FREE_SETS+' z '+FREE_SETS+' zestawów — więcej w PRO')
+        : ('Ręcznie, z tematu albo ze zdjęcia · '+n+' z '+FREE_SETS);
     }catch(e){}
   }
-  function _nsEmptyCopy(){
-    var empty=document.querySelector('#mine-list .empty .sub');
-    if(empty && /na stronie Eyelingo/.test(empty.textContent)){
-      empty.textContent='Zacznij od „Nowy zestaw" powyżej — wpisz własne pary słów albo sfotografuj stronę podręcznika. Zestawy z konta www i desktopu pojawią się tu automatycznie.';
-    }
-  }
+  /* Audyt 2026-09 (P2-3): tekst pustego stanu jest juz poprawny w zrodle (loadMine).
+     Latka regexem cicho przestawalaby dzialac przy kazdej zmianie slowa w tamtym stringu. */
+  function _nsEmptyCopy(){}
   var _origLoadMine=window.loadMine;
   if(typeof _origLoadMine==='function'){
     window.loadMine=function(){
@@ -5753,7 +5887,7 @@ async function alexSend(){
   /* Cele upuszczenia podświetlamy dopiero w trakcie chwytu — poza nim to zwykłe filtry. */
   .nsc-bar.dragging .nsc-chip[data-drop="1"]{border-color:rgba(201,106,42,.45);border-style:dashed}
   .nsc-bar.dragging .nsc-chip[data-drop="0"]{opacity:.35}
-  .nsc-chip.over{border-color:var(--orange)!important;border-style:solid!important;background:var(--orange)!important;color:#fff!important;transform:scale(1.06)}
+  .nsc-chip.over{border-color:var(--orange-btn)!important;border-style:solid!important;background:var(--orange-btn)!important;color:#fff!important;transform:scale(1.06)}
   .nsc-hint{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim2);line-height:1.45;padding:0 2px 12px}
   .nsc-hint b{font-weight:600;color:var(--dim)}
   .nsc-hint.ok{color:var(--success)}
@@ -5776,7 +5910,7 @@ async function alexSend(){
   .nsc-opt{display:flex;align-items:center;gap:12px;padding:13px;border-radius:11px;background:var(--paper);border:.5px solid var(--line);margin-bottom:8px;cursor:pointer;transition:.15s}
   .nsc-opt.on{background:#fffaf6;border-color:rgba(201,106,42,.32)}
   .nsc-opt .bx{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--line2);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;background:#fff}
-  .nsc-opt.on .bx{background:var(--orange);border-color:var(--orange)}
+  .nsc-opt.on .bx{background:var(--orange-btn);border-color:var(--orange-btn)}
   .nsc-opt .nm{flex:1;font-size:14.5px;color:var(--navy);min-width:0;word-break:break-word}
   .nsc-new{display:flex;gap:8px;margin-top:4px}
   .nsc-new input{flex:1;min-width:0;border:.5px solid var(--line2);border-radius:var(--r-sm);padding:13px;font-family:inherit;font-size:14px;color:var(--navy);background:#fff;outline:none}
@@ -5907,7 +6041,7 @@ async function alexSend(){
       bar.parentNode.insertBefore(h, bar.nextSibling);
     }
     h.innerHTML='<span style="flex-shrink:0;color:var(--dim2)">'+ico(I_HAND,15)+'</span>'
-      +'<span><b>Przytrzymaj zestaw</b> i przeciągnij go na katalog, żeby przypisać.</span>';
+      +'<span><b>Przytrzymaj zestaw</b> i przeciągnij go na katalog. Możesz też otworzyć zestaw i wybrać „Katalogi”.</span>';
   }
   function hintDone(txt){
     try{ localStorage.setItem(hKey(),'1'); }catch(e){}
@@ -6207,7 +6341,7 @@ async function alexSend(){
         dziala sam cache lokalny, bez bledu.
      4. Zakladki sie ZAWIJAJA — nigdy nie wyjezdzaja poza ekran. -->
 <style id="eyl-conj-css">
-  .eyl-conjbtn{display:none;margin:0 auto;background:#fff;border:1.5px solid var(--line2,#e0dad0);border-radius:100px;
+  .eyl-conjbtn{display:none;margin:0 auto;background:#fff;border:1.5px solid var(--line2,#d9d4c8);border-radius:100px;
     padding:9px 16px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--navy,#1a2340);cursor:pointer;
     align-items:center;gap:7px;transition:.15s}
   .eyl-conjbtn.on{display:inline-flex}
@@ -6224,35 +6358,35 @@ async function alexSend(){
   #eyl-conj-sheet.inphone{position:absolute;left:0;right:0;width:auto;max-width:none;transform:translateY(110%)}
   #eyl-conj-sheet.inphone.open{transform:translateY(0)}
 
-  .ecj-head{display:flex;align-items:flex-start;gap:10px;padding:15px 18px 12px;border-bottom:.5px solid var(--line,#e8e3da);flex:0 0 auto}
+  .ecj-head{display:flex;align-items:flex-start;gap:10px;padding:15px 18px 12px;border-bottom:.5px solid var(--line,#e7e3da);flex:0 0 auto}
   .ecj-word{font-family:'DM Sans',system-ui,sans-serif;font-size:18px;font-weight:600;color:var(--navy,#1a2340);line-height:1.25}
-  .ecj-baserom{font-size:12.5px;color:var(--dim,#4a5268);margin-top:2px;unicode-bidi:isolate}
-  .ecj-sub{font-size:11.5px;color:var(--dim2,#8b93a7);margin-top:3px}
-  .ecj-x{background:none;border:none;color:var(--dim2,#8b93a7);font-size:24px;line-height:1;cursor:pointer;padding:0 2px}
+  .ecj-baserom{font-size:12.5px;color:var(--dim,#5b6478);margin-top:2px;unicode-bidi:isolate}
+  .ecj-sub{font-size:11.5px;color:var(--dim2,#646c80);margin-top:3px}
+  .ecj-x{background:none;border:none;color:var(--dim2,#646c80);font-size:24px;line-height:1;cursor:pointer;padding:0 2px}
 
   /* Zakladki zawijaja sie do kolejnych wierszy — zero poziomego przewijania. */
   .ecj-tabs{display:flex;flex-wrap:wrap;gap:6px;padding:12px 18px 2px;flex:0 0 auto}
-  .ecj-tab{background:#fff;border:1.5px solid var(--line2,#e0dad0);border-radius:100px;padding:6px 12px;
-    font-family:inherit;font-size:12px;font-weight:600;color:var(--dim,#4a5268);cursor:pointer;line-height:1.3;transition:.13s}
-  .ecj-tab:hover{border-color:var(--dim2,#8b93a7)}
+  .ecj-tab{background:#fff;border:1.5px solid var(--line2,#d9d4c8);border-radius:100px;padding:6px 12px;
+    font-family:inherit;font-size:12px;font-weight:600;color:var(--dim,#5b6478);cursor:pointer;line-height:1.3;transition:.13s}
+  .ecj-tab:hover{border-color:var(--dim2,#646c80)}
   .ecj-tab.sel{border-color:var(--orange,#c96a2a);background:#fff6ef;color:var(--orange,#c96a2a)}
 
   .ecj-body{flex:1 1 auto;overflow-y:auto;padding:12px 18px 20px;-webkit-overflow-scrolling:touch}
   .ecj-native{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
     color:var(--orange,#c96a2a);margin-bottom:5px;unicode-bidi:isolate}
-  .ecj-axis{font-size:11px;color:var(--dim2,#8b93a7);margin:-2px 0 10px}
-  .ecj-rom{font-size:12px;color:var(--dim,#4a5268);margin-top:1px;line-height:1.3;unicode-bidi:isolate}
-  .ecj-note{font-size:12.5px;color:var(--dim,#4a5268);line-height:1.55;background:var(--paper,#faf7f2);
+  .ecj-axis{font-size:11px;color:var(--dim2,#646c80);margin:-2px 0 10px}
+  .ecj-rom{font-size:12px;color:var(--dim,#5b6478);margin-top:1px;line-height:1.3;unicode-bidi:isolate}
+  .ecj-note{font-size:12.5px;color:var(--dim,#5b6478);line-height:1.55;background:var(--paper,#f8f7f4);
     border-radius:10px;padding:10px 12px;margin-bottom:12px}
-  .ecj-row{display:flex;align-items:baseline;gap:12px;padding:10px 2px;border-bottom:.5px solid var(--line,#e8e3da);cursor:pointer}
+  .ecj-row{display:flex;align-items:baseline;gap:12px;padding:10px 2px;border-bottom:.5px solid var(--line,#e7e3da);cursor:pointer}
   .ecj-row:last-child{border-bottom:0}
-  .ecj-row:hover{background:var(--paper,#faf7f2)}
-  .ecj-lab{flex:0 0 36%;max-width:36%;font-size:12px;color:var(--dim2,#8b93a7);line-height:1.35;unicode-bidi:isolate}
+  .ecj-row:hover{background:var(--paper,#f8f7f4)}
+  .ecj-lab{flex:0 0 36%;max-width:36%;font-size:12px;color:var(--dim2,#646c80);line-height:1.35;unicode-bidi:isolate}
   .ecj-form{flex:1;font-size:15.5px;font-weight:600;color:var(--navy,#1a2340);line-height:1.3;unicode-bidi:isolate}
-  .ecj-tr{font-size:11.5px;color:var(--dim2,#8b93a7);font-weight:400;margin-top:2px;line-height:1.35}
-  .ecj-foot{font-size:11px;color:var(--dim2,#8b93a7);text-align:center;margin-top:14px}
-  .ecj-msg{text-align:center;color:var(--dim2,#8b93a7);font-size:13px;padding:26px 10px;line-height:1.6}
-  .ecj-spin{width:20px;height:20px;border:2px solid var(--line2,#e0dad0);border-top-color:var(--orange,#c96a2a);
+  .ecj-tr{font-size:11.5px;color:var(--dim2,#646c80);font-weight:400;margin-top:2px;line-height:1.35}
+  .ecj-foot{font-size:11px;color:var(--dim2,#646c80);text-align:center;margin-top:14px}
+  .ecj-msg{text-align:center;color:var(--dim2,#646c80);font-size:13px;padding:26px 10px;line-height:1.6}
+  .ecj-spin{width:20px;height:20px;border:2px solid var(--line2,#d9d4c8);border-top-color:var(--orange,#c96a2a);
     border-radius:50%;animation:ecjRot .8s linear infinite;margin:26px auto}
   @keyframes ecjRot{to{transform:rotate(360deg)}}
 </style>
@@ -6854,16 +6988,16 @@ async function alexSend(){
         Bible §RZ-9). Slowo wyroznione sama gruboscia. -->
 <style id="eyl-ex-css">
   .eyl-ex{display:none;margin:12px auto 0;max-width:520px;width:100%;box-sizing:border-box;
-    background:var(--paper,#faf7f2);border:.5px solid var(--line,#e8e3da);border-radius:12px;
+    background:var(--paper,#f8f7f4);border:.5px solid var(--line,#e7e3da);border-radius:12px;
     padding:11px 14px;text-align:left;font-family:inherit}
   .eyl-ex.on{display:block}
   .eyl-ex-lab{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
-    color:var(--dim2,#8b93a7);margin-bottom:6px}
+    color:var(--dim2,#646c80);margin-bottom:6px}
   .eyl-ex-s{font-size:14.5px;color:var(--navy,#1a2340);line-height:1.5;cursor:pointer;unicode-bidi:isolate}
   .eyl-ex-s b{font-weight:700}
-  .eyl-ex-rom{font-size:12px;color:var(--dim,#4a5268);line-height:1.4;margin-top:2px;unicode-bidi:isolate}
-  .eyl-ex-pl{font-size:12px;color:var(--dim2,#8b93a7);line-height:1.45;margin-top:4px}
-  .eyl-ex-sp{width:16px;height:16px;border:2px solid var(--line2,#e0dad0);border-top-color:var(--dim2,#8b93a7);
+  .eyl-ex-rom{font-size:12px;color:var(--dim,#5b6478);line-height:1.4;margin-top:2px;unicode-bidi:isolate}
+  .eyl-ex-pl{font-size:12px;color:var(--dim2,#646c80);line-height:1.45;margin-top:4px}
+  .eyl-ex-sp{width:16px;height:16px;border:2px solid var(--line2,#d9d4c8);border-top-color:var(--dim2,#646c80);
     border-radius:50%;animation:eylExRot .8s linear infinite;margin:6px auto}
   @keyframes eylExRot{to{transform:rotate(360deg)}}
 </style>
@@ -7594,5 +7728,79 @@ window.eylPagedFetch = async function(makeQuery, opts){
   document.addEventListener('eyl:set-deleted', function(){ window.eylInvalidateLiveSets(); });
 })();
 </script>
+<style id="ux-audit-2026-09">
+  /* ───────────── Audyt UX/UI 2026-09 ─────────────
+     Cele dotykowe: rozmiar WIZUALNY bez zmian, obszar trafienia podniesiony do 44 px
+     pseudo-elementem. Dotad najczesciej uzywany przycisk w apce (.back) mial ~25 px. */
+  .back{position:relative;padding:10px 10px}
+  .back::after{content:'';position:absolute;left:-4px;right:-4px;top:50%;height:44px;transform:translateY(-50%)}
+  .icon-btn{width:44px;height:44px}
+  .row-eye,.set-eye,.speak,.lbw .spk,.lexx-sceneaudio,.gram-map-x{position:relative}
+  .row-eye::after,.set-eye::after,.speak::after,.lbw .spk::after,.lexx-sceneaudio::after,.gram-map-x::after{
+    content:'';position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
+  .dir-btn{padding:11px 14px}
+  .lbsh-eye{padding:11px 13px}
+  .lexx-chip{padding:11px 15px}
+  .eyl-chip{padding:11px 15px}
+  .br-end-close{padding:14px}
+  .login .alt a{display:inline-block;padding:8px 4px}
+  /* Widoczny focus — przed audytem nie istnial w calym pliku; jedynym stanem byl :active,
+     a -webkit-tap-highlight-color:transparent jest globalny. */
+  :focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+  .btn:focus-visible,.lexx-next:focus-visible,.br-end-btn.primary:focus-visible{outline-color:var(--navy2);outline-offset:3px}
+  .lexx-opt:focus-visible,.opt:focus-visible,.eyl-chip:focus-visible,.nsc-chip:focus-visible{outline-offset:1px}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+  /* ── Stan dnia (P1-1) ── */
+  .day{background:#fff;border:.5px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:12px}
+  .day.due{background:#fffaf6;border-color:#efd9c3}
+  .day-head{display:flex;align-items:center;gap:14px}
+  .day-n{font-family:'DM Sans',sans-serif;font-size:34px;font-weight:600;color:var(--navy);line-height:1;letter-spacing:-1px;flex-shrink:0}
+  .day-lb{font-size:14px;font-weight:600;color:var(--navy);line-height:1.25}
+  .day-ic{width:44px;height:44px;border-radius:13px;background:var(--ok-bg);color:var(--ok);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .day-t{font-size:16px;font-weight:600;color:var(--navy);line-height:1.3}
+  .day-sub{font-size:13px;color:var(--dim);line-height:1.5;margin-top:10px}
+  .day-cta{margin-top:14px;padding:14px;font-size:15px}
+  .day-skel{height:78px;border-radius:10px;background:var(--paper2)}
+  /* ── Rekomendacja na ekranie zestawu (P1-3) ── */
+  .set-lead-note{font-size:13px;color:var(--ok);background:var(--ok-bg);border:.5px solid var(--ok-line);
+    border-radius:12px;padding:12px 14px;margin-bottom:12px;line-height:1.45}
+  .set-lead-note:empty{display:none}
+  /* ── Triaż w Przeglądaniu (P0-3): obrys, nie wypełnienie — inna waga niż ocena SM-2 ── */
+  .br-t{min-height:52px;border:1.5px solid var(--line2);background:#fff;border-radius:12px;
+    font-family:inherit;font-size:14.5px;font-weight:600;color:var(--navy);cursor:pointer;transition:.12s}
+  .br-t:active{transform:scale(.97)}
+  .br-t.yes{border-color:var(--ok);color:var(--ok)}
+  .br-t.no{border-color:var(--error);color:var(--error)}
+  .pw-g{min-height:56px}
+  /* Awatar jest teraz <button> — wyrownanie do poprzedniego wygladu (P1-4) */
+  button.avatar{border:none;font-family:inherit;padding:0}
+  /* ── Jeden rail „W toku" (W2-1): jeden komponent karty, jeden typ paska ── */
+  .rz-card .st-bar{margin-top:0}
+  .rz-eyebrow{gap:0}
+  /* ── Zwijany wybór języka (W2-2) ── */
+  .eyl-langpick{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;background:#fff;
+    border:.5px solid var(--line);border-radius:var(--r);padding:13px 14px;margin-top:14px;
+    font-family:inherit;cursor:pointer;text-align:left;color:var(--navy)}
+  .eyl-langpick:active{transform:scale(.995)}
+  .eyl-langpick .lb{font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);flex:0 0 auto}
+  .eyl-langpick .vl{flex:1;min-width:0;display:flex;align-items:center;gap:7px;font-size:15px;font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;justify-content:flex-end}
+  .eyl-langpick .cv{flex:0 0 18px;color:var(--dim2);transition:transform .25s}
+  /* ── Pasek ustawień Rozmowy (W2-3) ── */
+  .alex-flab{display:block;font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin-bottom:6px}
+  .alex-sel{width:100%;min-height:44px;padding:10px 32px 10px 12px;border-radius:10px;border:1px solid var(--line2);
+    font-family:inherit;font-size:14px;background-color:#fff;color:var(--navy);
+    -webkit-appearance:none;appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23646c80' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 10px center}
+  /* ── Toast (P2-4) ── */
+  .eyl-toast{position:fixed;left:50%;bottom:calc(var(--safe-bot) + 22px);transform:translate(-50%,14px);
+    max-width:min(420px,calc(100% - 36px));z-index:9999;background:var(--navy);color:#fff;
+    border-radius:12px;padding:13px 16px;font-size:13.5px;line-height:1.45;text-align:center;
+    box-shadow:0 10px 30px rgba(15,23,41,.28);opacity:0;pointer-events:none;
+    transition:opacity .18s ease,transform .18s ease}
+  .eyl-toast.on{opacity:1;transform:translate(-50%,0)}
+  .eyl-toast.err{background:var(--error)}
+</style>
 </body>
 </html>
