@@ -57,7 +57,7 @@ That discipline — not raw coding speed — is why one person could ship this a
 | **Data** | Normalised schema, Row-Level Security on every table, RPC functions, single source of truth shared by 3 clients | Supabase / PostgreSQL (EU region) |
 | **Clients** | Vanilla-JS single-page web app, installable offline-first PWA, PyQt6 desktop companion | JS / HTML / CSS, Python |
 | **Integrations** | Subscriptions, text-to-speech behind a proxy with a Web Speech fallback, first-party event analytics | Stripe, ElevenLabs |
-| **Delivery** | CI build matrix for Windows/macOS, packaged installers, auto-update over the GitHub Releases API | GitHub Actions, PyInstaller, Inno Setup |
+| **Delivery** | CI build matrix for Windows/macOS, packaged installers, auto-update over the GitHub Releases API. Public distribution is pending a code-signing certificate — the desktop build runs, but an unsigned installer is blocked by OS gatekeepers until then. |
 
 ## Repository map
 
