@@ -14,9 +14,9 @@ Web · installable mobile PWA · desktop app &nbsp;•&nbsp; 14 languages &nbsp;
 
 ## What this is
 
-Eyelingo helps adults actually *use* a language they already half-know, instead of collecting points. It runs an AI lesson engine, spaced-repetition review over tens of thousands of items, a grammar engine across 14 languages, and a conversation partner — all on a serverless backend, with subscriptions and EU-hosted data.
+Eyelingo helps adults actually *use* a language they already half-know, instead of collecting points. It runs an AI lesson engine, spaced-repetition review over tens of thousands of items, a grammar engine across 14 languages, and a conversation partner — all on a serverless backend with EU-hosted data and a full payment flow wired in (Stripe).
 
-I designed it, built it, and shipped it on my own, from the first idea to paying users. This repository is that product.
+The web app and installable mobile PWA are live and open to anyone at eyelingo.app — free to use. I designed it, built it, and shipped it on my own, from the first idea to a running app people can pick up and learn from today. This repository is that product.
 
 ## The idea it's built on
 
@@ -56,7 +56,7 @@ That discipline — not raw coding speed — is why one person could ship this a
 | **Grammar engine** | Rule banks A1–C2 across 14 languages, prerequisite graph, progress tracking | JSON grammar banks + `grammar-engine.js` |
 | **Data** | Normalised schema, Row-Level Security on every table, RPC functions, single source of truth shared by 3 clients | Supabase / PostgreSQL (EU region) |
 | **Clients** | Vanilla-JS single-page web app, installable offline-first PWA, PyQt6 desktop companion | JS / HTML / CSS, Python |
-| **Integrations** | Subscriptions, text-to-speech behind a proxy with a Web Speech fallback, first-party event analytics | Stripe, ElevenLabs |
+| **Integrations** | Subscription/payment flow (integrated end to end), text-to-speechh behind a proxy with a Web Speech fallback, first-party event analytics | Stripe, ElevenLabs |
 | **Delivery** | CI build matrix for Windows/macOS, packaged installers, auto-update over the GitHub Releases API. Public distribution is pending a code-signing certificate — the desktop build runs, but an unsigned installer is blocked by OS gatekeepers until then. |
 
 ## Repository map
@@ -92,7 +92,7 @@ https://github.com/user-attachments/assets/ffaf20c4-19ca-48f8-bedf-72cbdc790173
 
 ## A note on scope
 
-This is a real, running commercial product, not a demo — so this public repository is the front-end, client, and engine layer. Secrets, API keys, and paid infrastructure live in server-side environment variables and Supabase Edge Functions, never in the code here.
+This is a real, running product, not a demo — so this public repository is the front-end, client, and engine layer. Secrets, API keys, and paid infrastructure live in server-side environment variables and Supabase Edge Functions, never in the code here.
 
 ## About
 
