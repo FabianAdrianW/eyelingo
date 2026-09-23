@@ -26175,3 +26175,172 @@ select::-ms-expand{display:none}
   };
 })();
 </script>
+<script id="eyl-setnav">
+/* ═══ Przełączanie zestawów na ekranie zestawu (web) ═══
+   Parytet z PWA (swipe między kategoriami). Rekomendacja projektowa:
+   • pager z NAZWAMI sąsiadów („‹ Napoje · 3 z 12 · Owoce ›") — zapach informacji:
+     widzisz, dokąd idziesz, zanim klikniesz;
+   • klawiatura ← →, gest poziomy (touchpad / dotyk);
+   • animacja kierunkowa: krótki poślizg 24 px + zanikanie (≈220 ms), bez sprężyn
+     i efektów — spokojna jak reszta Eyelingo; prefers-reduced-motion → tylko zanikanie. */
+(function(){
+  if(window.eylNavGo) return;
+  var ctx=null, busy=false, catCache={};
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function css(){
+    if(document.getElementById('eyl-setnav-css')) return;
+    var s=document.createElement('style'); s.id='eyl-setnav-css';
+    s.textContent=''
+      +'.eyl-nav{display:flex;align-items:center;justify-content:center;gap:10px;margin:-8px auto 20px;max-width:640px}'
+      +'.eyl-nav-b{display:inline-flex;align-items:center;gap:6px;max-width:220px;padding:7px 14px;border-radius:100px;border:1px solid var(--border2,#d8d2c0);background:#fff;color:var(--navy,#1a2340);font-family:"DM Sans",system-ui,sans-serif;font-size:13px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}'
+      +'.eyl-nav-b:hover:not(:disabled){border-color:var(--orange,#c96a2a);box-shadow:0 4px 14px rgba(26,35,64,.08)}'
+      +'.eyl-nav-b.prev:hover:not(:disabled){transform:translateX(-2px)}.eyl-nav-b.next:hover:not(:disabled){transform:translateX(2px)}'
+      +'.eyl-nav-b:disabled{opacity:.35;cursor:default}'
+      +'.eyl-nav-b span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+      +'.eyl-nav-b svg{flex:0 0 auto;color:var(--dim2,#646c80)}'
+      +'.eyl-nav-pos{font-size:12px;color:var(--dim2,#646c80);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}'
+      +'.eyl-nav-kbd{display:none;justify-content:center;gap:6px;align-items:center;margin:-12px 0 18px;font-size:11px;color:var(--dim2,#646c80)}'
+      +'.eyl-nav-kbd kbd{font-family:inherit;font-size:11px;border:1px solid var(--border2,#d8d2c0);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:#fff;color:var(--navy,#1a2340)}'
+      +'@media(hover:hover) and (pointer:fine){.eyl-nav-kbd{display:flex}}'
+      +'@media(max-width:560px){.eyl-nav-b{max-width:130px;padding:7px 11px}}'
+      +'@keyframes eylNavInR{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}'
+      +'@keyframes eylNavInL{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}'
+      +'.eyl-nav-in-r{animation:eylNavInR .22s cubic-bezier(.2,.7,.2,1) both}.eyl-nav-in-l{animation:eylNavInL .22s cubic-bezier(.2,.7,.2,1) both}'
+      +'.eyl-nav-out-l,.eyl-nav-out-r{transition:opacity .13s ease,transform .13s ease;opacity:0;pointer-events:none}'
+      +'.eyl-nav-out-l{transform:translateX(-24px)}.eyl-nav-out-r{transform:translateX(24px)}'
+      +'@media(prefers-reduced-motion:reduce){.eyl-nav-in-r,.eyl-nav-in-l{animation:eylNavFade .15s both}.eyl-nav-out-l,.eyl-nav-out-r{transform:none}}'
+      +'@keyframes eylNavFade{from{opacity:0}to{opacity:1}}';
+    document.head.appendChild(s);
+  }
+
+  /* Lista kategorii danego języka/poziomu — ta sama kolejność co w katalogu. */
+  async function catList(code, level){
+    var k=code+'|'+(level||'');
+    if(catCache[k]) return catCache[k];
+    try{
+      var r=await db.rpc('catalog_categories',{p_lang:code});
+      var rows=(r&&!r.error&&r.data)||[];
+      var list=rows.filter(function(x){ return !level || (x.all_levels||[]).indexOf(level)>=0; })
+        .map(function(x){ return {id:String(x.id), label:x.label||''}; });
+      catCache[k]=list; return list;
+    }catch(e){ return []; }
+  }
+
+  /* Zapamiętaj kontekst przy każdym wejściu w zestaw (opakowania nie zmieniają logiki). */
+  function wrap(){
+    var oc=window.eylOpenCat;
+    if(typeof oc==='function' && !oc._nav){
+      var w=function(code, level, catId, label){
+        ctx={kind:'eyl', code:code, level:level||'', id:String(catId), label:label||'', list:null};
+        catList(code, level||'').then(function(l){ if(ctx&&ctx.kind==='eyl'&&ctx.id===String(catId)){ ctx.list=l; decorate(); } });
+        return oc.apply(this, arguments);
+      };
+      w._nav=true; window.eylOpenCat=w;
+    }
+    var ss=window.startStudyFromModal;
+    if(typeof ss==='function' && !ss._nav){
+      var w2=function(id){
+        var sets=(window._matSets||[]).filter(function(s){ return s && s.user_id===window._matMyUid || !window._matMyUid; });
+        if(!sets.length) sets=window._matSets||[];
+        ctx={kind:'mine', id:String(id), list:sets.map(function(s){ return {id:String(s.id), label:s.name||'Zestaw'}; })};
+        return ss.apply(this, arguments);
+      };
+      w2._nav=true; window.startStudyFromModal=w2;
+    }
+  }
+
+  function idx(){ if(!ctx||!ctx.list) return -1; for(var i=0;i<ctx.list.length;i++){ if(ctx.list[i].id===ctx.id) return i; } return -1; }
+  function picker(){ var p=document.getElementById('tryb-mode-picker'); return (p && p.offsetParent!==null)?p:null; }
+  function active(){ return !!(ctx && !window._trybIsReview && picker() && idx()>=0 && ctx.list.length>1); }
+
+  var CH_L='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
+  var CH_R='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
+
+  function decorate(){
+    css();
+    var p=picker(); if(!p) return;
+    var old=p.querySelector('.eyl-nav'); if(old) old.remove();
+    var ok=p.querySelector('.eyl-nav-kbd'); if(ok) ok.remove();
+    if(!active()) return;
+    var i=idx(), L=ctx.list, prev=L[i-1], next=L[i+1];
+    var nav=document.createElement('div'); nav.className='eyl-nav';
+    nav.innerHTML='<button type="button" class="eyl-nav-b prev" '+(prev?'':'disabled')+' title="Poprzedni zestaw (←)">'+CH_L+'<span>'+esc(prev?prev.label:'Początek')+'</span></button>'
+      +'<span class="eyl-nav-pos">'+(i+1)+' z '+L.length+'</span>'
+      +'<button type="button" class="eyl-nav-b next" '+(next?'':'disabled')+' title="Następny zestaw (→)"><span>'+esc(next?next.label:'Koniec')+'</span>'+CH_R+'</button>';
+    nav.querySelector('.prev').onclick=function(){ eylNavGo(-1); };
+    nav.querySelector('.next').onclick=function(){ eylNavGo(1); };
+    var kb=document.createElement('div'); kb.className='eyl-nav-kbd';
+    kb.innerHTML='<kbd>←</kbd><kbd>→</kbd> przełączaj zestawy';
+    // Pod nagłówkiem (pasek powrotu, nagłówek, dalej siatka trybów)
+    var hdr=p.children[1];
+    if(hdr && hdr.nextSibling){ p.insertBefore(nav, hdr.nextSibling); p.insertBefore(kb, nav.nextSibling); }
+    else { p.appendChild(nav); p.appendChild(kb); }
+  }
+
+  window.eylNavGo=async function(dir){
+    if(busy || !active()) return;
+    var i=idx(), t=ctx.list[i+dir]; if(!t) return;
+    busy=true;
+    var p=picker(); if(p){ p.classList.add(dir>0?'eyl-nav-out-l':'eyl-nav-out-r'); }
+    window._eylNavDir=dir;
+    // bez migającego tostu „Ładowanie zestawu…" przy szybkim przełączaniu
+    var st=window.showToast; window.showToast=function(m){ if(/Ładowanie zestawu/.test(String(m||''))) return; return st&&st.apply(this,arguments); };
+    setTimeout(function(){ try{ window.showToast=st; }catch(e){} }, 1500);
+    try{
+      await new Promise(function(r){ setTimeout(r,130); });
+      if(ctx.kind==='eyl') await window.eylOpenCat(ctx.code, ctx.level, t.id, t.label);
+      else await window.startStudyFromModal(isNaN(+t.id)?t.id:+t.id);
+    }catch(e){}
+    setTimeout(function(){ busy=false; }, 450);
+  };
+
+  /* Po każdym zbudowaniu ekranu trybów: pager + animacja wejścia */
+  function hookPicker(){
+    var orig=window.showTrybModePicker;
+    if(typeof orig!=='function' || orig._nav) return;
+    var w=function(){
+      var r=orig.apply(this, arguments);
+      try{
+        decorate();
+        var d=window._eylNavDir; window._eylNavDir=0;
+        var p=picker(); if(p && d){ p.classList.remove('eyl-nav-in-r','eyl-nav-in-l'); void p.offsetWidth; p.classList.add(d>0?'eyl-nav-in-r':'eyl-nav-in-l'); }
+      }catch(e){}
+      return r;
+    };
+    w._nav=true; window.showTrybModePicker=w;
+  }
+
+  // Klawiatura ← →
+  document.addEventListener('keydown', function(e){
+    if(e.key!=='ArrowLeft' && e.key!=='ArrowRight') return;
+    if(e.altKey||e.ctrlKey||e.metaKey||e.shiftKey) return;
+    var a=document.activeElement, tg=a&&a.tagName;
+    if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT'||(a&&a.isContentEditable)) return;
+    if(document.querySelector('.eylcf-ov')) return;
+    var mm=document.getElementById('mat-modal'); if(mm && mm.style.display!=='none' && mm.offsetParent!==null) return;
+    if(!active()) return;
+    e.preventDefault();
+    eylNavGo(e.key==='ArrowRight'?1:-1);
+  });
+  // Gest poziomy: touchpad (wheel deltaX) i dotyk
+  var acc=0, accT=0;
+  document.addEventListener('wheel', function(e){
+    if(!active()) return;
+    if(Math.abs(e.deltaX)<=Math.abs(e.deltaY)*1.5) return;
+    var now=Date.now(); if(now-accT>250) acc=0; accT=now; acc+=e.deltaX;
+    if(Math.abs(acc)>120){ var d=acc>0?1:-1; acc=0; eylNavGo(d); }
+  }, {passive:true});
+  var tx=null, ty=null;
+  document.addEventListener('touchstart', function(e){ if(!active()||e.touches.length!==1){ tx=null; return; } tx=e.touches[0].clientX; ty=e.touches[0].clientY; }, {passive:true});
+  document.addEventListener('touchend', function(e){
+    if(tx==null) return; var t=e.changedTouches[0], dx=t.clientX-tx, dy=t.clientY-ty; tx=null;
+    if(Math.abs(dx)<60 || Math.abs(dx)<Math.abs(dy)*1.4) return;
+    eylNavGo(dx<0?1:-1);
+  }, {passive:true});
+
+  wrap(); hookPicker();
+  // opakowania innych modułów mogą nadpisać funkcje później — dopnij się ponownie
+  setTimeout(function(){ wrap(); hookPicker(); }, 0);
+  window.addEventListener('load', function(){ wrap(); hookPicker(); });
+})();
+</script>
