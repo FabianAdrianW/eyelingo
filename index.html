@@ -9043,10 +9043,18 @@ function showTrybModePicker(){
     keyboard:'<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h0M10 10h0M14 10h0M18 10h0M6 14h0M18 14h0M10 14h4"/>',
     brain:'<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 0 0 12 21a4 4 0 0 0 7.967-3.517 4 4 0 0 0 .556-6.588 4 4 0 0 0-2.526-5.77A3 3 0 1 0 12 5"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/>'
   };
+  if(window._trybIsReview){
+    // REV-5: w powtórkach najpierw tryby, które same oceniają odpowiedź
+    grid.appendChild(trybModeCard('write', ICO.keyboard, 'Wpisywanie', 'Polecane — najlepiej utrwala', '#0f6e56'));
+    grid.appendChild(trybModeCard('mc', ICO.check, 'Multiwybór', 'Wybierz spośród 4 opcji', '#A94C13'));
+    grid.appendChild(trybModeCard('memorize', ICO.brain, 'Zapamiętywanie', 'Multiwybór + wpisywanie', '#7c5cbf'));
+    grid.appendChild(trybModeCard('flip', ICO.eye, 'Odwracanie', 'Sam oceniasz: pamiętałem / nie', '#1a2340'));
+  } else {
   grid.appendChild(trybModeCard('flip', ICO.eye, 'Przeglądanie', 'Odwracaj fiszki wizualnie', '#1a2340'));
   grid.appendChild(trybModeCard('mc', ICO.check, 'Multiwybór', 'Wybierz spośród 4 opcji', '#A94C13'));
   grid.appendChild(trybModeCard('write', ICO.keyboard, 'Wpisywanie', 'Aktywne przypominanie', '#0f6e56'));
   grid.appendChild(trybModeCard('memorize', ICO.brain, 'Zapamiętywanie', 'Multiwybór + wpisywanie', '#7c5cbf'));
+  }
   picker.appendChild(grid);
 
   // Direction + SRS row
@@ -9404,7 +9412,7 @@ function trybFlipReveal(backText){
     btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
     var _qm={1:0,2:2,3:4,4:5}, _rev=!!window._trybIsReview, _rc=_trybCards[_trybIdx];
     (_rev
-      ? [{q:1,l:'Nie przypomniałem',bg:'#fcebeb',c:'#a32d2d'},{q:2,l:'Z trudem',bg:'#fdf1e4',c:'#8a4a18'},{q:3,l:'Przypomniałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Od razu',bg:'#e0f2fe',c:'#0369a1'}]
+      ? [{q:1,l:'Nie pamiętałem',bg:'#fcebeb',c:'#a32d2d'},{q:3,l:'Pamiętałem',bg:'#eaf3de',c:'#3b6d11'}]
       : [{q:1,l:'Nie wiedziałem',bg:'#fcebeb',c:'#a32d2d'},{q:3,l:'Wiedziałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Łatwe',bg:'#e0f2fe',c:'#0369a1'}]
     ).forEach(function(opt,oi){
       var b = document.createElement('button');
@@ -10338,7 +10346,7 @@ function openCreateCollection(){
 }
 
 async function deleteCollection(idx){
-  if(!confirm('Usuń katalog?')) return;
+  if(!(await eylConfirm({title:'Usunąć katalog?',body:'Tej operacji nie da się cofnąć.',ok:'Usuń',danger:true}))) return;
   var sess = (await db.auth.getSession()).data.session;
   if(!sess) return;
   _collections.splice(idx,1);
@@ -16082,7 +16090,7 @@ function lexBookClose(){ var m=document.getElementById('lex-book-modal'); if(m) 
 async function lexBookTear(lessonId){
   if(!lessonId) return;
   var d=lexBookPageData(_lexBookIdx);
-  if(!confirm('Wyrwać tę kartkę z zeszytu?\n\n„'+(d.title||'lekcja').replace(/<[^>]*>/g,'')+'" zniknie na stałe — reguły i słowa z tej lekcji nie będą już zapisane w zeszycie. Tej akcji nie da się cofnąć.')) return;
+  if(!(await eylConfirm('Wyrwać tę kartkę z zeszytu?\n\n„'+(d.title||'lekcja').replace(/<[^>]*>/g,'')+'" zniknie na stałe — reguły i słowa z tej lekcji nie będą już zapisane w zeszycie. Tej akcji nie da się cofnąć.'))) return;
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(sess) await db.from('lex_lessons').delete().eq('id', lessonId).eq('user_id', sess.user.id);
@@ -25964,11 +25972,11 @@ select::-ms-expand{display:none}
       b.disabled=true;
       try{
         if(b.getAttribute('data-k')==='known'){
-          if(!confirm('Oznaczyć wszystkie słowa ('+cards.length+') jako znane? Trafią do długich powtórek (ok. 2 miesiące) i znikną z dzisiejszej kolejki.')){ b.disabled=false; return; }
+          if(!(await eylConfirm({title:'Znasz już ten zestaw?',body:'Oznaczymy '+eylSlow(cards.length)+' jako znane. Znikną z dzisiejszej kolejki i wrócą raz, kontrolnie, za około 2 miesiące.',ok:'Tak, znam'}))){ b.disabled=false; return; }
           var n=await eylRevMarkKnown(cards, window._trybStudyLang||'');
           toast('Oznaczono '+n+' słów jako znane.');
         } else {
-          if(!paused && !confirm('Wstrzymać powtórki tego zestawu? Słowa znikną z kolejki, postęp zostanie.')){ b.disabled=false; return; }
+          if(!paused && !(await eylConfirm({title:'Wstrzymać powtórki zestawu?',body:'Słowa znikną z kolejki powtórek. Postęp zostaje — wznowisz jednym kliknięciem.',ok:'Wstrzymaj'}))){ b.disabled=false; return; }
           await eylRevPauseSet(cards, !paused);
         }
         paint(await eylRevSetState(cards));
@@ -26000,6 +26008,58 @@ select::-ms-expand{display:none}
       if(ev.target.closest&&ev.target.closest('[data-spread]')){ await eylRevSpread(); rerun(); }
     });
     return d;
+  };
+})();
+</script>
+<script id="eyl-confirm">
+/* eylConfirm — potwierdzenie w stylu Eyelingo (Design Bible: granat, krem, jeden akcent).
+   Zamiast natywnego confirm(), który wygląda jak komunikat przeglądarki i łamie
+   zaufanie do marki. Zwraca Promise<boolean>. Esc / tło = anuluj, Enter = potwierdź.
+   Opcje: {title, body, ok, cancel, danger} albo sam tekst. */
+(function(){
+  if(window.eylConfirm) return;
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function css(){
+    if(document.getElementById('eyl-confirm-css')) return;
+    var s=document.createElement('style'); s.id='eyl-confirm-css';
+    s.textContent='.eylcf-ov{position:fixed;inset:0;z-index:100000;background:rgba(26,35,64,.42);display:flex;align-items:center;justify-content:center;padding:20px;animation:eylcfIn .16s ease}'
+      +'.eylcf{width:100%;max-width:420px;background:#fff;border-radius:16px;box-shadow:0 18px 60px rgba(26,35,64,.22);padding:22px 22px 18px;font-family:Inter,system-ui,sans-serif;animation:eylcfUp .2s ease}'
+      +'.eylcf-t{font-family:"DM Sans",system-ui,sans-serif;font-size:17px;font-weight:600;color:var(--navy,#1a2340);line-height:1.35;margin:0 0 8px}'
+      +'.eylcf-b{font-size:14px;line-height:1.6;color:var(--dim,#5b6478);margin:0 0 20px}'
+      +'.eylcf-a{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}'
+      +'.eylcf-btn{padding:10px 18px;border-radius:100px;font-family:"DM Sans",system-ui,sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s,border-color .15s}'
+      +'.eylcf-no{border:1.5px solid var(--border2,#d8d2c0);background:transparent;color:var(--dim,#5b6478)}'
+      +'.eylcf-no:hover{border-color:var(--navy,#1a2340);color:var(--navy,#1a2340)}'
+      +'.eylcf-ok{border:0;background:var(--navy,#1a2340);color:#fff}'
+      +'.eylcf-ok:hover{background:#243058}'
+      +'.eylcf-ok.danger{background:#a32d2d}.eylcf-ok.danger:hover{background:#8c2424}'
+      +'.eylcf-btn:focus-visible{outline:2px solid var(--orange,#c96a2a);outline-offset:2px}'
+      +'@media(max-width:520px){.eylcf-ov{align-items:flex-end;padding:12px}.eylcf{border-radius:16px}.eylcf-a{flex-direction:column-reverse}.eylcf-btn{width:100%;padding:12px}}'
+      +'@keyframes eylcfIn{from{opacity:0}to{opacity:1}}@keyframes eylcfUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}';
+    document.head.appendChild(s);
+  }
+  window.eylSlow=function(n){ n=Number(n)||0; var d=n%10, h=n%100; return n+' '+(n===1?'słowo':((d>=2&&d<=4&&(h<12||h>14))?'słowa':'słów')); };
+  window.eylConfirm=function(o){
+    if(typeof o==='string') o={body:o};
+    o=o||{};
+    css();
+    return new Promise(function(res){
+      var prev=document.activeElement;
+      var ov=document.createElement('div'); ov.className='eylcf-ov';
+      ov.innerHTML='<div class="eylcf" role="alertdialog" aria-modal="true" aria-labelledby="eylcf-t">'
+        +(o.title?'<div class="eylcf-t" id="eylcf-t">'+esc(o.title)+'</div>':'')
+        +(o.body?'<div class="eylcf-b">'+esc(o.body)+'</div>':'')
+        +'<div class="eylcf-a"><button type="button" class="eylcf-btn eylcf-no">'+esc(o.cancel||'Anuluj')+'</button>'
+        +'<button type="button" class="eylcf-btn eylcf-ok'+(o.danger?' danger':'')+'">'+esc(o.ok||'Tak')+'</button></div></div>';
+      function done(v){ document.removeEventListener('keydown',key,true); try{ ov.remove(); }catch(e){} try{ if(prev&&prev.focus) prev.focus(); }catch(e){} res(v); }
+      function key(e){ if(e.key==='Escape'){ e.preventDefault(); done(false); } else if(e.key==='Enter'){ e.preventDefault(); done(true); } }
+      ov.addEventListener('click',function(e){ if(e.target===ov) done(false); });
+      ov.querySelector('.eylcf-no').onclick=function(){ done(false); };
+      ov.querySelector('.eylcf-ok').onclick=function(){ done(true); };
+      document.addEventListener('keydown',key,true);
+      document.body.appendChild(ov);
+      setTimeout(function(){ try{ ov.querySelector(o.danger?'.eylcf-no':'.eylcf-ok').focus(); }catch(e){} },30);
+    });
   };
 })();
 </script>

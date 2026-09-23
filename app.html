@@ -315,6 +315,23 @@
   .pw-g .ph{font-size:11px;font-weight:500;opacity:.85}
   .pw-g.q1{background:#A32D2D}.pw-g.q2{background:#a06714}.pw-g.q3{background:#2f6b2f}.pw-g.q4{background:#2b6cb0}
   .pw-hint{text-align:center;font-size:13px;color:var(--dim2);padding:6px 22px 2px}
+  /* REV-5: Powtórki bez samooceny — ocenia odpowiedź, nie deklaracja */
+  .pw-grades.bin{grid-template-columns:1fr 1fr}
+  .pwt{background:#fff;border:1.5px solid var(--line);border-radius:22px;box-shadow:0 12px 36px rgba(26,35,64,.09);padding:28px 22px 22px;text-align:center}
+  .pwt .kic{font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim2);margin-bottom:8px}
+  .pwt .word{font-size:30px;font-weight:600;color:var(--navy);letter-spacing:-.3px;line-height:1.15;word-break:break-word}
+  .pwt .rmj{font-size:14px;color:var(--dim2);margin-top:4px}
+  .pwt-in{width:100%;margin:20px 0 0;border:1.5px solid var(--line2,#e0dbd0);border-radius:14px;padding:14px 16px;font:inherit;font-size:17px;color:var(--navy);text-align:center;outline:none;background:var(--paper,#f8f7f4)}
+  .pwt-in:focus{border-color:var(--navy);background:#fff}
+  .pwt-res{margin-top:16px;border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.45;text-align:left}
+  .pwt-res.ok{background:#eef5e6;color:#2f6b2f}.pwt-res.bad{background:#fcebeb;color:#8c2424}
+  .pwt-res b{color:var(--navy);font-weight:600}
+  .pwt-res .nx{display:block;font-size:12px;opacity:.8;margin-top:3px}
+  .pwt-ovr{background:none;border:0;padding:0;margin-top:8px;font:inherit;font-size:12.5px;color:var(--dim2);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+  .pwt-acts{display:grid;grid-template-columns:1fr 2fr;gap:9px;padding:6px 22px calc(var(--safe-bot) + 16px)}
+  .pwt-btn{border-radius:14px;padding:14px 10px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;min-height:52px}
+  .pwt-btn.sec{border:1.5px solid var(--line2,#e0dbd0);background:transparent;color:var(--dim)}
+  .pwt-btn.pri{border:0;background:var(--navy);color:#fff}
   /* ── Swipe affordance (zmiana kategorii) ── */
   @keyframes eylChev{0%,100%{opacity:.4;transform:translateX(0)}50%{opacity:1;transform:translateX(3px)}}
   @keyframes eylEnterR{from{transform:translateX(34px);opacity:0}to{transform:translateX(0);opacity:1}}
@@ -763,6 +780,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
     <div class="imm-bar">
       <button class="icon-btn" aria-label="Zamknij powtórki" onclick="closePowt()"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       <div class="imm-title" id="pw-title">Powtórki</div>
+      <button class="dir-btn" id="pw-mode" aria-label="Zmień tryb powtórki" onclick="pwToggleMode()" style="font-size:11px;margin-right:6px">Wpisywanie</button>
       <button class="dir-btn" id="pw-dir" aria-label="Zmień kierunek fiszek" onclick="pwToggleDir()" style="font-size:11px">Obcy → Polski</button>
     </div>
     <div class="flip-stage" id="pw-stage"></div>
@@ -1065,8 +1083,8 @@ async function askLogout(){
   ov.appendChild(sheet); document.body.appendChild(ov);
 }
 async function eylDeleteAccountMobile(){
-  if(!confirm('Usunąć konto? To działanie jest nieodwracalne — skasujemy Twoje postępy, zestawy i pozostałe dane.')) return;
-  if(!confirm('Na pewno chcesz trwale usunąć konto? Tego nie da się cofnąć.')) return;
+  if(!(await eylConfirm({title:'Usunąć konto?',body:'To działanie jest nieodwracalne — skasujemy Twoje postępy, zestawy i pozostałe dane.',ok:'Dalej',danger:true}))) return;
+  if(!(await eylConfirm({title:'Na pewno?',body:'Konto zostanie trwale usunięte. Tego nie da się cofnąć.',ok:'Usuń konto',danger:true}))) return;
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){ eylToast('Sesja wygasła — zaloguj się ponownie.','err'); return; }
@@ -1230,7 +1248,7 @@ async function eylSetPauseRefresh(){
 async function eylSetPauseToggle(){
   var row=document.getElementById('rev-pause-row'); if(!row) return;
   var pause=row.dataset.paused!=='1';
-  if(pause && !confirm('Wstrzymać powtórki tego zestawu? Słowa znikną z kolejki, ale postęp zostanie. Wznowisz jednym dotknięciem.')) return;
+  if(pause && !(await eylConfirm({title:'Wstrzymać powtórki zestawu?',body:'Słowa znikną z kolejki powtórek. Postęp zostaje — wznowisz jednym dotknięciem.',ok:'Wstrzymaj'}))) return;
   if(!curSetCards||!curSetCards.length){ await loadCurSetCards(); }
   await eylRevPauseSet(curSetCards||[], pause);
   eylSetPauseRefresh();
@@ -1325,7 +1343,7 @@ async function markKnownBulk(cards, lang){
 async function markKnownCurrent(){
   if(!curSetCards||!curSetCards.length){ await loadCurSetCards(); }
   if(!curSetCards.length){ eylToast('Brak s\u0142\u00f3w w tym zestawie.','err'); return; }
-  if(!confirm('Oznaczy\u0107 wszystkie s\u0142owa ('+curSetCards.length+') jako znane? Trafi\u0105 do d\u0142ugich powt\u00f3rek i znikn\u0105 z dzisiejszej kolejki. Zawsze mo\u017cesz je p\u00f3\u017aniej powt\u00f3rzy\u0107.')) return;
+  if(!(await eylConfirm({title:'Znasz już ten materiał?',body:'Oznaczymy '+eylSlow(curSetCards.length)+' jako znane. Znikną z dzisiejszej kolejki i wrócą raz, kontrolnie, za około 2 miesiące.',ok:'Tak, znam'}))) return;
   await markKnownBulk(curSetCards, curSetLangSrc);
   try{ await renderSetStatus(); }catch(e){}
   try{ refreshDueBadge(); }catch(e){}
@@ -1755,7 +1773,7 @@ function openLexSetup(){
   })();
   document.getElementById('imm-lexsetup').classList.add('active');
 }
-function lexQuit(){ if(confirm('Zakończyć lekcję z Ailexem?')){ try{speechSynthesis.cancel();}catch(e){} try{lexBoardFabShow(false);}catch(e){} closeImm('imm-lex'); } }
+async function lexQuit(){ if(await eylConfirm({title:'Zakończyć lekcję z Ailexem?',ok:'Zakończ',cancel:'Zostań'})){ try{speechSynthesis.cancel();}catch(e){} try{lexBoardFabShow(false);}catch(e){} closeImm('imm-lex'); } }
 
 function extractAI(d){
   try{
@@ -4368,6 +4386,7 @@ async function openPowt(){
   pwRenderCard();
 }
 function closePowt(){
+  try{ var _ta=document.getElementById('pw-type-acts'); if(_ta) _ta.remove(); }catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
   closeImm('imm-powt');
   go('ucz');
@@ -4381,10 +4400,49 @@ function pwRenderEmpty(){
   document.getElementById('pw-title').textContent='Powtórki';
   if(stage) stage.innerHTML='<div class="empty" style="margin:auto"><div style="width:54px;height:54px;border-radius:14px;background:#eef5e6;display:flex;align-items:center;justify-content:center;margin:0 auto 14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2f6b2f" stroke-width="1.8"><path d="M20 6L9 17l-5-5"/></svg></div><div class="h2">Na dziś nic do powtórki</div><div class="sub" style="max-width:260px;margin:6px auto 0">Wszystko opanowane na teraz. Wróć później albo poucz się z Ailexem — nowe słowa trafią tu automatycznie.</div></div>';
 }
+/* ── REV-5: Powtórki oceniane przez odpowiedź ──────────────────────────────
+   Wpisywanie (domyślnie): wynik ćwiczenia = ocena SM-2, bez przycisków.
+   Odwracanie (opcjonalnie): tylko dwa uczciwe wyniki — nie pamiętałem / pamiętałem.
+   SM-2 zostaje adaptacyjny: trudne słowa wracają częściej, łatwe rzadziej. */
+var _pwMode=(function(){ try{ return localStorage.getItem('eyl_pw_mode')||'type'; }catch(e){ return 'type'; } })();
+function pwToggleMode(){
+  _pwMode=(_pwMode==='type')?'flip':'type';
+  try{ localStorage.setItem('eyl_pw_mode',_pwMode); }catch(e){}
+  pwModeLabel();
+  if(_pwQueue.length && _pwIdx<_pwQueue.length){ _pwFlipped=false; pwRenderCard(); }
+}
+function pwModeLabel(){ var b=document.getElementById('pw-mode'); if(b) b.textContent=(_pwMode==='type')?'Wpisywanie':'Odwracanie'; }
+function pwNextTxt(r,q){
+  try{ var ns=sm2Canon({ease_factor:r.ease_factor,repetitions:r.repetitions,interval_days:r.interval_days}, q);
+    var d=ns.interval_days; return d<=1?'wróci jutro':('wróci za '+d+' dni'); }catch(e){ return ''; }
+}
+function _pwNorm(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ł/g,'l')
+    .replace(/\([^)]*\)/g,' ').replace(/[.,!?¡¿;:"'„”«»…]/g,' ').replace(/^(to |the |a |an |el |la |los |las |le |les |der |die |das |de |het |il |lo |i |gli )/,'').replace(/\s+/g,' ').trim();
+}
+function _pwLev(a,b){
+  if(a===b) return 0; var m=a.length,n=b.length; if(!m) return n; if(!n) return m;
+  var prev=[],cur=[],i,j; for(j=0;j<=n;j++) prev[j]=j;
+  for(i=1;i<=m;i++){ cur=[i]; for(j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); } prev=cur; }
+  return prev[n];
+}
+/* 'ok' | 'typo' | 'bad' — akceptuje każdą z wersji rozdzielonych , ; / oraz transliterację */
+function pwCheck(ans, target, alt){
+  var a=_pwNorm(ans); if(!a) return 'bad';
+  var opts=[].concat(String(target||'').split(/[,;\/]| lub | albo /)).concat(alt?[alt]:[]).map(_pwNorm).filter(Boolean);
+  var best='bad';
+  opts.forEach(function(o){
+    if(a===o) best='ok';
+    else if(best!=='ok'){ var tol=o.length>=8?2:(o.length>=4?1:0); if(_pwLev(a,o)<=tol) best='typo'; }
+  });
+  return best;
+}
 function pwRenderCard(){
   if(typeof _pwBlockGate==='function' && _pwBlockGate()) return;
   var r=_pwQueue[_pwIdx]; if(!r){ pwRenderDone(); return; }
   _pwFlipped=false;
+  pwModeLabel();
+  if(_pwMode==='type'){ pwRenderType(r); return; }
   document.getElementById('pw-title').textContent='Powtórki · '+(_pwIdx+1)+' / '+_pwTotal;
   document.getElementById('pw-grades').style.display='none';
   document.getElementById('pw-hint').textContent='Przypomnij sobie — potem dotknij, aby sprawdzić.';
@@ -4392,6 +4450,7 @@ function pwRenderCard(){
   var front=ff?(r.word||'—'):(r.translation||'—');
   var stage=document.getElementById('pw-stage');
   var _rmjF=(ff && r.romaji)?('<div class="rmj">'+esc(r.romaji)+'</div>'):'';
+  var _ta=document.getElementById('pw-type-acts'); if(_ta) _ta.remove();
   stage.innerHTML='<div class="flip" id="pw-flip" onclick="pwReveal()">'
     +'<div class="face front"><div class="kic">'+(ff?'Słowo':'Tłumaczenie')+'</div><div class="word">'+esc(front)+'</div>'+_rmjF+'<div class="tap">Dotknij, aby sprawdzić</div></div></div>';
 }
@@ -4413,7 +4472,10 @@ function pwReveal(){
     +'</div></div>';
   document.getElementById('pw-hint').textContent='Udało się przypomnieć?';
   var g=document.getElementById('pw-grades');
-  g.style.display='grid';
+  g.style.display='grid'; g.classList.add('bin');
+  g.innerHTML='<button class="pw-g q1" onclick="pwGrade(1)">Nie pamiętałem<span class="ph">'+esc(pwNextTxt(r,0))+'</span></button>'
+    +'<button class="pw-g q3" onclick="pwGrade(3)">Pamiętałem<span class="ph">'+esc(pwNextTxt(r,4))+'</span></button>';
+  return;
   /* Audyt 2026-09: brakowal stopien „Prawie" (styl .pw-g.q2 istnial, nigdy sie nie renderowal).
      Bez niego kto „prawie wiedzial" musial wybierac miedzy resetem a skokiem interwalu —
      SM-2 tracil dokladnie te informacje, na ktorej stoi. */
@@ -4432,6 +4494,72 @@ function pwSpeak(){
       var u=new SpeechSynthesisUtterance(r.word); u.lang=_lang; u.rate=.95; speechSynthesis.speak(u); }
   }catch(e){}
 }
+function pwRenderType(r){
+  var ff=_pwDir==='foreign';
+  var cue=ff?(r.word||'—'):(r.translation||'—');
+  var stage=document.getElementById('pw-stage');
+  var rmj=(ff && r.romaji)?('<div class="rmj">'+esc(r.romaji)+'</div>'):'';
+  document.getElementById('pw-grades').style.display='none';
+  document.getElementById('pw-hint').textContent='';
+  stage.innerHTML='<div class="pwt"><div class="kic">'+(ff?'Co to znaczy?':'Jak to powiesz?')+'</div>'
+    +'<div class="word">'+esc(cue)+'</div>'+rmj
+    +'<input class="pwt-in" id="pwt-in" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="'+(ff?'po polsku…':'wpisz słowo…')+'">'
+    +'<div id="pwt-res"></div></div>';
+  var old=document.getElementById('pw-type-acts'); if(old) old.remove();
+  var acts=document.createElement('div'); acts.className='pwt-acts'; acts.id='pw-type-acts';
+  acts.innerHTML='<button class="pwt-btn sec" onclick="pwTypeSubmit(true)">Nie wiem</button><button class="pwt-btn pri" id="pwt-go" onclick="pwTypeSubmit(false)">Sprawdź</button>';
+  var g=document.getElementById('pw-grades'); g.parentNode.insertBefore(acts, g.nextSibling);
+  var inp=document.getElementById('pwt-in');
+  inp.onkeydown=function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); if(_pwFlipped) pwTypeNext(); else pwTypeSubmit(false); } };
+  setTimeout(function(){ try{ inp.focus(); }catch(e){} },60);
+}
+var _pwTypeQ=null;
+function pwTypeSubmit(giveUp){
+  if(_pwFlipped) return;
+  var r=_pwQueue[_pwIdx]; if(!r) return;
+  _pwFlipped=true;
+  var ff=_pwDir==='foreign';
+  var target=ff?(r.translation||''):(r.word||'');
+  var inp=document.getElementById('pwt-in'), val=inp?inp.value:'';
+  var res=giveUp?'bad':pwCheck(val, target, ff?'':(r.romaji||''));
+  _pwTypeQ=(res==='ok')?4:(res==='typo'?3:0);
+  if(inp) inp.readOnly=true;
+  if(navigator.vibrate) navigator.vibrate(res==='bad'?[8,40,8]:6);
+  var box=document.getElementById('pwt-res');
+  var lbl=(res==='ok')?'Dobrze':(res==='typo'?'Prawie — literówka':(giveUp?'Poprawna odpowiedź':'Nie tym razem'));
+  box.innerHTML='<div class="pwt-res '+(res==='bad'?'bad':'ok')+'">'+lbl+': <b>'+esc(target)+'</b>'
+    +'<span class="nx" id="pwt-nx">'+esc(pwNextTxt(r,_pwTypeQ))+'</span></div>'
+    +((res==='bad'&&!giveUp&&String(val).trim())?'<button class="pwt-ovr" onclick="pwTypeOverride()">Moja odpowiedź też była dobra</button>':'');
+  try{ if(r.word && ff) pwSpeak(); }catch(e){}
+  var go=document.getElementById('pwt-go'); if(go){ go.textContent='Dalej →'; go.onclick=function(){ pwTypeNext(); }; }
+  var gu=document.querySelector('#pw-type-acts .sec'); if(gu) gu.style.visibility='hidden';
+}
+function pwTypeOverride(){
+  var r=_pwQueue[_pwIdx]; if(!r) return;
+  _pwTypeQ=3;
+  var box=document.querySelector('#pwt-res .pwt-res'); if(box){ box.className='pwt-res ok'; }
+  var nx=document.getElementById('pwt-nx'); if(nx) nx.textContent=pwNextTxt(r,3);
+  var b=document.querySelector('.pwt-ovr'); if(b) b.remove();
+}
+function pwTypeNext(){
+  var q=_pwTypeQ; _pwTypeQ=null;
+  var acts=document.getElementById('pw-type-acts'); if(acts) acts.remove();
+  pwGradeQ(q==null?0:q);
+}
+/* Zapis wprost jakością SM-2 (0–5). pwGrade(1|2|3|4) zostaje dla zgodności. */
+async function pwGradeQ(quality){
+  var r=_pwQueue[_pwIdx]; if(!r) return;
+  var g=document.getElementById('pw-grades'); if(g) g.style.display='none';
+  try{
+    var _ns=await srsUpsertCanon(r.word||'', r.translation||'', quality, {
+      card_key:r.card_key, lang:(r.lang||''), flashcard_id:(r.flashcard_id!=null?r.flashcard_id:null),
+      cur:{ease_factor:r.ease_factor,repetitions:r.repetitions,interval_days:r.interval_days}
+    });
+    try{ if(typeof eylRevAfterGrade==='function') eylRevAfterGrade({word:r.word,translation:r.translation,card_key:r.card_key,repetitions:r.repetitions,interval_days:r.interval_days}, _ns); }catch(e){}
+  }catch(e){}
+  _pwDone++; _pwIdx++;
+  if(_pwIdx>=_pwQueue.length){ pwRenderDone(); } else { pwRenderCard(); }
+}
 async function pwGrade(q){
   var r=_pwQueue[_pwIdx]; if(!r) return;
   var g=document.getElementById('pw-grades'); if(g) g.style.display='none';
@@ -4448,6 +4576,7 @@ async function pwGrade(q){
   else { pwRenderCard(); }
 }
 async function pwRenderDone(){
+  try{ var _ta=document.getElementById('pw-type-acts'); if(_ta) _ta.remove(); }catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
   document.getElementById('pw-title').textContent='Powtórki';
   document.getElementById('pw-grades').style.display='none';
@@ -5580,8 +5709,8 @@ async function alexSend(){
     host.appendChild(d);
     /* Wyjście z edytora z wypełnionymi wierszami = utrata pracy. Pytamy raz,
        zamiast po cichu kasować (awersja do straty > oszczędność jednego tapu). */
-    $('ns-left').onclick=function(){
-      if(view==='edit' && _nsFilled()>0 && !confirm('Porzucić ten zestaw? Fiszki nie zostały jeszcze zapisane.')) return;
+    $('ns-left').onclick=async function(){
+      if(view==='edit' && _nsFilled()>0 && !(await eylConfirm({title:'Porzucić ten zestaw?',body:'Fiszki nie zostały jeszcze zapisane.',ok:'Porzuć',cancel:'Wróć do edycji',danger:true}))) return;
       if(view==='pick') window.eylNewSetClose(); else _nsView('pick');
     };
   }
@@ -8270,11 +8399,11 @@ window.eylPagedFetch = async function(makeQuery, opts){
       b.disabled=true;
       try{
         if(b.getAttribute('data-k')==='known'){
-          if(!confirm('Oznaczyć wszystkie słowa ('+cards.length+') jako znane? Trafią do długich powtórek (ok. 2 miesiące) i znikną z dzisiejszej kolejki.')){ b.disabled=false; return; }
+          if(!(await eylConfirm({title:'Znasz już ten zestaw?',body:'Oznaczymy '+eylSlow(cards.length)+' jako znane. Znikną z dzisiejszej kolejki i wrócą raz, kontrolnie, za około 2 miesiące.',ok:'Tak, znam'}))){ b.disabled=false; return; }
           var n=await eylRevMarkKnown(cards, window._trybStudyLang||'');
           toast('Oznaczono '+n+' słów jako znane.');
         } else {
-          if(!paused && !confirm('Wstrzymać powtórki tego zestawu? Słowa znikną z kolejki, postęp zostanie.')){ b.disabled=false; return; }
+          if(!paused && !(await eylConfirm({title:'Wstrzymać powtórki zestawu?',body:'Słowa znikną z kolejki powtórek. Postęp zostaje — wznowisz jednym kliknięciem.',ok:'Wstrzymaj'}))){ b.disabled=false; return; }
           await eylRevPauseSet(cards, !paused);
         }
         paint(await eylRevSetState(cards));
@@ -8306,6 +8435,58 @@ window.eylPagedFetch = async function(makeQuery, opts){
       if(ev.target.closest&&ev.target.closest('[data-spread]')){ await eylRevSpread(); rerun(); }
     });
     return d;
+  };
+})();
+</script>
+<script id="eyl-confirm">
+/* eylConfirm — potwierdzenie w stylu Eyelingo (Design Bible: granat, krem, jeden akcent).
+   Zamiast natywnego confirm(), który wygląda jak komunikat przeglądarki i łamie
+   zaufanie do marki. Zwraca Promise<boolean>. Esc / tło = anuluj, Enter = potwierdź.
+   Opcje: {title, body, ok, cancel, danger} albo sam tekst. */
+(function(){
+  if(window.eylConfirm) return;
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function css(){
+    if(document.getElementById('eyl-confirm-css')) return;
+    var s=document.createElement('style'); s.id='eyl-confirm-css';
+    s.textContent='.eylcf-ov{position:fixed;inset:0;z-index:100000;background:rgba(26,35,64,.42);display:flex;align-items:center;justify-content:center;padding:20px;animation:eylcfIn .16s ease}'
+      +'.eylcf{width:100%;max-width:420px;background:#fff;border-radius:16px;box-shadow:0 18px 60px rgba(26,35,64,.22);padding:22px 22px 18px;font-family:Inter,system-ui,sans-serif;animation:eylcfUp .2s ease}'
+      +'.eylcf-t{font-family:"DM Sans",system-ui,sans-serif;font-size:17px;font-weight:600;color:var(--navy,#1a2340);line-height:1.35;margin:0 0 8px}'
+      +'.eylcf-b{font-size:14px;line-height:1.6;color:var(--dim,#5b6478);margin:0 0 20px}'
+      +'.eylcf-a{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}'
+      +'.eylcf-btn{padding:10px 18px;border-radius:100px;font-family:"DM Sans",system-ui,sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s,border-color .15s}'
+      +'.eylcf-no{border:1.5px solid var(--border2,#d8d2c0);background:transparent;color:var(--dim,#5b6478)}'
+      +'.eylcf-no:hover{border-color:var(--navy,#1a2340);color:var(--navy,#1a2340)}'
+      +'.eylcf-ok{border:0;background:var(--navy,#1a2340);color:#fff}'
+      +'.eylcf-ok:hover{background:#243058}'
+      +'.eylcf-ok.danger{background:#a32d2d}.eylcf-ok.danger:hover{background:#8c2424}'
+      +'.eylcf-btn:focus-visible{outline:2px solid var(--orange,#c96a2a);outline-offset:2px}'
+      +'@media(max-width:520px){.eylcf-ov{align-items:flex-end;padding:12px}.eylcf{border-radius:16px}.eylcf-a{flex-direction:column-reverse}.eylcf-btn{width:100%;padding:12px}}'
+      +'@keyframes eylcfIn{from{opacity:0}to{opacity:1}}@keyframes eylcfUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}';
+    document.head.appendChild(s);
+  }
+  window.eylSlow=function(n){ n=Number(n)||0; var d=n%10, h=n%100; return n+' '+(n===1?'słowo':((d>=2&&d<=4&&(h<12||h>14))?'słowa':'słów')); };
+  window.eylConfirm=function(o){
+    if(typeof o==='string') o={body:o};
+    o=o||{};
+    css();
+    return new Promise(function(res){
+      var prev=document.activeElement;
+      var ov=document.createElement('div'); ov.className='eylcf-ov';
+      ov.innerHTML='<div class="eylcf" role="alertdialog" aria-modal="true" aria-labelledby="eylcf-t">'
+        +(o.title?'<div class="eylcf-t" id="eylcf-t">'+esc(o.title)+'</div>':'')
+        +(o.body?'<div class="eylcf-b">'+esc(o.body)+'</div>':'')
+        +'<div class="eylcf-a"><button type="button" class="eylcf-btn eylcf-no">'+esc(o.cancel||'Anuluj')+'</button>'
+        +'<button type="button" class="eylcf-btn eylcf-ok'+(o.danger?' danger':'')+'">'+esc(o.ok||'Tak')+'</button></div></div>';
+      function done(v){ document.removeEventListener('keydown',key,true); try{ ov.remove(); }catch(e){} try{ if(prev&&prev.focus) prev.focus(); }catch(e){} res(v); }
+      function key(e){ if(e.key==='Escape'){ e.preventDefault(); done(false); } else if(e.key==='Enter'){ e.preventDefault(); done(true); } }
+      ov.addEventListener('click',function(e){ if(e.target===ov) done(false); });
+      ov.querySelector('.eylcf-no').onclick=function(){ done(false); };
+      ov.querySelector('.eylcf-ok').onclick=function(){ done(true); };
+      document.addEventListener('keydown',key,true);
+      document.body.appendChild(ov);
+      setTimeout(function(){ try{ ov.querySelector(o.danger?'.eylcf-no':'.eylcf-ok').focus(); }catch(e){} },30);
+    });
   };
 })();
 </script>
