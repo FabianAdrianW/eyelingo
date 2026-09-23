@@ -15115,7 +15115,7 @@ async function lexFetchCloudAudio(text, langCode){
   var r=await fetch(LEX_TTS_ENDPOINT,{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},
-    body:JSON.stringify({text:text, language_code:langCode, voice_id:(typeof window.LEX_TTS_VOICE!=='undefined'&&window.LEX_TTS_VOICE)?window.LEX_TTS_VOICE:'JBFqnCBsd6RMkjVDRZzb'})
+    body:JSON.stringify({text:text, language_code:((window.eylTtsNorm&&eylTtsNorm(langCode))?eylTtsNorm(langCode).iso:langCode), voice_id:(typeof window.LEX_TTS_VOICE!=='undefined'&&window.LEX_TTS_VOICE)?window.LEX_TTS_VOICE:'JBFqnCBsd6RMkjVDRZzb'})
   });
   if(!r.ok){ var _ti=''; try{ var _tj=await r.json(); _ti=' upstream='+(_tj.upstream||'?')+' '+String(_tj.detail||_tj.error||''); }catch(_te){} try{ window._ttsLastError={ httpStatus:r.status, info:_ti.trim(), path:'lesson' }; }catch(_te2){} var e=new Error('tts '+r.status+_ti); e.status=r.status; throw e; }
   var blob=await r.blob();
@@ -16694,6 +16694,130 @@ async function lexInit(){
 
 
 <!-- ═══ EYELINGO — Lex: silnik 4 ćwiczeń na porcję (lekcja) ═══ -->
+<style id="gram-card-css">
+/* Karta „Nowa struktura" — GRAM-UI (Grammar Bible §8.1). Segmentacja wizualna
+   zamiast ściany tekstu: każdy blok = inna funkcja dydaktyczna, inny ciężar.
+   Jeden akcent (kolumna-klucz + wykładnik), reszta ciszej. */
+.gram-card{background:#fff;border:1px solid var(--line,#e7e3da);border-left:3px solid var(--orange,#c96a2a);
+  border-radius:14px;padding:20px 22px;margin:0 0 4px;text-align:left}
+.gram-eyebrow{font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--orange-ink,#a85218);margin-bottom:8px}
+.gram-title{font-family:'DM Sans',system-ui,sans-serif;font-size:20px;font-weight:600;
+  color:var(--navy,#1a2340);line-height:1.3;margin-bottom:8px}
+.gram-rule{font-size:14.5px;line-height:1.6;color:var(--dim,#5b6478);margin-bottom:16px;max-width:60ch}
+.gram-rule b{font-weight:600;color:var(--navy,#1a2340)}
+
+/* Wzorzec — tabela, nie proza. Kolumna-klucz niesie regułę. */
+.gram-para{background:var(--paper,#f8f7f4);border-radius:10px;padding:6px 4px;margin-bottom:16px;overflow-x:auto}
+.gram-tbl{border-collapse:collapse;width:auto;min-width:60%;font-variant-numeric:tabular-nums}
+.gram-tbl th{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dim2,#646c80);
+  text-align:left;padding:7px 14px 6px;white-space:nowrap}
+.gram-tbl th.gram-h-key{color:var(--orange-ink,#a85218)}
+.gram-tbl td{padding:6px 14px;font-size:14.5px;line-height:1.4;border-top:1px solid rgba(26,35,64,.06);
+  vertical-align:baseline;unicode-bidi:isolate}
+.gram-tbl tbody tr:first-child td{border-top:0}
+.gram-c-lab{color:var(--dim2,#646c80);font-size:13.5px!important;white-space:nowrap}
+.gram-c-key{color:var(--navy,#1a2340);font-weight:600;font-size:15.5px!important}
+.gram-c-sub{color:var(--dim,#5b6478)}
+.gram-c-aux{color:var(--dim2,#646c80);font-size:13px!important}
+
+/* Przykłady — forma na pierwszym planie, znaczenie pod spodem, jawny odsłuch. */
+.gram-exs{margin-bottom:14px}
+.gram-ex{padding:8px 10px 8px 12px;border-left:2px solid rgba(201,106,42,.28);border-radius:0 8px 8px 0;
+  margin-bottom:8px;cursor:pointer;outline:none}
+.gram-ex:last-child{margin-bottom:0}
+.gram-ex:hover,.gram-ex:focus-visible{background:rgba(26,35,64,.035)}
+.gram-ex:active{border-left-color:var(--orange,#c96a2a)}
+.gram-ex-row{display:flex;align-items:flex-start;gap:10px}
+.gram-ex-t{flex:1;font-size:15.5px;font-weight:500;color:var(--navy,#1a2340);line-height:1.45}
+.gram-say-ic{flex:0 0 14px;margin-top:4px;color:var(--dim2,#646c80)}
+.gram-ex:hover .gram-say-ic{color:var(--orange,#c96a2a)}
+.gram-ex-p{font-size:13px;color:var(--dim2,#646c80);line-height:1.45;margin-top:2px}
+.gram-ex-n{font-size:14px;line-height:1.5;margin-top:1px;color:var(--navy,#1a2340);unicode-bidi:isolate}
+.gram-mk{background:none;color:inherit;font-weight:700;box-shadow:inset 0 -2px 0 rgba(201,106,42,.55);padding:0 1px}
+.gram-ctx{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:rgba(26,35,64,.045)}
+.gram-ctx-lab{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2,#646c80);margin-bottom:5px}
+.gram-ctx .gram-ex{margin:0;border-left-color:var(--orange,#c96a2a)}
+.gram-more{margin-top:8px}
+.gram-more>summary{cursor:pointer;list-style:none;font-size:12px;color:var(--dim2,#646c80);padding:4px 0}
+.gram-more>summary::-webkit-details-marker{display:none}
+.gram-more>summary::before{content:'\25B8  '}
+.gram-more[open]>summary::before{content:'\25BE  '}
+.gram-more .gram-ex{margin-top:8px}
+
+/* Typowy błąd — jedyny blok z ostrzegawczym tłem. Użyty raz, więc działa. */
+.gram-warn{display:flex;gap:10px;align-items:flex-start;background:#fdf4ec;border-radius:10px;
+  padding:12px 14px;font-size:13.5px;line-height:1.55;color:#7a4216}
+.gram-warn b{font-weight:600;color:#6a3510}
+.gram-warn-ic{flex:0 0 18px;height:18px;border-radius:50%;background:var(--orange-btn,#b85c20);color:#fff;
+  font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.gram-pcell,.gram-ex-t,.gram-ctx .gram-ex-t{unicode-bidi:isolate}
+
+/* Ekran struktury (krok przed wprowadzeniem porcji) */
+.gram-step-foot{font-size:12px;color:var(--dim2,#646c80);line-height:1.5;margin:10px 2px 0;text-align:center}
+
+/* Wariant w Zeszycie/Tablicy — bez ramki, ciaśniej */
+.gram-inline .gram-card{border:0;border-left:0;padding:0;margin:0}
+.gram-inline .gram-eyebrow{display:none}
+
+/* Ściąga w ćwiczeniu — rusztowanie, nie akcja (RZ-9): bez pomarańczu w ramie. */
+.gram-sc{border:1px solid var(--line,#e7e3da);border-radius:10px;background:var(--paper,#f8f7f4);margin:0 0 14px;text-align:left}
+.gram-sc-h{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;padding:9px 11px;cursor:pointer;
+  font-family:inherit;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--dim2,#646c80);text-align:left}
+.gram-sc-name{font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--navy,#1a2340)}
+.gram-sc-arw{margin-left:auto;font-size:10px;color:var(--dim2,#646c80)}
+.gram-sc-arw::after{content:'\25BE'}
+.gram-sc.open .gram-sc-arw::after{content:'\25B4'}
+.gram-sc-b{display:none;padding:0 11px 11px}
+.gram-sc.open .gram-sc-b{display:block}
+.gram-sc-rule{font-size:13px;line-height:1.55;color:var(--dim,#4a4a4a);margin-bottom:9px}
+.gram-sc-rule b{font-weight:600;color:var(--navy,#1a2340)}
+.gram-sc .gram-para{margin-bottom:0;background:#fff}
+.gram-sc .gram-tbl td{font-size:13.5px}
+
+/* Linia postępu i mapa struktur. Mapa terenu, nie tablica wyników. */
+.gram-prog{display:inline-flex;align-items:center;gap:5px;background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
+.gram-prog-i::after{content:'\203A';font-size:13px;opacity:.5}
+.gram-map-ov{position:fixed;inset:0;z-index:9999;background:rgba(26,35,64,.42);display:flex;align-items:flex-end;justify-content:center}
+.phone .gram-map-ov{position:absolute}
+.gram-map-card{width:100%;max-width:560px;max-height:86%;display:flex;flex-direction:column;
+  background:var(--paper,#f8f7f4);border-radius:14px 14px 0 0;box-shadow:0 -8px 40px rgba(26,35,64,.18)}
+@media(min-width:700px){.gram-map-ov{align-items:center}.gram-map-card{border-radius:14px;max-height:78%}}
+.gram-map-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px 11px;
+  font-size:13px;font-weight:600;color:var(--navy,#1a2340);border-bottom:1px solid var(--line,#e7e3da)}
+.gram-map-x{background:none;border:0;font-size:22px;line-height:1;color:var(--dim2,#646c80);cursor:pointer;padding:0 2px}
+.gram-map-body{overflow:auto;padding:4px 18px}
+.gram-map-lead{font-size:11px;color:var(--dim2,#646c80);margin:11px 0 0}
+.gram-map-sec{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2,#646c80);margin:16px 0 4px}
+.gram-map-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line,#e7e3da)}
+.gram-map-lvl{flex:0 0 auto;font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--dim2,#646c80);
+  border:1px solid var(--line,#e7e3da);border-radius:4px;padding:1px 4px}
+.gram-map-nm{flex:1 1 auto;font-size:13px;line-height:1.4;color:var(--navy,#1a2340)}
+.gram-map-tag{flex:0 0 auto;font-size:10px;color:var(--dim2,#646c80)}
+.gram-map-item{border-bottom:1px solid var(--line,#e7e3da)}
+.gram-map-item .gram-map-row{border-bottom:0;cursor:pointer}
+.gram-map-chev{flex:0 0 auto;font-size:10px;color:var(--dim2,#646c80)}
+.gram-map-chev::after{content:'\25BE'}
+.gram-map-item.open .gram-map-chev::after{content:'\25B4'}
+.gram-map-rule{display:none;padding:0 0 10px}
+.gram-map-item.open .gram-map-rule{display:block}
+.gram-map-rule .gram-card{margin:0;border-left-width:1px;padding:14px 16px}
+.gram-map-more{font-size:11px;color:var(--dim2,#646c80);padding:7px 0 0}
+.gram-map-btn{flex:0 0 auto;background:none;border:1px solid var(--line,#e7e3da);border-radius:6px;
+  padding:4px 9px;font-family:inherit;font-size:11px;color:var(--navy,#1a2340);cursor:pointer}
+.gram-map-btn:hover{border-color:var(--navy,#1a2340)}
+.gram-map-det{margin:16px 0 4px}
+.gram-map-det>summary{cursor:pointer;font-size:12px;color:var(--dim2,#646c80);padding:6px 0;list-style:none}
+.gram-map-det>summary::-webkit-details-marker{display:none}
+.gram-map-det>summary::before{content:'\25B8  '}
+.gram-map-det[open]>summary::before{content:'\25BE  '}
+.gram-map-foot{padding:11px 18px 16px;font-size:11px;line-height:1.5;color:var(--dim2,#646c80);border-top:1px solid var(--line,#e7e3da)}
+.gram-map-empty{padding:18px 0;font-size:12px;color:var(--dim2,#646c80)}
+.gram-map-horizon{margin:10px 0 0;padding:8px 10px;border:1px dashed var(--line,#e7e3da);border-radius:10px;
+  font-size:11px;line-height:1.5;color:var(--dim2,#646c80)}
+@media(max-width:520px){.gram-card{padding:16px 16px}.gram-title{font-size:18px}.gram-tbl td,.gram-tbl th{padding-left:10px;padding-right:10px}}
+</style>
 <style id="el-lexx">
 .lexx-seg{display:flex;gap:5px;margin-bottom:12px}
 .lexx-seg span{flex:1;height:5px;border-radius:3px;background:var(--border2);transition:background .25s}
@@ -17483,64 +17607,119 @@ async function lexInit(){
     return null;
   };
 
+  /* ── KARTA „NOWA STRUKTURA" — GRAM-UI (twarde reguły, Grammar Bible §8.1) ──
+     1. Jedna rzecz na pierwszym planie: kolumna-klucz wzorca (ta, w której
+        żyją wykładniki struktury) jest pogrubiona i podkreślona; reszta ciszej.
+     2. Wykładnik podświetlony także w przykładach — uczeń widzi, GDZIE
+        w zdaniu pracuje reguła (noticing, Schmidt).
+     3. Widoczne maks. 2 zdania: zdanie z materiału porcji + 1 kanoniczne.
+        Reszta na tapnięcie. Każdy blok = inna funkcja, inny ciężar wizualny.
+     4. Karta stoi SAMA na ekranie. Wprowadzenie porcji dopiero po „Dalej".
+     5. Każde zdanie ma jawną ikonę odsłuchu; odsłuch w języku struktury. */
+  var _GRAM_AUX=/^(znaczenie|tłumaczenie|przykład|przykłady|zapis|pismo|uwaga)$/i;
+  function _gramExps(p){
+    return [].concat((p&&p.exponents)||[]).map(function(x){ return String(x||'').trim(); })
+      .filter(function(x){ return x.length>0; })
+      .sort(function(a,b){ return b.length-a.length; });
+  }
+  function _gramCellHasExp(cell, exps){
+    var c=String(cell==null?'':cell).toLowerCase();
+    for(var i=0;i<exps.length;i++){ var e=exps[i].toLowerCase(); if(e && c.indexOf(e)>=0) return true; }
+    return false;
+  }
+  /* Kolumna-klucz: ta z największą liczbą trafień wykładników; remis → bliżej
+     kolumny 1; brak trafień → kolumna 1, chyba że to „znaczenie"/„zapis". */
+  window.gramKeyCol=function(p){
+    var pa=p&&p.teach&&p.teach.paradigm; if(!pa||!pa.rows||!pa.rows.length) return -1;
+    var head=pa.head||[], rows=pa.rows, n=0;
+    rows.forEach(function(r){ n=Math.max(n,[].concat(r).length); });
+    if(n<=1) return 0;
+    var exps=_gramExps(p), sc=[];
+    for(var i=0;i<n;i++) sc.push(0);
+    rows.forEach(function(r){ [].concat(r).forEach(function(c,ci){ if(_gramCellHasExp(c,exps)) sc[ci]++; }); });
+    var best=-1, bs=0;
+    for(var k=0;k<n;k++){
+      var aux=_GRAM_AUX.test(String(head[k]||'').trim());
+      var s=sc[k]*10-(aux?5:0)-Math.abs(k-1);
+      if(sc[k]>0 && (best<0 || s>bs)){ best=k; bs=s; }
+    }
+    if(best>=0) return best;
+    return _GRAM_AUX.test(String(head[1]||'').trim()) ? 0 : 1;
+  };
+  /* Wzorzec jako prawdziwa tabela: wyrównane kolumny robią robotę za czytelnika. */
+  window.gramParadigmHTML=function(p){
+    var pa=p&&p.teach&&p.teach.paradigm; if(!pa||!pa.rows||!pa.rows.length) return '';
+    var head=pa.head||[], key=gramKeyCol(p);
+    function cls(ci){
+      if(ci===key) return 'gram-c-key';
+      if(ci===0) return 'gram-c-lab';
+      return _GRAM_AUX.test(String(head[ci]||'').trim())?'gram-c-aux':'gram-c-sub';
+    }
+    var h='<div class="gram-para"><table class="gram-tbl">';
+    if(head.length){
+      h+='<thead><tr>'+head.map(function(c,ci){
+        return '<th class="'+(ci===key?'gram-h-key':'')+'">'+_e(c)+'</th>'; }).join('')+'</tr></thead>';
+    }
+    h+='<tbody>';
+    pa.rows.forEach(function(r){
+      h+='<tr>'+[].concat(r).map(function(c,ci){ return '<td class="'+cls(ci)+'">'+_e(c)+'</td>'; }).join('')+'</tr>';
+    });
+    return h+'</tbody></table></div>';
+  };
+  /* Podświetlenie wykładnika w zdaniu (po escapowaniu, całe słowa). */
+  window.gramHiExp=function(text, p){
+    var s=_e(text), exps=_gramExps(p); if(!exps.length) return s;
+    try{
+      var alt=exps.map(function(x){ return _e(x).replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\$&').replace(/\s+/g,'\\s+'); }).join('|');
+      var re=new RegExp('(^|[^\\p{L}\\p{M}])('+alt+')(?=[^\\p{L}\\p{M}]|$)','giu');
+      return s.replace(re,function(m,pre,w){ return pre+'<mark class="gram-mk">'+w+'</mark>'; });
+    }catch(e){ return s; }
+  };
+  /* Reguła: terminy w „…" dostają wagę — reszta zdania zostaje cicha. */
+  window.gramRuleHTML=function(t){
+    return _e(t).replace(/„([^”"]{1,40})[”"]/g,'<b>„$1”</b>');
+  };
+  var _GRAM_SAY='<svg class="gram-say-ic" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>';
+  function _gramExHTML(ex, p, extraCls){
+    var nat=String(ex.native||ex.target_native||'').trim();
+    return '<div class="gram-ex'+(extraCls?' '+extraCls:'')+'" role="button" tabindex="0" data-say="'+_e(nat||ex.target)+'" title="Posłuchaj">'
+      +'<div class="gram-ex-row"><div class="gram-ex-t">'+gramHiExp(ex.target,p)+'</div>'+_GRAM_SAY+'</div>'
+      +(nat?'<div class="gram-ex-n">'+_e(nat)+'</div>':'')
+      +(ex.pl?'<div class="gram-ex-p">'+_e(ex.pl)+'</div>':'')+'</div>';
+  }
+
   window.gramCardHTML=function(id, opts){
     var p=(typeof id==='object'&&id)?id:gramPoint(id);
     if(!p||!p.teach) return '';
     opts=opts||{};
     var t=p.teach, h='';
     h+='<div class="gram-card">';
-    h+='<div class="gram-eyebrow">'+_e(opts.eyebrow||'Nowa struktura')+'</div>';
+    if(opts.eyebrow!=='') h+='<div class="gram-eyebrow">'+_e(opts.eyebrow||'Nowa struktura')+'</div>';
     h+='<div class="gram-title">'+_e(p.name_pl)+'</div>';
-    if(t.rule_pl) h+='<div class="gram-rule">'+_e(t.rule_pl)+'</div>';
+    if(t.rule_pl) h+='<div class="gram-rule">'+gramRuleHTML(t.rule_pl)+'</div>';
+    h+=gramParadigmHTML(p);
 
-    if(t.paradigm&&t.paradigm.rows&&t.paradigm.rows.length){
-      var head=t.paradigm.head||[];
-      h+='<div class="gram-para">';
-      if(head.length){
-        h+='<div class="gram-prow gram-phead">'+head.map(function(c){
-          return '<div class="gram-pcell">'+_e(c)+'</div>'; }).join('')+'</div>';
-      }
-      t.paradigm.rows.forEach(function(r){
-        var cells=[].concat(r);
-        h+='<div class="gram-prow">'+cells.map(function(c,ci){
-          var last=(ci===cells.length-1);
-          return '<div class="gram-pcell'+(last?' gram-pkey':'')+'">'+_e(c)+'</div>';
-        }).join('')+'</div>';
-      });
-      h+='</div>';
-    }
-
-    // Najpierw material wlasny porcji, dopiero potem przyklady kanoniczne.
-    // Uczen ma zobaczyc regule na slowach, ktorych wlasnie uzywa — inaczej
-    // struktura i lekcja zostaja dwoma osobnymi swiatami.
+    // Najpierw materiał własny porcji, potem przykłady kanoniczne (Grammar Bible §8).
+    var shown=0, rest=[];
     var _cx=opts.example||((typeof gramGetExample==='function')?gramGetExample(p.id):null);
     if(_cx&&_cx.target){
-      h+='<div class="gram-ctx"><div class="gram-ctx-lab">W tej porcji</div>'
-        +'<div class="gram-ex" data-say="'+_e(_cx.target)+'">'
-        +'<div class="gram-ex-t">'+_e(_cx.target)+'</div>'
-        +(_cx.pl?'<div class="gram-ex-p">'+_e(_cx.pl)+'</div>':'')
-        +'</div></div>';
+      h+='<div class="gram-ctx"><div class="gram-ctx-lab">W tej porcji</div>'+_gramExHTML(_cx,p,'')+'</div>';
+      shown++;
     }
-
-    if(t.examples&&t.examples.length){
-      h+='<div class="gram-exs">';
-      t.examples.forEach(function(ex){
-        // Pismo oryginalne siedzialo w modelu danych od wersji 2.0 i nie bylo
-        // renderowane nigdzie — bank japonski niosl kane i kanji, ktorych nikt
-        // nie widzial. Kolejnosc jak w Tablicy: transliteracja, pod nia zapis.
-        // Do wymowy podajemy oryginal, jesli jest — lektor czytajacy
-        // transliterację wymawia ja jak tekst polski.
-        var nat=String(ex.target_native||'').trim();
-        h+='<div class="gram-ex" data-say="'+_e(nat||ex.target)+'">'
-          +'<div class="gram-ex-t">'+_e(ex.target)+'</div>'
-          +(nat?'<div class="gram-ex-n">'+_e(nat)+'</div>':'')
-          +(ex.pl?'<div class="gram-ex-p">'+_e(ex.pl)+'</div>':'')+'</div>';
-      });
+    var exs=[].concat(t.examples||[]).filter(function(x){ return x&&x.target; });
+    if(exs.length){
+      var vis=[];
+      exs.forEach(function(ex){ if(shown<2){ vis.push(ex); shown++; } else rest.push(ex); });
+      h+='<div class="gram-exs">'+vis.map(function(ex){ return _gramExHTML(ex,p,''); }).join('');
+      if(rest.length){
+        h+='<details class="gram-more"><summary>Więcej przykładów ('+rest.length+')</summary>'
+          +rest.map(function(ex){ return _gramExHTML(ex,p,''); }).join('')+'</details>';
+      }
       h+='</div>';
     }
 
     if(t.contrast_pl){
-      h+='<div class="gram-warn"><span class="gram-warn-ic">!</span><span>'+_e(t.contrast_pl)+'</span></div>';
+      h+='<div class="gram-warn"><span class="gram-warn-ic">!</span><span><b class="gram-warn-lab">Typowy błąd.</b> '+gramRuleHTML(t.contrast_pl)+'</span></div>';
     }
     h+='</div>';
     return h;
@@ -17832,22 +18011,8 @@ async function lexInit(){
       var mode=_scOrder[mi];
       if(mode==='hidden') continue;
       var t=p.teach, inner='';
-      if(t.rule_pl) inner+='<div class="gram-sc-rule">'+_e(t.rule_pl)+'</div>';
-      if(t.paradigm&&t.paradigm.rows&&t.paradigm.rows.length){
-        var head=t.paradigm.head||[];
-        inner+='<div class="gram-para">';
-        if(head.length){
-          inner+='<div class="gram-prow gram-phead">'+head.map(function(c){
-            return '<div class="gram-pcell">'+_e(c)+'</div>'; }).join('')+'</div>';
-        }
-        t.paradigm.rows.forEach(function(r){
-          var cells=[].concat(r);
-          inner+='<div class="gram-prow">'+cells.map(function(c,ci){
-            return '<div class="gram-pcell'+((ci===cells.length-1)?' gram-pkey':'')+'">'+_e(c)+'</div>';
-          }).join('')+'</div>';
-        });
-        inner+='</div>';
-      }
+      if(t.rule_pl) inner+='<div class="gram-sc-rule">'+gramRuleHTML(t.rule_pl)+'</div>';
+      inner+=gramParadigmHTML(p);
       if(!inner) continue;
       var open=(mode==='full');
       var lab=(st==='stale')?'Wzorzec — do odswiezenia':'Wzorzec';
@@ -18340,6 +18505,27 @@ async function lexInit(){
     var data=window._lexxData||{};
     w.innerHTML='';
     if(s<0){
+      var _ct=document.getElementById('lex-card-text');
+      var _gh='';
+      try{ if(data._teachable && !data._gramSeen && typeof gramCardHTML==='function') _gh=gramCardHTML(data._teachable); }catch(e){}
+      if(_gh){
+        // Krok -2: sama karta struktury + „Dalej". Bez intro i słów porcji pod spodem.
+        window._lexxStep=-2;
+        if(_ct) _ct.innerHTML=_gh;
+        var stg=document.createElement('div'); stg.className='lexx-stage';
+        var nx=document.createElement('button'); nx.className='lexx-next'; nx.textContent='Dalej →';
+        nx.onclick=function(){
+          data._gramSeen=true;
+          lexxShowStep(-1);
+          try{ var _c=document.getElementById('lex-card-text'); if(_c){ var _y=_c.getBoundingClientRect().top+window.pageYOffset-96; window.scrollTo({top:Math.max(0,_y),behavior:'smooth'}); } }catch(e){}
+        };
+        stg.appendChild(nx);
+        var ft=document.createElement('div'); ft.className='gram-step-foot'; ft.textContent='Dalej: słowa tej porcji i ćwiczenia.';
+        stg.appendChild(ft);
+        w.appendChild(stg);
+        return;
+      }
+      if(_ct && data._introHtml!=null && _ct.innerHTML!==data._introHtml) _ct.innerHTML=data._introHtml;
       // Ekran 0 porcji: temat + słowa (audio/tłumaczenie 1 tapem) + start
       var stage0=document.createElement('div'); stage0.className='lexx-stage';
       var box=document.createElement('div'); box.className='lexx-ex';
@@ -18385,15 +18571,20 @@ async function lexInit(){
     var ct=document.getElementById('lex-card-text');
     if(ct){
       var introHtml=(typeof lexFormatCardText==='function')? lexFormatCardText(data.intro||'') : esc(data.intro||'');
-      var gramHtml='';
-      try{ if(data._teachable && typeof gramCardHTML==='function') gramHtml=gramCardHTML(data._teachable); }catch(e){}
-      ct.innerHTML=gramHtml+introHtml;
+      // GRAM-UI: karta struktury stoi SAMA (krok -2), wprowadzenie po „Dalej" (krok -1).
+      data._introHtml=introHtml;
+      ct.innerHTML=introHtml;
       try{
-        if(gramHtml && !ct._gramSay){
+        if(!ct._gramSay){
           ct._gramSay=1;
           ct.addEventListener('click', function(ev){
             var g=ev.target.closest && ev.target.closest('.gram-ex');
-            if(g && typeof lexSceneSpeak==='function'){ ev.stopPropagation(); lexSceneSpeak(g.getAttribute('data-say')); }
+            if(g && typeof lexSceneSpeak==='function'){ ev.stopPropagation(); lexSceneSpeak(g.getAttribute('data-say'), lang()); }
+          });
+          ct.addEventListener('keydown', function(ev){
+            if(ev.key!=='Enter'&&ev.key!==' ') return;
+            var g=ev.target.closest && ev.target.closest('.gram-ex');
+            if(g){ ev.preventDefault(); lexSceneSpeak(g.getAttribute('data-say'), lang()); }
           });
         }
       }catch(e){}
@@ -18456,6 +18647,9 @@ async function lexInit(){
   // Odsłuch całego zdania w języku uczonym (naturalny głos)
   window.lexSceneSpeak=function(text, langCode){
     if(!text) return;
+    var _lc=langCode||(function(){ try{ return lang(); }catch(e){ return window._lexLang||''; } })();
+    if(typeof window.eylSay==='function'){ window.eylSay(String(text), _lc, 0.92); return; }
+    langCode=_lc;
     try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
     try{
       var u=new SpeechSynthesisUtterance(String(text));
@@ -19959,7 +20153,7 @@ async function lexInit(){
         return sc;
       };
       var cand=vs.filter(function(v){ return v.lang&&v.lang.indexOf(base)===0; });
-      if(!cand.length) cand=vs;
+      if(!cand.length) return null; /* AUDIO-LANG: nigdy głos innego języka */
       cand.sort(function(a,b){ return rank(b)-rank(a); });
       return cand[0]||null;
     }catch(e){ return null; }
@@ -20485,7 +20679,7 @@ async function lexInit(){
     var d=document.createElement('div');
     d.innerHTML='<div style="font-size:12px;color:var(--dim2);margin-bottom:12px">Sprawdź i popraw fiszki, a potem zapisz.</div>'
       +'<div style="margin-bottom:14px"><label class="ai-lab">Nazwa zestawu</label><input id="new-set-name" class="fi" style="width:100%;box-sizing:border-box"></div>'
-      +'<div style="margin-bottom:14px"><label class="ai-lab">Język zestawu</label><select id="new-set-lang" class="fi" style="width:100%;box-sizing:border-box">'+lexLangOptionsHtml()+'</select></div>';
+      +'<input type="hidden" id="new-set-lang" value="'+String(lang||'').replace(/[^a-zA-Z-]/g,'')+'">';
     var hdr=document.createElement('div'); hdr.style.cssText='display:grid;grid-template-columns:1fr 1fr 28px;gap:8px;margin-bottom:6px';
     hdr.innerHTML='<div class="ai-lab" style="margin:0">Słowo</div><div class="ai-lab" style="margin:0">Tłumaczenie</div><div></div>';
     d.appendChild(hdr);
@@ -20502,7 +20696,7 @@ async function lexInit(){
     footer.appendChild(saveBtn); d.appendChild(footer);
     body.appendChild(d);
     document.getElementById('new-set-name').value=name||'';
-    try{ var _nsl=document.getElementById('new-set-lang'); if(_nsl && lang) _nsl.value=lang; }catch(e){}
+    try{ var _ln=(typeof LEX_LANG_MAP!=='undefined'&&LEX_LANG_MAP[lang])?LEX_LANG_MAP[lang].label:''; var _sub=d.firstChild; if(_ln&&_sub) _sub.textContent='Sprawdź i popraw fiszki, a potem zapisz. Język: '+_ln+' (zmienisz go przez „Generuj ponownie").'; }catch(e){}
     cards.forEach(function(){ window.addNewSetRow(); });
     var rows=document.querySelectorAll('#new-set-rows > div');
     cards.forEach(function(c,i){ if(!rows[i])return; var ins=rows[i].querySelectorAll('input'); if(ins[0])ins[0].value=c.word; if(ins[1])ins[1].value=c.translation;
@@ -20716,7 +20910,7 @@ async function lexInit(){
     if(webOnly){ webSpeak(); return; }
     try{
       var sess=(await db.auth.getSession()).data.session;
-      var r=await fetch('https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/tts',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},body:JSON.stringify({text:text, language_code:lc, voice_id:(typeof window.LEX_TTS_VOICE!=='undefined'&&window.LEX_TTS_VOICE)?window.LEX_TTS_VOICE:'JBFqnCBsd6RMkjVDRZzb'})});
+      var r=await fetch('https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/tts',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(sess?sess.access_token:''),'apikey':(typeof APIKEY_CONST!=='undefined'?APIKEY_CONST:'')},body:JSON.stringify({text:text, language_code:((window.eylTtsNorm&&eylTtsNorm(lc))?eylTtsNorm(lc).iso:lc), voice_id:(typeof window.LEX_TTS_VOICE!=='undefined'&&window.LEX_TTS_VOICE)?window.LEX_TTS_VOICE:'JBFqnCBsd6RMkjVDRZzb'})});
       if(!r.ok) throw new Error('tts '+r.status);
       var blob=await r.blob(); var url=URL.createObjectURL(blob);
       var a=new Audio(url); window._elWordAudio=a;
@@ -22161,58 +22355,122 @@ if ('serviceWorker' in navigator) {
     try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
   };
 
-  function webSpeak(text, lc, rate){
+  /* ═══ AUDIO-LANG — twarda reguła (Logic Bible §AUDIO) ═══
+     1. Każdy odsłuch dostaje JAWNY język treści (karta / lekcja / struktura),
+        nigdy język interfejsu i nigdy „en-US" z braku danych.
+     2. Jeden punkt wejścia: eylSay(tekst, język). Język normalizuje eylTtsNorm:
+        app-kod (es, jp, no) → ISO dla ElevenLabs (es, ja, no) → BCP-47 dla
+        przeglądarki (es-ES, ja-JP, nb-NO).
+     3. Nigdy nie czytamy tekstu głosem INNEGO języka. Brak natywnego głosu
+        w przeglądarce → chmura z wymuszonym language_code; brak chmury →
+        cisza + jednorazowy komunikat, zamiast angielskiego akcentu.
+     4. ElevenLabs: słowa i krótkie wyrażenia (≤3 słowa). Zdania: natywny głos
+        przeglądarki (decyzja kosztowa), chmura tylko gdy głosu brak. */
+  var _TTS_BCP={en:'en-US',es:'es-ES',de:'de-DE',fr:'fr-FR',it:'it-IT',nl:'nl-NL',pt:'pt-PT',no:'nb-NO',
+    ru:'ru-RU',uk:'uk-UA',ar:'ar-SA',jp:'ja-JP',zh:'zh-CN',ko:'ko-KR',pl:'pl-PL',sv:'sv-SE',da:'da-DK'};
+  var _TTS_ISO={jp:'ja'};
+  var _TTS_WEB={ar:1,jp:1,zh:1,ko:1};   /* LEX_LANG_MAP.tts==='web' */
+  window.eylTtsNorm=function(lang){
+    var raw=String(lang||'').trim(); if(!raw) return null;
+    var base=raw.toLowerCase().replace('_','-').split('-')[0];
+    if(base==='ja') base='jp'; if(base==='nb'||base==='nn') base='no'; if(base==='cn') base='zh';
+    var bcp=_TTS_BCP[base] || (raw.indexOf('-')>0 ? raw : (base+'-'+base.toUpperCase()));
+    return { app:base, iso:(_TTS_ISO[base]||base), bcp:bcp, web:!!_TTS_WEB[base] };
+  };
+  function _voiceBase(v){ return String((v&&v.lang)||'').toLowerCase().replace('_','-').split('-')[0]; }
+  function _voiceMatch(v,n){ var b=_voiceBase(v); return b===n.iso || b===n.app || (n.app==='no'&&(b==='nb'||b==='nn')); }
+  /* true / false / null (lista głosów jeszcze niewczytana — nie wiemy) */
+  function hasVoice(n){
+    try{ var vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[]; if(!vs.length) return null;
+      return vs.some(function(v){ return _voiceMatch(v,n); }); }catch(e){ return null; }
+  }
+  function bestVoice(n){
     try{
-      if(!window.speechSynthesis) return;
+      var vs=(speechSynthesis.getVoices()||[]).filter(function(v){ return _voiceMatch(v,n); });
+      if(!vs.length) return null;
+      var rank=function(v){ var nm=v.name||'', s=0;
+        if(/Natural|Neural|Online/i.test(nm)) s+=6; if(/Google/i.test(nm)) s+=4; if(/Microsoft/i.test(nm)) s+=2;
+        if(String(v.lang).replace('_','-').toLowerCase()===n.bcp.toLowerCase()) s+=3; if(v.localService===false) s+=1; return s; };
+      vs.sort(function(a,b){ return rank(b)-rank(a); }); return vs[0];
+    }catch(e){ return null; }
+  }
+  window.eylBestVoice=function(lang){ var n=eylTtsNorm(lang); return n?bestVoice(n):null; };
+  var _noVoiceWarned={};
+  function noVoice(n){
+    if(_noVoiceWarned[n.app]) return; _noVoiceWarned[n.app]=1;
+    var msg='Brak głosu dla tego języka w przeglądarce — zainstaluj pakiet mowy lub użyj Chrome/Edge.';
+    try{ if(typeof window.showToast==='function'){ window.showToast(msg); return; } }catch(e){}
+    try{ if(typeof window.toast==='function'){ window.toast(msg); return; } }catch(e){}
+    try{ console.warn('[audio] '+n.bcp+': '+msg); }catch(e){}
+  }
+  /* Web Speech — tylko natywny głos. Zwraca false, gdy głosu na pewno nie ma. */
+  function webSpeak(text, n, rate){
+    try{
+      if(!window.speechSynthesis) return false;
+      var hv=hasVoice(n); if(hv===false) return false;
       var u=new SpeechSynthesisUtterance(text);
-      u.lang=lc||'en-US'; u.rate=rate||0.92;
-      var bv=(typeof window.lexvBestVoice==='function')?window.lexvBestVoice(u.lang):null; if(bv) u.voice=bv;
-      window.speechSynthesis.speak(u);
-    }catch(e){}
+      u.lang=n.bcp; u.rate=rate||0.92;
+      var bv=bestVoice(n); if(bv) u.voice=bv;
+      window.speechSynthesis.speak(u); return true;
+    }catch(e){ return false; }
   }
 
   var _live={};
   function apiKey(){ try{ if(typeof SUPABASE_KEY!=='undefined') return SUPABASE_KEY; }catch(e){}
                      try{ if(typeof APIKEY_CONST!=='undefined') return APIKEY_CONST; }catch(e){} return ''; }
-  async function liveTTS(text, lc){
-    var key=lc+'|'+text;
+  function voiceFor(n){
+    try{ var m=window.EYL_TTS_VOICE_BY_LANG; if(m && m[n.app]) return m[n.app]; }catch(e){}
+    return window.EYL_TTS_VOICE_ID;
+  }
+  async function liveTTS(text, n){
+    var key=n.iso+'|'+text;
     if(_live[key]) return _live[key];
     var tok='';
     try{ var s=await db.auth.getSession(); tok=(s&&s.data&&s.data.session)?s.data.session.access_token:''; }catch(e){}
     var r=await fetch(window.EYL_TTS_ENDPOINT,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':apiKey()},
-      body:JSON.stringify({ text:text, language_code:String(lc||'en').slice(0,2).toLowerCase(), voice_id:window.EYL_TTS_VOICE_ID })
+      body:JSON.stringify({ text:text, language_code:n.iso, voice_id:voiceFor(n) })
     });
     if(!r.ok) throw new Error('tts '+r.status);
     var url=URL.createObjectURL(await r.blob());
     _live[key]=url; return url;
   }
+  function playUrl(u, onFail){
+    try{ var a=new Audio(u); window._eylAudio=a; a.play().catch(onFail); }catch(e){ onFail(); }
+  }
 
-  /* Główna funkcja: użyj jej wszędzie tam, gdzie odsłuchiwane jest SŁOWO. */
-  window.eylSpeakWord=function(word, langCode, rate){
-    var text=clean(word); if(!text) return;
-    var lc=String(langCode||'en-US');
-    window.eylAudioStop();
-    var done=false;
-    function fallbackLive(){
-      if(done) return; done=true;
-      liveTTS(text, lc).then(function(u){
-        var a2=new Audio(u); window._eylAudio=a2;
-        a2.play().catch(function(){ webSpeak(text, lc, rate); });
-      }).catch(function(){ webSpeak(text, lc, rate); });
+  /* JEDYNY punkt wejścia odsłuchu. lang: kod aplikacji albo BCP-47. */
+  window.eylSay=function(text, lang, rate){
+    var t=clean(text); if(!t) return;
+    var n=eylTtsNorm(lang);
+    if(!n){
+      try{ console.warn('[audio] eylSay bez języka — użyto języka lekcji. Tekst:', t.slice(0,40)); }catch(e){}
+      n=eylTtsNorm(window._lexLang||'en');
     }
-    var su=window.eylWordAudioUrl(text, lc);
+    window.eylAudioStop();
+    var isWord = t.split(/\s+/).length<=3 && t.length<=60;
+    function cloud(){
+      if(n.app==='jp'){ if(!webSpeak(t,n,rate)) noVoice(n); return; }   /* głos chmurowy nie ma JP */
+      liveTTS(t,n).then(function(u){ playUrl(u,function(){ if(!webSpeak(t,n,rate)) noVoice(n); }); })
+        .catch(function(){ if(!webSpeak(t,n,rate)) noVoice(n); });
+    }
+    function web(){ if(!webSpeak(t,n,rate)) cloud(); }
+    var first = (n.web || !isWord) ? web : cloud;
+    var su=(isWord && window.eylWordAudioUrl) ? window.eylWordAudioUrl(t, n.app) : null;
     if(su){
+      var done=false, fb=function(){ if(done) return; done=true; first(); };
       try{
         var a=new Audio(su); window._eylAudio=a;
-        a.onerror=function(){ fallbackLive(); };
-        a.play().then(function(){ done=true; }).catch(function(){ fallbackLive(); });
+        a.onerror=fb;
+        a.play().then(function(){ done=true; }).catch(fb);
         return;
       }catch(e){}
     }
-    fallbackLive();
+    first();
   };
+  /* Zgodność wsteczna: stare wywołania słów trafiają w ten sam potok. */
+  window.eylSpeakWord=function(word, langCode, rate){ return window.eylSay(word, langCode, rate); };
 })();
 </script>
 <script>
@@ -23761,7 +24019,9 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
 
   window.eylConjSay=function(txt){
     try{
-      if(typeof window.lexSceneSpeak==='function'){ window.lexSceneSpeak(txt); return; }
+      var _l='en'; try{ _l=lg(); }catch(e){}
+      if(typeof window.eylSay==='function'){ window.eylSay(txt, _l); return; }
+      if(typeof window.lexSceneSpeak==='function'){ window.lexSceneSpeak(txt, _l); return; }
       var code='en-US'; try{ if(typeof lexTtsCode==='function') code=lexTtsCode(lg()); }catch(e){}
       if(window.speechSynthesis){ window.speechSynthesis.cancel();
         var u=new SpeechSynthesisUtterance(txt); u.lang=code; u.rate=.95; window.speechSynthesis.speak(u); }
@@ -23903,7 +24163,9 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   }
   function hide(b){ if(b){ b.classList.remove('on'); b.innerHTML=''; } }
 
-  window.eylExSay=function(t){ try{ if(typeof window.eylConjSay==='function') window.eylConjSay(t); }catch(e){} };
+  window.eylExSay=function(t,l){ try{
+    if(l && typeof window.eylSay==='function'){ window.eylSay(t,l); return; }
+    if(typeof window.eylConjSay==='function') window.eylConjSay(t); }catch(e){} };
 
   function draw(b,d,c){
     if(!d||!d.s){ hide(b); return; }
@@ -23912,8 +24174,9 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       try{ s=s.replace(new RegExp('('+w.replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\$&')+')','i'),'<b>$1</b>'); }catch(e){}
     }
     var f=String(d.s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    var _xl=''; try{ _xl=String(lgOf(c)||'').replace(/[^a-zA-Z-]/g,''); }catch(e){}
     b.innerHTML='<div class="eyl-ex-lab">Przykład użycia</div>'
-      +'<div class="eyl-ex-s" onclick="event.stopPropagation();eylExSay(\''+f+'\')">'+s+'</div>'
+      +'<div class="eyl-ex-s" onclick="event.stopPropagation();eylExSay(\''+f+'\',\''+_xl+'\')">'+s+'</div>'
       +(d.rom?('<div class="eyl-ex-rom">'+esc(d.rom)+'</div>'):'')
       +(d.pl?('<div class="eyl-ex-pl">'+esc(d.pl)+'</div>'):'');
     b.classList.add('on');
