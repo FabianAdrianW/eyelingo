@@ -1083,8 +1083,8 @@ async function askLogout(){
   ov.appendChild(sheet); document.body.appendChild(ov);
 }
 async function eylDeleteAccountMobile(){
-  if(!(await eylConfirm({title:'Usunąć konto?',body:'To działanie jest nieodwracalne — skasujemy Twoje postępy, zestawy i pozostałe dane.',ok:'Dalej',danger:true}))) return;
-  if(!(await eylConfirm({title:'Na pewno?',body:'Konto zostanie trwale usunięte. Tego nie da się cofnąć.',ok:'Usuń konto',danger:true}))) return;
+  if(!(await eylConfirm({title:'Usunąć konto?',body:'Skasujemy **postępy, zestawy i pozostałe dane**.',note:'To działanie jest **nieodwracalne**.',ok:'Dalej',danger:true}))) return;
+  if(!(await eylConfirm({title:'Na pewno?',body:'Konto zostanie **trwale usunięte**.',note:'Tego nie da się cofnąć.',ok:'Usuń konto',danger:true}))) return;
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){ eylToast('Sesja wygasła — zaloguj się ponownie.','err'); return; }
@@ -1248,7 +1248,7 @@ async function eylSetPauseRefresh(){
 async function eylSetPauseToggle(){
   var row=document.getElementById('rev-pause-row'); if(!row) return;
   var pause=row.dataset.paused!=='1';
-  if(pause && !(await eylConfirm({title:'Wstrzymać powtórki zestawu?',body:'Słowa znikną z kolejki powtórek. Postęp zostaje — wznowisz jednym dotknięciem.',ok:'Wstrzymaj'}))) return;
+  if(pause && !(await eylConfirm({title:'Wstrzymać powtórki zestawu?',body:'Słowa **znikną z kolejki** powtórek.',note:'Postęp zostaje — wznowisz **jednym dotknięciem**.',ok:'Wstrzymaj'}))) return;
   if(!curSetCards||!curSetCards.length){ await loadCurSetCards(); }
   await eylRevPauseSet(curSetCards||[], pause);
   eylSetPauseRefresh();
@@ -1343,7 +1343,7 @@ async function markKnownBulk(cards, lang){
 async function markKnownCurrent(){
   if(!curSetCards||!curSetCards.length){ await loadCurSetCards(); }
   if(!curSetCards.length){ eylToast('Brak s\u0142\u00f3w w tym zestawie.','err'); return; }
-  if(!(await eylConfirm({title:'Znasz już ten materiał?',body:'Oznaczymy '+eylSlow(curSetCards.length)+' jako znane. Znikną z dzisiejszej kolejki i wrócą raz, kontrolnie, za około 2 miesiące.',ok:'Tak, znam'}))) return;
+  if(!(await eylConfirm({title:'Znasz już ten materiał?',body:'[['+eylSlow(curSetCards.length)+']] znikną z dzisiejszej kolejki.',note:'Wrócą **raz, kontrolnie** — za około [[2 miesiące]].',ok:'Tak, znam'}))) return;
   await markKnownBulk(curSetCards, curSetLangSrc);
   try{ await renderSetStatus(); }catch(e){}
   try{ refreshDueBadge(); }catch(e){}
@@ -5710,7 +5710,7 @@ async function alexSend(){
     /* Wyjście z edytora z wypełnionymi wierszami = utrata pracy. Pytamy raz,
        zamiast po cichu kasować (awersja do straty > oszczędność jednego tapu). */
     $('ns-left').onclick=async function(){
-      if(view==='edit' && _nsFilled()>0 && !(await eylConfirm({title:'Porzucić ten zestaw?',body:'Fiszki nie zostały jeszcze zapisane.',ok:'Porzuć',cancel:'Wróć do edycji',danger:true}))) return;
+      if(view==='edit' && _nsFilled()>0 && !(await eylConfirm({title:'Porzucić ten zestaw?',body:'Fiszki **nie zostały jeszcze zapisane**.',ok:'Porzuć',cancel:'Wróć do edycji',danger:true}))) return;
       if(view==='pick') window.eylNewSetClose(); else _nsView('pick');
     };
   }
@@ -5879,7 +5879,7 @@ async function alexSend(){
     var t=clean(String(raw||'')).replace(/```json|```/g,'').trim();
     var arr=null, o1=t.indexOf('{'), o2=t.lastIndexOf('}');
     if(o1>=0&&o2>o1){ try{ var o=JSON.parse(t.slice(o1,o2+1));
-      if(o){ out.kind=String(o.kind||''); out.note=String(o.note||''); out.title=String(o.title||''); out.reject=String(o.reject||'');
+      if(o){ out.kind=String(o.kind||''); out.note=String(o.note||''); out.title=String(o.title||''); out.reject=String(o.reject||''); out.source_lang=String(o.source_lang||'');
         if(Array.isArray(o.cards)) arr=o.cards; }
     }catch(e){} }
     if(!arr){ var a1=t.indexOf('['), a2=t.lastIndexOf(']');
@@ -5896,7 +5896,7 @@ async function alexSend(){
       var k=w.toLowerCase()+'|'+tr.toLowerCase();
       if(seen[k]) return; seen[k]=1;
       if(out.cards.length>=HARD_CAP){ out.dropped++; return; }
-      out.cards.push({word:w,translation:tr});
+      out.cards.push({word:w,translation:tr,lang:String((c&&c.lang)||'')});
     });
     return out;
   }
@@ -5956,10 +5956,11 @@ async function alexSend(){
       +'  • "list": przenieś KAŻDĄ pozycję z listy, dokładnie tak, jak jest zapisana — także pozycje wyglądające na łatwe. Jeśli są gotowe pary słowo–tłumaczenie, zachowaj je bez zmian. Nie filtruj po trudności: liczy się kompletność.\n'
       +'  • "text": wypisz WSZYSTKIE słowa i wyrażenia widoczne na obrazie, które mają wartość słownikową. Pomiń tylko wyrazy funkcyjne z pierwszych lekcji (podstawowe zaimki, przyimki, spójniki, liczebniki, formy „być" i „mieć"). Nie oceniaj poziomu uczącego się — trudność dyktuje sam materiał, a nadmiar użytkownik usunie w podglądzie.\n'
       +'  • "scene": nazwij WSZYSTKIE wyraźnie widoczne obiekty, materiały i czynności. Pomiń tylko rzeczy niejednoznaczne lub ledwo widoczne.\n'
-      +'NIE dodawaj słów, których nie ma na obrazie (wyjątek: typ "scene"). Pomiń nazwy własne, numery stron, nagłówki organizacyjne (np. „Unit 3") i pojedyncze litery.\n\n'
+      +'NIE dodawaj słów, których nie ma na obrazie (wyjątek: typ "scene"). Pomiń nazwy własne, numery stron, nagłówki organizacyjne (np. „Unit 3") i pojedyncze litery.\n'
+      +((typeof eylSetLangPrompt==='function')?eylSetLangPrompt(langName):'')+'\n'
       +'ZASADY TREŚCI: "word" = ZAWSZE w języku '+langName+'; "translation" = ZAWSZE po polsku. Bez duplikatów.'+CARD_RULES
       +'\n\nSCHEMAT ODPOWIEDZI (nic poza nim):\n'
-      +'{"kind":"list|text|scene","note":"po polsku, maks. 12 słów: co widzisz na obrazie","title":"nazwa zestawu po polsku, 2–4 słowa","cards":[{"word":"...","translation":"..."}]}';
+      +'{"kind":"list|text|scene","note":"po polsku, maks. 12 słów: co widzisz na obrazie","title":"nazwa zestawu po polsku, 2–4 słowa","source_lang":"en","cards":[{"word":"...","translation":"...","lang":"en"}]}';
     var content=[{type:'text',text:prompt}];
     photos.forEach(function(d){ content.push({type:'image_url',image_url:{url:d}}); });
     go.disabled=true; go.textContent='Czytam zdjęcie…';
@@ -5969,7 +5970,8 @@ async function alexSend(){
       var r=parseOut(await proxy(content,8000));
       if(r.reject){ if(m) m.textContent='Na zdjęciu nie widzę materiału do nauki słów. Sfotografuj stronę z tekstem, listę słówek albo zwykłą scenę.'; go.disabled=false; go.textContent='Utwórz fiszki'; return; }
       if(!r.cards.length){ if(m) m.textContent='Nie udało się nic odczytać. Zrób zdjęcie z bliska, w lepszym świetle i prosto na stronę.'; go.disabled=false; go.textContent='Utwórz fiszki'; return; }
-      lastAI={res:r, lang:lang};
+      var _LR=null; if(typeof eylResolveSetLang==='function'){ try{ _LR=await eylResolveSetLang(r.cards, lang, r.source_lang); }catch(e){ _LR=null; } }
+      lastAI={res:r, lang:(_LR?_LR.code:lang), langRes:_LR};
       _nsView('edit');
     }catch(e){ if(m) m.textContent=errTxt(e); go.disabled=false; go.textContent='Utwórz fiszki'; }
   };
@@ -5993,6 +5995,7 @@ async function alexSend(){
     $('ns-body').innerHTML='<div style="padding-top:14px">'
       +noteHtml
       +'<div class="ns-lab">Nazwa zestawu</div><input class="inp" id="ns-name" placeholder="np. Angielski — praca">'
+      +((ai&&ai.langRes&&typeof eylSetLangNoteHTML==='function')?eylSetLangNoteHTML(ai.langRes,'ns-lang2'):'')
       +(ai&&ai.lang
          ? '<input type="hidden" id="ns-lang2" value="'+String(ai.lang).replace(/[^a-zA-Z-]/g,'')+'">'
            +'<div class="ns-hint" style="margin:2px 0 8px;font-size:12px">Język: '+esc((function(){ try{ var n=lexLangInfo(ai.lang).name||ai.lang; return n.charAt(0).toUpperCase()+n.slice(1); }catch(e){ return ai.lang; } })())+'</div>'
@@ -8399,11 +8402,11 @@ window.eylPagedFetch = async function(makeQuery, opts){
       b.disabled=true;
       try{
         if(b.getAttribute('data-k')==='known'){
-          if(!(await eylConfirm({title:'Znasz już ten zestaw?',body:'Oznaczymy '+eylSlow(cards.length)+' jako znane. Znikną z dzisiejszej kolejki i wrócą raz, kontrolnie, za około 2 miesiące.',ok:'Tak, znam'}))){ b.disabled=false; return; }
+          if(!(await eylConfirm({title:'Znasz już ten zestaw?',body:'[['+eylSlow(cards.length)+']] znikną z dzisiejszej kolejki.',note:'Wrócą **raz, kontrolnie** — za około [[2 miesiące]].',ok:'Tak, znam'}))){ b.disabled=false; return; }
           var n=await eylRevMarkKnown(cards, window._trybStudyLang||'');
           toast('Oznaczono '+n+' słów jako znane.');
         } else {
-          if(!paused && !(await eylConfirm({title:'Wstrzymać powtórki zestawu?',body:'Słowa znikną z kolejki powtórek. Postęp zostaje — wznowisz jednym kliknięciem.',ok:'Wstrzymaj'}))){ b.disabled=false; return; }
+          if(!paused && !(await eylConfirm({title:'Wstrzymać powtórki zestawu?',body:'Słowa **znikną z kolejki** powtórek.',note:'Postęp zostaje — wznowisz **jednym kliknięciem**.',ok:'Wstrzymaj'}))){ b.disabled=false; return; }
           await eylRevPauseSet(cards, !paused);
         }
         paint(await eylRevSetState(cards));
@@ -8452,7 +8455,12 @@ window.eylPagedFetch = async function(makeQuery, opts){
     s.textContent='.eylcf-ov{position:fixed;inset:0;z-index:100000;background:rgba(26,35,64,.42);display:flex;align-items:center;justify-content:center;padding:20px;animation:eylcfIn .16s ease}'
       +'.eylcf{width:100%;max-width:420px;background:#fff;border-radius:16px;box-shadow:0 18px 60px rgba(26,35,64,.22);padding:22px 22px 18px;font-family:Inter,system-ui,sans-serif;animation:eylcfUp .2s ease}'
       +'.eylcf-t{font-family:"DM Sans",system-ui,sans-serif;font-size:17px;font-weight:600;color:var(--navy,#1a2340);line-height:1.35;margin:0 0 8px}'
-      +'.eylcf-b{font-size:14px;line-height:1.6;color:var(--dim,#5b6478);margin:0 0 20px}'
+      +'.eylcf-b{font-size:15px;line-height:1.55;color:var(--navy,#1a2340);margin:0 0 6px}'
+      +'.eylcf-n{font-size:13px;line-height:1.55;color:var(--dim2,#646c80);margin:0 0 20px}'
+      +'.eylcf-b:last-child{margin-bottom:20px}'
+      +'.eylcf em{font-style:normal;font-weight:600;color:var(--navy,#1a2340)}'
+      +'.eylcf mark{background:none;font-weight:700;color:var(--orange-ink,#a85218)}'
+      +'.eylcf-n em{color:var(--dim,#5b6478)}'
       +'.eylcf-a{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}'
       +'.eylcf-btn{padding:10px 18px;border-radius:100px;font-family:"DM Sans",system-ui,sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s,border-color .15s}'
       +'.eylcf-no{border:1.5px solid var(--border2,#d8d2c0);background:transparent;color:var(--dim,#5b6478)}'
@@ -8466,6 +8474,10 @@ window.eylPagedFetch = async function(makeQuery, opts){
     document.head.appendChild(s);
   }
   window.eylSlow=function(n){ n=Number(n)||0; var d=n%10, h=n%100; return n+' '+(n===1?'słowo':((d>=2&&d<=4&&(h<12||h>14))?'słowa':'słów')); };
+  /* Hierarchia (psychologia poznawcza): tytuł = pytanie, body = JEDEN kluczowy fakt,
+     note = konsekwencja drugiego planu. [[x]] = liczba/wartość (jedyny akcent),
+     **x** = istotne słowo. Wszystko escapowane przed formatowaniem. */
+  function fmt(s){ return esc(s).replace(/\[\[([^\]]+)\]\]/g,'<mark>$1</mark>').replace(/\*\*([^*]+)\*\*/g,'<em>$1</em>'); }
   window.eylConfirm=function(o){
     if(typeof o==='string') o={body:o};
     o=o||{};
@@ -8475,7 +8487,8 @@ window.eylPagedFetch = async function(makeQuery, opts){
       var ov=document.createElement('div'); ov.className='eylcf-ov';
       ov.innerHTML='<div class="eylcf" role="alertdialog" aria-modal="true" aria-labelledby="eylcf-t">'
         +(o.title?'<div class="eylcf-t" id="eylcf-t">'+esc(o.title)+'</div>':'')
-        +(o.body?'<div class="eylcf-b">'+esc(o.body)+'</div>':'')
+        +(o.body?'<div class="eylcf-b">'+fmt(o.body)+'</div>':'')
+        +(o.note?'<div class="eylcf-n">'+fmt(o.note)+'</div>':'')
         +'<div class="eylcf-a"><button type="button" class="eylcf-btn eylcf-no">'+esc(o.cancel||'Anuluj')+'</button>'
         +'<button type="button" class="eylcf-btn eylcf-ok'+(o.danger?' danger':'')+'">'+esc(o.ok||'Tak')+'</button></div></div>';
       function done(v){ document.removeEventListener('keydown',key,true); try{ ov.remove(); }catch(e){} try{ if(prev&&prev.focus) prev.focus(); }catch(e){} res(v); }
@@ -8487,6 +8500,98 @@ window.eylPagedFetch = async function(makeQuery, opts){
       document.body.appendChild(ov);
       setTimeout(function(){ try{ ov.querySelector(o.danger?'.eylcf-no':'.eylcf-ok').focus(); }catch(e){} },30);
     });
+  };
+})();
+</script>
+<script id="eyl-setlang">
+/* ═══ AI-SET-LANG-3: język zestawu rozstrzyga SYSTEM, nie jeden głos modelu ═══
+   Trzy niezależne sygnały, każdy wymaga min. 2 zgodnych słów:
+   1) katalog Eyelingo (słowa jednoznacznie przypisane do jednego języka),
+   2) pismo (cyrylica, arabski, kana/kanji, hangul, han → język przesądzony),
+   3) deklaracja modelu per fiszka (+ source_lang).
+   Kolejność zaufania: katalog (pewny) > pismo > model (≥2 i ≥60%) > wybór ucznia. */
+(function(){
+  if(window.eylResolveSetLang) return;
+  var VALID={en:1,es:1,de:1,fr:1,it:1,nl:1,pt:1,no:1,ru:1,uk:1,ar:1,jp:1,zh:1,ko:1};
+  var NAMES={en:'Angielski',es:'Hiszpański',de:'Niemiecki',fr:'Francuski',it:'Włoski',nl:'Niderlandzki',pt:'Portugalski',no:'Norweski',ru:'Rosyjski',uk:'Ukraiński',ar:'Arabski',jp:'Japoński',zh:'Chiński',ko:'Koreański'};
+  function norm(c){
+    c=String(c||'').toLowerCase().trim().split(/[-_]/)[0];
+    var m={ja:'jp',nb:'no',nn:'no',cn:'zh',eng:'en',english:'en',spanish:'es',german:'de',french:'fr',italian:'it',dutch:'nl',portuguese:'pt',norwegian:'no',russian:'ru',ukrainian:'uk',arabic:'ar',japanese:'jp',chinese:'zh',korean:'ko'};
+    c=m[c]||c; return VALID[c]?c:'';
+  }
+  window.eylLangName=function(c){ return NAMES[norm(c)]||String(c||''); };
+  function scriptOf(w){
+    w=String(w||'');
+    if(/[\u3040-\u30ff]/.test(w)) return 'jp';
+    if(/[\uac00-\ud7af]/.test(w)) return 'ko';
+    if(/[\u0600-\u06ff]/.test(w)) return 'ar';
+    if(/[\u4e00-\u9fff]/.test(w)) return 'zh';
+    if(/[\u0400-\u04ff]/.test(w)) return /[іїєґ]/i.test(w)?'uk':'ru';
+    return '';
+  }
+  function top(counts){ var b='',n=0,t=0; Object.keys(counts).forEach(function(k){ t+=counts[k]; if(counts[k]>n){ n=counts[k]; b=k; } }); return {code:b,n:n,total:t}; }
+  async function byCatalog(words){
+    try{
+      if(typeof _eylLangCodes!=='function'||typeof db==='undefined') return null;
+      var sample=words.slice(0,60); if(sample.length<2) return null;
+      var lmap=await _eylLangCodes(), per={};
+      for(var i=0;i<sample.length;i+=100){
+        var r=await db.from('flashcards').select('word,language_id').in('word',sample.slice(i,i+100));
+        ((r&&r.data)||[]).forEach(function(x){ var c=norm(lmap[x.language_id]); if(!c) return; var k=String(x.word||'').toLowerCase().trim(); (per[k]=per[k]||{})[c]=1; });
+      }
+      var cnt={}; Object.keys(per).forEach(function(k){ var ls=Object.keys(per[k]); if(ls.length===1) cnt[ls[0]]=(cnt[ls[0]]||0)+1; });
+      var t=top(cnt); if(!t.code) return null;
+      return {code:t.code, n:t.n, total:t.total, confident:(t.n>=2 && t.n>=Math.ceil(t.total*0.7))};
+    }catch(e){ return null; }
+  }
+  /* Zwraca {code, selected, changed, source, n, total} */
+  window.eylResolveSetLang=async function(cards, selected, modelLang){
+    selected=norm(selected)||'en';
+    var words=(cards||[]).map(function(c){ return String((c&&c.word)||'').trim(); }).filter(Boolean);
+    var N=words.length, res={code:selected, selected:selected, changed:false, source:'wybór', n:0, total:N};
+    if(N<1) return res;
+    // 2) pismo
+    var sc={}; words.forEach(function(w){ var s=scriptOf(w); if(s) sc[s]=(sc[s]||0)+1; });
+    var st=top(sc);
+    if(st.code && st.n>=Math.min(2,N) && st.n>=Math.ceil(N*0.6)){ res.code=st.code; res.source='pismo'; res.n=st.n; }
+    else {
+      // 1) katalog
+      var cat=await byCatalog(words.map(function(w){ return w.toLowerCase(); }));
+      if(cat && cat.confident){ res.code=cat.code; res.source='katalog'; res.n=cat.n; res.total=cat.total; }
+      else {
+        // 3) model
+        var mv={}; (cards||[]).forEach(function(c){ var l=norm(c&&c.lang); if(l) mv[l]=(mv[l]||0)+1; });
+        var mt=top(mv), ml=norm(modelLang);
+        if(mt.code && mt.n>=2 && mt.n>=Math.ceil(N*0.6)){ res.code=mt.code; res.source='model'; res.n=mt.n; }
+        else if(ml && N>=2 && (!mt.code || mt.code===ml)){ res.code=ml; res.source='model'; res.n=mt.n||N; }
+      }
+    }
+    res.changed=(res.code!==selected);
+    return res;
+  };
+  /* Fragment promptu: rozpoznanie języka + zasada par. */
+  window.eylSetLangPrompt=function(langName){
+    return '\nROZPOZNANIE JĘZYKA: najpierw ustal, w jakim języku OBCYM są słowa w materiale (polski się nie liczy). '
+      +'Uczący się wybrał '+langName+', ale jeśli materiał jest wyraźnie w innym języku obcym, NIE tłumacz go na '+langName+' — zostaw słowa w języku materiału i tak je oznacz. '
+      +'Zwróć na najwyższym poziomie "source_lang" (jeden kod: en, es, de, fr, it, nl, pt, no, ru, uk, ar, jp, zh, ko) oraz "lang" (ten sam zestaw kodów) przy KAŻDEJ fiszce.\n'
+      +'PARY: zapis „X - Y" jest parą słowo–tłumaczenie TYLKO wtedy, gdy jedna ze stron jest po polsku. '
+      +'Jeśli obie strony są w tym samym języku obcym (np. „England - English", „Spain - Spanish"), to DWA osobne słowa — każde dostaje własną fiszkę z polskim tłumaczeniem.\n';
+  };
+  /* Notka w podglądzie, gdy system zmienił język — z jednym gestem cofnięcia. */
+  window.eylSetLangNoteHTML=function(r, inputId){
+    if(!r||!r.changed) return '';
+    var why=(r.source==='katalog')?('rozpoznane w katalogu: '+r.n+' z '+r.total+' słów'):(r.source==='pismo'?'rozpoznane po piśmie':('rozpoznane w '+r.n+' z '+r.total+' słów'));
+    return '<div class="eyl-langnote" style="display:flex;gap:10px;align-items:flex-start;background:#fdf4ec;border-radius:12px;padding:11px 13px;margin:0 0 12px;font-size:13px;line-height:1.5;color:#7a4216">'
+      +'<span style="flex:0 0 18px;height:18px;border-radius:50%;background:var(--orange-btn,#b85c20);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px">!</span>'
+      +'<span style="flex:1">To słowa w języku <b style="color:var(--navy,#1a2340)">'+eylLangName(r.code)+'</b> ('+why+'), a wybrany był '+eylLangName(r.selected).toLowerCase()+'. Zestaw zapiszemy jako <b style="color:var(--navy,#1a2340)" data-ln>'+eylLangName(r.code).toLowerCase()+'</b>.'
+      +'<br><button type="button" data-alt="'+r.selected+'" data-cur="'+r.code+'" data-in="'+inputId+'" onclick="eylSetLangSwap(this)" style="background:none;border:0;padding:0;margin-top:4px;font:inherit;font-size:12.5px;color:var(--navy,#1a2340);text-decoration:underline;text-underline-offset:3px;cursor:pointer">Zapisz jednak jako '+eylLangName(r.selected).toLowerCase()+'</button></span></div>';
+  };
+  window.eylSetLangSwap=function(b){
+    var inp=document.getElementById(b.getAttribute('data-in')); if(!inp) return;
+    var alt=b.getAttribute('data-alt'), cur=b.getAttribute('data-cur');
+    inp.value=alt; b.setAttribute('data-alt',cur); b.setAttribute('data-cur',alt);
+    var ln=b.parentNode.querySelector('[data-ln]'); if(ln) ln.textContent=eylLangName(alt).toLowerCase();
+    b.textContent='Zapisz jednak jako '+eylLangName(cur).toLowerCase();
   };
 })();
 </script>
