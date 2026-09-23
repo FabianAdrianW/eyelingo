@@ -649,6 +649,10 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
           <div class="action know" onclick="markKnownCurrent()" style="margin-top:12px">
             <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
             <div class="body"><div class="t">Już znam ten materiał</div><div class="d">Odkłada te słowa na około dwa miesiące</div></div></div>
+          <button class="set-row" id="rev-pause-row" onclick="eylSetPauseToggle()">
+            <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></span>
+            <span class="bd"><span class="lb">Powtórki tego zestawu</span><span class="vl" id="rev-pause-val">Aktywne</span></span>
+            <svg class="cv" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
         </div>
       </section>
 
@@ -1213,7 +1217,26 @@ async function loadCurSetCards(){
   }catch(e){ curSetCards=[]; }
   return curSetCards;
 }
+async function eylSetPauseRefresh(){
+  var v=document.getElementById('rev-pause-val'), row=document.getElementById('rev-pause-row'); if(!v||!row) return;
+  try{
+    if(!curSetCards||!curSetCards.length){ await loadCurSetCards(); }
+    var st=await eylRevSetState(curSetCards||[]);
+    row.style.display=st.tracked?'':'none';
+    row.dataset.paused=(st.paused>0 && st.paused>=st.tracked/2)?'1':'0';
+    v.textContent=(row.dataset.paused==='1')?('Wstrzymane · '+st.paused+' słów'):('Aktywne · '+st.tracked+' słów w powtórkach');
+  }catch(e){}
+}
+async function eylSetPauseToggle(){
+  var row=document.getElementById('rev-pause-row'); if(!row) return;
+  var pause=row.dataset.paused!=='1';
+  if(pause && !confirm('Wstrzymać powtórki tego zestawu? Słowa znikną z kolejki, ale postęp zostanie. Wznowisz jednym dotknięciem.')) return;
+  if(!curSetCards||!curSetCards.length){ await loadCurSetCards(); }
+  await eylRevPauseSet(curSetCards||[], pause);
+  eylSetPauseRefresh();
+}
 async function renderSetStatus(){
+  try{ setTimeout(eylSetPauseRefresh,0); }catch(e){}
   var box=document.getElementById('set-status'); if(box) box.innerHTML='';
   var nav=document.getElementById('eyl-catnav'); if(nav){ nav.style.display='none'; nav.innerHTML=''; }
   await loadCurSetCards();
@@ -4290,15 +4313,23 @@ async function refreshDueBadge(){
   var box=document.getElementById('day-state');
   try{
     var rows=await _pwFetchDue(5000);
-    var n=rows.length;
+    var _tot=rows.length;
+    var n=(typeof eylRevPortionCount==='function')?eylRevPortionCount(_tot):_tot;
+    window._eylRevLast={total:_tot,portion:n};
     var p1=document.getElementById('ucz-due-pill'), p2=document.getElementById('tab-due-pill');
     [p1,p2].forEach(function(p){ if(!p) return; if(n>0){ p.style.display='inline-block'; p.textContent=String(n>99?'99+':n); } else { p.style.display='none'; } });
     if(box){
-      if(n>0){
+      if(n===0 && _tot>0){
+        box.className='day';
+        box.innerHTML='<div class="day-t">Dzisiejsza porcja zrobiona</div>'
+          +'<div class="day-sub">Zostało '+_tot+' zaległych — wrócą w kolejnych porcjach.</div>'
+          +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost day-cta" onclick="eylRevMore(10);openPowt()">Jeszcze 10</button>'
+          +'<button class="btn btn-ghost day-cta" onclick="eylRevSpread()">Rozłóż zaległości</button></div>';
+      } else if(n>0){
         box.className='day due';
         box.innerHTML='<div class="day-head"><span class="day-n">'+(n>999?'999+':n)+'</span>'
           +'<span class="day-lb">'+plural(n,'słowo dojrzało','słowa dojrzały','słów dojrzało')+'<br>do powtórki</span></div>'
-          +'<div class="day-sub">Powtórka to jedyny moment, w którym słowo naprawdę przechodzi do opanowanych.</div>'
+          +'<div class="day-sub">'+(_tot>n?('Dzisiejsza porcja z '+_tot+' zaległych. <a href="#" onclick="event.preventDefault();eylRevSpread()" style="color:var(--navy);text-decoration:underline;text-underline-offset:3px">Rozłóż zaległości</a>'):'Powtórka to jedyny moment, w którym słowo naprawdę przechodzi do opanowanych.')+'</div>'
           +'<button class="btn btn-orange day-cta" onclick="openPowt()">Zacznij powtórkę</button>';
       } else {
         box.className='day';
@@ -4328,6 +4359,7 @@ async function openPowt(){
   document.getElementById('pw-hint').textContent='';
   if(stage) stage.innerHTML=eyelingoLoader('Sprawdzam, co dojrzało do powtórki…');
   _pwQueue=await _pwFetchDue(5000);
+  try{ if(typeof eylRevPortion==='function') _pwQueue=eylRevPortion(_pwQueue).items; }catch(e){}
   try{ var _sq=_eylSeqByLang(_pwQueue); _pwQueue=_sq.items; window._pwMultiLang=_sq.multiLang; }catch(e){ window._pwMultiLang=false; }
   window._pwBlockShown={};
   window._pwStartStr={}; try{ _pwQueue.forEach(function(r){ if(r&&r.card_key) window._pwStartStr[r.card_key]=srsStrength(r.repetitions,r.interval_days); }); }catch(e){}
@@ -4379,17 +4411,17 @@ function pwReveal(){
     +'<div class="kic">'+(ff?'Tłumaczenie':'Słowo')+'</div><div class="word">'+esc(back)+'</div>'+_rmjBack
     +(spkWord?'<button class="speak" onclick="event.stopPropagation();pwSpeak()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg></button>':'')
     +'</div></div>';
-  document.getElementById('pw-hint').textContent='Jak Ci poszło?';
+  document.getElementById('pw-hint').textContent='Udało się przypomnieć?';
   var g=document.getElementById('pw-grades');
   g.style.display='grid';
   /* Audyt 2026-09: brakowal stopien „Prawie" (styl .pw-g.q2 istnial, nigdy sie nie renderowal).
      Bez niego kto „prawie wiedzial" musial wybierac miedzy resetem a skokiem interwalu —
      SM-2 tracil dokladnie te informacje, na ktorej stoi. */
   g.innerHTML=''
-    +'<button class="pw-g q1" onclick="pwGrade(1)">Nie wiedziałem<span class="ph">znów wkrótce</span></button>'
-    +'<button class="pw-g q2" onclick="pwGrade(2)">Prawie<span class="ph">za dzień, dwa</span></button>'
-    +'<button class="pw-g q3" onclick="pwGrade(3)">Wiedziałem<span class="ph">za kilka dni</span></button>'
-    +'<button class="pw-g q4" onclick="pwGrade(4)">Łatwe<span class="ph">dłuższa przerwa</span></button>';
+    +'<button class="pw-g q1" onclick="pwGrade(1)">Nie przypomniałem<span class="ph">znów wkrótce</span></button>'
+    +'<button class="pw-g q2" onclick="pwGrade(2)">Z trudem<span class="ph">za dzień, dwa</span></button>'
+    +'<button class="pw-g q3" onclick="pwGrade(3)">Przypomniałem<span class="ph">za kilka dni</span></button>'
+    +'<button class="pw-g q4" onclick="pwGrade(4)">Od razu<span class="ph">dłuższa przerwa</span></button>';
 }
 function pwSpeak(){
   try{
@@ -4405,10 +4437,11 @@ async function pwGrade(q){
   var g=document.getElementById('pw-grades'); if(g) g.style.display='none';
   if(navigator.vibrate) navigator.vibrate(6);
   try{
-    await srsUpsertCanon(r.word||'', r.translation||'', (({1:0,2:3,3:4,4:5})[q]!=null?({1:0,2:3,3:4,4:5})[q]:2), {  // parytet EF z web rateCard qMap
+    var _ns=await srsUpsertCanon(r.word||'', r.translation||'', (({1:0,2:3,3:4,4:5})[q]!=null?({1:0,2:3,3:4,4:5})[q]:2), {  // parytet EF z web rateCard qMap
       card_key:r.card_key, lang:(r.lang||''), flashcard_id:(r.flashcard_id!=null?r.flashcard_id:null),
       cur:{ease_factor:r.ease_factor,repetitions:r.repetitions,interval_days:r.interval_days}
     });
+    try{ if(typeof eylRevAfterGrade==='function') eylRevAfterGrade({word:r.word,translation:r.translation,card_key:r.card_key,repetitions:r.repetitions,interval_days:r.interval_days}, _ns); }catch(e){}
   }catch(e){}
   _pwDone++; _pwIdx++;
   if(_pwIdx>=_pwQueue.length){ pwRenderDone(); }
@@ -7987,5 +8020,294 @@ window.eylPagedFetch = async function(makeQuery, opts){
   .catnav button:disabled,.br-t:disabled,.pw-g:disabled,#alex-send:disabled,
   .lexx-next:disabled{opacity:.45;cursor:default;transform:none}
 </style>
+<script id="eyl-review-core">
+/* ═══ EYELINGO — POWTÓRKI: porcja dzienna, rozłożenie zaległości, wstrzymanie
+       zestawu, pytanie o opanowanie, „znam ten zestaw" (web + PWA, parytet).
+   Twarde reguły (Logic Bible §REV):
+   REV-1  Powtórki pokazują DZIENNĄ PORCJĘ (domyślnie 20), nie całą zaległość.
+          Kolejność: najbardziej spóźnione względem własnego interwału.
+   REV-2  „Rozłóż zaległości" przesuwa next_review — nigdy nie kasuje historii.
+          Twardego resetu nie ma.
+   REV-3  Wstrzymanie zestawu = next_review 2999-12-31. EF, powtórzenia i interwał
+          zostają. Wznowienie rozkłada słowa od dziś porcjami.
+   REV-4  Przy przekroczeniu progu opanowania (reps>=3 i interwał>=21) pytamy RAZ:
+          „Tak" → kontrola za 90 dni; „Jeszcze nie" → zwykłe SM-2.
+   REV-5  W powtórkach przyciski opisują WYNIK przypomnienia (SM-2), w przeglądaniu
+          — deklarację. Nie mogą wyglądać tak samo. */
+(function(){
+  if(window.eylRevReady) return; window.eylRevReady=true;
+  var PAUSE_DATE='2999-12-31', CAPS=[10,20,40,0], DEF_CAP=20, MASTER_IV=90;
+  var _uid=null;
+  function sess(){ return db.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; _uid=s?s.user.id:null; return _uid; }).catch(function(){ return null; }); }
+  try{ sess().then(function(){ try{ var td=dstr(0); for(var i=localStorage.length-1;i>=0;i--){ var k=localStorage.key(i); if(k && /^eyl_rev_(done|extra)_/.test(k) && k.slice(-10)!==td) localStorage.removeItem(k); } }catch(e){} }); }catch(e){}
+  function ls(k,v){ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,String(v)); }catch(e){ return null; } }
+  function dstr(off){ var d=new Date(Date.now()+(off||0)*86400000); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function ck(c){ if(c&&c.card_key) return c.card_key; return String((c&&c.word)||'').trim().toLowerCase()+'|'+String((c&&c.translation)||'').trim().toLowerCase(); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function toast(m){ try{ if(typeof eylToast==='function'){ eylToast(m); return; } }catch(e){} try{ if(typeof showToast==='function'){ showToast(m,'success'); return; } }catch(e){} }
+  function refreshAll(){
+    try{ if(typeof refreshDueBadge==='function') refreshDueBadge(); }catch(e){}
+    try{ if(typeof updateSrsBadge==='function') updateSrsBadge(); }catch(e){}
+    try{ if(typeof loadSrsQueue==='function' && _uid) loadSrsQueue(_uid); }catch(e){}
+    try{ if(typeof window.eylRevBarRefresh==='function') window.eylRevBarRefresh(); }catch(e){}
+  }
+  /* Lokalny cache web (usrs_<uid>) — trzymamy go w zgodzie z bazą. */
+  function localPatch(keys, patch){
+    try{
+      if(typeof _usrsLoad!=='function'||typeof _usrsSaveAll!=='function'||!_uid) return;
+      var st=_usrsLoad(_uid)||{}, ch=false;
+      keys.forEach(function(k){ if(st[k]){ if(patch.due!=null) st[k].due=patch.due; if(patch.interval!=null) st[k].interval=patch.interval; st[k].ts=Date.now(); ch=true; } });
+      if(ch) _usrsSaveAll(_uid,st);
+    }catch(e){}
+  }
+
+  /* ── REV-1: porcja dzienna ── */
+  window.eylRevCap=function(v){
+    var k='eyl_rev_cap';
+    if(v!==undefined){ ls(k,v); refreshAll(); return v; }
+    var r=ls(k); var n=(r==null||r==='')?DEF_CAP:parseInt(r,10); return isNaN(n)?DEF_CAP:n;
+  };
+  function doneKey(){ return 'eyl_rev_done_'+(_uid||'anon')+'_'+dstr(0); }
+  function extraKey(){ return 'eyl_rev_extra_'+(_uid||'anon')+'_'+dstr(0); }
+  window.eylRevDone=function(){ return parseInt(ls(doneKey())||'0',10)||0; };
+  window.eylRevTick=function(){ ls(doneKey(), eylRevDone()+1); };
+  window.eylRevMore=function(n){ ls(extraKey(), (parseInt(ls(extraKey())||'0',10)||0)+(n||10)); refreshAll(); };
+  window.eylRevRemaining=function(){
+    var cap=eylRevCap(); if(!cap) return Infinity;
+    var extra=parseInt(ls(extraKey())||'0',10)||0;
+    return Math.max(0, cap+extra-eylRevDone());
+  };
+  function overdue(r){
+    var nr=String(r.next_review||r.due||dstr(0)).slice(0,10);
+    var days=Math.max(0,(Date.parse(dstr(0))-Date.parse(nr))/86400000);
+    var iv=Math.max(1, Number(r.interval_days||r.interval||1));
+    return (days+1)/iv;
+  }
+  window.eylRevPrioritize=function(rows){
+    return (rows||[]).slice().sort(function(a,b){
+      var d=overdue(b)-overdue(a); if(d) return d;
+      return (Number(a.ease_factor||2.5))-(Number(b.ease_factor||2.5));
+    });
+  };
+  /* Zwraca {items, total, portion} — items to dzisiejsza porcja w kolejności priorytetu. */
+  window.eylRevPortion=function(rows){
+    var all=eylRevPrioritize(rows), rem=eylRevRemaining();
+    var items=(rem===Infinity)?all:all.slice(0,rem);
+    window._eylRevLast={total:all.length, portion:items.length};
+    return {items:items, total:all.length, portion:items.length};
+  };
+  window.eylRevPortionCount=function(total){ var rem=eylRevRemaining(); return rem===Infinity?total:Math.min(total,rem); };
+
+  /* ── REV-2: rozłożenie zaległości ── */
+  async function fetchDue(){
+    if(typeof usrsDueList==='function') return await usrsDueList(5000);
+    if(typeof _pwFetchDue==='function') return await _pwFetchDue(5000);
+    return [];
+  }
+  async function setDates(groups){        // {date:[card_key,…]}
+    var uid=_uid||await sess(); if(!uid) return 0; var n=0;
+    var dates=Object.keys(groups);
+    for(var i=0;i<dates.length;i++){
+      var keys=groups[dates[i]];
+      for(var o=0;o<keys.length;o+=200){
+        var ch=keys.slice(o,o+200);
+        try{ await db.from('srs_progress').update({next_review:dates[i]}).eq('user_id',uid).in('card_key',ch); n+=ch.length; }catch(e){}
+      }
+      localPatch(keys,{due:dates[i]});
+    }
+    return n;
+  }
+  window.eylRevSpread=async function(){
+    var rows=eylRevPrioritize(await fetchDue()); if(!rows.length){ toast('Nie ma zaległości.'); return; }
+    var cap=eylRevCap()||DEF_CAP, rem=eylRevRemaining(); if(rem===Infinity) rem=cap;
+    var rest=rows.slice(rem); if(!rest.length){ toast('Wszystko mieści się w dzisiejszej porcji.'); return; }
+    var days=Math.min(14, Math.max(1, Math.ceil(rest.length/cap)));
+    var per=Math.ceil(rest.length/days), g={};
+    rest.forEach(function(r,i){ var d=dstr(1+Math.floor(i/per)); (g[d]=g[d]||[]).push(ck(r)); });
+    var n=await setDates(g);
+    toast('Rozłożono '+n+' słów na '+days+' '+(days===1?'dzień':'dni')+' — historia nauki bez zmian.');
+    refreshAll();
+    return n;
+  };
+
+  /* ── REV-3: wstrzymanie zestawu ── */
+  function keysOf(cards){ var s={}, out=[]; (cards||[]).forEach(function(c){ var k=ck(c); if(k&&k!=='|'&&!s[k]){ s[k]=1; out.push(k); } }); return out; }
+  window.eylRevSetState=async function(cards){
+    var uid=_uid||await sess(); var keys=keysOf(cards); var st={tracked:0,paused:0};
+    if(!uid||!keys.length) return st;
+    for(var o=0;o<keys.length;o+=200){
+      try{ var r=await db.from('srs_progress').select('card_key,next_review').eq('user_id',uid).in('card_key',keys.slice(o,o+200));
+        ((r&&r.data)||[]).forEach(function(x){ st.tracked++; if(String(x.next_review||'')>='2999') st.paused++; }); }catch(e){}
+    }
+    return st;
+  };
+  window.eylRevPauseSet=async function(cards, pause){
+    var uid=_uid||await sess(); var keys=keysOf(cards); if(!uid||!keys.length) return 0;
+    if(pause){
+      var g={}; g[PAUSE_DATE]=keys; var n=await setDates(g);
+      toast(n?('Wstrzymano powtórki '+n+' słów. Postęp zostaje.'):'Te słowa nie są jeszcze w powtórkach.');
+      refreshAll(); return n;
+    }
+    // Wznowienie: tylko wstrzymane, rozłożone porcjami od dziś
+    var paused=[];
+    for(var o=0;o<keys.length;o+=200){
+      try{ var r=await db.from('srs_progress').select('card_key,next_review').eq('user_id',uid).in('card_key',keys.slice(o,o+200));
+        ((r&&r.data)||[]).forEach(function(x){ if(String(x.next_review||'')>='2999') paused.push(x.card_key); }); }catch(e){}
+    }
+    var cap=eylRevCap()||DEF_CAP, g2={};
+    paused.forEach(function(k,i){ var d=dstr(Math.floor(i/cap)); (g2[d]=g2[d]||[]).push(k); });
+    var m=await setDates(g2);
+    toast(m?('Wznowiono powtórki '+m+' słów.'):'Nic nie było wstrzymane.');
+    refreshAll(); return m;
+  };
+
+  /* ── „Znam ten zestaw" — parytet z markKnownBulk (PWA): 60 dni, reps 5 ── */
+  window.eylRevMarkKnown=async function(cards, lang){
+    var uid=_uid||await sess(); if(!uid||!cards||!cards.length) return 0;
+    var iv=60, nr=dstr(iv), rows=[], seen={}, st=null;
+    try{ if(typeof _usrsLoad==='function') st=_usrsLoad(uid)||{}; }catch(e){ st=null; }
+    cards.forEach(function(c){
+      var w=String(c.word||c.front||'').trim(), t=String(c.translation||c.back||'').trim(); if(!w||!t) return;
+      var k=ck({word:w,translation:t}); if(seen[k]) return; seen[k]=1;
+      var fc=(c.flashcard_id!=null?c.flashcard_id:(c.id!=null?c.id:null));
+      var L=String(c.lang||lang||'');
+      try{ if(typeof _eylTrueLang==='function') L=_eylTrueLang({word:w, lang:(typeof _eylNormLang==='function'?_eylNormLang(L):L)})||L; }catch(e){}
+      rows.push({user_id:uid,card_key:k,word:w,translation:t,lang:L,source:(fc!=null?'eyelingo':'custom'),flashcard_id:fc,ease_factor:2.6,repetitions:5,interval_days:iv,next_review:nr});
+      if(st) st[k]={ef:2.6,interval:iv,reps:5,due:nr,word:w,translation:t,fc:fc,lang:L,ts:Date.now()};
+    });
+    for(var i=0;i<rows.length;i+=400){ try{ await db.from('srs_progress').upsert(rows.slice(i,i+400),{onConflict:'user_id,card_key'}); }catch(e){} }
+    try{ if(st&&typeof _usrsSaveAll==='function') _usrsSaveAll(uid,st); }catch(e){}
+    refreshAll(); return rows.length;
+  };
+
+  /* ── REV-4: pytanie o opanowanie ── */
+  function asked(k,set){
+    var key='eyl_mq_'+(_uid||'anon'), o={};
+    try{ o=JSON.parse(ls(key)||'{}')||{}; }catch(e){ o={}; }
+    if(set){ o[k]=Date.now(); var ks=Object.keys(o); if(ks.length>3000){ ks.sort(function(a,b){return o[a]-o[b];}).slice(0,500).forEach(function(x){ delete o[x]; }); } ls(key,JSON.stringify(o)); }
+    return !!o[k];
+  }
+  function mastered(r,iv){ return Number(r||0)>=3 && Number(iv||0)>=21; }
+  window.eylRevAfterGrade=function(before, ns){
+    try{ eylRevTick(); }catch(e){}
+    try{
+      if(!ns||!before) return;
+      if(mastered(before.repetitions,before.interval_days)) return;
+      if(!mastered(ns.repetitions,ns.interval_days)) return;
+      var k=ck(before); if(asked(k)) return;
+      asked(k,true);
+      showMasteryAsk(k, String(before.word||''), Number(ns.interval_days||21));
+    }catch(e){}
+  };
+  function showMasteryAsk(k, word, iv){
+    var old=document.getElementById('eyl-mq'); if(old) old.remove();
+    var b=document.createElement('div'); b.id='eyl-mq'; b.setAttribute('role','status');
+    b.style.cssText='position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:10050;'
+      +'width:min(520px,calc(100vw - 24px));background:#fff;border:1px solid var(--line,#e7e3da);border-left:3px solid #6aa84f;'
+      +'border-radius:14px;box-shadow:0 10px 34px rgba(26,35,64,.16);padding:14px 16px;font-family:inherit;animation:lexFadeIn .25s ease';
+    b.innerHTML='<div style="font-size:14px;font-weight:600;color:var(--navy,#1a2340);margin-bottom:3px">„'+esc(word)+'" wygląda na opanowane</div>'
+      +'<div style="font-size:12.5px;line-height:1.5;color:var(--dim2,#646c80);margin-bottom:11px">Przetrwało kilka powtórek i ponad 3 tygodnie przerwy. Czujesz, że je znasz? Wróci wtedy tylko raz, kontrolnie, za 3 miesiące.</div>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end">'
+      +'<button type="button" data-a="no" style="padding:8px 14px;border-radius:100px;border:1px solid var(--border2,#d8d2c0);background:transparent;color:var(--dim,#5b6478);font:inherit;font-size:13px;cursor:pointer">Jeszcze nie</button>'
+      +'<button type="button" data-a="yes" style="padding:8px 16px;border-radius:100px;border:0;background:var(--navy,#1a2340);color:#fff;font:inherit;font-size:13px;font-weight:500;cursor:pointer">Tak, opanowane</button></div>';
+    document.body.appendChild(b);
+    var t=setTimeout(function(){ try{ b.remove(); }catch(e){} }, 12000);
+    b.addEventListener('click', async function(ev){
+      var a=ev.target&&ev.target.getAttribute&&ev.target.getAttribute('data-a'); if(!a) return;
+      clearTimeout(t); b.remove();
+      if(a!=='yes') return;
+      var uid=_uid||await sess(); if(!uid) return;
+      var niv=Math.max(MASTER_IV, iv||0), nr=dstr(MASTER_IV);
+      try{ await db.from('srs_progress').update({interval_days:niv,next_review:nr}).eq('user_id',uid).eq('card_key',k); }catch(e){}
+      localPatch([k],{due:nr,interval:niv});
+      toast('Zapisane. Wróci kontrolnie za 3 miesiące.');
+    });
+  }
+
+  /* ── Web: zastosuj porcję w punkcie wejścia do powtórek. Zwraca listę albo
+        null (wtedy w hostEl renderuje „porcja zrobiona"). entry = nazwa funkcji
+        wejścia, do ponownego uruchomienia po zmianie porcji. ── */
+  function rerun(){ try{ var f=window[window._eylRevEntry||'powtorkiEnter']; if(typeof f==='function') f(); }catch(e){} }
+  window.eylRevRerun=rerun;
+  window.eylRevApply=function(list, hostEl, entry){
+    window._eylRevEntry=entry||window._eylRevEntry;
+    var por=eylRevPortion(list||[]);
+    if(por.items.length) return por.items;
+    var h='<div id="eyl-rev-done" style="text-align:center;padding:64px 24px;animation:lexFadeIn .25s ease">'
+      +'<div style="font-family:DM Sans,sans-serif;font-size:20px;font-weight:500;color:var(--navy);margin-bottom:8px">Dzisiejsza porcja zrobiona</div>'
+      +'<div style="font-size:14px;color:var(--dim2);max-width:360px;margin:0 auto 18px;line-height:1.6">Zostało '+por.total+' zaległych słów. Nie musisz robić wszystkiego dziś — wrócą w kolejnych porcjach.</div>'
+      +'<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
+      +'<button onclick="eylRevMore(10);eylRevRerun()" style="padding:10px 18px;border-radius:100px;border:1.5px solid var(--border2);background:transparent;font-family:DM Sans,sans-serif;font-size:13px;cursor:pointer;color:var(--navy)">Jeszcze 10</button>'
+      +'<button onclick="eylRevSpread().then(eylRevRerun)" style="padding:10px 18px;border-radius:100px;border:0;background:var(--navy);color:#fff;font-family:DM Sans,sans-serif;font-size:13px;cursor:pointer">Rozłóż zaległości</button>'
+      +'</div></div>';
+    if(hostEl){ if(hostEl.id==='strefa-center-content') hostEl.innerHTML=h; else { var o=document.getElementById('eyl-rev-done'); if(o) o.remove(); var d=document.createElement('div'); d.innerHTML=h; hostEl.appendChild(d.firstChild); } }
+    try{ if(window._eylTrybRel){ window._eylTrybRel(); window._eylTrybRel=null; } }catch(e){}
+    return null;
+  };
+
+  /* ── Web: akcje zestawu na ekranie wyboru trybu (parytet z PWA) ── */
+  window.eylSetActions=function(cards){
+    cards=(cards||[]).filter(function(c){ return (c.word||c.front)&&(c.translation||c.back); });
+    if(!cards.length) return null;
+    var d=document.createElement('div'); d.id='eyl-set-actions';
+    d.style.cssText='display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:18px auto 4px;max-width:560px;padding-top:14px;border-top:.5px solid var(--border,#e7e3da)';
+    var bs='display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:100px;font-family:DM Sans,sans-serif;font-size:13px;cursor:pointer;';
+    d.innerHTML='<button type="button" data-k="known" style="'+bs+'border:1px solid #cfe3bf;background:#eef5e6;color:#2f6b2f">'
+      +'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Już znam ten zestaw</button>'
+      +'<button type="button" data-k="pause" style="'+bs+'border:1px solid var(--border2,#d8d2c0);background:transparent;color:var(--dim,#5b6478);display:none">'
+      +'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span>Wstrzymaj powtórki zestawu</span></button>'
+      +'<div data-k="note" style="flex-basis:100%;text-align:center;font-size:11.5px;color:var(--dim2,#646c80);line-height:1.5">„Już znam" odkłada słowa na ok. 2 miesiące — wrócą raz, kontrolnie.</div>';
+    var pb=d.querySelector('[data-k="pause"]'), paused=false;
+    function paint(st){
+      if(!st||!st.tracked){ pb.style.display='none'; return; }
+      paused=(st.paused>0 && st.paused>=st.tracked/2);
+      pb.style.display='inline-flex';
+      pb.querySelector('span').textContent=paused?('Wznów powtórki zestawu ('+st.paused+')'):'Wstrzymaj powtórki zestawu';
+    }
+    eylRevSetState(cards).then(paint);
+    d.addEventListener('click', async function(ev){
+      var b=ev.target.closest&&ev.target.closest('button[data-k]'); if(!b) return;
+      b.disabled=true;
+      try{
+        if(b.getAttribute('data-k')==='known'){
+          if(!confirm('Oznaczyć wszystkie słowa ('+cards.length+') jako znane? Trafią do długich powtórek (ok. 2 miesiące) i znikną z dzisiejszej kolejki.')){ b.disabled=false; return; }
+          var n=await eylRevMarkKnown(cards, window._trybStudyLang||'');
+          toast('Oznaczono '+n+' słów jako znane.');
+        } else {
+          if(!paused && !confirm('Wstrzymać powtórki tego zestawu? Słowa znikną z kolejki, postęp zostanie.')){ b.disabled=false; return; }
+          await eylRevPauseSet(cards, !paused);
+        }
+        paint(await eylRevSetState(cards));
+      }catch(e){}
+      b.disabled=false;
+    });
+    return d;
+  };
+
+  /* ── Pasek porcji (web: ekran wyboru trybu powtórek) ── */
+  window.eylRevBar=function(){
+    var info=window._eylRevLast||{total:0,portion:0}; if(!info.total) return null;
+    var cap=eylRevCap();
+    var d=document.createElement('div'); d.id='eyl-rev-bar';
+    d.style.cssText='display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 14px;margin:-6px auto 18px;max-width:560px;'
+      +'font-size:12.5px;color:var(--dim2,#646c80);text-align:center';
+    var chips=CAPS.map(function(c){
+      var on=(c===cap);
+      return '<button type="button" data-cap="'+c+'" style="padding:4px 10px;border-radius:100px;font:inherit;font-size:12px;cursor:pointer;'
+        +(on?'border:1px solid var(--navy,#1a2340);background:var(--navy,#1a2340);color:#fff':'border:1px solid var(--border2,#d8d2c0);background:transparent;color:var(--dim,#5b6478)')+'">'+(c?c:'bez limitu')+'</button>';
+    }).join('');
+    var more=info.total>info.portion;
+    d.innerHTML='<span>'+(more?('Dziś '+info.portion+' z '+info.total+' zaległych'):('Dziś '+info.total))+'</span>'
+      +'<span style="display:inline-flex;align-items:center;gap:5px">Porcja: '+chips+'</span>'
+      +(more?'<button type="button" data-spread="1" style="background:none;border:0;padding:0;font:inherit;font-size:12.5px;color:var(--navy,#1a2340);text-decoration:underline;text-underline-offset:3px;cursor:pointer">Rozłóż zaległości</button>':'');
+    d.addEventListener('click', async function(ev){
+      var c=ev.target.closest&&ev.target.closest('[data-cap]');
+      if(c){ eylRevCap(parseInt(c.getAttribute('data-cap'),10)); rerun(); return; }
+      if(ev.target.closest&&ev.target.closest('[data-spread]')){ await eylRevSpread(); rerun(); }
+    });
+    return d;
+  };
+})();
+</script>
 </body>
 </html>
