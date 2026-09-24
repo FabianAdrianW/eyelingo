@@ -1970,6 +1970,8 @@ var EYL_LOAD_TXT={
   font-size:10.5px!important;font-weight:600!important;letter-spacing:.1em!important;
   color:var(--dim2)!important;margin:0 0 10px!important;
 }
+/* Etykieta pod wierszem chipów (np. „Poziom" pod „Język") — oddech między grupami */
+.eylc-chiprow + .eylc-flabel{margin-top:24px!important}
 
 /* ── 2. Chipy języka — równa szerokość, hairline, granat po wyborze ────
    Szerokość ustawia skrypt el-langchips (miara najdłuższej nazwy).
@@ -26342,5 +26344,53 @@ select::-ms-expand{display:none}
   // opakowania innych modułów mogą nadpisać funkcje później — dopnij się ponownie
   setTimeout(function(){ wrap(); hookPicker(); }, 0);
   window.addEventListener('load', function(){ wrap(); hookPicker(); });
+})();
+</script>
+<script id="eyl-noautofill">
+/* UI-INPUT-1: pola odpowiedzi nie podpowiadają historii przeglądarki.
+   Lista wcześniej wpisanych słów zasłania treść i podsuwa odpowiedź (psuje
+   aktywne przypominanie). Dotyczy wszystkich pól tekstowych poza logowaniem
+   i danymi konta (email, hasło, telefon, jawny autocomplete≠off). */
+(function(){
+  if(window._eylNoAc) return; window._eylNoAc=1;
+  var SKIP={email:1,password:1,tel:1,url:1,number:1,date:1,checkbox:1,radio:1,file:1,hidden:1,range:1,color:1,submit:1,button:1};
+  function fix(el){
+    try{
+      if(!el || el._eylNoAc) return;
+      var tg=el.tagName;
+      if(tg!=='INPUT' && tg!=='TEXTAREA') return;
+      var ty=String(el.getAttribute('type')||'text').toLowerCase();
+      if(tg==='INPUT' && SKIP[ty]) return;
+      var ac=String(el.getAttribute('autocomplete')||'').toLowerCase();
+      if(ac && ac!=='off' && ac!=='on') return;           // jawne pola konta (name, email…) zostają
+      if(/mail|login|user|pass|haslo|hasło/i.test((el.id||'')+' '+(el.name||''))) return;
+      el._eylNoAc=1;
+      el.setAttribute('autocomplete','off');
+      el.setAttribute('autocorrect','off');
+      el.setAttribute('autocapitalize','off');
+      el.setAttribute('spellcheck','false');
+      el.setAttribute('data-lpignore','true');            // menedżery haseł
+      el.setAttribute('data-1p-ignore','');
+      el.setAttribute('data-form-type','other');
+    }catch(e){}
+  }
+  function scan(root){
+    try{
+      if(!root) return;
+      if(root.tagName==='INPUT'||root.tagName==='TEXTAREA') fix(root);
+      if(root.querySelectorAll){ var l=root.querySelectorAll('input,textarea'); for(var i=0;i<l.length;i++) fix(l[i]); }
+    }catch(e){}
+  }
+  // Pole mogło powstać przed obserwatorem — łapiemy też przy fokusie.
+  document.addEventListener('focusin', function(e){ fix(e.target); }, true);
+  function start(){
+    scan(document.body);
+    try{
+      new MutationObserver(function(ms){
+        for(var i=0;i<ms.length;i++){ var a=ms[i].addedNodes; for(var j=0;j<a.length;j++){ if(a[j].nodeType===1) scan(a[j]); } }
+      }).observe(document.body,{childList:true,subtree:true});
+    }catch(e){}
+  }
+  if(document.body) start(); else document.addEventListener('DOMContentLoaded', start);
 })();
 </script>
