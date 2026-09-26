@@ -3517,7 +3517,7 @@ async function eylDeleteAccount(){
             try{track('account_deleted',{surface:'web'});eylFlush();}catch(_e){}
             try{ localStorage.clear(); }catch(_e){}
             try{ await db.auth.signOut(); }catch(_e){}
-            alert('Konto zostało usunięte. Dziękujemy, że byłeś z nami.');
+            await eylInfo({title:'Konto usunięte',body:'Dziękujemy, że byłeś z nami.'});
             location.href='./';
           }catch(e){ showMsg('del-acc-msg','Błąd połączenia. Spróbuj ponownie lub napisz: eyelingo.app@gmail.com','error'); }
         }
@@ -6941,7 +6941,7 @@ function lyricsReset(){
 
 async function analyzeLyrics(){
   var text=document.getElementById('lyrics-text').value.trim();
-  if(text.length<20){alert('Wklej tekst piosenki (minimum kilka linijek).');return;}
+  if(text.length<20){eylNote('Wklej tekst piosenki (minimum kilka linijek).');return;}
   var title=document.getElementById('lyrics-title').value.trim();
   var lang=document.getElementById('lyrics-lang').value;
   var genre=document.getElementById('lyrics-genre').value;
@@ -9414,7 +9414,7 @@ function trybFlipReveal(backText){
     btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
     var _qm={1:0,2:2,3:4,4:5}, _rev=!!window._trybIsReview, _rc=_trybCards[_trybIdx];
     (_rev
-      ? [{q:1,l:'Nie pamiętałem',bg:'#fcebeb',c:'#a32d2d'},{q:3,l:'Pamiętałem',bg:'#eaf3de',c:'#3b6d11'}]
+      ? [{q:1,g:'again',l:'Nie pamiętałem',bg:'#fcebeb',c:'#a32d2d'},{q:2,g:'hard',l:'Z trudem',bg:'#fdf1e4',c:'#8a4a18'},{q:3,g:'good',l:'Pamiętałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,g:'easy',l:'Od razu',bg:'#e0f2fe',c:'#0369a1'}]
       : [{q:1,l:'Nie wiedziałem',bg:'#fcebeb',c:'#a32d2d'},{q:3,l:'Wiedziałem',bg:'#eaf3de',c:'#3b6d11'},{q:4,l:'Łatwe',bg:'#e0f2fe',c:'#0369a1'}]
     ).forEach(function(opt,oi){
       var b = document.createElement('button');
@@ -9424,8 +9424,10 @@ function trybFlipReveal(backText){
       b.onmouseover = function(){ this.style.boxShadow='0 4px 14px rgba(26,35,64,.10)'; };
       b.onmouseout = function(){ this.style.boxShadow='none'; };
       var _nx=''; try{ var _bt2=({1:1,2:3,3:6,4:12})[opt.q]||6; if(_rev&&_rc&&typeof sm2Local==='function'){ _bt2=sm2Local(_rc,_qm[opt.q]).interval_days; } _nx=(typeof trybFmtNext==='function')?trybFmtNext(_bt2):''; }catch(e){}
-      b.innerHTML = '<span style="font-size:13px;font-weight:500">'+opt.l+'</span><span style="font-size:10.5px;opacity:.72">wróci '+_nx+'</span>';
-      b.onclick = function(){ rateCard(opt.q, !_rev); nav.remove(); };
+      var _sub='wróci '+_nx; try{ if(_rev&&opt.g&&_rc&&typeof eylRevLabel==='function') _sub=eylRevLabel(opt.g,_rc); }catch(e){}
+      b.innerHTML = '<span style="font-size:13px;font-weight:500">'+opt.l+'</span><span style="font-size:10.5px;opacity:.72">'+_sub+'</span>';
+      b.title = _rev ? ('Klawisz '+(oi+1)) : '';
+      b.onclick = function(){ rateCard(opt.q, !_rev, _rev?opt.g:undefined); nav.remove(); };
       btnRow.appendChild(b);
     });
     nav.appendChild(btnRow);
@@ -9468,11 +9470,16 @@ function trybFlipReveal(backText){
     if(e.code === 'ArrowRight'){ if(_trybIdx >= _trybCards.length-1){ if(_trybFlipRevealed) showTrybSessionSummary(); } else { _trybIdx++; loadTrybFlipCard('next'); } }
     if(e.code === 'ArrowLeft' && _trybIdx > 0){ _trybIdx--; loadTrybFlipCard('prev'); }
     // Ocena klawiszami 1-4 (tylko po odsłonięciu)
-    if(_trybFlipRevealed && /^Digit[1-3]$/.test(e.code)){
-      e.preventDefault();
-      var n2=document.getElementById('tryb-flip-nav'); if(n2) n2.remove();
-      var _qk=({1:1,2:3,3:4})[parseInt(e.code.slice(5),10)]||3;
-      rateCard(_qk, true);
+    if(_trybFlipRevealed && /^Digit[1-4]$/.test(e.code)){
+      var _dk=parseInt(e.code.slice(5),10);
+      if(window._trybIsReview){
+        // REV-7: w powtórkach klawisze 1–4 = ocena SM-2 (wcześniej zapisywały deklarację — błąd)
+        e.preventDefault(); var n2=document.getElementById('tryb-flip-nav'); if(n2) n2.remove();
+        rateCard(_dk, false, (['again','hard','good','easy'])[_dk-1]);
+      } else if(_dk<=3){
+        e.preventDefault(); var n2b=document.getElementById('tryb-flip-nav'); if(n2b) n2b.remove();
+        rateCard(({1:1,2:3,3:4})[_dk]||3, true);
+      }
     }
   };
 }
@@ -9780,7 +9787,7 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
   if(_trybMode==='write'||_trybMode==='memorize'){
     var oldNav=document.getElementById('tryb-flip-nav'); if(oldNav) oldNav.remove();
     var _aq = isCorrect ? (isTypo?3:4) : 1;
-    var _aqMap={1:0,3:4,4:5};
+    var _aqMap={1:0,3:3,4:4};   // REV-5, parytet z PWA: trafienie 4, literówka 3, błąd 0
     try{ if(window._trybSRSEnabled!==false){ var _ans=sm2Local(card,_aqMap[_aq]); saveTrybSRS(card,_ans); usrsRecord(card,_ans); } }catch(_e){}
     if(!isCorrect && card && card.id){ if(!window._trybStruggling) window._trybStruggling=[]; if(!_trybStruggling.some(function(c){return c.id===card.id;})) _trybStruggling.push({id:card.id,word:card.word,translation:card.translation}); }
     if(isCorrect){ _trybSessionStats.xpGained+=7; }
@@ -9791,8 +9798,27 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
       nav.style.cssText='display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:14px;width:100%';
       var _hint=document.createElement('div');
       _hint.style.cssText='font-size:11px;color:var(--dim2)';
-      _hint.textContent = isCorrect ? (isTypo?'Prawie — literówka. Wróci wkrótce.' : 'Dobrze. Wróci '+((typeof trybFmtNext==='function')?trybFmtNext(_ans?_ans.interval_days:1):'później')+'.') : 'Wróci dziś do powtórki.';
+      var _fmtIv=function(s){ return (typeof trybFmtNext==='function')?trybFmtNext(s?s.interval_days:1):'później'; };
+      _hint.textContent = isCorrect ? ((isTypo?'Prawie — literówka. ':'Dobrze. ')+'Wróci '+_fmtIv(_ans)+'.') : ('Wróci '+_fmtIv(_ans)+'.');
       nav.appendChild(_hint);
+      // REV-5: synonim, którego system nie zna — uczeń może uznać odpowiedź (jakość 3). Parytet z PWA.
+      if(!isCorrect && String(userAns||'').trim() && window._trybSRSEnabled!==false){
+        var _ov=document.createElement('button'); _ov.type='button';
+        _ov.textContent='Moja odpowiedź też była dobra';
+        _ov.style.cssText='background:none;border:0;padding:0;font:inherit;font-size:12.5px;color:var(--dim2);text-decoration:underline;text-underline-offset:3px;cursor:pointer';
+        _ov.onclick=function(){
+          try{
+            var _o=sm2Local(card,3);
+            saveTrybSRS(Object.assign({},card,{_rq:1}),_o); usrsRecord(card,_o);
+            _trybSessionStats.correct++;
+            if(window._trybStruggling) window._trybStruggling=_trybStruggling.filter(function(c){ return c.id!==card.id; });
+            if(resIcon) resIcon.textContent='✅ Uznane';
+            _hint.textContent='Uznane. Wróci '+_fmtIv(_o)+'.';
+          }catch(e){}
+          _ov.remove(); try{ nb.focus(); }catch(e){}
+        };
+        nav.appendChild(_ov);
+      }
       var nb=document.createElement('button');
       nb.textContent='Dalej →';
       nb.style.cssText='padding:11px 28px;border:none;border-radius:12px;background:var(--navy);color:#fff;font-size:15px;font-weight:500;cursor:pointer;font-family:DM Sans,sans-serif';
@@ -9805,11 +9831,12 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
 }
 
 
-async function rateCard(btnRating, declare){
+async function rateCard(btnRating, declare, sched){
   var card=_trybCards[_trybIdx];if(!card)return;
 
   var isTypo=document.getElementById('tryb-result-icon')&&document.getElementById('tryb-result-icon').textContent.includes('⚠️');
   var eff=isTypo?Math.min(btnRating,3):btnRating;
+  if(sched) eff=({again:1,hard:3,good:3,easy:4})[sched]||3;   // REV-7: „Z trudem" = przypomniane
   // Statystyki sesji — tryb 'flip' oceniany jest przyciskami, nie przez revealTrybAnswer.
   _trybSessionStats.total++; if(eff>=3) _trybSessionStats.correct++;
   if(eff<=2 && card && card.id){
@@ -9822,6 +9849,7 @@ async function rateCard(btnRating, declare){
   var newSRS;
   if(declare){ var _bt=({1:{r:0,iv:1},2:{r:1,iv:3},3:{r:2,iv:6},4:{r:2,iv:12}})[eff]||{r:2,iv:6};
     newSRS={ease_factor:(card.ease_factor||2.5),repetitions:_bt.r,interval_days:_bt.iv,next_review:new Date(Date.now()+_bt.iv*86400000).toISOString().slice(0,10)}; }
+  else if(sched && typeof eylRevSched==='function'){ newSRS=eylRevSched(card,sched); }
   else { newSRS=sm2Local(card,quality); }
   // Przegladanie z wylaczonym zapisem: karta sie ocenia dla statystyk sesji,
   // ale nie trafia do powtorek. Bez tego przelacznik byl fikcja wlasnie tutaj,
@@ -9829,6 +9857,16 @@ async function rateCard(btnRating, declare){
   if(window._trybSRSEnabled!==false){
     await saveTrybSRS(card,newSRS);
     usrsRecord(card,newSRS);
+  }
+  // REV-7: „Nie pamiętałem" w powtórkach — karta wraca jeszcze w tej sesji (~3 dalej, ten sam język, maks. 2×)
+  if(sched==='again' && window._trybIsReview && (card._rq||0)<2){
+    try{
+      var _cp=Object.assign({},card,{ease_factor:newSRS.ease_factor,repetitions:newSRS.repetitions,interval_days:newSRS.interval_days,_rq:(card._rq||0)+1});
+      var _lc=String(card.lang||''), _end=_trybIdx+1;
+      while(_end<_trybCards.length && String(_trybCards[_end].lang||'')===_lc) _end++;
+      var _pos=(_end>_trybIdx+1)?Math.min(_trybIdx+4,_end):_trybCards.length;
+      _trybCards.splice(_pos,0,_cp);
+    }catch(e){}
   }
   var xpTable={1:0,2:3,3:7,4:10};
   var xp=xpTable[eff]||0;
@@ -9848,7 +9886,7 @@ async function rateCard(btnRating, declare){
 
 async function saveTrybSRS(card,newSRS){
   if(window._trybSRSEnabled === false) return; // SRS disabled by user
-  try{ if(window._trybIsReview && typeof eylRevAfterGrade==='function') eylRevAfterGrade(card,newSRS); }catch(e){}
+  try{ if(window._trybIsReview && !card._rq && typeof eylRevAfterGrade==='function') eylRevAfterGrade(card,newSRS); }catch(e){}
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess||!card.id)return;
@@ -10249,12 +10287,9 @@ function openCollectionView(colIdx){
 
 
 async function moveSetToCollection(setId, setName){
-  if(!_collections.length){ alert('Najpierw stwórz katalog.'); return; }
-  var opts = _collections.map(function(c,i){ return (i+1)+'. '+(c.icon||'📁')+' '+c.name; }).join(', ');
-  var pick = prompt('Wybierz katalog (wpisz numer): ' + opts);
-  if(!pick) return;
-  var idx = parseInt(pick) - 1;
-  if(idx < 0 || idx >= _collections.length){ alert('Nieprawidłowy numer'); return; }
+  if(!_collections.length){ eylNote('Najpierw stwórz katalog.'); return; }
+  var idx = await eylPick({title:'Przenieś „'+setName+'” do katalogu', items:_collections.map(function(c){ return {label:(c.icon||'📁')+' '+c.name, sub:(function(n){ var d=n%10,h=n%100; return n+' '+(n===1?'zestaw':((d>=2&&d<=4&&(h<12||h>14))?'zestawy':'zestawów')); })((c.sets||[]).length)}; })});
+  if(idx < 0 || idx >= _collections.length) return;
   var sess = (await db.auth.getSession()).data.session; if(!sess) return;
   if(!_collections[idx].sets) _collections[idx].sets = [];
   // Remove from other collections first
@@ -10398,12 +10433,9 @@ function openCollection(idx){
 async function addSetToCollection(colIdx, modalEl){
   var sess = (await db.auth.getSession()).data.session; if(!sess) return;
   var {data:sets} = await db.from('user_sets').select('id,name').eq('user_id',sess.user.id).order('created_at',{ascending:false}).limit(20);
-  if(!sets||!sets.length){ alert('Brak zestawów do dodania'); return; }
-  var names = sets.map(function(s,i){ return (i+1)+'. '+s.name; }).join(', ');
-
-  var pick = prompt('Wybierz numer zestawu: ' + names);
-
-  var chosen = sets[parseInt(pick)-1];
+  if(!sets||!sets.length){ eylNote('Nie masz jeszcze zestawów do dodania.'); return; }
+  var _pi = await eylPick({title:'Dodaj zestaw do katalogu', items:sets.map(function(s){ return {label:s.name}; })});
+  var chosen = sets[_pi];
   if(!chosen) return;
   if(!_collections[colIdx].sets) _collections[colIdx].sets = [];
   _collections[colIdx].sets.push({id:chosen.id, name:chosen.name});
@@ -11722,10 +11754,17 @@ async function kkLoadArchiveDayOdkryj(date){
   }
 }
 
+/* AUDIO-1/4: słowo z artykułu kulturowego — język z pisma albo z kraju.
+   Nie znamy języka → cisza + komunikat (nigdy obcy głos). */
 function kkSpeak(){
-  if(!_kkCurrentArticle||!window.speechSynthesis)return;
-  var utt=new SpeechSynthesisUtterance(_kkCurrentArticle.word);
-  utt.rate=0.85;window.speechSynthesis.speak(utt);
+  var a=_kkCurrentArticle; if(!a||!a.word) return;
+  var w=String(a.word), L=(typeof eylLangHintAudio==='function')?eylLangHintAudio(w):'';
+  if(!L){
+    var k=String(a.country||'').toLowerCase(), M=[[/japon|japan/,'jp'],[/kore/,'ko'],[/chin|tajwan/,'zh'],[/arab|egipt|maroko|liban|syri|jordan|iran/,'ar'],[/rosj/,'ru'],[/ukrain/,'uk'],[/hiszpan|meksyk|argentyn|kolumbi|peru|chile|kub/,'es'],[/brazyli|portugal/,'pt'],[/niem|austri/,'de'],[/franc/,'fr'],[/włoch|wloch|itali/,'it'],[/holandi|niderland/,'nl'],[/norweg|norwe/,'no'],[/angli|wielka brytania|irlandi|usa|stany|amery|kanad|australi/,'en']];
+    for(var i=0;i<M.length;i++){ if(M[i][0].test(k)){ L=M[i][1]; break; } }
+  }
+  if(!L){ eylNote('Nie mamy wymowy w tym języku.'); return; }
+  if(typeof window.eylSay==='function'){ window.eylSay(w, L, 0.85); return; }
 }
 
 function kkStartQuizOdkryj(){
@@ -20918,7 +20957,9 @@ async function lexInit(){
     text=String(text||'').trim(); if(!text) return;
     try{ if(window._elWordAudio){ window._elWordAudio.pause(); window._elWordAudio=null; } }catch(e){}
     try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
-    var lc=String(langCode||'en-US');
+    var lc=String(langCode||'');
+    if(!lc){ var _h=(typeof eylLangHintAudio==='function')?eylLangHintAudio(text):''; lc=(_h&&typeof window.ttsLangCode==='function')?window.ttsLangCode(_h):''; }
+    if(!lc){ try{ console.warn('[audio] ttsPlayPause bez języka — cisza (AUDIO-4)'); }catch(e){} return; }
     var webOnly=/^(ar|ja|zh|ko)/i.test(lc);
     function webSpeak(){
       try{ var u=new SpeechSynthesisUtterance(text); u.lang=lc; u.rate=(rate||0.8);
@@ -22294,7 +22335,7 @@ if ('serviceWorker' in navigator) {
     var limit = (row && row.limit!=null) ? row.limit : 3;
     var msg = 'Masz za sobą ' + limit + ' darmowe lekcje z Ailexem. Aby uczyć się dalej bez limitu, przejdź na PRO.';
     if(typeof eylUpgradeModal === 'function'){ eylUpgradeModal('Wykorzystałeś darmowe lekcje', msg); }
-    else { try{ alert(msg); }catch(e){} }
+    else { try{ eylInfo({title:'Wykorzystałeś darmowe lekcje',body:msg}); }catch(e){} }
   };
 
   window.lexStartLesson = async function(){
@@ -25747,7 +25788,8 @@ select::-ms-expand{display:none}
    REV-4  Przy przekroczeniu progu opanowania (reps>=3 i interwał>=21) pytamy RAZ:
           „Tak" → kontrola za 90 dni; „Jeszcze nie" → zwykłe SM-2.
    REV-5  W powtórkach przyciski opisują WYNIK przypomnienia (SM-2), w przeglądaniu
-          — deklarację. Nie mogą wyglądać tak samo. */
+          — deklarację. Nie mogą wyglądać tak samo.
+   REV-7  Odwracanie w powtórkach: 4 oceny (eylRevSched), każda z innym terminem. */
 (function(){
   if(window.eylRevReady) return; window.eylRevReady=true;
   var PAUSE_DATE='2999-12-31', CAPS=[10,20,40,0], DEF_CAP=20, MASTER_IV=90;
@@ -26392,5 +26434,123 @@ select::-ms-expand{display:none}
     }catch(e){}
   }
   if(document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
+</script>
+<script id="eyl-rev-sched">
+/* ═══ REV-7: Powtórki · Odwracanie — cztery oceny, cztery różne terminy ═══
+   Nie pamiętałem → reset SM-2 + karta wraca jeszcze w tej sesji (maks. 2×).
+   Z trudem < Pamiętałem < Od razu → zawsze różne, rosnące odstępy.
+   Wpisywanie (REV-5) zostaje bez zmian: tam ocenia odpowiedź. */
+(function(){
+  if(window.eylRevSched) return;
+  var Q={again:0,hard:3,good:4,easy:5};
+  function nef(ef,q){ ef=ef+(0.1-(5-q)*(0.08+(5-q)*0.02)); return ef<1.3?1.3:parseFloat(ef.toFixed(3)); }
+  window.eylRevIntervals=function(c){
+    c=c||{}; var ef=+c.ease_factor||2.5, r=+c.repetitions||0, iv=+c.interval_days||1, h,g,e;
+    if(r<=0){ h=1; g=2; e=4; }
+    else if(r===1){ h=2; g=3; e=6; }
+    else { g=Math.max(iv+1,Math.round(iv*ef)); h=Math.max(iv,Math.round(iv*1.2)); e=Math.round(g*1.3); }
+    if(h>=g) h=Math.max(1,g-1);
+    if(e<=g) e=g+1;
+    return {again:0, hard:h, good:g, easy:e};
+  };
+  window.eylRevSched=function(c,g){
+    c=c||{}; if(Q[g]==null) g='good';
+    var reps=(g==='again')?0:((+c.repetitions||0)+1);
+    var d=(g==='again')?1:eylRevIntervals(c)[g];
+    return {ease_factor:nef(+c.ease_factor||2.5,Q[g]), repetitions:reps, interval_days:d,
+            next_review:new Date(Date.now()+d*86400000).toISOString().slice(0,10)};
+  };
+  window.eylRevQuality=function(g){ return Q[g]!=null?Q[g]:4; };
+  function fmt(d,exact){
+    if(d<=1) return 'wróci jutro';
+    if(exact||d<45) return 'wróci za '+d+' dni';
+    if(d<120) return 'wróci za ~'+Math.round(d/7)+' tyg.';
+    return 'wróci za ~'+Math.round(d/30)+' mies.';
+  }
+  window.eylRevLabel=function(g,c){
+    if(g==='again') return 'jeszcze dziś';
+    var I=eylRevIntervals(c), s=fmt(I[g]);
+    // dwa przyciski nigdy nie mogą obiecywać tego samego — przy kolizji zaokrąglenia pokaż dni
+    ['hard','good','easy'].forEach(function(k){ if(k!==g && fmt(I[k])===s) s=fmt(I[g],true); });
+    return s;
+  };
+})();
+</script>
+<script id="eyl-pick">
+/* ═══ UI-CONFIRM-1: zamienniki alert()/prompt() w stylu Eyelingo ═══
+   eylPick({title, items:[{label, sub}]}) → Promise<index | -1>   (lista wyboru, bez wpisywania numerów)
+   eylInfo({title, body, ok})            → Promise<void>          (komunikat z jednym przyciskiem)
+   eylNote(text, ok)                      → toast (nieblokujący)
+   eylLangHintAudio(text)                 → kod języka z pisma albo '' */
+(function(){
+  if(window.eylPick) return;
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function css(){
+    if(document.getElementById('eyl-pick-css')) return;
+    var s=document.createElement('style'); s.id='eyl-pick-css';
+    s.textContent='.eylpk-ov{position:fixed;inset:0;z-index:100000;background:rgba(26,35,64,.42);display:flex;align-items:center;justify-content:center;padding:20px;animation:eylpkIn .16s ease}'
+      +'.eylpk{width:100%;max-width:420px;max-height:80vh;display:flex;flex-direction:column;background:#fff;border-radius:16px;box-shadow:0 18px 60px rgba(26,35,64,.22);padding:22px 22px 16px;font-family:Inter,system-ui,sans-serif;animation:eylpkUp .2s ease}'
+      +'.eylpk-t{font-family:"DM Sans",system-ui,sans-serif;font-size:17px;font-weight:600;color:var(--navy,#1a2340);line-height:1.35;margin:0 0 8px}'
+      +'.eylpk-b{font-size:15px;line-height:1.55;color:var(--navy,#1a2340);margin:0 0 18px}'
+      +'.eylpk-l{overflow:auto;padding:3px 6px;margin:2px -6px 12px;display:flex;flex-direction:column;gap:4px}'
+      +'.eylpk-i{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;width:100%;padding:12px 12px;border-radius:12px;border:1.5px solid transparent;background:var(--paper,#f8f7f4);font:inherit;font-size:15px;color:var(--navy,#1a2340);cursor:pointer;transition:border-color .15s,background .15s}'
+      +'.eylpk-i:hover{border-color:var(--border2,#d8d2c0);background:#fff}'
+      +'.eylpk-i small{font-size:12.5px;color:var(--dim2,#646c80)}'
+      +'.eylpk-a{display:flex;justify-content:flex-end}'
+      +'.eylpk-btn{padding:10px 18px;border-radius:100px;font-family:"DM Sans",system-ui,sans-serif;font-size:14px;font-weight:500;cursor:pointer}'
+      +'.eylpk-no{border:1.5px solid var(--border2,#d8d2c0);background:transparent;color:var(--dim,#5b6478)}'
+      +'.eylpk-ok{border:0;background:var(--navy,#1a2340);color:#fff}'
+      +'.eylpk-i:focus-visible,.eylpk-btn:focus-visible{outline:2px solid var(--orange,#c96a2a);outline-offset:2px}'
+      +'@media(max-width:520px){.eylpk-ov{align-items:flex-end;padding:12px}.eylpk-btn{width:100%;padding:12px}}'
+      +'@keyframes eylpkIn{from{opacity:0}to{opacity:1}}@keyframes eylpkUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}';
+    document.head.appendChild(s);
+  }
+  function open(inner, onKey){
+    css();
+    var prev=document.activeElement, ov=document.createElement('div'); ov.className='eylpk-ov';
+    ov.innerHTML='<div class="eylpk" role="dialog" aria-modal="true">'+inner+'</div>';
+    document.body.appendChild(ov);
+    function close(){ document.removeEventListener('keydown',key,true); try{ ov.remove(); }catch(e){} try{ if(prev&&prev.focus) prev.focus(); }catch(e){} }
+    function key(e){ onKey(e); }
+    document.addEventListener('keydown',key,true);
+    return {ov:ov, close:close};
+  }
+  window.eylPick=function(o){
+    o=o||{}; var items=o.items||[];
+    return new Promise(function(res){
+      var m=open((o.title?'<div class="eylpk-t">'+esc(o.title)+'</div>':'')
+        +'<div class="eylpk-l">'+items.map(function(it,i){ return '<button type="button" class="eylpk-i" data-i="'+i+'">'+esc(it.label)+(it.sub?'<small>'+esc(it.sub)+'</small>':'')+'</button>'; }).join('')+'</div>'
+        +'<div class="eylpk-a"><button type="button" class="eylpk-btn eylpk-no">'+esc(o.cancel||'Anuluj')+'</button></div>',
+        function(e){ if(e.key==='Escape'){ e.preventDefault(); done(-1); } });
+      function done(v){ m.close(); res(v); }
+      m.ov.addEventListener('click',function(e){
+        if(e.target===m.ov){ done(-1); return; }
+        var b=e.target.closest&&e.target.closest('.eylpk-i'); if(b){ done(parseInt(b.getAttribute('data-i'),10)); return; }
+        if(e.target.closest&&e.target.closest('.eylpk-no')) done(-1);
+      });
+      setTimeout(function(){ try{ var f=m.ov.querySelector('.eylpk-i'); if(f) f.focus(); }catch(e){} },30);
+    });
+  };
+  window.eylInfo=function(o){
+    if(typeof o==='string') o={body:o}; o=o||{};
+    return new Promise(function(res){
+      var m=open((o.title?'<div class="eylpk-t">'+esc(o.title)+'</div>':'')+(o.body?'<div class="eylpk-b">'+esc(o.body)+'</div>':'')
+        +'<div class="eylpk-a"><button type="button" class="eylpk-btn eylpk-ok">'+esc(o.ok||'OK')+'</button></div>',
+        function(e){ if(e.key==='Escape'||e.key==='Enter'){ e.preventDefault(); done(); } });
+      function done(){ m.close(); res(); }
+      m.ov.addEventListener('click',function(e){ if(e.target===m.ov||(e.target.closest&&e.target.closest('.eylpk-ok'))) done(); });
+      setTimeout(function(){ try{ m.ov.querySelector('.eylpk-ok').focus(); }catch(e){} },30);
+    });
+  };
+  window.eylNote=function(text, ok){
+    try{ if(typeof eylAuthToast==='function'){ eylAuthToast(text, !!ok); return; } }catch(e){}
+    try{ if(typeof showToast==='function'){ showToast(text, ok?'success':''); return; } }catch(e){}
+  };
+  /* AUDIO-1/4: język z pisma, gdy nie ma go w danych. Łacinka → '' (nie zgadujemy). */
+  window.eylLangHintAudio=function(text){
+    var f=(typeof _eylScriptFam==='function')?_eylScriptFam(text):'latin';
+    return ({kana:'jp',hangul:'ko',arabic:'ar',han:'zh',cyrillic:(/[іїєґ]/i.test(String(text||''))?'uk':'ru')})[f]||'';
+  };
 })();
 </script>
