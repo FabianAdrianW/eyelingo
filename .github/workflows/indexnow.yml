@@ -1,0 +1,42 @@
+name: IndexNow (zgłoś adresy do Bing)
+
+# Po każdej zmianie mapy strony albo treści wysyła wszystkie adresy z sitemap.xml
+# do IndexNow (Bing, a przez niego m.in. ChatGPT i Copilot). Klucz jest publiczny
+# z założenia: plik 5d976786b2685bfafc938de89cb01de0.txt w katalogu głównym potwierdza własność domeny.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sitemap.xml'
+      - 'index.html'
+      - 'nauka/**'
+      - 'o-eyelingo/**'
+      - 'slowka/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Poczekaj na publikację GitHub Pages
+        run: sleep 180
+      - name: Wyślij adresy
+        run: |
+          python3 - <<'PY'
+          import json, re, urllib.request
+          urls = re.findall(r'<loc>([^<]+)</loc>', open('sitemap.xml', encoding='utf8').read())
+          body = json.dumps({
+              "host": "www.eyelingo.app",
+              "key": "5d976786b2685bfafc938de89cb01de0",
+              "keyLocation": "https://www.eyelingo.app/5d976786b2685bfafc938de89cb01de0.txt",
+              "urlList": urls,
+          }).encode()
+          req = urllib.request.Request("https://api.indexnow.org/indexnow", data=body,
+                                       headers={"Content-Type": "application/json; charset=utf-8"})
+          with urllib.request.urlopen(req, timeout=30) as r:
+              print("IndexNow:", r.status, "adresów:", len(urls))
+          PY
