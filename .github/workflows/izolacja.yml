@@ -1,0 +1,19 @@
+name: Test izolacji danych
+on:
+  schedule:
+    - cron: "17 6 1 * *"   # 1. dnia miesiąca
+  workflow_dispatch: {}
+jobs:
+  izolacja:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node tests/izolacja.mjs
+        env:
+          A_EMAIL: ${{ secrets.IZOLACJA_A_EMAIL }}
+          A_PASS: ${{ secrets.IZOLACJA_A_PASS }}
+          B_EMAIL: ${{ secrets.IZOLACJA_B_EMAIL }}
+          B_PASS: ${{ secrets.IZOLACJA_B_PASS }}
+          REPORT: "1"
