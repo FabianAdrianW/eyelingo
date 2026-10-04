@@ -9816,7 +9816,7 @@ function loadTrybCard(){
   // Reset input
   var inp=document.getElementById('tryb-answer-input');
   var hl=document.getElementById('tryb-hint-level');
-  if(inp) inp.value='';
+  if(inp){ inp.value=''; inp.placeholder=(_trybCardDirection==='pl'?'Wpisz słowo w języku obcym...':'Wpisz tłumaczenie...'); }
   if(hl) hl.textContent='3';
   var htx=document.getElementById('tryb-hint-text'); if(htx){ htx.style.display='none'; htx.textContent=''; }
   var hbtn=document.getElementById('tryb-hint-btn'); if(hbtn){ hbtn.disabled=false; hbtn.style.opacity='1'; }
@@ -9867,10 +9867,17 @@ function checkAnswer(){
   var card=_trybCards[_trybIdx];if(!card)return;
   var userAns=(document.getElementById('tryb-answer-input').value||'').trim().toLowerCase();
   if(!userAns){ revealTrybAnswer('',false,false); return; }
-  var correct=(card.translation||'').trim().toLowerCase();
-  function norm(s){return s.replace(/[(),.!?]/g,' ').replace(/\s+/g,' ').trim();}
+  // Kierunek PL→obcy: na awersie jest polskie tłumaczenie, a wpisujemy słowo obce.
+  var _rev=(_trybCardDirection==='pl');
+  var correct=((_rev?card.word:card.translation)||'').trim().toLowerCase();
+  // Przy wpisywaniu słowa obcego pomijamy znaki diakrytyczne (á, ñ, ü) — parytet z PWA;
+  // zakres U+0300–036F nie obejmuje dakuten kany ani harakatów, więc CJK/arabski bez zmian.
+  function fold(s){ return _rev ? s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').normalize('NFC') : s; }
+  function norm(s){return fold(s).replace(/[(),.!?]/g,' ').replace(/\s+/g,' ').trim();}
   var userN=norm(userAns),correctN=norm(correct);
-  var alts=correctN.split(/[\/,]| lub /).map(function(a){return a.trim();});
+  var alts=correctN.split(/[\/,]| lub /).map(function(a){return a.trim();}).filter(Boolean);
+  // Zapis fonetyczny (romaji/transliteracja) też uznajemy, gdy wpisujemy słowo w piśmie nie-łacińskim.
+  if(_rev&&card.romaji){ var _rm=norm(String(card.romaji).toLowerCase()); if(_rm) alts.push(_rm); }
   var isCorrect=alts.some(function(a){return userN===a||userN.includes(a)||a.includes(userN);});
   var isTypo=false;
   if(!isCorrect&&userAns.length>0){var best=alts.reduce(function(min,a){return Math.min(min,levenshteinDist(userN,a));},Infinity);isTypo=best<=2&&best<correctN.length*0.3;if(isTypo)isCorrect=true;}
@@ -9892,8 +9899,9 @@ function revealTrybAnswer(userAns,isCorrect,isTypo){
   var cardAns=document.getElementById('tryb-card-answer');
   var resIcon=document.getElementById('tryb-result-icon');
   var userWrote=document.getElementById('tryb-user-wrote');
-  if(wordAns) wordAns.textContent=card?(card.word||''):'';
-  if(cardAns) cardAns.textContent=card?(card.translation||''):'';
+  var _revA=(_trybCardDirection==='pl');
+  if(wordAns) wordAns.textContent=card?((_revA?card.translation:card.word)||''):'';
+  if(cardAns) cardAns.textContent=card?((_revA?card.word:card.translation)||''):'';
   if(resIcon) resIcon.textContent=isCorrect?(isTypo?'⚠️ Literówka':'✅ Poprawnie'):'❌ Błędna';
   if(userWrote) userWrote.textContent=!userAns?'Nie wpisałeś odpowiedzi':(isTypo?'Twoja: "'+userAns+'" — literówka':'Twoja: "'+userAns+'"');
   try{ if(window.elTrybShowImage) window.elTrybShowImage(card); }catch(e){}
@@ -10011,7 +10019,7 @@ async function saveTrybSRS(card,newSRS){
 
 function showTrybHint(){
   var card=_trybCards[_trybIdx];if(!card)return;
-  var ans=card.translation||'';_trybHintLevel++;_trybHintPenalty=Math.min(3,_trybHintLevel);
+  var ans=(_trybCardDirection==='pl'?card.word:card.translation)||'';_trybHintLevel++;_trybHintPenalty=Math.min(3,_trybHintLevel);
   var hintText='';
   var letters=ans.length;
   if(_trybHintLevel===1){
