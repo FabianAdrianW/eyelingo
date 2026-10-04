@@ -1,0 +1,36 @@
+# Cotygodniowy test: czy każdy model z tabeli ai_models wciąż jest dostępny w OpenRouter.
+# Bez sekretów i bez kosztów: lista modeli z publicznej funkcji ai_models_list(),
+# dostępność z publicznego API OpenRouter. Gdy któryś model zniknie, zadanie kończy się
+# błędem, a GitHub sam wysyła e-mail do właściciela repozytorium.
+name: Test modeli AI
+on:
+  schedule:
+    - cron: "17 6 * * 1"   # poniedziałek 6:17 UTC
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sprawdź modele z ai_models
+        env:
+          SB_URL: https://sntlgkhktscezxpxrchl.supabase.co
+          SB_KEY: sb_publishable_30dSE4_odIFOYk0k2mJ-lg_xjqv32V8   # klucz publiczny, ten sam co w index.html
+        run: |
+          set -euo pipefail
+          rows=$(curl -fsS -X POST "$SB_URL/rest/v1/rpc/ai_models_list" \
+            -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+            -H "Content-Type: application/json" -d '{}')
+          models=$(echo "$rows" | jq -r '.[] | .primary_model, .fallback_model | select(. != null)' | sort -u)
+          [ -n "$models" ] || { echo "::error::Tabela ai_models jest pusta albo niedostępna"; exit 1; }
+          bad=0
+          for m in $models; do
+            n=$(curl -sS "https://openrouter.ai/api/v1/models/$m/endpoints" | jq '(.data.endpoints // []) | length' 2>/dev/null || echo 0)
+            if [ "${n:-0}" -gt 0 ]; then
+              echo "OK   $m ($n dostawców)"
+            else
+              used=$(echo "$rows" | jq -r --arg m "$m" '[.[] | select(.primary_model==$m or .fallback_model==$m) | .function_key] | join(", ")')
+              echo "::error::Model $m nie ma żadnego działającego dostawcy w OpenRouter (używany w: $used). Zmień wiersz w tabeli ai_models."
+              bad=1
+            fi
+          done
+          exit $bad
