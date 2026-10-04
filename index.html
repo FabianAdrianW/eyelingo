@@ -4079,17 +4079,21 @@ function eylStartFree(){ if(window._eylLoggedIn){ if(typeof showPage==='function
 function eylGoTrener(){ if(window._eylLoggedIn && typeof switchTab==='function'){ switchTab('teacher'); return; } showAuth('register'); }
 function eylGoNauka(){ if(window._eylLoggedIn && typeof switchTab==='function'){ switchTab('community'); return; } if(typeof eylDemoStart==='function'){ eylDemoStart('stopka'); return; } showAuth('register'); }
 function eylGoMobile(){ if(window._eylLoggedIn && typeof showPage==='function'){ showPage('dash'); return; } showAuth('register'); }
-/* ═══ DEMO BEZ KONTA — 10 fiszek z katalogu dla gościa ════════════════════════
-   Gość klika „Wypróbuj bez konta" → nakładka z Trybem nauki na 10 fiszkach
-   (angielski A2, „Praca podstawy"). Postęp żyje w localStorage (EYL_DEMO.key).
-   Po 10. fiszce: „Zapisz postęp — załóż konto". Po pierwszym zalogowaniu w tej
-   samej przeglądarce eylDemoMigrate() dopisuje wynik do srs_progress (Powtórki).
+/* ═══ DEMO BEZ KONTA — prawdziwy Tryb nauki dla gościa ════════════════════════
+   Gość klika „Wypróbuj bez konta" → otwiera się TEN SAM Tryb nauki, którego
+   używa zalogowany (wybór trybu, sesja, podsumowanie) na 10 fiszkach z katalogu
+   (angielski A2, „Praca podstawy"). Zero osobnego interfejsu — gość widzi to,
+   co dostanie po rejestracji.
+   Postęp SRS gościa: localStorage, lokalny magazyn usrs pod pseudo-uid
+   EYL_DEMO.uid (usrsRecord pomija wtedy zapis do chmury). Po pierwszym
+   zalogowaniu w tej przeglądarce eylDemoMigrate() dopisuje go do srs_progress.
+   Wyjścia poza Tryb (katalog, inne zestawy) prowadzą gościa do rejestracji.
    Zdarzenia: demo_started, demo_finished, demo_signup_click, demo_migrated. */
-var EYL_DEMO={key:'eyl_demo_v1',n:10,langId:1,levelId:2,catId:662,lang:'en',level:'A2',cat:'praca_podstawy',
+var EYL_DEMO={uid:'eyldemo',n:10,langId:1,levelId:2,catId:662,lang:'en',level:'A2',cat:'praca_podstawy',name:'Angielski · A2 · Praca podstawy',
+  /* Gotowe przykłady użycia dla fiszek demo — gość nie wywołuje AI ani nie czyta example_cache. */
+  ex:{'to work|pracować':['I work from home today.','Pracuję dzisiaj z domu.'],'job|praca':['She found a new job last month.','W zeszłym miesiącu znalazła nową pracę.'],'office|biuro':['I go to the office three days a week.','Chodzę do biura trzy dni w tygodniu.'],'boss|szef':['My boss is on holiday this week.','Mój szef jest w tym tygodniu na urlopie.'],'colleague|kolega z pracy':['I had lunch with a colleague.','Zjadłem lunch z kolegą z pracy.'],'meeting|spotkanie':['We have a meeting at ten.','Mamy spotkanie o dziesiątej.'],'project|projekt':['We finished the project on time.','Skończyliśmy projekt na czas.'],'salary|wynagrodzenie':['The salary is paid every month.','Wynagrodzenie jest wypłacane co miesiąc.'],'holiday|urlop':['I am on holiday next week.','W przyszłym tygodniu mam urlop.'],'retirement|emerytura':['He is saving money for retirement.','Oszczędza pieniądze na emeryturę.'],'company|firma':['She works for a small company.','Pracuje w małej firmie.'],'client|klient':['I need to call a client.','Muszę zadzwonić do klienta.'],'duties|obowiązki':['What are your duties at work?','Jakie masz obowiązki w pracy?'],'finish work|zakończyć pracę':['I finish work at five.','Kończę pracę o piątej.'],'start work|rozpocząć pracę':['I start work at eight.','Zaczynam pracę o ósmej.']},
   fallback:[[76965,'to work','pracować'],[76966,'job','praca'],[76967,'office','biuro'],[76968,'boss','szef'],[76969,'colleague','kolega z pracy'],[76970,'meeting','spotkanie'],[76971,'project','projekt'],[76972,'salary','wynagrodzenie'],[76973,'holiday','urlop'],[76975,'company','firma']]};
-function eylDemoLoad(){ try{ var s=JSON.parse(localStorage.getItem(EYL_DEMO.key)||'null'); return (s&&Array.isArray(s.cards)&&s.cards.length)?s:null; }catch(e){ return null; } }
-function eylDemoSave(s){ try{ localStorage.setItem(EYL_DEMO.key,JSON.stringify(s)); }catch(e){} }
-function eylDemoEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function eylDemoGuest(){ return !!window._eylDemoOn && !window._eylLoggedIn; }
 async function eylDemoFetch(){
   try{
     if(typeof db==='undefined'||!db) throw new Error('no db');
@@ -4101,120 +4105,79 @@ async function eylDemoFetch(){
 function eylDemoCss(){
   if(document.getElementById('eyl-demo-css')) return;
   var st=document.createElement('style'); st.id='eyl-demo-css';
-  st.textContent='#eyl-demo{position:fixed;inset:0;z-index:99990;background:#FAF8F3;color:#16203c;display:flex;flex-direction:column;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}'
-   +'#eyl-demo .ed-top{display:flex;align-items:center;gap:16px;padding:18px 22px;border-bottom:1px solid #E2DACB}'
-   +'#eyl-demo .ed-tag{font-size:13px;color:#55606f;white-space:nowrap}'
-   +'#eyl-demo .ed-bar{flex:1;height:4px;background:#E2DACB;border-radius:4px;overflow:hidden}'
-   +'#eyl-demo .ed-bar i{display:block;height:100%;background:#A94C13;width:0;transition:width .3s}'
-   +'#eyl-demo .ed-x{background:none;border:0;font-size:15px;color:#55606f;cursor:pointer;padding:8px 10px;border-radius:8px}'
-   +'#eyl-demo .ed-x:hover{background:rgba(22,32,60,.06)}'
-   +'#eyl-demo .ed-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;text-align:center;overflow:auto}'
-   +'#eyl-demo .ed-card{width:100%;max-width:520px;background:#fff;border:1px solid #E2DACB;border-radius:20px;padding:48px 28px;min-height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;box-shadow:0 10px 30px rgba(22,32,60,.06)}'
-   +'#eyl-demo .ed-word{font-size:clamp(30px,6vw,44px);font-weight:600;letter-spacing:-.02em;line-height:1.15}'
-   +'#eyl-demo .ed-tr{font-size:20px;color:#A94C13;min-height:28px}'
-   +'#eyl-demo .ed-say{background:none;border:1px solid #E2DACB;border-radius:999px;padding:6px 14px;font-size:13px;color:#55606f;cursor:pointer}'
-   +'#eyl-demo .ed-act{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:26px;width:100%;max-width:520px}'
-   +'#eyl-demo .ed-b{flex:1;min-width:150px;font:inherit;font-size:15.5px;font-weight:500;padding:16px 24px;border-radius:999px;border:1px solid #E2DACB;background:transparent;color:#16203c;cursor:pointer}'
-   +'#eyl-demo .ed-b:hover{border-color:#16203c}'
-   +'#eyl-demo .ed-b.f{background:#A94C13;border-color:#A94C13;color:#fff}'
-   +'#eyl-demo .ed-b.f:hover{background:#8F3D0C}'
-   +'#eyl-demo .ed-b:focus-visible,#eyl-demo .ed-x:focus-visible,#eyl-demo .ed-say:focus-visible{outline:2px solid #A94C13;outline-offset:3px}'
-   +'#eyl-demo h2{font-size:clamp(26px,5vw,36px);font-weight:600;letter-spacing:-.02em;line-height:1.2;margin:0 0 12px}'
-   +'#eyl-demo p{font-size:16.5px;line-height:1.6;color:#55606f;max-width:460px;margin:0 auto}'
-   +'#eyl-demo .ed-fine{font-size:13px;margin-top:18px}'
-   +'#eyl-demo .ed-fine a{color:#55606f;text-decoration:underline;cursor:pointer}';
+  /* Gość nie ma konta ani desktopu: chowamy tylko akcje, które bez konta nie mają jak zadziałać. */
+  st.textContent='body.eyl-demo-guest #eyl-set-actions,body.eyl-demo-guest #tryb-bridge4,body.eyl-demo-guest #tryb-story-btn{display:none!important}'
+   +'#eyl-demo-cta{text-align:left;background:#fff;border:1.5px solid rgba(169,76,19,.35);border-radius:16px;padding:18px 20px;margin:0 0 20px}'
+   +'#eyl-demo-cta b{display:block;font-size:15px;color:var(--navy);margin-bottom:4px}'
+   +'#eyl-demo-cta span{display:block;font-size:13.5px;color:var(--dim2);line-height:1.55;margin-bottom:14px}';
   document.head.appendChild(st);
 }
-function eylDemoClose(){ var el=document.getElementById('eyl-demo'); if(el) el.remove(); try{ document.removeEventListener('keydown',eylDemoKey); document.body.style.overflow=''; }catch(e){} try{ if(typeof speechSynthesis!=='undefined') speechSynthesis.cancel(); }catch(e){} }
-function eylDemoKey(e){
-  if(!document.getElementById('eyl-demo')) return;
-  if(e.key==='Escape'){ eylDemoClose(); return; }
-  var s=eylDemoLoad(); if(!s||s.idx>=s.cards.length) return;
-  if(!window._eylDemoShown){ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); eylDemoReveal(); } }
-  else if(e.key==='1'||e.key==='ArrowLeft'){ eylDemoRate(0); }
-  else if(e.key==='2'||e.key==='ArrowRight'||e.key==='Enter'){ e.preventDefault(); eylDemoRate(1); }
+function eylDemoOff(){ window._eylDemoOn=false; try{ document.body.classList.remove('eyl-demo-guest'); var c=document.getElementById('eyl-demo-cta'); if(c) c.remove(); }catch(e){} }
+function eylDemoSignup(why){
+  try{ track('demo_signup_click',{from:why||'summary'}); }catch(e){}
+  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  try{ window._trybSessionActive=false; window._trybExternalCards=null; }catch(e){}
+  eylDemoOff(); showAuth('register');
+  try{ var sub=document.getElementById('auth-sub'); if(sub) sub.textContent=(why==='gate')
+    ?'Pozostałe zestawy i katalog 14 języków są na koncie. Załóż je — postęp z wersji próbnej trafi do Powtórek.'
+    :'Załóż konto — postęp z wersji próbnej trafi do Powtórek.'; }catch(e){}
 }
-function eylDemoSay(){ try{ var s=eylDemoLoad(); var c=s&&s.cards[s.idx]; if(!c||typeof speechSynthesis==='undefined') return; speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(c.word); u.lang='en-GB'; u.rate=.9; speechSynthesis.speak(u); }catch(e){} }
-function eylDemoRender(){
-  var el=document.getElementById('eyl-demo'), s=eylDemoLoad(); if(!el||!s) return;
-  var tot=s.cards.length, done=s.idx>=tot;
-  var top='<div class="ed-top"><span class="ed-tag">Angielski A2 · Praca</span><div class="ed-bar"><i style="width:'+Math.round(Math.min(s.idx,tot)/tot*100)+'%"></i></div><span class="ed-tag">'+Math.min(s.idx+(done?0:1),tot)+' / '+tot+'</span><button class="ed-x" onclick="eylDemoClose()" aria-label="Zamknij">Zamknij ✕</button></div>';
-  var body;
-  if(done){
-    var known=s.cards.filter(function(c){ return c.k===1; }).length;
-    body='<h2>'+known+' z '+tot+' słówek już znasz.</h2>'
-      +'<p>'+(known<tot?'Pozostałe '+(tot-known)+' wrócą w Powtórkach dokładnie wtedy, kiedy zaczniesz je zapominać. ':'')+'Załóż konto, a ten wynik zapisze się na nim — bez zaczynania od zera.</p>'
-      +'<div class="ed-act"><button class="ed-b f" onclick="eylDemoSignup()">Zapisz postęp – załóż konto</button></div>'
-      +'<div class="ed-fine"><a onclick="eylDemoRestart()">Przejdź jeszcze raz</a></div>';
-  } else {
-    var c=s.cards[s.idx], shown=!!window._eylDemoShown;
-    body='<div class="ed-card"><div class="ed-word">'+eylDemoEsc(c.word)+'</div>'
-      +'<div class="ed-tr">'+(shown?eylDemoEsc(c.translation):'')+'</div>'
-      +((typeof speechSynthesis!=='undefined')?'<button class="ed-say" onclick="eylDemoSay()">Posłuchaj</button>':'')+'</div>'
-      +'<div class="ed-act">'+(shown
-        ?'<button class="ed-b" onclick="eylDemoRate(0)">Jeszcze nie</button><button class="ed-b f" onclick="eylDemoRate(1)">Umiem</button>'
-        :'<button class="ed-b f" onclick="eylDemoReveal()">Pokaż tłumaczenie</button>')+'</div>';
-  }
-  el.innerHTML=top+'<div class="ed-main">'+body+'</div>';
-  try{ var b=el.querySelector('.ed-b.f'); if(b) b.focus({preventScroll:true}); }catch(e){}
-}
-function eylDemoReveal(){ window._eylDemoShown=true; eylDemoRender(); }
-function eylDemoRate(k){
-  var s=eylDemoLoad(); if(!s||s.idx>=s.cards.length) return;
-  s.cards[s.idx].k=k?1:0; s.idx++; window._eylDemoShown=false;
-  if(s.idx>=s.cards.length && !s.finished){
-    s.finished=new Date().toISOString();
-    try{ track('demo_finished',{known:s.cards.filter(function(c){return c.k===1;}).length,total:s.cards.length,lang:EYL_DEMO.lang,level:EYL_DEMO.level}); }catch(e){}
-  }
-  eylDemoSave(s); eylDemoRender();
-}
-function eylDemoRestart(){ var s=eylDemoLoad(); if(!s) return; s.idx=0; s.cards.forEach(function(c){ delete c.k; }); eylDemoSave(s); window._eylDemoShown=false; eylDemoRender(); }
-function eylDemoSignup(){
-  try{ track('demo_signup_click',{}); }catch(e){}
-  eylDemoClose(); showAuth('register');
-  try{ var sub=document.getElementById('auth-sub'); if(sub) sub.textContent='Załóż konto — Twoje 10 fiszek z wersji próbnej trafi do Powtórek.'; }catch(e){}
+/* Podsumowanie sesji gościa: ten sam ekran co u zalogowanego + jedna karta „zapisz postęp". */
+function eylDemoSummary(stats){
+  try{
+    if(!eylDemoGuest()) return;
+    if(!window._eylDemoFin){ window._eylDemoFin=true; try{ track('demo_finished',{cards:stats&&stats.total||0,correct:stats&&stats.correct||0,mode:(typeof _trybMode!=='undefined'?_trybMode:''),lang:EYL_DEMO.lang,level:EYL_DEMO.level}); }catch(e){} }
+    var host=document.getElementById('tryb-summary'); if(!host||document.getElementById('eyl-demo-cta')) return;
+    var d=document.createElement('div'); d.id='eyl-demo-cta';
+    var saved=0; try{ saved=Object.keys(_usrsLoad(EYL_DEMO.uid)||{}).length; }catch(e){}
+    d.innerHTML=saved
+      ?'<b>Ten postęp jest na razie tylko w tej przeglądarce.</b><span>Załóż konto, a te słowa trafią do Powtórek i wrócą wtedy, kiedy zaczniesz je zapominać. Tryb nauki zostaje dokładnie taki sam.</span><button class="btn btn-orange" onclick="eylDemoSignup(\'summary\')">Zapisz postęp – załóż konto</button>'
+      :'<b>To był ten sam Tryb nauki, który dostajesz na koncie.</b><span>Po założeniu konta masz go z całym katalogiem fiszek i Powtórkami, które same przypominają słowa.</span><button class="btn btn-orange" onclick="eylDemoSignup(\'summary\')">Załóż konto</button>';
+    var anchor=document.getElementById('tryb-bridge4');
+    if(anchor&&anchor.parentNode===host) host.insertBefore(d,anchor); else host.appendChild(d);
+  }catch(e){}
 }
 async function eylDemoStart(src){
   if(window._eylLoggedIn){ if(typeof switchTab==='function') switchTab('community'); return; }
-  if(document.getElementById('eyl-demo')) return;
-  eylDemoCss();
-  var el=document.createElement('div'); el.id='eyl-demo'; el.setAttribute('role','dialog'); el.setAttribute('aria-modal','true'); el.setAttribute('aria-label','Wypróbuj fiszki bez konta');
-  el.innerHTML='<div class="ed-main"><p>Wczytuję fiszki…</p></div>';
-  document.body.appendChild(el); try{ document.body.style.overflow='hidden'; }catch(e){}
-  document.addEventListener('keydown',eylDemoKey);
-  window._eylDemoShown=false;
-  var s=eylDemoLoad();
-  if(!s){
+  if(window._eylDemoBusy) return; window._eylDemoBusy=true;
+  try{
+    eylDemoCss();
     var cards=await eylDemoFetch();
-    s={v:1,idx:0,cards:cards,started:new Date().toISOString(),finished:null};
-    eylDemoSave(s);
+    window._eylDemoOn=true; window._eylDemoFin=false;
+    document.body.classList.add('eyl-demo-guest');
+    window._trybStudyLang=EYL_DEMO.lang;
+    window._trybExternalCards=cards.map(function(c){ return {word:c.word,translation:c.translation,flashcard_id:c.id,lang:EYL_DEMO.lang}; });
+    window._trybExternalName=EYL_DEMO.name;
+    window._trybSource='eyelingo';
+    try{ if(typeof RewardSystem!=='undefined' && RewardSystem.load) RewardSystem.load(); }catch(e){}
     try{ track('demo_started',{src:src||'hero',lang:EYL_DEMO.lang,level:EYL_DEMO.level,cat:EYL_DEMO.cat}); }catch(e){}
-  }
-  if(!document.getElementById('eyl-demo')) return;
-  eylDemoRender();
+    showPage('tryb');
+    setTimeout(function(){ if(typeof startSession==='function') startSession('set_external'); },250);
+  }finally{ window._eylDemoBusy=false; }
 }
-/* Po zalogowaniu: przenieś wynik dema do srs_progress. Surowy fetch z keepalive,
+/* Po zalogowaniu: przenieś postęp gościa do srs_progress. Surowy fetch z keepalive,
    bo na telefonie zaraz po SIGNED_IN następuje przekierowanie do app.html.
    ignore-duplicates = nigdy nie nadpisuje istniejącego postępu konta. */
 function eylDemoMigrate(session){
   try{
+    try{ localStorage.removeItem('eyl_demo_v1'); }catch(e){}
     if(!session||!session.access_token||!session.user||window._eylDemoMig) return;
-    var s=eylDemoLoad(); if(!s) return;
-    var rated=s.cards.filter(function(c){ return c.k===0||c.k===1; });
-    if(!rated.length){ try{ localStorage.removeItem(EYL_DEMO.key); }catch(e){} return; }
+    eylDemoOff();
+    var store=_usrsLoad(EYL_DEMO.uid), keys=Object.keys(store||{});
+    if(!keys.length) return;
     window._eylDemoMig=true;
-    var rows=rated.map(function(c){
-      var n=sm2Local({ease_factor:2.5,repetitions:0,interval_days:1},c.k===1?4:2);
-      return {user_id:session.user.id,card_key:_usrsCK(c.word,c.translation),word:c.word,translation:c.translation,lang:EYL_DEMO.lang,source:'eyelingo',flashcard_id:c.id,ease_factor:n.ease_factor,repetitions:n.repetitions,interval_days:n.interval_days,next_review:n.next_review};
-    });
+    var rows=keys.map(function(k){ var r=store[k]||{};
+      return {user_id:session.user.id,card_key:k,word:r.word||'',translation:r.translation||'',lang:r.lang||EYL_DEMO.lang,source:(r.fc!=null?'eyelingo':'custom'),flashcard_id:(r.fc!=null?r.fc:null),ease_factor:(r.ef!=null?r.ef:2.5),repetitions:(r.reps!=null?r.reps:0),interval_days:(r.interval!=null?r.interval:1),next_review:r.due||new Date(Date.now()+86400000).toISOString().slice(0,10)};
+    }).filter(function(r){ return r.word&&r.translation; });
+    if(!rows.length){ window._eylDemoMig=false; return; }
     fetch(SUPABASE_URL+'/rest/v1/srs_progress?on_conflict=user_id,card_key',{method:'POST',keepalive:true,
       headers:{'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+session.access_token,'Prefer':'resolution=ignore-duplicates,return=minimal'},
       body:JSON.stringify(rows)})
     .then(function(r){
       window._eylDemoMig=false;
       if(!r.ok) return;
-      try{ localStorage.removeItem(EYL_DEMO.key); }catch(e){}
-      try{ track('demo_migrated',{cards:rows.length,known:rated.filter(function(c){return c.k===1;}).length}); }catch(e){}
+      try{ localStorage.removeItem(_usrsKey(EYL_DEMO.uid)); }catch(e){}
+      try{ track('demo_migrated',{cards:rows.length}); }catch(e){}
       try{ if(typeof usrsSync==='function') usrsSync(); if(typeof refreshNavDueBadge==='function') refreshNavDueBadge(); }catch(e){}
     },function(){ window._eylDemoMig=false; });
   }catch(e){ window._eylDemoMig=false; }
@@ -4411,6 +4374,8 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
 
 // ── Strony Community i Ranking ──
 function showPage(name){
+  // Gość w demie: poza Trybem nauki jest tylko landing i rejestracja (reszta wymaga konta).
+  if(typeof eylDemoGuest==='function' && eylDemoGuest() && name!=='tryb'){ if(name==='home'||name==='auth'){ eylDemoOff(); } else { eylDemoSignup('gate'); return false; } }
   // ── KROK 1: REDIRECTY PRZED czymkolwiek widocznym ───────────────────────
   // Wczesniej 'chat' najpierw odslanial page-chat, potem rekurencyjnie page-teacher,
   // a wlasciwa zakladka wjezdzala dopiero po setTimeout(...,50) — to byla migawka.
@@ -8992,7 +8957,7 @@ async function startSession(mode){
   if(hdr)hdr.textContent=_trybChallengeMode?'Tryb Wyzwania aktywny':'Sesja nauki';
   if(mode==='set_external'&&_trybExternalCards){
     _trybSetCards=_trybExternalCards.slice();
-    var _seedUid=(typeof _usrsUid==='function')?await _usrsUid():null;
+    var _seedUid=(typeof _usrsUid==='function')?await _usrsUid():null; if(!_seedUid&&typeof eylDemoGuest==='function'&&eylDemoGuest()) _seedUid=EYL_DEMO.uid;
     var _seedStore=(_seedUid&&typeof _usrsLoad==='function')?(_usrsLoad(_seedUid)||{}):{};
     var _base=_trybExternalCards.slice(); if(!_preordered) _base=shuffleArr(_base);
     _trybCards=_base.map(function(c){var _w=c.word||c.front||'',_tr=c.translation||c.back||'';var _p=(typeof _usrsCK==='function')?_seedStore[_usrsCK(_w,_tr)]:null;return{word:_w,translation:_tr,lang:(c.lang||''),emoji:'',example:'',etymology:'',image_url:c.image_url||'',image_attr:c.image_attr||'',ease_factor:(c.ease_factor!=null?c.ease_factor:(_p&&_p.ef!=null?_p.ef:2.5)),repetitions:(c.repetitions!=null?c.repetitions:(_p&&_p.reps!=null?_p.reps:0)),interval_days:(c.interval_days!=null?c.interval_days:(_p&&_p.interval!=null?_p.interval:1)),card_key:(c.card_key||''),id:(c.flashcard_id!=null?c.flashcard_id:null)};});
@@ -9022,7 +8987,7 @@ function _usrsCK(word,tr){ return String(word||'').trim().toLowerCase()+'|'+Stri
 async function _usrsUid(){ try{ var s=(await db.auth.getSession()).data.session; return s?s.user.id:null; }catch(e){ return null; } }
 async function usrsRecord(card,newSRS){
   try{
-    var uid=await _usrsUid(); if(!uid||!card||!newSRS) return;
+    var uid=await _usrsUid(); var _demo=(!uid&&typeof eylDemoGuest==='function'&&eylDemoGuest()); if(_demo) uid=EYL_DEMO.uid; if(!uid||!card||!newSRS) return;
     var w=String(card.word||card.front||'').trim(); var tr=String(card.translation||card.back||'').trim();
     if(!w||!tr) return;                              // karta jednostronna = niepowtarzalna; nie zapisujemy
     var key=_usrsCK(w,tr);
@@ -9036,7 +9001,8 @@ async function usrsRecord(card,newSRS){
     try{var _old=store[key];var _wm=_old&&_old.reps>=3&&_old.interval>=21;var _nm=newSRS.repetitions>=3&&newSRS.interval_days>=21;if(!_wm&&_nm)track('card_mastered',{surface:'web',lang:lang});}catch(_e){}
     store[key]={ef:newSRS.ease_factor,interval:newSRS.interval_days,reps:newSRS.repetitions,due:newSRS.next_review,word:w,translation:tr,fc:fc,lang:lang,ts:Date.now()};
     _usrsSaveAll(uid,store);
-    // 2) Zapis do chmury (wspólne web↔desktop) — nie blokuje UI
+    // 2) Zapis do chmury (wspólne web↔desktop) — nie blokuje UI (gość w demie: tylko lokalnie)
+    if(_demo) return;
     try{
       db.from('srs_progress').upsert({
         user_id:uid, card_key:key, word:w, translation:tr, lang:lang,
@@ -10239,6 +10205,7 @@ async function showTrybMiniStory(){
 }
 
 function trybReturnToSource(){
+  if(typeof eylDemoGuest==='function'&&eylDemoGuest()){ eylDemoOff(); window._trybExternalCards=null; showPage('home'); return true; }   // gość kończy demo → landing
   var src = window._trybSource;
   // Powrot do biblioteki zrodlowej (wlasciwy segment) — NIE na hub Trybu Nauki i bez re-wejscia w sesje.
   if(src==='eyelingo'){ window._matSeg='eyl'; window._matPendingLearn=false; showPage('community'); return true; }
@@ -10260,7 +10227,7 @@ async function renderTrybMastery(){
   host.innerHTML='';
   var before=window._trybKnowBefore||{};
   var keys=Object.keys(before); if(!keys.length) return;
-  var uid=(typeof _usrsUid==='function')?await _usrsUid():null;
+  var uid=(typeof _usrsUid==='function')?await _usrsUid():null; if(!uid&&typeof eylDemoGuest==='function'&&eylDemoGuest()) uid=EYL_DEMO.uid;
   var store=(uid&&typeof _usrsLoad==='function')?(_usrsLoad(uid)||{}):{};
   var rows=keys.map(function(k){
     var b=before[k]||{}, a=store[k]||{};
@@ -10317,6 +10284,7 @@ async function showTrybSessionSummary(){
   var spl=document.getElementById('sum-pct-label');
   if(spl) spl.textContent=(_trybMode==='flip')?'Znane':'Poprawne';
   if(st)st.textContent=Math.floor(timeS/60)+':'+String(timeS%60).padStart(2,'0');
+  try{ if(typeof eylDemoSummary==='function') eylDemoSummary(stats); }catch(e){}
   // Cicha księgowość (bez XP/złota/odznak w UI)
   try{ RewardSystem.load(); RewardSystem._state.totalCards+=stats.total; RewardSystem._state.totalSessions++; RewardSystem.save(); }catch(e){}
   var icon=pct>=80?'🎉':pct>=50?'👍':'💪';
@@ -24622,6 +24590,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   function localGet(lg,k){
     var m=lg+'\u0001'+k;
     if(_mem[m]) return _mem[m];
+    try{ if(typeof eylDemoGuest==='function'&&eylDemoGuest()&&EYL_DEMO.ex[k]){ var _dx=EYL_DEMO.ex[k]; return {s:_dx[0],pl:_dx[1]}; } }catch(e){}
     try{ var r=localStorage.getItem(lkey(lg,k)); if(r){ _mem[m]=JSON.parse(r); return _mem[m]; } }catch(e){}
     return null;
   }
@@ -24667,6 +24636,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   }
 
   async function ask(c,lg){
+    if(typeof eylDemoGuest==='function'&&eylDemoGuest()) return null;   // gość: przykłady tylko z EYL_DEMO.ex, bez wywołań AI
     var L=LANG_PL[lg]||'obcy', T=!!TRANSLIT[lg], B=T?600:400;
     var w=String(c.word||''), tr=String(c.translation||'');
     var p='Jestes metodykiem jezyka '+L+'. '
