@@ -2523,6 +2523,7 @@ function eylPrefLoad(){
         <p class="lp-lede lp-rv" data-d="1">Słówka pojawiają się w rogu, kiedy robisz swoje. <b>Nic nie klikasz.</b> Po tygodniu po prostu je znasz.</p>
         <div class="lp-cta lp-rv" data-d="2">
           <button class="lp-btn lp-btn--fill" onclick="showAuth('register')">Zacznij za darmo</button>
+          <button class="lp-btn lp-btn--line" onclick="eylDemoStart('hero')">Wypróbuj bez konta</button>
           <a class="lp-btn lp-btn--line" href="#lp-jak">Zobacz, jak działa</a>
         </div>
         <div class="lp-facts lp-rv" data-d="3">
@@ -3553,6 +3554,7 @@ window.eylGoMobileApp = eylGoMobileApp;
           }catch(_e){}
         });
       db.auth.onAuthStateChange(function(event, session){ try{window._eylTok=session&&session.access_token;}catch(_e){}
+        try{ if(session && typeof eylDemoMigrate==='function') eylDemoMigrate(session); }catch(_e){}
         var _prev = window._uid;
         var _new = session ? session.user.id : null;
         window._uid = _new;
@@ -4075,8 +4077,148 @@ function startSrsSession(){
 function eylStartFree(){ if(window._eylLoggedIn){ if(typeof showPage==='function'){ showPage('dash'); return; } } showAuth('register'); }
 // Routing CTA stopki: zalogowany → funkcja w apce, niezalogowany → rejestracja.
 function eylGoTrener(){ if(window._eylLoggedIn && typeof switchTab==='function'){ switchTab('teacher'); return; } showAuth('register'); }
-function eylGoNauka(){ if(window._eylLoggedIn && typeof switchTab==='function'){ switchTab('community'); return; } showAuth('register'); }
+function eylGoNauka(){ if(window._eylLoggedIn && typeof switchTab==='function'){ switchTab('community'); return; } if(typeof eylDemoStart==='function'){ eylDemoStart('stopka'); return; } showAuth('register'); }
 function eylGoMobile(){ if(window._eylLoggedIn && typeof showPage==='function'){ showPage('dash'); return; } showAuth('register'); }
+/* ═══ DEMO BEZ KONTA — 10 fiszek z katalogu dla gościa ════════════════════════
+   Gość klika „Wypróbuj bez konta" → nakładka z Trybem nauki na 10 fiszkach
+   (angielski A2, „Praca podstawy"). Postęp żyje w localStorage (EYL_DEMO.key).
+   Po 10. fiszce: „Zapisz postęp — załóż konto". Po pierwszym zalogowaniu w tej
+   samej przeglądarce eylDemoMigrate() dopisuje wynik do srs_progress (Powtórki).
+   Zdarzenia: demo_started, demo_finished, demo_signup_click, demo_migrated. */
+var EYL_DEMO={key:'eyl_demo_v1',n:10,langId:1,levelId:2,catId:662,lang:'en',level:'A2',cat:'praca_podstawy',
+  fallback:[[76965,'to work','pracować'],[76966,'job','praca'],[76967,'office','biuro'],[76968,'boss','szef'],[76969,'colleague','kolega z pracy'],[76970,'meeting','spotkanie'],[76971,'project','projekt'],[76972,'salary','wynagrodzenie'],[76973,'holiday','urlop'],[76975,'company','firma']]};
+function eylDemoLoad(){ try{ var s=JSON.parse(localStorage.getItem(EYL_DEMO.key)||'null'); return (s&&Array.isArray(s.cards)&&s.cards.length)?s:null; }catch(e){ return null; } }
+function eylDemoSave(s){ try{ localStorage.setItem(EYL_DEMO.key,JSON.stringify(s)); }catch(e){} }
+function eylDemoEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+async function eylDemoFetch(){
+  try{
+    if(typeof db==='undefined'||!db) throw new Error('no db');
+    var r=await db.from('flashcards').select('id,word,translation').eq('language_id',EYL_DEMO.langId).eq('level_id',EYL_DEMO.levelId).eq('category_id',EYL_DEMO.catId).eq('active',true).order('sort_order',{ascending:true}).order('id',{ascending:true}).limit(EYL_DEMO.n);
+    if(r.error||!r.data||r.data.length<EYL_DEMO.n) throw new Error('fetch');
+    return r.data.map(function(c){ return {id:c.id,word:c.word,translation:c.translation}; });
+  }catch(e){ return EYL_DEMO.fallback.map(function(c){ return {id:c[0],word:c[1],translation:c[2]}; }); }
+}
+function eylDemoCss(){
+  if(document.getElementById('eyl-demo-css')) return;
+  var st=document.createElement('style'); st.id='eyl-demo-css';
+  st.textContent='#eyl-demo{position:fixed;inset:0;z-index:99990;background:#FAF8F3;color:#16203c;display:flex;flex-direction:column;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}'
+   +'#eyl-demo .ed-top{display:flex;align-items:center;gap:16px;padding:18px 22px;border-bottom:1px solid #E2DACB}'
+   +'#eyl-demo .ed-tag{font-size:13px;color:#55606f;white-space:nowrap}'
+   +'#eyl-demo .ed-bar{flex:1;height:4px;background:#E2DACB;border-radius:4px;overflow:hidden}'
+   +'#eyl-demo .ed-bar i{display:block;height:100%;background:#A94C13;width:0;transition:width .3s}'
+   +'#eyl-demo .ed-x{background:none;border:0;font-size:15px;color:#55606f;cursor:pointer;padding:8px 10px;border-radius:8px}'
+   +'#eyl-demo .ed-x:hover{background:rgba(22,32,60,.06)}'
+   +'#eyl-demo .ed-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px;text-align:center;overflow:auto}'
+   +'#eyl-demo .ed-card{width:100%;max-width:520px;background:#fff;border:1px solid #E2DACB;border-radius:20px;padding:48px 28px;min-height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;box-shadow:0 10px 30px rgba(22,32,60,.06)}'
+   +'#eyl-demo .ed-word{font-size:clamp(30px,6vw,44px);font-weight:600;letter-spacing:-.02em;line-height:1.15}'
+   +'#eyl-demo .ed-tr{font-size:20px;color:#A94C13;min-height:28px}'
+   +'#eyl-demo .ed-say{background:none;border:1px solid #E2DACB;border-radius:999px;padding:6px 14px;font-size:13px;color:#55606f;cursor:pointer}'
+   +'#eyl-demo .ed-act{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:26px;width:100%;max-width:520px}'
+   +'#eyl-demo .ed-b{flex:1;min-width:150px;font:inherit;font-size:15.5px;font-weight:500;padding:16px 24px;border-radius:999px;border:1px solid #E2DACB;background:transparent;color:#16203c;cursor:pointer}'
+   +'#eyl-demo .ed-b:hover{border-color:#16203c}'
+   +'#eyl-demo .ed-b.f{background:#A94C13;border-color:#A94C13;color:#fff}'
+   +'#eyl-demo .ed-b.f:hover{background:#8F3D0C}'
+   +'#eyl-demo .ed-b:focus-visible,#eyl-demo .ed-x:focus-visible,#eyl-demo .ed-say:focus-visible{outline:2px solid #A94C13;outline-offset:3px}'
+   +'#eyl-demo h2{font-size:clamp(26px,5vw,36px);font-weight:600;letter-spacing:-.02em;line-height:1.2;margin:0 0 12px}'
+   +'#eyl-demo p{font-size:16.5px;line-height:1.6;color:#55606f;max-width:460px;margin:0 auto}'
+   +'#eyl-demo .ed-fine{font-size:13px;margin-top:18px}'
+   +'#eyl-demo .ed-fine a{color:#55606f;text-decoration:underline;cursor:pointer}';
+  document.head.appendChild(st);
+}
+function eylDemoClose(){ var el=document.getElementById('eyl-demo'); if(el) el.remove(); try{ document.removeEventListener('keydown',eylDemoKey); document.body.style.overflow=''; }catch(e){} try{ if(typeof speechSynthesis!=='undefined') speechSynthesis.cancel(); }catch(e){} }
+function eylDemoKey(e){
+  if(!document.getElementById('eyl-demo')) return;
+  if(e.key==='Escape'){ eylDemoClose(); return; }
+  var s=eylDemoLoad(); if(!s||s.idx>=s.cards.length) return;
+  if(!window._eylDemoShown){ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); eylDemoReveal(); } }
+  else if(e.key==='1'||e.key==='ArrowLeft'){ eylDemoRate(0); }
+  else if(e.key==='2'||e.key==='ArrowRight'||e.key==='Enter'){ e.preventDefault(); eylDemoRate(1); }
+}
+function eylDemoSay(){ try{ var s=eylDemoLoad(); var c=s&&s.cards[s.idx]; if(!c||typeof speechSynthesis==='undefined') return; speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(c.word); u.lang='en-GB'; u.rate=.9; speechSynthesis.speak(u); }catch(e){} }
+function eylDemoRender(){
+  var el=document.getElementById('eyl-demo'), s=eylDemoLoad(); if(!el||!s) return;
+  var tot=s.cards.length, done=s.idx>=tot;
+  var top='<div class="ed-top"><span class="ed-tag">Angielski A2 · Praca</span><div class="ed-bar"><i style="width:'+Math.round(Math.min(s.idx,tot)/tot*100)+'%"></i></div><span class="ed-tag">'+Math.min(s.idx+(done?0:1),tot)+' / '+tot+'</span><button class="ed-x" onclick="eylDemoClose()" aria-label="Zamknij">Zamknij ✕</button></div>';
+  var body;
+  if(done){
+    var known=s.cards.filter(function(c){ return c.k===1; }).length;
+    body='<h2>'+known+' z '+tot+' słówek już znasz.</h2>'
+      +'<p>'+(known<tot?'Pozostałe '+(tot-known)+' wrócą w Powtórkach dokładnie wtedy, kiedy zaczniesz je zapominać. ':'')+'Załóż konto, a ten wynik zapisze się na nim — bez zaczynania od zera.</p>'
+      +'<div class="ed-act"><button class="ed-b f" onclick="eylDemoSignup()">Zapisz postęp – załóż konto</button></div>'
+      +'<div class="ed-fine"><a onclick="eylDemoRestart()">Przejdź jeszcze raz</a></div>';
+  } else {
+    var c=s.cards[s.idx], shown=!!window._eylDemoShown;
+    body='<div class="ed-card"><div class="ed-word">'+eylDemoEsc(c.word)+'</div>'
+      +'<div class="ed-tr">'+(shown?eylDemoEsc(c.translation):'')+'</div>'
+      +((typeof speechSynthesis!=='undefined')?'<button class="ed-say" onclick="eylDemoSay()">Posłuchaj</button>':'')+'</div>'
+      +'<div class="ed-act">'+(shown
+        ?'<button class="ed-b" onclick="eylDemoRate(0)">Jeszcze nie</button><button class="ed-b f" onclick="eylDemoRate(1)">Umiem</button>'
+        :'<button class="ed-b f" onclick="eylDemoReveal()">Pokaż tłumaczenie</button>')+'</div>';
+  }
+  el.innerHTML=top+'<div class="ed-main">'+body+'</div>';
+  try{ var b=el.querySelector('.ed-b.f'); if(b) b.focus({preventScroll:true}); }catch(e){}
+}
+function eylDemoReveal(){ window._eylDemoShown=true; eylDemoRender(); }
+function eylDemoRate(k){
+  var s=eylDemoLoad(); if(!s||s.idx>=s.cards.length) return;
+  s.cards[s.idx].k=k?1:0; s.idx++; window._eylDemoShown=false;
+  if(s.idx>=s.cards.length && !s.finished){
+    s.finished=new Date().toISOString();
+    try{ track('demo_finished',{known:s.cards.filter(function(c){return c.k===1;}).length,total:s.cards.length,lang:EYL_DEMO.lang,level:EYL_DEMO.level}); }catch(e){}
+  }
+  eylDemoSave(s); eylDemoRender();
+}
+function eylDemoRestart(){ var s=eylDemoLoad(); if(!s) return; s.idx=0; s.cards.forEach(function(c){ delete c.k; }); eylDemoSave(s); window._eylDemoShown=false; eylDemoRender(); }
+function eylDemoSignup(){
+  try{ track('demo_signup_click',{}); }catch(e){}
+  eylDemoClose(); showAuth('register');
+  try{ var sub=document.getElementById('auth-sub'); if(sub) sub.textContent='Załóż konto — Twoje 10 fiszek z wersji próbnej trafi do Powtórek.'; }catch(e){}
+}
+async function eylDemoStart(src){
+  if(window._eylLoggedIn){ if(typeof switchTab==='function') switchTab('community'); return; }
+  if(document.getElementById('eyl-demo')) return;
+  eylDemoCss();
+  var el=document.createElement('div'); el.id='eyl-demo'; el.setAttribute('role','dialog'); el.setAttribute('aria-modal','true'); el.setAttribute('aria-label','Wypróbuj fiszki bez konta');
+  el.innerHTML='<div class="ed-main"><p>Wczytuję fiszki…</p></div>';
+  document.body.appendChild(el); try{ document.body.style.overflow='hidden'; }catch(e){}
+  document.addEventListener('keydown',eylDemoKey);
+  window._eylDemoShown=false;
+  var s=eylDemoLoad();
+  if(!s){
+    var cards=await eylDemoFetch();
+    s={v:1,idx:0,cards:cards,started:new Date().toISOString(),finished:null};
+    eylDemoSave(s);
+    try{ track('demo_started',{src:src||'hero',lang:EYL_DEMO.lang,level:EYL_DEMO.level,cat:EYL_DEMO.cat}); }catch(e){}
+  }
+  if(!document.getElementById('eyl-demo')) return;
+  eylDemoRender();
+}
+/* Po zalogowaniu: przenieś wynik dema do srs_progress. Surowy fetch z keepalive,
+   bo na telefonie zaraz po SIGNED_IN następuje przekierowanie do app.html.
+   ignore-duplicates = nigdy nie nadpisuje istniejącego postępu konta. */
+function eylDemoMigrate(session){
+  try{
+    if(!session||!session.access_token||!session.user||window._eylDemoMig) return;
+    var s=eylDemoLoad(); if(!s) return;
+    var rated=s.cards.filter(function(c){ return c.k===0||c.k===1; });
+    if(!rated.length){ try{ localStorage.removeItem(EYL_DEMO.key); }catch(e){} return; }
+    window._eylDemoMig=true;
+    var rows=rated.map(function(c){
+      var n=sm2Local({ease_factor:2.5,repetitions:0,interval_days:1},c.k===1?4:2);
+      return {user_id:session.user.id,card_key:_usrsCK(c.word,c.translation),word:c.word,translation:c.translation,lang:EYL_DEMO.lang,source:'eyelingo',flashcard_id:c.id,ease_factor:n.ease_factor,repetitions:n.repetitions,interval_days:n.interval_days,next_review:n.next_review};
+    });
+    fetch(SUPABASE_URL+'/rest/v1/srs_progress?on_conflict=user_id,card_key',{method:'POST',keepalive:true,
+      headers:{'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+session.access_token,'Prefer':'resolution=ignore-duplicates,return=minimal'},
+      body:JSON.stringify(rows)})
+    .then(function(r){
+      window._eylDemoMig=false;
+      if(!r.ok) return;
+      try{ localStorage.removeItem(EYL_DEMO.key); }catch(e){}
+      try{ track('demo_migrated',{cards:rows.length,known:rated.filter(function(c){return c.k===1;}).length}); }catch(e){}
+      try{ if(typeof usrsSync==='function') usrsSync(); if(typeof refreshNavDueBadge==='function') refreshNavDueBadge(); }catch(e){}
+    },function(){ window._eylDemoMig=false; });
+  }catch(e){ window._eylDemoMig=false; }
+}
 function updateNav(li,email){
   window._eylLoggedIn=!!li;
   const n=document.getElementById('nav-r');
