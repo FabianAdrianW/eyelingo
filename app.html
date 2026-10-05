@@ -830,6 +830,14 @@ var EYL_AN={base:SUPABASE_URL,anon:SUPABASE_KEY,surface:'mobile',ver:(window.EYL
 function track(ev,props){try{EYL_AN.buf.push({event:ev,props:props||{},session:EYL_AN.sid,surface:EYL_AN.surface,version:EYL_AN.ver,ts:new Date().toISOString()});if(EYL_AN.buf.length>=10)eylFlush();else{try{clearTimeout(EYL_AN._t);}catch(_e){}EYL_AN._t=setTimeout(eylFlush,1500);}}catch(_e){}}
 function eylFlush(){try{if(!EYL_AN.buf.length)return;var b=EYL_AN.buf;EYL_AN.buf=[];var tok=window._eylTok||EYL_AN.anon;fetch(EYL_AN.base+'/rest/v1/rpc/track_events',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','apikey':EYL_AN.anon,'Authorization':'Bearer '+tok},body:JSON.stringify({p_batch:b})}).catch(function(){});}catch(_e){}}
 try{document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')eylFlush();});window.addEventListener('pagehide',function(){eylFlush();});}catch(_e){}
+/* ── Źródło wejścia (first-touch): utm_* i referrer zapamiętane do rejestracji ── */
+function eylAttr(){var o={};try{o=JSON.parse(localStorage.getItem('eyl_attr')||'{}')||{};}catch(_e){o={};}return o;}
+(function(){try{var q=new URLSearchParams(location.search),a=eylAttr(),ch=false;
+  ['utm_source','utm_medium','utm_campaign'].forEach(function(k){var v=(q.get(k)||'').trim().slice(0,80);if(v&&!a[k]){a[k]=v;ch=true;}});
+  if(!a.signup_referrer&&document.referrer){try{var h=new URL(document.referrer).hostname;if(h&&h.indexOf('eyelingo.app')<0){a.signup_referrer=h.slice(0,120);ch=true;}}catch(_e){}}
+  if(!a.signup_landing){a.signup_landing=location.pathname.slice(0,120);ch=true;}
+  if(ch)localStorage.setItem('eyl_attr',JSON.stringify(a));}catch(_e){}})();
+function eylSignupMeta(base){var a=eylAttr(),o=base||{};try{['utm_source','utm_medium','utm_campaign','signup_referrer','signup_landing'].forEach(function(k){if(a[k])o[k]=a[k];});o.signup_surface=EYL_AN.surface;}catch(_e){}return o;}
 let db=null;
 /* Audyt 2026-09 (P2-4): natywne alert() w trybie standalone na iOS wygladaja jak blad systemu,
    nie jak element produktu, i lamia spojnosc z arkuszami uzywanymi wszedzie indziej.
@@ -990,7 +998,7 @@ async function doAuth(){
   try{
     var res = authMode==='login'
       ? await db.auth.signInWithPassword({email,password:pass})
-      : await db.auth.signUp({email,password:pass,options:{data:{username:name||email.split('@')[0]},emailRedirectTo:'https://www.eyelingo.app/'}});
+      : await db.auth.signUp({email,password:pass,options:{data:eylSignupMeta({username:name||email.split('@')[0]}),emailRedirectTo:'https://www.eyelingo.app/'}});
     if(res.error){ showLoginErr(eylAuthErrText(res.error,authMode)); btn.disabled=false; btn.textContent=authMode==='login'?'Zaloguj się':'Załóż konto'; return; }
     // Confirm-email ON: Supabase zaciemnia „już zarejestrowany" (user z pustym identities, bez błędu).
     if(authMode==='signup' && res.data && res.data.user && Array.isArray(res.data.user.identities) && res.data.user.identities.length===0){
@@ -1004,7 +1012,7 @@ async function doAuth(){
       showLoginErr('Konto założone. Kliknij link, który wysłaliśmy na '+email+', aby je aktywować, potem zaloguj się.');
       btn.disabled=false; btn.textContent='Zaloguj się'; return;
     }
-    try{ if(authMode==='signup') track('user_signup',{surface:'mobile'}); }catch(_e){}
+    /* user_signup zapisuje wyzwalacz w bazie (eyl_track_signup_trg) */
     onAuthed(session);
   }catch(e){ showLoginErr(eylAuthErrText(e,authMode)); btn.disabled=false; btn.textContent='Zaloguj się'; }
 }

@@ -3289,6 +3289,14 @@ var EYL_AN={base:SUPABASE_URL,anon:APIKEY_CONST,surface:'web',ver:(window.EYL_AP
 function track(ev,props){try{EYL_AN.buf.push({event:ev,props:props||{},session:EYL_AN.sid,surface:EYL_AN.surface,version:EYL_AN.ver,ts:new Date().toISOString()});if(EYL_AN.buf.length>=10)eylFlush();else{try{clearTimeout(EYL_AN._t);}catch(_e){}EYL_AN._t=setTimeout(eylFlush,1500);}}catch(_e){}}
 function eylFlush(){try{if(!EYL_AN.buf.length)return;var b=EYL_AN.buf;EYL_AN.buf=[];var tok=window._eylTok||EYL_AN.anon;fetch(EYL_AN.base+'/rest/v1/rpc/track_events',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','apikey':EYL_AN.anon,'Authorization':'Bearer '+tok},body:JSON.stringify({p_batch:b})}).catch(function(){});}catch(_e){}}
 try{document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')eylFlush();});window.addEventListener('pagehide',function(){eylFlush();});}catch(_e){}
+/* ── Źródło wejścia (first-touch): utm_* i referrer zapamiętane do rejestracji ── */
+function eylAttr(){var o={};try{o=JSON.parse(localStorage.getItem('eyl_attr')||'{}')||{};}catch(_e){o={};}return o;}
+(function(){try{var q=new URLSearchParams(location.search),a=eylAttr(),ch=false;
+  ['utm_source','utm_medium','utm_campaign'].forEach(function(k){var v=(q.get(k)||'').trim().slice(0,80);if(v&&!a[k]){a[k]=v;ch=true;}});
+  if(!a.signup_referrer&&document.referrer){try{var h=new URL(document.referrer).hostname;if(h&&h.indexOf('eyelingo.app')<0){a.signup_referrer=h.slice(0,120);ch=true;}}catch(_e){}}
+  if(!a.signup_landing){a.signup_landing=location.pathname.slice(0,120);ch=true;}
+  if(ch)localStorage.setItem('eyl_attr',JSON.stringify(a));}catch(_e){}})();
+function eylSignupMeta(base){var a=eylAttr(),o=base||{};try{['utm_source','utm_medium','utm_campaign','signup_referrer','signup_landing'].forEach(function(k){if(a[k])o[k]=a[k];});o.signup_surface=EYL_AN.surface;}catch(_e){}return o;}
 const GENERATE_ARTICLE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/generate-article';
 const TRANSLATE_SENTENCE_URL = 'https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-sentence';
 // Uniwersalna ekstrakcja tekstu z odpowiedzi AI — obsługuje Gemini (candidates),
@@ -3770,7 +3778,7 @@ async function submitAuth(){
   try{
     let res=authMode==='login'
       ?await db.auth.signInWithPassword({email,password:pass})
-      :await db.auth.signUp({email,password:pass,options:{data:{username},emailRedirectTo:'https://www.eyelingo.app/'}});
+      :await db.auth.signUp({email,password:pass,options:{data:eylSignupMeta({username}),emailRedirectTo:'https://www.eyelingo.app/'}});
     if(res.error)throw res.error;
     if(authMode==='register'){
       // Confirm-email ON: Supabase zaciemnia „już zarejestrowany" (user z pustym identities, bez błędu).
@@ -3793,7 +3801,7 @@ async function submitAuth(){
           var _pu=await db.from('profiles').upsert({user_id:res.data.user.id,username},{onConflict:'user_id'}).select();
           if(_pu&&_pu.error){ try{ console.warn('[profiles.upsert]',_pu.error);
             track('profile_upsert_error',{code:String(_pu.error.code||''),message:String(_pu.error.message||'').slice(0,140)}); }catch(_e){} }
-          try{track('user_signup',{surface:'web'});}catch(_e){}
+          /* user_signup zapisuje wyzwalacz w bazie (eyl_track_signup_trg) */
         }
         if(typeof eylGoMobileApp === 'function' && eylGoMobileApp({force:true})) return;
         eylAfterLogin();
