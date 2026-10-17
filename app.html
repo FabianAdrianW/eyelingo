@@ -571,6 +571,32 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
   .lbg-arw{color:var(--dim2);font-size:11px}
   .lbg-body{padding:0 12px 12px}
 </style>
+<style id="eyl-ambient-motion">
+/* Ambient glass — ruch i dotyk (2026-10). Tylko dodatek: nic nie zmienia układu ani logiki.
+   Zasady: sprężyste wciśnięcie, uniesienie na hover (tylko myszka), listy wchodzą kaskadą,
+   animacja kończy się bez zostawiania transform (fill-mode: backwards), reduced-motion wyłącza wszystko. */
+.big,.action,button.set-row,.opt,.btn{transition:transform .24s cubic-bezier(.3,1.4,.5,1),box-shadow .28s,border-color .2s,background-color .2s,opacity .2s}
+.big:active,.action:active,.set-row:active,.opt:active{transform:scale(.975)}
+.btn:active{transform:scale(.97)}
+@media (hover:hover){
+  .big:hover,.action:hover,.set-row:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(26,35,64,.10);border-color:var(--line2)}
+  .big:hover:active,.action:hover:active,.set-row:hover:active{transform:scale(.975)}
+  .btn-orange:hover{box-shadow:0 10px 24px rgba(184,92,32,.32)}
+  .opt:hover{border-color:var(--orange)}
+}
+.btn-orange{box-shadow:0 6px 16px rgba(184,92,32,.22)}
+@keyframes eyl-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.screen.active .scroll>.big,.screen.active .scroll>.action,.screen.active .scroll>.set-row,.screen.active .scroll>.day{animation:eyl-rise .44s cubic-bezier(.22,1,.36,1) backwards}
+.screen.active .scroll>:nth-child(2){animation-delay:.04s}
+.screen.active .scroll>:nth-child(3){animation-delay:.08s}
+.screen.active .scroll>:nth-child(4){animation-delay:.12s}
+.screen.active .scroll>:nth-child(5){animation-delay:.16s}
+.screen.active .scroll>:nth-child(6){animation-delay:.2s}
+.screen.active .scroll>:nth-child(7){animation-delay:.24s}
+.immersive.active{animation:eyl-rise .3s cubic-bezier(.22,1,.36,1) backwards}
+.avatar{transition:transform .22s cubic-bezier(.3,1.4,.5,1)}.avatar:active{transform:scale(.9)}
+@media (prefers-reduced-motion:reduce){.big,.action,.set-row,.opt,.btn,.avatar{transition:none!important}.screen.active .scroll>*,.immersive.active{animation:none!important}}
+</style>
 </head>
 <body>
 <div class="phone"><div class="app" id="app-root">
