@@ -32,7 +32,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,
     QLabel, QLineEdit, QSystemTrayIcon, QScrollArea,
-    QMenu, QPushButton, QGridLayout, QMessageBox, QHBoxLayout, QCheckBox,
+    QMenu, QWidgetAction, QPushButton, QGridLayout, QMessageBox, QHBoxLayout, QCheckBox,
     QProgressBar
 )
 from PyQt6.QtCore import (Qt, QTimer, QThread, pyqtSignal, QPropertyAnimation,
@@ -112,6 +112,19 @@ _tts_bridge   = None
 _tts_player   = None
 _tts_audioout = None
 _tts_tmp      = []
+_tts_muted    = False     # True na czas pauzy/ukrycia fiszek: nic nie czytamy i nic nie gramy
+
+
+def tts_mute(on):
+    """Pauza: zatrzymaj bieżące odtwarzanie i zablokuj nowe (także już pobierane MP3)."""
+    global _tts_muted
+    _tts_muted = bool(on)
+    if on:
+        try:
+            if _tts_player is not None:
+                _tts_player.stop()
+        except Exception:
+            pass
 
 
 class _TTSBridge(_QObject):
@@ -123,6 +136,12 @@ class _TTSBridge(_QObject):
 
     def _play(self, path):
         global _tts_player, _tts_audioout, _tts_tmp
+        if _tts_muted:                      # MP3 doszedł już po pauzie — nie gramy
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+            return
         # Sprzątanie poprzednich plików tymczasowych (nie kasujemy tego, co gra teraz)
         for old_p in _tts_tmp[:-1]:
             try:
@@ -150,7 +169,7 @@ class _TTSBridge(_QObject):
 
 def speak_word(word, lang_code):
     """Czytaj słowo: gTTS (wątek) → QMediaPlayer (wątek GUI)."""
-    if not _tts_available or not _gTTS:
+    if not _tts_available or not _gTTS or _tts_muted:
         return
     try:
         if not APP_SETTINGS.get("audio_enabled", False):
@@ -886,7 +905,7 @@ ADAPT_LIGHT_LUMA   = 190     # 0-255: powyżej tej luminancji piksel uznajemy za
 ADAPT_ENTER_RATIO  = 0.75    # >=75% jasnych pikseli → tło jasne (próg z wymagania)
 ADAPT_EXIT_RATIO   = 0.60    # <=60% → tło znów ciemne (histereza, chroni przed migotaniem)
 ADAPT_CONFIRM_HITS = 2       # ile kolejnych pomiarów musi potwierdzić zmianę stanu
-ADAPT_DELTA        = 0.10    # o ile bardziej przezroczysta fiszka na jasnym tle
+ADAPT_DELTA        = 0.12    # o ile mniej przezroczysta (ciemniejsza) fiszka na jasnym tle
 ADAPT_MIN_OPACITY  = 0.20    # podłoga — fiszka nigdy nie znika całkiem
 
 # ── Konfiguracja: geometria karty (szerokość dopasowana do treści kategorii) ──
@@ -1031,8 +1050,14 @@ def _fade_window(w, target, ms, curve=None, then=None):
     w._op_anim = a
     a.start()
 
-def _pop_in(w, dy=0, ms=260):
-    """Wejście okna: fade-in + (opcjonalnie) wynurzenie z dołu o dy px."""
+def _spring_curve(overshoot=1.1):
+    c = QEasingCurve(QEasingCurve.Type.OutBack)
+    c.setOvershoot(overshoot)
+    return c
+
+def _pop_in(w, dy=0, ms=380):
+    """Wejście okna (jak w podglądzie Glass): fade-in 380 ms + wynurzenie z dołu
+    o dy px z lekkim przeskokiem (-2 px) i osiadnięciem."""
     if not UI_MOTION:
         return
     _ui_anim_stop(w, "_pop_anim")
@@ -1043,16 +1068,37 @@ def _pop_in(w, dy=0, ms=260):
         end = w.pos()
         w.move(end.x(), end.y() + dy)
         a = QPropertyAnimation(w, b"pos", w)
-        a.setDuration(ms + 60)
+        a.setDuration(ms)
         a.setStartValue(w.pos())
         a.setEndValue(end)
-        a.setEasingCurve(QEasingCurve.Type.OutBack)
+        a.setEasingCurve(_spring_curve(0.9))
         w._pop_anim = a
         a.start()
 
+def _fade_in_widgets(widgets, ms=320, stagger=70):
+    """Miękkie wejście treści w oknie (np. nowe pytanie, wynik): kolejne elementy
+    wpływają jeden po drugim; efekt jest zdejmowany po animacji."""
+    if not UI_MOTION:
+        return
+    try:
+        from PyQt6.QtWidgets import QGraphicsOpacityEffect
+        for i, w in enumerate(widgets):
+            if w is None or not w.isVisible():
+                continue
+            eff = QGraphicsOpacityEffect(w)
+            eff.setOpacity(0.0)
+            w.setGraphicsEffect(eff)
+            a = QPropertyAnimation(eff, b"opacity", eff)
+            a.setDuration(ms); a.setStartValue(0.0); a.setEndValue(1.0)
+            a.setEasingCurve(QEasingCurve.Type.OutCubic)
+            a.finished.connect(lambda w=w: w.setGraphicsEffect(None))
+            QTimer.singleShot(i * stagger, a.start)
+    except Exception as ex:
+        print(f"[motion] {ex}")
+
 # ── SZKŁO: baza wizualna (zgodna z makietami "Eyelingo Glass") ────────────
 # Jedno źródło prawdy dla kolorów i klocków UI. Wyłącznik awaryjny rozmycia: UI_BLUR = False.
-from PyQt6.QtWidgets import QLayout, QScrollArea, QSizePolicy, QFrame
+from PyQt6.QtWidgets import QLayout, QScrollArea, QSizePolicy, QFrame, QComboBox
 from PyQt6.QtCore import QRect, QSize, QRectF, QPointF, QObject, QEvent
 from PyQt6.QtGui import (QFontMetrics, QPainterPath, QPolygonF,
                          QLinearGradient, QRadialGradient)
@@ -1206,6 +1252,34 @@ def _draw_glyph(p, name, cx, cy, s, col, width=1.8):
         p.setBrush(QColor(0, 0, 0, 0))
         p.drawEllipse(QPointF(cx + k * .22, cy - k * .32), k * .2, k * .2)
         p.drawEllipse(QPointF(cx - k * .22, cy + k * .32), k * .2, k * .2)
+    elif name == "back":
+        p.drawLine(QPointF(cx + k * .6, cy), QPointF(cx - k * .6, cy))
+        p.drawLine(QPointF(cx - k * .6, cy), QPointF(cx - k * .1, cy - k * .5))
+        p.drawLine(QPointF(cx - k * .6, cy), QPointF(cx - k * .1, cy + k * .5))
+    elif name == "refresh":
+        rr = QRectF(cx - k * .62, cy - k * .62, k * 1.24, k * 1.24)
+        path = QPainterPath()
+        path.arcMoveTo(rr, 40)
+        path.arcTo(rr, 40, 280)
+        p.drawPath(path)
+        ex, ey = cx + k * .62 * 0.766, cy - k * .62 * 0.643
+        p.drawLine(QPointF(ex, ey), QPointF(ex + k * .05, ey - k * .42))
+        p.drawLine(QPointF(ex, ey), QPointF(ex + k * .45, ey + k * .04))
+    elif name == "logout":
+        p.drawLine(QPointF(cx - k * .15, cy), QPointF(cx + k * .7, cy))
+        p.drawLine(QPointF(cx + k * .7, cy), QPointF(cx + k * .4, cy - k * .28))
+        p.drawLine(QPointF(cx + k * .7, cy), QPointF(cx + k * .4, cy + k * .28))
+        path = QPainterPath()
+        path.moveTo(cx - k * .15, cy - k * .62); path.lineTo(cx - k * .7, cy - k * .62)
+        path.lineTo(cx - k * .7, cy + k * .62); path.lineTo(cx - k * .15, cy + k * .62)
+        p.drawPath(path)
+    elif name == "eye":
+        path = QPainterPath()
+        path.moveTo(cx - k * .8, cy)
+        path.quadTo(cx, cy - k * .85, cx + k * .8, cy)
+        path.quadTo(cx, cy + k * .85, cx - k * .8, cy)
+        p.drawPath(path)
+        p.drawEllipse(QPointF(cx, cy), k * .2, k * .2)
     p.restore()
 
 
@@ -1471,6 +1545,175 @@ class StatusDot(QWidget):
         p.drawEllipse(c, 4, 4)
 
 
+class GlassCombo(QComboBox):
+    """Lista rozwijana w stylu Eyelingo Glass: półprzezroczysta kapsuła + rysowany szewron
+    (zamiast kwadratowej strzałki ze stylów Qt)."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(40)
+        self.setStyleSheet(
+            "QComboBox{background:transparent;border:none;}"
+            "QComboBox::drop-down{width:0;border:none;}"
+            "QComboBox::down-arrow{image:none;width:0;height:0;}"
+            "QComboBox QAbstractItemView{background:#141c34;color:#eef2ff;"
+            "selection-background-color:rgba(240,146,77,215);selection-color:#1a1206;"
+            "border:1px solid rgba(255,255,255,56);border-radius:10px;padding:4px;outline:none;}"
+            "QComboBox QAbstractItemView::item{min-height:32px;padding-left:10px;border-radius:7px;}")
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(.5, .5, -.5, -.5)
+        hv = self.underMouse() or self.hasFocus()
+        p.setBrush(QColor(255, 255, 255, 52 if hv else 38))
+        p.setPen(QPen(QColor(255, 255, 255, 96 if hv else 70), 1))
+        p.drawRoundedRect(r, 13, 13)
+        p.setPen(QColor(238, 242, 255))
+        f = _gfont(14); p.setFont(f)
+        tr = QRectF(14, 0, self.width() - 14 - 38, self.height())
+        txt = QFontMetrics(f).elidedText(self.currentText(), Qt.TextElideMode.ElideRight, int(tr.width()))
+        p.drawText(tr, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), txt)
+        cx, cy = self.width() - 22.0, self.height() / 2.0
+        p.setPen(QPen(QColor(255, 178, 122), 1.9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.drawLine(QPointF(cx - 5, cy - 2.4), QPointF(cx, cy + 2.6))
+        p.drawLine(QPointF(cx, cy + 2.6), QPointF(cx + 5, cy - 2.4))
+
+
+
+class _Ghost(QWidget):
+    """Przezroczyste okno-duch rysujące zrzut prawdziwego okna z dowolną skalą, przesunięciem
+    i obrotem. Dzięki niemu okno „rośnie”, leci do karty i pochyla się przy przeciąganiu
+    bez przeliczania układu (Qt nie skaluje ani nie obraca okien)."""
+    def __init__(self, margin=28):
+        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool |
+                         Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.NoDropShadowWindowHint |
+                         Qt.WindowType.WindowTransparentForInput)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.m = margin
+        self.pm = None
+        self.rect_f = None        # gdzie rysować zrzut (współrzędne okna ducha)
+        self.rot = 0.0
+        self.alpha = 1.0
+
+    def cover(self, rect):
+        """Duch pokrywa rect (współrzędne ekranu) + margines."""
+        self.setGeometry(rect.adjusted(-self.m, -self.m, self.m, self.m))
+
+    def snap(self, win):
+        self.pm = win.grab()
+        self.update()
+
+    def paintEvent(self, e):
+        if self.pm is None or self.rect_f is None or self.alpha <= 0:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setOpacity(max(0.0, min(1.0, self.alpha)))
+        r = self.rect_f
+        if self.rot:
+            p.translate(r.center()); p.rotate(self.rot); p.translate(-r.center())
+        p.drawPixmap(r, self.pm, QRectF(self.pm.rect()))
+
+
+UI_GHOST = False   # okna-duchy (skalowanie/tilt/lot): na Windowsie widać je jako szerszą ramkę → wyłączone
+
+def _ghost_kill(w):
+    g = getattr(w, "_ghost", None)
+    a = getattr(w, "_ghost_anim", None)
+    if a is not None:
+        try:
+            a.stop()
+        except Exception:
+            pass
+    if g is not None:
+        try:
+            g.close(); g.deleteLater()
+        except Exception:
+            pass
+    w._ghost = None; w._ghost_anim = None
+
+
+def _scale_open(w, ms=380, dy=16, s0=0.93):
+    """Wejście okna jak w podglądzie Glass: skala 0.93→1 + wynurzenie o 16 px,
+    sprężyste osiadnięcie, treść napływa (zrzut odświeżany co klatkę)."""
+    _ghost_kill(w)
+    _ui_anim_stop(w, "_pop_anim"); _ui_anim_stop(w, "_op_anim")
+    g = _Ghost()
+    g.cover(w.geometry())
+    g.snap(w)
+    w._ghost = g
+    W, H = w.width(), w.height()
+    m = g.m
+    w.setWindowOpacity(0.0)
+    g.rect_f = QRectF(m + W * (1 - s0) / 2, m + H * (1 - s0) / 2 + dy, W * s0, H * s0)
+    g.alpha = 0.0
+    g.show()
+    anim = QVariantAnimation(w)
+    anim.setDuration(ms)
+    anim.setStartValue(0.0); anim.setEndValue(1.0)
+    anim.setEasingCurve(_spring_curve(0.9))
+
+    def _frame(v):
+        v = float(v)
+        if w._closing or not w.isVisible():
+            return
+        g.snap(w)
+        sc = s0 + (1 - s0) * v
+        g.rect_f = QRectF(m + W * (1 - sc) / 2, m + H * (1 - sc) / 2 + dy * (1 - v), W * sc, H * sc)
+        g.alpha = min(1.0, v * 2.4)
+        g.update()
+
+    def _done():
+        if getattr(w, "_ghost", None) is g and not w._closing:
+            w.setWindowOpacity(1.0)
+        QTimer.singleShot(30, lambda: (_ghost_kill(w) if getattr(w, "_ghost", None) is g else None))
+    anim.valueChanged.connect(_frame)
+    anim.finished.connect(_done)
+    w._ghost_anim = anim
+    anim.start()
+
+
+def _fly_to_rect(src, dst, ms=460):
+    """Okno src „zapada się” i leci w stronę prostokąta dst (karta), gasnąc na końcu."""
+    try:
+        if not UI_MOTION or not src.isVisible():
+            return
+        a = src.geometry()
+        d = QRect(dst)
+        u = a.united(d)
+        g = _Ghost(margin=20)
+        g.cover(u)
+        g.snap(src)
+        ox, oy = u.left() - g.m, u.top() - g.m
+        g.rect_f = QRectF(a.left() - ox, a.top() - oy, a.width(), a.height())
+        g.show()
+        anim = QVariantAnimation(g)
+        anim.setDuration(ms)
+        anim.setStartValue(0.0); anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.InCubic)
+
+        def _frame(v):
+            v = float(v)
+            cx = a.center().x() + (d.center().x() - a.center().x()) * v
+            cy = a.center().y() + (d.center().y() - a.center().y()) * v
+            sc = 1 + (min(d.width() / max(a.width(), 1), d.height() / max(a.height(), 1)) - 1) * v
+            sc = max(sc, 0.12)
+            w2, h2 = a.width() * sc, a.height() * sc
+            g.rect_f = QRectF(cx - ox - w2 / 2, cy - oy - h2 / 2, w2, h2)
+            g.alpha = 1.0 - max(0.0, (v - 0.55) / 0.45)
+            g.update()
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(lambda: (g.close(), g.deleteLater()))
+        g._anim = anim
+        anim.start()
+    except Exception as ex:
+        print(f"[motion] fly: {ex}")
+
+
 class _DraggableWindow(QWidget):
     """Mixin: przeciąganie przez pasek tytułu (górne 32px) + ESC zamyka."""
     DRAG_BAR_HEIGHT = 32   # wysokość strefy drag u góry
@@ -1492,21 +1735,97 @@ class _DraggableWindow(QWidget):
 
     def mouseMoveEvent(self, e):
         if self._drag_pos_win and e.buttons() == Qt.MouseButton.LeftButton:
-            self.move(e.globalPosition().toPoint() - self._drag_pos_win)
+            new = e.globalPosition().toPoint() - self._drag_pos_win
+            dx = new.x() - self.x()
+            self.move(new)
+            self._tilt(dx)
             e.accept()
         else:
             super().mouseMoveEvent(e)
 
+    def _tilt(self, dx):
+        """Przeciągane okno lekko się pochyla (±2°) w stronę ruchu i wraca sprężyście."""
+        if not UI_MOTION or not UI_GHOST or self._closing:
+            return
+        try:
+            g = getattr(self, "_drag_ghost", None)
+            if g is None:
+                _ghost_kill(self)
+                g = self._drag_ghost = _Ghost()
+                g.cover(self.geometry()); g.snap(self)
+                self.setWindowOpacity(0.0)
+                g.show()
+                self._tilt_v = 0.0
+            self._tilt_v = 0.65 * self._tilt_v + 0.35 * dx
+            g.rot = max(-2.0, min(2.0, self._tilt_v * 0.5))
+            g.cover(self.geometry())
+            g.rect_f = QRectF(g.m, g.m, self.width(), self.height())
+            g.alpha = 1.0
+            g.update()
+        except Exception as ex:
+            print(f"[motion] tilt: {ex}")
+
+    def _tilt_end(self):
+        g = getattr(self, "_drag_ghost", None)
+        if g is None:
+            return
+        self._drag_ghost = None
+        r0 = g.rot
+        anim = QVariantAnimation(g)
+        anim.setDuration(320)
+        anim.setStartValue(float(r0)); anim.setEndValue(0.0)
+        anim.setEasingCurve(_spring_curve(1.6))
+        anim.valueChanged.connect(lambda v: (setattr(g, "rot", float(v)), g.update()))
+        def _fin():
+            if not self._closing:
+                self.setWindowOpacity(1.0)
+            g.close(); g.deleteLater()
+        anim.finished.connect(_fin)
+        g._anim = anim
+        anim.start()
+
     def mouseReleaseEvent(self, e):
         self._drag_pos_win = None
+        self._tilt_end()
         super().mouseReleaseEvent(e)
 
-    ANIM_DY = 0   # >0: okno wynurza się z dołu o tyle px (np. panel traya)
+    ANIM_DY = 16  # okno wynurza się z dołu o tyle px (jak w podglądzie Glass)
+    SCALE_OPEN = True   # wejście ze skalowaniem (zrzut-duch); False = tylko fade+ruch
     HAS_CLOSE = False   # True: okno ma własny przycisk wyjścia (albo nie wolno go zamknąć)
+
+    back_cb = None      # ustawiane przez TrayApp: dokąd prowadzi „←” (np. do panelu)
+
+    def set_back(self, cb):
+        self.back_cb = cb
+        self._ensure_back()
+
+    def _go_back_cb(self):
+        cb = self.back_cb
+        self.fade_hide()
+        if cb:
+            QTimer.singleShot(60, cb)
+
+    def _ensure_back(self):
+        """Strzałka „←” obok „✕”: wszędzie da się cofnąć bez wychodzenia z programu."""
+        if self.back_cb is None:
+            b = getattr(self, "_auto_back", None)
+            if b is not None:
+                b.hide()
+            return
+        b = getattr(self, "_auto_back", None)
+        if b is None:
+            b = GlassButton("", "ico", parent=self)
+            b.setGlyph("back"); b.setToolTip("Wróć")
+            b.clicked.connect(self._go_back_cb)
+            self._auto_back = b
+        x_right = 14 if not self.HAS_CLOSE else 20
+        b.move(self.width() - 34 - x_right - 34 - 8, 12 if not self.HAS_CLOSE else 20)
+        b.show(); b.raise_()
 
     def _ensure_close_x(self):
         """Każde okno ma ZAWSZE widoczny przycisk zamknięcia w prawym górnym rogu —
         użytkownik nigdy nie utknie w oknie bez wyjścia."""
+        self._ensure_back()
         if self.HAS_CLOSE:
             return
         b = getattr(self, "_auto_x", None)
@@ -1520,25 +1839,80 @@ class _DraggableWindow(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        if getattr(self, "_auto_x", None) is not None:
+        if getattr(self, "_auto_x", None) is not None or getattr(self, "_auto_back", None) is not None:
             self._ensure_close_x()
 
     def showEvent(self, e):
         super().showEvent(e)
         try:
             self._ensure_close_x()
-            _pop_in(self, self.ANIM_DY)
+            if UI_MOTION and UI_GHOST and self.SCALE_OPEN:
+                try:
+                    _scale_open(self, dy=self.ANIM_DY or 16)
+                except Exception as ex:
+                    print(f"[motion] scale: {ex}")
+                    _ghost_kill(self)
+                    _pop_in(self, self.ANIM_DY)
+            else:
+                _pop_in(self, self.ANIM_DY)
         except Exception as ex:
             print(f"[motion] {ex}")
 
-    def fade_hide(self):
-        """Zamknięcie szybsze niż otwarcie (150 ms): okno odpływa, nie znika skokiem."""
-        if not self.isVisible():
-            return
-        def _fin():
+    _closing = False
+
+    def hide(self):
+        """Każde ukrycie okna jest animowane – przejście A→B to płynne „odpłynięcie” A
+        nałożone na wejście B (zamiast nagłego znikania)."""
+        if UI_MOTION and self.isVisible() and not self._closing:
+            self._close_anim()
+        elif not self._closing:
             QWidget.hide(self)
+
+    def show(self):
+        if self._closing:               # ktoś chce okno z powrotem w trakcie zamykania
+            self._closing = False
+            _ui_anim_stop(self, "_op_anim")
+            _ui_anim_stop(self, "_pop_anim")
             self.setWindowOpacity(1.0)
-        _fade_window(self, 0.0, 150, QEasingCurve.Type.InCubic, then=_fin)
+            self.move(self._home)
+        elif UI_MOTION and not self.isVisible():
+            self.setWindowOpacity(0.0)      # bez błysku: okno startuje niewidoczne
+        super().show()
+
+    def fade_hide(self):
+        self._close_anim()
+
+    def _close_anim(self):
+        """Zamknięcie szybsze niż otwarcie (170 ms): okno opada o 8 px i gaśnie."""
+        if not self.isVisible() or self._closing:
+            return
+        _ghost_kill(self)
+        dg = getattr(self, "_drag_ghost", None)
+        if dg is not None:
+            self._drag_ghost = None
+            dg.close(); dg.deleteLater()
+        self.setWindowOpacity(1.0)
+        home = self._home = self.pos()
+        self._closing = True
+        def _fin():
+            if not self._closing:       # w międzyczasie okno przywrócono
+                return
+            self._closing = False
+            QWidget.hide(self)
+            _ui_anim_stop(self, "_pop_anim")
+            self.setWindowOpacity(1.0)
+            self.move(home)
+            QTimer.singleShot(40, lambda: (not self.isVisible()) and self.move(home))
+        if UI_MOTION:
+            _ui_anim_stop(self, "_pop_anim")
+            a = QPropertyAnimation(self, b"pos", self)
+            a.setDuration(170)
+            a.setStartValue(home)
+            a.setEndValue(QPoint(home.x(), home.y() + 8))
+            a.setEasingCurve(QEasingCurve.Type.InQuad)
+            self._pop_anim = a
+            a.start()
+        _fade_window(self, 0.0, 170, QEasingCurve.Type.InCubic, then=_fin)
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key.Key_Escape:
@@ -1604,16 +1978,14 @@ _GHOST_QSS = """
 """
 
 def _close_btn(target):
-    btn = QPushButton("Zamknij")
-    btn.setStyleSheet(_GHOST_QSS)
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    btn.clicked.connect(target.hide)
+    btn = GlassButton("Zamknij", "ghost", radius=14)
+    btn.setFixedHeight(42)
+    btn.clicked.connect(getattr(target, "fade_hide", target.hide))
     return btn
 
 def _back_btn(text, cb):
-    btn = QPushButton(text)
-    btn.setStyleSheet(_GHOST_QSS)
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn = GlassButton(text, "ghost", radius=14)
+    btn.setFixedHeight(42)
     btn.clicked.connect(cb)
     return btn
 
@@ -2439,6 +2811,7 @@ class LoginWindow(_DraggableWindow):
 # OKNO FISZKI
 # ──────────────────────────────────────────────────────
 class FlashcardOverlay(QWidget):
+    _suspended = False   # True na czas pauzy/ukrycia: nowy zestaw ładuje się, ale okno się NIE pokazuje
     def __init__(self):
         super().__init__()
         self.index = 0
@@ -2525,7 +2898,8 @@ class FlashcardOverlay(QWidget):
         self.lang  = lang
         self.level = level
         self.cat   = cat
-        _session.slides_started(lang, level, cat)
+        if not self._suspended:
+            _session.slides_started(lang, level, cat)
         _session.track("slides_started", {
             "language": lang, "level": level, "category": cat
         })
@@ -2549,7 +2923,8 @@ class FlashcardOverlay(QWidget):
         self.index = 0
         self._is_custom = False
         self._fit_to_cards()
-        self.show()
+        if not self._suspended:
+            self.show()
         self._update()
 
     def _on_error(self, msg):
@@ -2567,7 +2942,8 @@ class FlashcardOverlay(QWidget):
                       for i, c in enumerate(cards)]
         self.index = 0
         self._fit_to_cards()
-        self.show()
+        if not self._suspended:
+            self.show()
         self._update()
 
     # ── Zegar rotacji fiszek ──────────────────────────────────────────
@@ -2832,14 +3208,16 @@ class FlashcardOverlay(QWidget):
             from PyQt6.QtWidgets import QGraphicsOpacityEffect
             self._fx_token = getattr(self, "_fx_token", 0) + 1
             token = self._fx_token
-            for i, lbl in enumerate((self.lbl_word, self.lbl_romaji, self.lbl_tr)):
+            self._word_reveal(token)
+            n = len(self.lbl_word.text())
+            for i, lbl in enumerate((self.lbl_romaji, self.lbl_tr)):
                 if lbl.isHidden():
                     continue
                 eff = QGraphicsOpacityEffect(lbl)
                 eff.setOpacity(0.0)
                 lbl.setGraphicsEffect(eff)
                 a = QPropertyAnimation(eff, b"opacity", eff)
-                a.setDuration(380)
+                a.setDuration(500)
                 a.setStartValue(0.0)
                 a.setEndValue(1.0)
                 a.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -2851,7 +3229,89 @@ class FlashcardOverlay(QWidget):
                         except Exception:
                             pass
                 a.finished.connect(_done)
-                QTimer.singleShot(i * 110, a.start)
+                QTimer.singleShot(200 + min(n, 24) * 30 + i * 60, a.start)
+        except Exception as ex:
+            print(f"[motion] {ex}")
+
+    def _word_reveal(self, token):
+        """Słowo wchodzi litera po literze (30 ms odstępu, 560 ms na literę) – jak w
+        podglądzie Glass. Po animacji wraca zwykły tekst; nowe słowo przerywa starą."""
+        import re as _re, html as _html
+        lbl = self.lbl_word
+        text = lbl.text()
+        m = _re.search(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*(\d+)\)", lbl.styleSheet())
+        if not text or not m or len(text) > 60:
+            return
+        r, g, b, a0 = (int(x) for x in m.groups())
+        n = len(text)
+        total = (n - 1) * 30 + 560
+        old = getattr(self, "_rev_anim", None)
+        if old is not None:
+            try:
+                old.stop()
+            except Exception:
+                pass
+        anim = QVariantAnimation(self)
+        anim.setDuration(total)
+        anim.setStartValue(0.0)
+        anim.setEndValue(float(total))
+        anim.setEasingCurve(QEasingCurve.Type.Linear)
+
+        def _frame(v):
+            if getattr(self, "_fx_token", 0) != token:
+                return
+            t = float(v)
+            out = []
+            for i, ch in enumerate(text):
+                p = max(0.0, min(1.0, (t - i * 30) / 560.0))
+                p = 1 - (1 - p) ** 3
+                out.append(f'<span style="color:rgba({r},{g},{b},{int(a0 * p)})">'
+                           f'{"&nbsp;" if ch == " " else _html.escape(ch)}</span>')
+            lbl.setText("".join(out))
+
+        def _end():
+            if getattr(self, "_fx_token", 0) == token:
+                lbl.setText(text)
+        _frame(0.0)
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(_end)
+        self._rev_anim = anim
+        anim.start()
+
+    def _word_glow(self):
+        """Delikatny blask nowego słowa: start po 450 ms, szczyt po ~550 ms, zanik do 2,2 s."""
+        try:
+            from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+            lbl = self.lbl_romaji if (self.lang in NON_LATIN_LANGS and self.lbl_romaji.isVisible()) else self.lbl_word
+            token = self._fx_token = getattr(self, "_fx_token", 0)
+            eff = QGraphicsDropShadowEffect(lbl)
+            eff.setOffset(0, 0)
+            eff.setBlurRadius(0)
+            eff.setColor(QColor(255, 226, 196, 0))
+            lbl.setGraphicsEffect(eff)
+            anim = QVariantAnimation(eff)
+            anim.setDuration(2200)
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.Type.Linear)
+
+            def _frame(v):
+                v = float(v)
+                k = v / 0.25 if v < 0.25 else 1 - (v - 0.25) / 0.75
+                k = max(0.0, min(1.0, k))
+                eff.setBlurRadius(10 + 26 * k)
+                eff.setColor(QColor(255, 226, 196, int(235 * k)))
+
+            def _end():
+                if getattr(self, "_fx_token", 0) == token:
+                    try:
+                        lbl.setGraphicsEffect(None)
+                    except Exception:
+                        pass
+            anim.valueChanged.connect(_frame)
+            anim.finished.connect(_end)
+            self._glow_anim = anim
+            QTimer.singleShot(450, lambda: (getattr(self, "_fx_token", 0) == token) and anim.start())
         except Exception as ex:
             print(f"[motion] {ex}")
 
@@ -2870,6 +3330,9 @@ class FlashcardOverlay(QWidget):
         """Efekt wizualny TYLKO koloru słówka - bez zmiany rozmiaru/pozycji. Max ~300ms."""
         fx = APP_SETTINGS.get("card_effect", "none")
         if fx == "none" or not fx:
+            return
+        if fx == "glow_white":
+            self._word_glow()
             return
         # Efekt na transliteracji jeśli pismo nielatyńskie, inaczej na słówku
         lbl  = self.lbl_romaji if (self.lang in NON_LATIN_LANGS and self.lbl_romaji.isVisible()) else self.lbl_word
@@ -2948,8 +3411,14 @@ class FlashcardOverlay(QWidget):
         # przychodzi z ustawienia „Przezroczystość” (windowOpacity).
         rr = r.adjusted(0.5, 0.5, -0.5, -0.5)
         g = QLinearGradient(rr.topLeft(), rr.bottomLeft())
-        g.setColorAt(0.0, QColor(34, 44, 80, 122))
-        g.setColorAt(1.0, QColor(14, 20, 40, 146))
+        if getattr(self, "_adapt_light", False):
+            # jasne tło pod fiszką → ciemniejsze, bardziej kryjące wypełnienie
+            g.setColorAt(0.0, QColor(24, 32, 62, 208))
+            g.setColorAt(1.0, QColor(10, 15, 32, 228))
+        else:
+            # ciemne tło → jaśniejsze, bardziej przezroczyste szkło
+            g.setColorAt(0.0, QColor(52, 66, 112, 92))
+            g.setColorAt(1.0, QColor(30, 40, 78, 112))
         p.setBrush(QBrush(g))
         p.setPen(QPen(QColor(255, 255, 255, 44), 1))
         p.drawRoundedRect(rr, 16, 16)
@@ -2998,12 +3467,62 @@ class FlashcardOverlay(QWidget):
         return min(1.0, max(0.05, v))
 
     def _cur_opacity(self) -> float:
-        """Efektywna przezroczystość okna: baza z ustawień, pomniejszona o ADAPT_DELTA,
-        gdy tło pod fiszką jest jasne. Gdy tło ciemnieje — wracamy do bazy."""
+        """Efektywna przezroczystość okna: baza z ustawień. Na JASNYM tle fiszka robi się
+        mocniejsza (baza + ADAPT_DELTA) — ciemna karta czytelna na jasnym; na ciemnym
+        wraca do bazy, a samo wypełnienie karty jest lżejsze (patrz paintEvent)."""
         v = self._base_opacity()
         if getattr(self, "_adapt_light", False):
-            v = max(ADAPT_MIN_OPACITY, v - ADAPT_DELTA)
+            v = v + ADAPT_DELTA
         return min(1.0, max(0.05, v))
+
+    _ov_closing = False
+
+    def show(self):
+        """Fiszka wynurza się (380 ms, +14 px) zamiast pojawiać się skokiem."""
+        was = self._ov_closing
+        if was:
+            self._ov_closing = False
+            _ui_anim_stop(self, "_op_anim"); _ui_anim_stop(self, "_pop_anim")
+            self.move(self._ov_home)
+        fresh = not self.isVisible()
+        if fresh and UI_MOTION:
+            self.setWindowOpacity(0.0)
+        super().show()
+        if (fresh or was) and UI_MOTION:
+            target = 0.0 if self._hover_hidden else self._cur_opacity()
+            _fade_window(self, target, 380)
+            end = self.pos()
+            if not was:
+                self.move(end.x(), end.y() + 14)
+                a = QPropertyAnimation(self, b"pos", self)
+                a.setDuration(380); a.setStartValue(self.pos()); a.setEndValue(end)
+                a.setEasingCurve(_spring_curve(0.9))
+                self._pop_anim = a; a.start()
+
+    def hide(self):
+        """Fiszka odpływa (200 ms, −8 px) zamiast znikać."""
+        if not (UI_MOTION and self.isVisible()) or self._ov_closing:
+            if not self._ov_closing:
+                QWidget.hide(self)
+            return
+        self._ov_closing = True
+        home = self._ov_home = self.pos()
+        def _fin():
+            if not self._ov_closing:
+                return
+            self._ov_closing = False
+            QWidget.hide(self)
+            _ui_anim_stop(self, "_pop_anim")
+            self.move(home)
+            QTimer.singleShot(40, lambda: (not self.isVisible()) and self.move(home))
+            self.setWindowOpacity(0.0 if self._hover_hidden else self._cur_opacity())
+        a = QPropertyAnimation(self, b"pos", self)
+        a.setDuration(200); a.setStartValue(home)
+        a.setEndValue(QPoint(home.x(), home.y() + 8))
+        a.setEasingCurve(QEasingCurve.Type.InQuad)
+        _ui_anim_stop(self, "_pop_anim")
+        self._pop_anim = a; a.start()
+        _fade_window(self, 0.0, 200, QEasingCurve.Type.InCubic, then=_fin)
 
     def apply_opacity(self):
         """Wymusza przeliczenie i nałożenie efektywnej przezroczystości."""
@@ -3011,6 +3530,7 @@ class FlashcardOverlay(QWidget):
             return                      # pod kursorem okno jest na 0.0 — nie ruszamy
         _ui_anim_stop(self, "_op_anim")
         self.setWindowOpacity(self._cur_opacity())
+        self.update()                   # wypełnienie karty zależy od jasności tła
 
     def _init_hover_hide(self):
         self._hover_timer = QTimer(self)
@@ -4104,7 +4624,7 @@ class CustomSetWindow(_DraggableWindow):
         self.card_rows   = []
         self._is_premium = False
         _styled_window(self)
-        self.setFixedSize(440, 580)
+        self.setFixedSize(440, 650)
         self._build()
         _right_third_pos(self)
 
@@ -4124,27 +4644,26 @@ class CustomSetWindow(_DraggableWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        # Pasek drag
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
+        # Nagłówek (też strefa przeciągania); „✕” dokłada _DraggableWindow
+        hdr = QWidget(); hdr.setFixedHeight(56); hdr.setStyleSheet("background:transparent;")
+        hl = QHBoxLayout(hdr); hl.setContentsMargins(24, 16, 60, 0)
         t = QLabel("Stwórz własny zestaw")
-        t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        t.setStyleSheet("color:white;background:transparent;")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
         hl.addWidget(t)
         lay.addWidget(hdr)
 
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
         self.main_lay = QVBoxLayout(inner)
-        self.main_lay.setContentsMargins(20, 10, 20, 16)
+        self.main_lay.setContentsMargins(24, 6, 24, 18)
         self.main_lay.setSpacing(8)
         lay.addWidget(inner, 1)
 
         # Info o limicie dla darmowych
         self.lbl_limit = QLabel(f"Plan darmowy: do {MAX_CARDS} fiszek w zestawie · Subskrypcja = bez limitu")
-        self.lbl_limit.setFont(QFont("Segoe UI", 9))
-        self.lbl_limit.setStyleSheet("color:rgba(150,120,230,200);background:transparent;")
-        self.lbl_limit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_limit.setFont(_gfont(12))
+        self.lbl_limit.setStyleSheet("color:%s;background:transparent;" % G_SOFT)
+        self.lbl_limit.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.lbl_limit.setWordWrap(True)
         self.main_lay.addWidget(self.lbl_limit)
 
@@ -4160,15 +4679,15 @@ class CustomSetWindow(_DraggableWindow):
         hdr_lay = QHBoxLayout(hdr_w); hdr_lay.setContentsMargins(4, 0, 4, 0)
         for txt in ["Słowo / pytanie", "Tłumaczenie / odpowiedź", ""]:
             lh = QLabel(txt)
-            lh.setFont(QFont("Segoe UI", 8))
-            lh.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
+            lh.setFont(_gfont(12))
+            lh.setStyleSheet("color:rgba(238,242,255,176);background:transparent;")
             hdr_lay.addWidget(lh, 0 if txt == "" else 1)
         self.main_lay.addWidget(hdr_w)
 
         # Scroll na fiszki — stała wysokość
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(340)
+        scroll.setFixedHeight(300)
         scroll.setStyleSheet("""
             QScrollArea { border:none; background:transparent; }
             QScrollBar:vertical { background:rgba(255,255,255,.04); width:5px; border-radius:2px; }
@@ -4188,32 +4707,25 @@ class CustomSetWindow(_DraggableWindow):
             self._add_row()
 
         # Przyciski
-        btn_add = QPushButton("+ Dodaj wiersz")
-        btn_add.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(120,135,190,150);
-                border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-        """)
-        btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_add = GlassButton("+ Dodaj wiersz", "ghost", radius=14)
+        btn_add.setFixedHeight(42)
         btn_add.clicked.connect(self._add_row)
         self.main_lay.addWidget(btn_add)
 
         self.lbl_error = QLabel("")
-        self.lbl_error.setStyleSheet("color:rgba(255,100,100,220);font-size:11px;background:transparent;")
+        self.lbl_error.setStyleSheet("color:#ff8a8a;font-size:12px;background:transparent;")
         self.lbl_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.main_lay.addWidget(self.lbl_error)
 
-        self.btn_save = QPushButton("Zapisz zestaw")
-        self.btn_save.setMinimumHeight(36)
-        self.btn_save.setStyleSheet(BTN_PRIMARY)
-        self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_save = GlassButton("Zapisz zestaw", "cta", radius=16)
+        self.btn_save.setFixedHeight(50)
         self.btn_save.clicked.connect(self._save)
         self.main_lay.addWidget(self.btn_save)
-
-        self.main_lay.addWidget(_back_btn("← Wróć", self._go_back))
-        self.main_lay.addWidget(_close_btn(self))
+        self.main_lay.addSpacing(2)
+        fr = QHBoxLayout(); fr.setSpacing(8)
+        fr.addWidget(_back_btn("\u2190 Wróć", self._go_back), 1)
+        fr.addWidget(_close_btn(self), 1)
+        self.main_lay.addLayout(fr)
 
     def _add_row(self):
         limit = 9999 if self._is_premium else MAX_CARDS
@@ -4238,11 +4750,9 @@ class CustomSetWindow(_DraggableWindow):
         inp_tr.setMinimumHeight(32)
         inp_tr.setStyleSheet(INPUT_STYLE)
 
-        btn_del = QPushButton("✕")
-        btn_del.setFixedSize(28, 28)
-        btn_del.setStyleSheet("QPushButton{background:rgba(150,40,40,140);color:white;border-radius:6px;font-size:10px;}"
-                              "QPushButton:hover{background:rgba(190,60,60,200);}")
-        btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_del = GlassButton("", "ico")
+        btn_del.setGlyph("close"); btn_del.setToolTip("Usuń wiersz")
+        btn_del.setFixedSize(34, 34)
 
         row_lay.addWidget(inp_word)
         row_lay.addWidget(inp_tr)
@@ -5120,22 +5630,8 @@ class SettingsWindow(_DraggableWindow):
             ("glow_white", "Delikatne wyróżnienie nowego słowa"),
         ]
         self._fx_ids = [f[0] for f in FX]
-        self._fx_cb  = QComboBox()
-        self._fx_cb.setFont(QFont("Segoe UI",11))
-        self._fx_cb.setFixedHeight(30)
-        self._fx_cb.setStyleSheet("""
-            QComboBox{background:rgba(255,255,255,24);color:white;
-                border:1px solid rgba(255,255,255,46);border-radius:10px;padding:4px 12px;}
-            QComboBox:hover{background:rgba(255,255,255,40);}
-            QComboBox::drop-down{border:none;width:22px;}
-            QComboBox::down-arrow{width:0;height:0;
-                border-left:5px solid transparent;border-right:5px solid transparent;
-                border-top:6px solid rgba(200,210,255,200);}
-            QComboBox QAbstractItemView{background:rgba(20,28,44,245);color:white;
-                selection-background-color:rgba(120,140,215,205);
-                border:1px solid rgba(96,110,150,140);border-radius:6px;
-                padding:2px;outline:none;}
-        """)
+        self._fx_cb  = GlassCombo()
+        self._fx_cb.setFont(_gfont(14))
         cur = APP_SETTINGS.get("card_effect","none")
         for fid,flbl in FX:
             self._fx_cb.addItem(flbl, fid)
@@ -5600,6 +6096,7 @@ class TestWindow(_DraggableWindow):
         self.lbl_progress.setText("%d z %d" % (self.index + 1, len(self.cards)))
         self.seg_bar.set_state(len(self.cards), self.index)
         self.inp.setFocus()
+        _fade_in_widgets([self.lbl_prompt, self.lbl_question, self.inp], 300, 70)
 
     def _check(self):
         if self.answered: return
@@ -5695,63 +6192,81 @@ class TestWindow(_DraggableWindow):
         try: self.btn_check.clicked.disconnect()
         except: pass
         self.btn_check.clicked.connect(self.hide)
+        _fade_in_widgets([self.lbl_question, self.lbl_hint, self.btn_check], 420, 120)
         self.test_done.emit(self.results)
 
     def paintEvent(self, e):
         _paint_bg(self, e)
 
 
-class TestOfferWindow(QWidget):
+class GlassDialog(_DraggableWindow):
+    """Komunikat w stylu Glass (zamiast systemowego QMessageBox): tytuł, treść i przyciski.
+    buttons = [(napis, rodzaj 'cta'|'ghost', callback_lub_None), ...]; ✕ i Esc zawsze zamykają."""
+    def __init__(self, title="", text="", buttons=None, width=380):
+        super().__init__()
+        _styled_window(self)
+        self.setFixedWidth(width)
+        self._lay = QVBoxLayout(self)
+        self._lay.setContentsMargins(26, 26, 26, 22)
+        self._lay.setSpacing(12)
+        self.lbl_t = QLabel(title); self.lbl_t.setFont(_gfont(18, QFont.Weight.DemiBold))
+        self.lbl_t.setStyleSheet("color:#eef2ff;background:transparent;")
+        self.lbl_t.setWordWrap(True)
+        self.lbl_x = QLabel(text); self.lbl_x.setFont(_gfont(14))
+        self.lbl_x.setStyleSheet("color:rgba(238,242,255,200);background:transparent;")
+        self.lbl_x.setWordWrap(True)
+        self._lay.addSpacing(6)
+        self._lay.addWidget(self.lbl_t); self._lay.addWidget(self.lbl_x)
+        self._lay.addSpacing(10)
+        self._brow = QVBoxLayout(); self._brow.setSpacing(10)
+        self._lay.addLayout(self._brow)
+        self.set_buttons(buttons or [])
+        self._pos_set = False
+
+    def set_buttons(self, buttons):
+        while self._brow.count():
+            it = self._brow.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        for label, kind, cb in buttons:
+            b = GlassButton(label, kind, radius=16)
+            b.setFixedHeight(48 if kind == "cta" else 42)
+            def _go(_=None, cb=cb):
+                self.fade_hide()
+                if cb:
+                    QTimer.singleShot(120, cb)
+            b.clicked.connect(_go)
+            self._brow.addWidget(b)
+        self.adjustSize()
+
+    def present(self, title=None, text=None, buttons=None):
+        if title is not None: self.lbl_t.setText(title)
+        if text is not None: self.lbl_x.setText(text)
+        if buttons is not None: self.set_buttons(buttons)
+        self.adjustSize()
+        _right_third_pos(self)
+        self.show(); self.raise_(); self.activateWindow()
+
+    def paintEvent(self, e):
+        _paint_bg(self, e)
+
+
+class TestOfferWindow(GlassDialog):
     accepted = pyqtSignal()
     rejected = pyqtSignal()
 
     def __init__(self):
-        super().__init__()
-        _styled_window(self)
-        self.setFixedSize(360, 210)
+        super().__init__("Czas na test!", "", None, 360)
         self._cat_name = ""
-        self._build()
-        _right_third_pos(self)
 
     def show_for(self, cat_name):
         self._cat_name = cat_name
-        self.lbl_sub.setText(f'Obejrzałeś kategorię\n"{cat_name}" 15 razy.\nChcesz sprawdzić swoją wiedzę?')
-        self.show(); self.raise_(); self.activateWindow()
+        self.present(
+            "Czas na test!",
+            f'Obejrzałeś kategorię „{cat_name}” 15 razy.\nChcesz sprawdzić swoją wiedzę?',
+            [("Tak, sprawdźmy", "cta", self.accepted.emit),
+             ("Może później", "ghost", self.rejected.emit)])
 
-    def _build(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(24, 24, 24, 24)
-        lay.setSpacing(12)
-
-        title = QLabel("Czas na test!")
-        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        title.setStyleSheet("color:white;")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(title)
-
-        self.lbl_sub = QLabel("")
-        self.lbl_sub.setFont(QFont("Segoe UI", 10))
-        self.lbl_sub.setStyleSheet("color:rgba(200,210,255,180);")
-        self.lbl_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(self.lbl_sub)
-
-        btns = QHBoxLayout()
-        btn_tak = QPushButton("Tak!")
-        btn_tak.setStyleSheet(BTN_PRIMARY)
-        btn_tak.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_tak.clicked.connect(lambda: (self.hide(), self.accepted.emit()))
-
-        btn_nie = QPushButton("Może później")
-        btn_nie.setStyleSheet("QPushButton { background:rgba(60,60,100,160); color:rgba(200,210,255,200); border:1px solid rgba(96,110,150,120); border-radius:10px; padding:8px; } QPushButton:hover { background:rgba(72,82,128,200); border-color:rgba(201,106,42,235); }")
-        btn_nie.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_nie.clicked.connect(lambda: (self.hide(), self.rejected.emit()))
-
-        btns.addWidget(btn_tak)
-        btns.addWidget(btn_nie)
-        lay.addLayout(btns)
-
-    def paintEvent(self, e):
-        _paint_bg(self, e)
 
 # ──────────────────────────────────────────────────────
 # OKNO PROPOZYCJI TESTU SRS (przy zmianie kategorii)
@@ -6476,15 +6991,6 @@ class HubWindow(_DraggableWindow):
     ANIM_DY = 16
     HAS_CLOSE = True
 
-    def fade_hide(self):
-        """Zamknięcie szybsze niż otwarcie (150 ms) — panel „odpływa”, nie znika skokiem."""
-        if not self.isVisible():
-            return
-        def _fin():
-            QWidget.hide(self)
-            self.setWindowOpacity(1.0)
-        _fade_window(self, 0.0, 150, QEasingCurve.Type.InCubic, then=_fin)
-
     def _count_to(self, lbl, n):
         try:
             n = int(n)
@@ -6606,12 +7112,29 @@ class HubWindow(_DraggableWindow):
         self._active_content = inner
         self.pause_panel = QWidget(); self.pause_panel.setStyleSheet("background:transparent;")
         pl = QVBoxLayout(self.pause_panel); pl.setContentsMargins(22, 26, 22, 22); pl.setSpacing(0)
+        ph = QHBoxLayout(); ph.setContentsMargins(0, 0, 0, 0)
         tt = QLabel("Fiszki wstrzymane"); tt.setFont(_gfont(21, QFont.Weight.DemiBold)); tt.setStyleSheet(TXT)
-        pl.addWidget(tt)
+        ph.addWidget(tt, 1)
+        px = self._icon_btn("close", "Zamknij (Esc)"); px.clicked.connect(self.fade_hide)
+        ph.addWidget(px, 0, Qt.AlignmentFlag.AlignTop)
+        pl.addLayout(ph)
         self.lbl_countdown = QLabel(""); self.lbl_countdown.setFont(_gfont(14))
         self.lbl_countdown.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
         pl.addSpacing(4); pl.addWidget(self.lbl_countdown)
-        pl.addSpacing(22)
+        pl.addSpacing(18)
+        prow = QHBoxLayout(); prow.setContentsMargins(0, 0, 0, 0)
+        pcol = QVBoxLayout(); pcol.setSpacing(0)
+        pcap = QLabel("Uczysz się"); pcap.setFont(_gfont(12)); pcap.setStyleSheet(DIM)
+        self.lbl_lang_p = QLabel("—"); self.lbl_lang_p.setFont(_gfont(17, QFont.Weight.DemiBold)); self.lbl_lang_p.setStyleSheet(TXT)
+        self.lbl_sub_p = QLabel(""); self.lbl_sub_p.setFont(_gfont(13))
+        self.lbl_sub_p.setStyleSheet("color:rgba(238,242,255,178);background:transparent;")
+        pcol.addWidget(pcap); pcol.addWidget(self.lbl_lang_p); pcol.addWidget(self.lbl_sub_p)
+        prow.addLayout(pcol, 1)
+        pchg = GlassButton("Zmień", "ghost", radius=18); pchg.setFixedSize(84, 36)
+        pchg.clicked.connect(lambda: (self.hide(), self.app_ref._show_lang()))
+        prow.addWidget(pchg, 0, Qt.AlignmentFlag.AlignVCenter)
+        pl.addLayout(prow)
+        pl.addSpacing(18)
         prc = QLabel("Wrócą same za:"); prc.setFont(_gfont(12)); prc.setStyleSheet(DIM)
         pl.addWidget(prc); pl.addSpacing(8)
         prl = QHBoxLayout(); prl.setSpacing(6)
@@ -6626,6 +7149,15 @@ class HubWindow(_DraggableWindow):
         btn_resume = GlassButton("Wznów teraz", "cta", radius=16); btn_resume.setFixedHeight(50)
         btn_resume.clicked.connect(self._resume)
         pl.addWidget(btn_resume)
+        pl.addSpacing(8)
+        prow = QHBoxLayout(); prow.setSpacing(10)
+        btn_pback = GlassButton("\u2190 Wróć", "ghost", radius=14); btn_pback.setFixedHeight(42)
+        btn_pback.setToolTip("Wróć do panelu (pauza trwa)")
+        btn_pback.clicked.connect(self.exit_pause_view)
+        btn_pclose = GlassButton("Zamknij", "ghost", radius=14); btn_pclose.setFixedHeight(42)
+        btn_pclose.clicked.connect(self.fade_hide)
+        prow.addWidget(btn_pback, 1); prow.addWidget(btn_pclose, 1)
+        pl.addLayout(prow)
         self.pause_panel.hide(); lay.addWidget(self.pause_panel, 1)
 
     # ── helpery UI ──
@@ -6697,6 +7229,7 @@ class HubWindow(_DraggableWindow):
                                  if c.get("srs") else "Fiszki w toku")
         else:
             self.lbl_lang.setText("Nie wybrano"); self.lbl_sub.setText("Kliknij \u201EZmie\u0144\u201D")
+        self.lbl_lang_p.setText(self.lbl_lang.text()); self.lbl_sub_p.setText(self.lbl_sub.text())
 
     def _refresh_live(self):
         ov = self.app_ref.overlay
@@ -6789,15 +7322,35 @@ class HubWindow(_DraggableWindow):
     def _enter_pause(self):
         self._set_preset("30", 30)   # domyślnie 30 min
 
+    def _swap_panels(self, hide_w, show_w):
+        """Przełączenie paneli w hubie: nowy panel wpływa miękko (240 ms)."""
+        hide_w.hide()
+        was = show_w.isVisible()
+        show_w.show()
+        if was or not UI_MOTION or not self.isVisible():
+            return
+        try:
+            from PyQt6.QtWidgets import QGraphicsOpacityEffect
+            eff = QGraphicsOpacityEffect(show_w)
+            eff.setOpacity(0.0)
+            show_w.setGraphicsEffect(eff)
+            a = QPropertyAnimation(eff, b"opacity", eff)
+            a.setDuration(240); a.setStartValue(0.0); a.setEndValue(1.0)
+            a.setEasingCurve(QEasingCurve.Type.OutCubic)
+            a.finished.connect(lambda: show_w.setGraphicsEffect(None))
+            a.start()
+        except Exception as ex:
+            print(f"[motion] {ex}")
+
     def _set_preset(self, key, mins):
         self.app_ref.pause_for(mins)
-        self._active_content.hide(); self.pause_panel.show()
+        self._swap_panels(self._active_content, self.pause_panel)
         for k, b in self._preset_btns.items():
             b.setSelected(k == key)
         self._refresh_status(); self._update_countdown()
 
     def exit_pause_view(self):
-        self.pause_panel.hide(); self._active_content.show()
+        self._swap_panels(self.pause_panel, self._active_content)
         if self.isVisible():
             self._refresh_status(); self._refresh_stats()
 
@@ -6825,6 +7378,125 @@ class HubWindow(_DraggableWindow):
 
     def paintEvent(self, e):
         _paint_bg(self, e)
+
+
+
+class _TrayRow(QWidget):
+    """Wiersz menu traya: ikona + podpis, najazd rozjaśnia tło, klik wykonuje akcję."""
+    def __init__(self, icon, text, danger=False, parent=None):
+        super().__init__(parent)
+        self._icon, self._text, self._danger = icon, text, danger
+        self._h = 0.0
+        self._cb = None
+        self.setFixedSize(236, 42)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._anim = QVariantAnimation(self)
+        self._anim.setDuration(130)
+        self._anim.valueChanged.connect(self._set_h)
+
+    def _set_h(self, v):
+        self._h = float(v); self.update()
+
+    def set_content(self, icon, text):
+        self._icon, self._text = icon, text; self.update()
+
+    def _go(self, on):
+        self._anim.stop()
+        self._anim.setStartValue(self._h)
+        self._anim.setEndValue(1.0 if on else 0.0)
+        self._anim.start()
+
+    def enterEvent(self, e):
+        self._go(True); super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._go(False); super().leaveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self._cb:
+            self._cb()
+        super().mouseReleaseEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(6, 2, -6, -2)
+        if self._h > 0:
+            base = QColor(255, 120, 120, int(46 * self._h)) if self._danger \
+                else QColor(224, 128, 58, int(58 * self._h))
+            p.setPen(Qt.PenStyle.NoPen); p.setBrush(base)
+            p.drawRoundedRect(r, 12, 12)
+        col = QColor(G_BAD) if self._danger else (QColor(G_SOFT) if self._h > .5 else QColor(G_INK))
+        _draw_glyph(p, self._icon, 28, self.height() / 2, 17,
+                    QColor(G_BAD) if self._danger else QColor(G_SOFT), 1.7)
+        p.setPen(col); p.setFont(_gfont(14))
+        p.drawText(QRectF(48, 0, self.width() - 56, self.height()),
+                   int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), self._text)
+
+
+class _TraySep(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(236, 9)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setPen(QColor(255, 255, 255, 28))
+        p.drawLine(18, 4, self.width() - 18, 4)
+
+
+class _TrayToggle:
+    """Zastępnik dawnego QAction: TrayApp zmienia tylko podpis „Ukryj / Pokaż fiszki”."""
+    def __init__(self, row):
+        self._row = row
+
+    def setText(self, t):
+        show = "Pokaż" in t
+        self._row.set_content("play" if show else "pause", "Pokaż fiszki" if show else "Ukryj fiszki")
+
+
+class GlassTrayMenu(QMenu):
+    """Menu ikony w zasobniku w stylu Glass: ciemne szkło, zaokrąglenia, ikony, miękkie wejście."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint |
+                            Qt.WindowType.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setStyleSheet("QMenu{background:transparent;border:none;padding:8px 4px;}")
+
+    def add_row(self, icon, text, callback, danger=False):
+        row = _TrayRow(icon, text, danger, self)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(row)
+        def _run():
+            self.hide()
+            QTimer.singleShot(0, callback)
+        row._cb = _run
+        self.addAction(act)
+        return row
+
+    def add_sep(self):
+        sp = _TraySep(self)
+        act = QWidgetAction(self); act.setDefaultWidget(sp); self.addAction(act)
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        try:
+            _pop_in(self, 8, 220)
+        except Exception as ex:
+            print(f"[motion] {ex}")
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(14, 21, 44, 238))
+        p.drawRoundedRect(r, 20, 20)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(255, 255, 255, 48), 1))
+        p.drawRoundedRect(r, 20, 20)
 
 
 class TrayApp:
@@ -6878,20 +7550,23 @@ class TrayApp:
 
         self.win_hub = HubWindow(self)
         self.win_update = UpdateWindow()
+        # „←” w każdym oknie bez własnego „Wróć”: cofa do panelu głównego
+        for _w in (self.win_stats, self.win_test, self.win_purchase,
+                   self.win_premium, self.win_update):
+            _w.set_back(self._toggle_hub_open)
 
         self.tray = QSystemTrayIcon(make_tray_icon())
         self.tray.setToolTip("Fiszki w tle")
 
-        menu = QMenu()
-        self.act_toggle = menu.addAction("⏸  Ukryj fiszki")
-        self.act_toggle.triggered.connect(self._toggle)
-        menu.addAction("Otwórz panel").triggered.connect(self._toggle_hub)  # awaryjne wejście
-        menu.addSeparator()
-        menu.addAction("Sprawdź aktualizacje").triggered.connect(
-            lambda: self.check_updates(manual=True))
-        menu.addSeparator()
-        menu.addAction("Wyloguj").triggered.connect(self._logout)
-        menu.addAction("✖  Zamknij").triggered.connect(self._quit)
+        menu = GlassTrayMenu()
+        self.act_toggle = _TrayToggle(menu.add_row("pause", "Ukryj fiszki", self._toggle))
+        menu.add_row("sliders", "Otwórz panel", self._toggle_hub)  # awaryjne wejście
+        menu.add_sep()
+        menu.add_row("refresh", "Sprawdź aktualizacje", lambda: self.check_updates(manual=True))
+        menu.add_row("logout", "Wyloguj", self._logout)
+        menu.add_sep()
+        menu.add_row("close", "Zamknij Eyelingo", self._quit, danger=True)
+        self._tray_menu = menu
 
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(
@@ -6908,7 +7583,7 @@ class TrayApp:
             self.win_hub.open()
 
     def _toggle_hub(self):
-        if self.win_hub.isVisible():
+        if self.win_hub.isVisible() and not self.win_hub._closing:
             self.win_hub.fade_hide()
         else:
             self.win_hub.open()
@@ -6920,16 +7595,15 @@ class TrayApp:
                               None if getattr(ov, "_is_custom", False) else (getattr(ov, "cat", None) or None))
 
     def _show_subscription_required(self):
-        """Pokaż okno informujące o wymogu subskrypcji."""
-        msg = QMessageBox()
-        msg.setWindowTitle("Funkcja Premium")
-        msg.setText("Własne zestawy fiszek\n\nTa funkcja dostępna jest tylko w subskrypcji Premium.\n\n39 zł/mies lub 329 zł/rok · wszystkie poziomy + własne fiszki")
-        msg.setIcon(QMessageBox.Icon.Information)
-        btn_sub = msg.addButton("Kup subskrypcję", QMessageBox.ButtonRole.AcceptRole)
-        msg.addButton("Zamknij", QMessageBox.ButtonRole.RejectRole)
-        msg.exec()
-        if msg.clickedButton() == btn_sub:
-            self._show_purchase_subscription()
+        """Własne zestawy to funkcja Premium – komunikat w stylu Glass z drogą do zakupu."""
+        if not hasattr(self, "_dlg_premium"):
+            self._dlg_premium = GlassDialog("Funkcja Premium", "", None, 380)
+        self._dlg_premium.present(
+            "Własne zestawy fiszek",
+            "Ta funkcja jest dostępna w subskrypcji Premium.\n\n"
+            "39 zł/mies lub 329 zł/rok · wszystkie poziomy + własne fiszki",
+            [("Kup subskrypcję", "cta", self._show_purchase_subscription),
+             ("Wróć", "ghost", None)])
 
     def _show_purchase_subscription(self):
         """Otwórz okno zakupu subskrypcji."""
@@ -7051,8 +7725,33 @@ class TrayApp:
         self.win_lang.hide(); self.win_lvl.hide()
         self._on_lvl(lang, lvl)
 
+    def _back_to_hub_if_paused(self):
+        if not self.visible:
+            QTimer.singleShot(250, self.win_hub.open)
+
+    def _fly_picker_to_card(self):
+        """Wybór kategorii: okno wyboru „zapada się” i leci w miejsce fiszki."""
+        try:
+            if not UI_GHOST:
+                return
+            src = next((w for w in (self.win_lang, self.win_cat)
+                        if w.isVisible() and not w._closing), None)
+            if src is None:
+                return
+            ov = self.overlay
+            if ov.isVisible() and 120 < ov.width() < 700:
+                dst = QRect(ov.geometry())
+            else:
+                sc = QApplication.primaryScreen().availableGeometry()
+                dst = QRect(sc.center().x() - 170, sc.top() + 70, 340, 120)
+            _fly_to_rect(src, dst)
+        except Exception as ex:
+            print(f"[motion] fly: {ex}")
+
     def _on_cat(self, lang, lvl, cat):
+        self._fly_picker_to_card()
         self.overlay.load_from_supabase(lang, lvl, cat)
+        self._back_to_hub_if_paused()
         self._track_views(lang, lvl, cat)
         _session.track("category_selected", {
             "language": lang, "level": lvl, "category": cat
@@ -7350,6 +8049,7 @@ class TrayApp:
 
     def _on_custom_set_picked(self, name, cards):
         self.overlay.load_custom(name, cards)
+        self._back_to_hub_if_paused()
         self._custom_sets_cache = self.win_my_sets.sets if hasattr(self.win_my_sets, 'sets') else []
 
     def _back_to_lang(self):
@@ -7363,13 +8063,21 @@ class TrayApp:
     def _toggle(self):
         if self.visible:
             self.overlay.hide()
+            self.overlay._rotation_pause()
+            self.overlay._suspended = True
+            tts_mute(True)
             self.act_toggle.setText("▶  Pokaż fiszki")
             _session.slides_stopped()
             _session.track("slides_hidden")
         else:
             self._pause_until = None
             if hasattr(self, "_pause_timer"): self._pause_timer.stop()
+            tts_mute(False)
+            self.overlay._suspended = False
             self.overlay.show()
+            self.overlay._rotation_resume()
+            if not self.overlay.timer.isActive():
+                self.overlay._rotation_restart()
             self.act_toggle.setText("⏸  Ukryj fiszki")
             if self.overlay.cat:
                 _session.slides_started(self.overlay.lang, self.overlay.level, self.overlay.cat)
@@ -7388,8 +8096,11 @@ class TrayApp:
         else:
             secs = int(minutes) * 60
         self._pause_until = _t.time() + secs
+        self.overlay._suspended = True
+        tts_mute(True)                       # żadnego czytania w trakcie pauzy
         if self.visible:
             self.overlay.hide()
+            self.overlay._rotation_pause()   # zegar rotacji staje (zapamiętuje resztę czasu)
             self.visible = False
             self.act_toggle.setText("▶  Pokaż fiszki")
             _session.slides_stopped()
@@ -7406,8 +8117,13 @@ class TrayApp:
         self._pause_until = None
         if hasattr(self, "_pause_timer"):
             self._pause_timer.stop()
+        tts_mute(False)
+        self.overlay._suspended = False
         if not self.visible:
             self.overlay.show()
+            self.overlay._rotation_resume()
+            if not self.overlay.timer.isActive():
+                self.overlay._rotation_restart()
             self.visible = True
             self.act_toggle.setText("⏸  Ukryj fiszki")
             if self.overlay.cat:
