@@ -2033,7 +2033,6 @@ BTN_PRIMARY = """
 ONBOARDING_KEY = "onboarding_done_v2"
 
 class OnboardingWindow(_DraggableWindow):
-    HAS_CLOSE = True
     """Onboarding (D6-D10) — kontrakt zaufania i model myślowy przed logowaniem."""
     finished = pyqtSignal()
 
@@ -2180,6 +2179,12 @@ class OnboardingWindow(_DraggableWindow):
             self._mark_done()
             self.hide()
             self.finished.emit()
+
+    def fade_hide(self):
+        """„✕” / Esc = pomiń onboarding i przejdź do logowania (zawsze jest wyjście)."""
+        self._mark_done()
+        self.hide()
+        self.finished.emit()
 
     def _mark_done(self):
         try:
@@ -6650,17 +6655,19 @@ class HubWindow(_DraggableWindow):
             ck = (ov.lang, ov.level, ov.cat)
             if ck in _KNOWN_CACHE:
                 self.cell_known.setText(str(_KNOWN_CACHE[ck]))      # od razu, bez czekania na sieć
-            self._kw = KnownWordsWorker(ov.lang, ov.level, ov.cat)
-            self._kw.done.connect(lambda n: self._count_to(self.cell_known, n))
-            self._kw.start()
+            if not (getattr(self, "_kw", None) and self._kw.isRunning()):
+                self._kw = KnownWordsWorker(ov.lang, ov.level, ov.cat)
+                self._kw.done.connect(lambda n: self._count_to(self.cell_known, n))
+                self._kw.start()
         else:
             self.cell_known.setText("\u2013")
         if ov.lang:
             if ov.lang in _DUE_CACHE:
                 self.cell_due.setText(self._due_txt(_DUE_CACHE[ov.lang]))
-            self._dw = DueCountWorker(ov.lang)
-            self._dw.done.connect(self._on_due)
-            self._dw.start()
+            if not (getattr(self, "_dw", None) and self._dw.isRunning()):
+                self._dw = DueCountWorker(ov.lang)
+                self._dw.done.connect(self._on_due)
+                self._dw.start()
         else:
             self.cell_due.setText("\u2013")
 
@@ -6679,7 +6686,8 @@ class HubWindow(_DraggableWindow):
         try:
             ov = self.app_ref.overlay
             if ov.lang:
-                self._pre_dw = DueCountWorker(ov.lang); self._pre_dw.start()
+                if not (getattr(self, "_pre_dw", None) and self._pre_dw.isRunning()):
+                    self._pre_dw = DueCountWorker(ov.lang); self._pre_dw.start()
         except Exception as ex:
             print(f"[prefetch] {ex}")
 
