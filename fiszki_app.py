@@ -1196,6 +1196,10 @@ def _draw_glyph(p, name, cx, cy, s, col, width=1.8):
     elif name == "book":
         p.drawRoundedRect(QRectF(cx - k * .58, cy - k * .7, k * 1.16, k * 1.4), 2.5, 2.5)
         p.drawLine(QPointF(cx - k * .2, cy - k * .7), QPointF(cx - k * .2, cy + k * .7))
+    elif name == "globe":
+        p.drawEllipse(QPointF(cx, cy), k * .72, k * .72)
+        p.drawEllipse(QPointF(cx, cy), k * .3, k * .72)
+        p.drawLine(QPointF(cx - k * .72, cy), QPointF(cx + k * .72, cy))
     elif name == "sliders":
         p.drawLine(QPointF(cx - k * .7, cy - k * .32), QPointF(cx + k * .7, cy - k * .32))
         p.drawLine(QPointF(cx - k * .7, cy + k * .32), QPointF(cx + k * .7, cy + k * .32))
@@ -3688,7 +3692,8 @@ class PickerWindow(_DraggableWindow):
         if b is not None:
             b.setDone(True)
 
-    def present(self, lang=None, lvl=None):
+    def present(self, lang=None, lvl=None, cat=None):
+        self._active = (lang, lvl, cat) if (lang and lvl and cat) else None
         rec = _recents_load()
         if not lang:
             lang = (rec[0]["lang"] if rec else None) or self.lang
@@ -3897,7 +3902,7 @@ class PickerWindow(_DraggableWindow):
         ld = QLabel("Ładuję kategorie…"); ld.setFont(_gfont(13))
         ld.setStyleSheet("color:rgba(238,242,255,120);background:transparent;")
         self._cat_grid.addWidget(ld, 0, 0, 1, 2)
-        if self._cw is not None and self._cw.isRunning():
+        if _thread_alive(self._cw):
             return                      # po zakończeniu ruszy ostatnie żądanie
         self._start_cats_worker()
 
@@ -3922,6 +3927,8 @@ class PickerWindow(_DraggableWindow):
             b.setFixedHeight(46); b.setPx(14)
             b._pad = 14
             b.setDone(c["code"] in self._done)
+            act = getattr(self, "_active", None)
+            b.setSelected(bool(act and act == (lang, lvl, c["code"])))
             b.clicked.connect(lambda _, cc=c: self._pick(cc["code"], cc.get("label", cc["code"])))
             self._cat_grid.addWidget(b, i // 2, i % 2)
             self._cat_btns[c["code"]] = b
@@ -4303,6 +4310,58 @@ class CustomSetWindow(_DraggableWindow):
 # ──────────────────────────────────────────────────────
 # OKNO WYBORU WŁASNEGO ZESTAWU
 # ──────────────────────────────────────────────────────
+class LibraryWindow(_DraggableWindow):
+    """Biblioteka — wybór: gotowe zestawy Eyelingo albo własne zestawy użytkownika."""
+    ANIM_DY = 14
+
+    def __init__(self, on_eyelingo, on_mine, on_back):
+        super().__init__()
+        self._on_eyelingo, self._on_mine, self._on_back = on_eyelingo, on_mine, on_back
+        _styled_window(self)
+        self.setFixedSize(420, 400)
+        self._build()
+        _right_third_pos(self)
+
+    def _choice(self, lay, title, hint, cb, glyph):
+        b = GlassButton(title, "tile", radius=16)
+        b.setGlyph(glyph); b.setTrail("play"); b.setFixedHeight(56)
+        b.clicked.connect(cb)
+        lay.addWidget(b)
+        h = QLabel(hint); h.setFont(_gfont(12)); h.setWordWrap(True)
+        h.setStyleSheet("color:rgba(238,242,255,170);background:transparent;")
+        h.setContentsMargins(6, 4, 6, 0)
+        lay.addWidget(h)
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 20, 24, 20)
+        lay.setSpacing(0)
+        t = QLabel("Biblioteka")
+        t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
+        lay.addWidget(t)
+        sub = QLabel("Skąd chcesz wziąć fiszki?")
+        sub.setFont(_gfont(13)); sub.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
+        lay.addWidget(sub)
+        lay.addSpacing(18)
+        self._choice(lay, "Zestawy Eyelingo", "Gotowe zestawy w 14 językach, poziomy A1\u2013C2.",
+                     lambda: (self.hide(), self._on_eyelingo()), "globe")
+        lay.addSpacing(14)
+        self._choice(lay, "Moje zestawy", "Twoje własne fiszki \u2014 z tematu, z pliku lub ze zdjęcia.",
+                     lambda: (self.hide(), self._on_mine()), "book")
+        lay.addStretch(1)
+        fr = QHBoxLayout(); fr.setSpacing(8)
+        bb = GlassButton("\u2190 Wróć", "ghost"); bb.setFixedHeight(42)
+        bb.clicked.connect(lambda: (self.hide(), self._on_back()))
+        bc = GlassButton("Zamknij", "ghost"); bc.setFixedHeight(42)
+        bc.clicked.connect(self.fade_hide)
+        fr.addWidget(bb, 1); fr.addWidget(bc, 1)
+        lay.addLayout(fr)
+
+    def paintEvent(self, e):
+        _paint_bg(self, e)
+
+
 class MySetsPicker(_DraggableWindow):
     """Moje zestawy — lista własnych zestawów + „Stwórz nowy”. Zawsze widoczne wyjście."""
     set_picked = pyqtSignal(str, list)
@@ -6083,6 +6142,15 @@ def make_tray_icon() -> QIcon:
 # ──────────────────────────────────────────────────────
 # D3 — TRAY WINDOW (HUB)
 # ──────────────────────────────────────────────────────
+def _thread_alive(t):
+    """True, gdy wątek istnieje i jeszcze pracuje. Zakończony wątek Qt bywa już usunięty
+    (deleteLater) — wtedy isRunning() rzuca RuntimeError, co zamykało cały program."""
+    try:
+        return bool(t) and t.isRunning()
+    except RuntimeError:
+        return False
+
+
 _DUE_CAP = 100          # panel pokazuje „100+” — pobieranie 500 pełnych kart było powodem wolnego ładowania
 _DUE_CACHE = {}         # lang -> ostatnia znana liczba (pokazywana natychmiast)
 _KNOWN_CACHE = {}       # (lang, level, cat) -> ostatnia znana liczba
@@ -6514,7 +6582,7 @@ class HubWindow(_DraggableWindow):
         # 5. BIBLIOTEKA / USTAWIENIA
         r2 = QHBoxLayout(); r2.setContentsMargins(0, 0, 0, 0); r2.setSpacing(8)
         self.btn_lib = GlassButton("Biblioteka", "ghost", radius=14); self.btn_lib.setGlyph("book"); self.btn_lib.setFixedHeight(42)
-        self.btn_lib.clicked.connect(lambda: (self.hide(), self.app_ref._show_my_sets()))
+        self.btn_lib.clicked.connect(lambda: (self.hide(), self.app_ref._show_library()))
         self.btn_set = GlassButton("Ustawienia", "ghost", radius=14); self.btn_set.setGlyph("sliders"); self.btn_set.setFixedHeight(42)
         self.btn_set.clicked.connect(lambda: (self.hide(), self.app_ref.win_settings.show(), self.app_ref.win_settings.raise_()))
         r2.addWidget(self.btn_lib, 1); r2.addWidget(self.btn_set, 1)
@@ -6621,6 +6689,12 @@ class HubWindow(_DraggableWindow):
             label = next((c.get("label") for c in CATEGORIES if c.get("code") == ov.cat), None) or ov.cat
             self.lbl_lang.setText(lang_label(ov.lang))
             self.lbl_sub.setText("%s \u00B7 %s" % (ov.level, label))
+        elif ov.cards and 0 <= ov.index < len(ov.cards):
+            # fiszki lecą bez wybranej kategorii (np. powtórka SRS po starcie) — nie pisz „Nie wybrano”
+            c = ov.cards[ov.index]
+            self.lbl_lang.setText(lang_label(ov.lang) if ov.lang else "Powt\u00F3rka")
+            self.lbl_sub.setText("Powt\u00F3rka \u00B7 %s" % (c.get("category") or "fiszki do powt\u00F3rki")
+                                 if c.get("srs") else "Fiszki w toku")
         else:
             self.lbl_lang.setText("Nie wybrano"); self.lbl_sub.setText("Kliknij \u201EZmie\u0144\u201D")
 
@@ -6655,7 +6729,7 @@ class HubWindow(_DraggableWindow):
             ck = (ov.lang, ov.level, ov.cat)
             if ck in _KNOWN_CACHE:
                 self.cell_known.setText(str(_KNOWN_CACHE[ck]))      # od razu, bez czekania na sieć
-            if not (getattr(self, "_kw", None) and self._kw.isRunning()):
+            if not _thread_alive(getattr(self, "_kw", None)):
                 self._kw = KnownWordsWorker(ov.lang, ov.level, ov.cat)
                 self._kw.done.connect(lambda n: self._count_to(self.cell_known, n))
                 self._kw.start()
@@ -6664,7 +6738,7 @@ class HubWindow(_DraggableWindow):
         if ov.lang:
             if ov.lang in _DUE_CACHE:
                 self.cell_due.setText(self._due_txt(_DUE_CACHE[ov.lang]))
-            if not (getattr(self, "_dw", None) and self._dw.isRunning()):
+            if not _thread_alive(getattr(self, "_dw", None)):
                 self._dw = DueCountWorker(ov.lang)
                 self._dw.done.connect(self._on_due)
                 self._dw.start()
@@ -6686,7 +6760,7 @@ class HubWindow(_DraggableWindow):
         try:
             ov = self.app_ref.overlay
             if ov.lang:
-                if not (getattr(self, "_pre_dw", None) and self._pre_dw.isRunning()):
+                if not _thread_alive(getattr(self, "_pre_dw", None)):
                     self._pre_dw = DueCountWorker(ov.lang); self._pre_dw.start()
         except Exception as ex:
             print(f"[prefetch] {ex}")
@@ -6796,7 +6870,8 @@ class TrayApp:
         self.win_cat     = CategoryWindow(self._on_cat, self._back_to_lvl)
         self.win_purchase = PurchaseWindow()
         self.win_purchase.purchased.connect(self._on_purchase_done)
-        self.win_my_sets = MySetsPicker(self._show_lang, self._show_custom_create)
+        self.win_library = LibraryWindow(self._show_lang, self._show_my_sets, self._toggle_hub_open)
+        self.win_my_sets = MySetsPicker(self._show_library, self._show_custom_create)
         self.win_custom  = CustomSetWindow(self._show_my_sets)
         self.win_custom.set_created.connect(self._on_custom_set_created)
         self.win_my_sets.set_picked.connect(self._on_custom_set_picked)
@@ -6841,7 +6916,8 @@ class TrayApp:
     def _show_lang(self):
         self.win_cat.hide(); self.win_lvl.hide()
         ov = self.overlay
-        self.win_lang.present(getattr(ov, "lang", None), getattr(ov, "level", None))
+        self.win_lang.present(getattr(ov, "lang", None), getattr(ov, "level", None),
+                              None if getattr(ov, "_is_custom", False) else (getattr(ov, "cat", None) or None))
 
     def _show_subscription_required(self):
         """Pokaż okno informujące o wymogu subskrypcji."""
@@ -7233,6 +7309,10 @@ class TrayApp:
                 pass
         setup_hotkeys(self.app, self)
         self._restart_timer()
+
+    def _show_library(self):
+        self.win_my_sets.hide()
+        self.win_library.show(); self.win_library.raise_(); self.win_library.activateWindow()
 
     def _show_my_sets(self):
         self.win_my_sets.set_premium(getattr(self, '_is_premium', False))
