@@ -1050,6 +1050,418 @@ def _pop_in(w, dy=0, ms=260):
         w._pop_anim = a
         a.start()
 
+# ── SZKŁO: baza wizualna (zgodna z makietami "Eyelingo Glass") ────────────
+# Jedno źródło prawdy dla kolorów i klocków UI. Wyłącznik awaryjny rozmycia: UI_BLUR = False.
+from PyQt6.QtWidgets import QLayout, QScrollArea, QSizePolicy, QFrame
+from PyQt6.QtCore import QRect, QSize, QRectF, QPointF, QObject, QEvent
+from PyQt6.QtGui import (QFontMetrics, QPainterPath, QPolygonF,
+                         QLinearGradient, QRadialGradient)
+
+UI_BLUR = True            # prawdziwe rozmycie tła pod oknami (tylko Windows)
+_GLASS_RADIUS = 26
+
+G_INK    = QColor(238, 242, 255)
+G_DIM    = QColor(238, 242, 255, 148)
+G_ACC    = QColor(224, 128, 58)
+G_ACC_HI = QColor(240, 146, 77)
+G_ACC_LO = QColor(216, 116, 46)
+G_ACC_TX = QColor(27, 18, 5)
+G_OK     = QColor(111, 220, 160)
+G_WARN   = QColor(240, 192, 96)
+G_BAD    = QColor(255, 154, 154)
+G_SOFT   = "#ffb27a"      # akcent do tekstu na ciemnym tle
+
+
+def _gfont(px, weight=QFont.Weight.Medium):
+    f = QFont("Segoe UI")
+    f.setPixelSize(int(px))
+    f.setWeight(weight)
+    return f
+
+
+def _blur_behind(w):
+    """Rozmycie tła pod oknem (Windows 10/11). True, gdy system je przyjął."""
+    if not UI_BLUR or sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _ACCENT(ctypes.Structure):
+            _fields_ = [("AccentState", ctypes.c_int), ("AccentFlags", ctypes.c_int),
+                        ("GradientColor", ctypes.c_uint), ("AnimationId", ctypes.c_int)]
+
+        class _WCAD(ctypes.Structure):
+            _fields_ = [("Attribute", ctypes.c_int), ("Data", ctypes.c_void_p),
+                        ("SizeOfData", ctypes.c_size_t)]
+
+        acc = _ACCENT(3, 0, 0, 0)          # 3 = ENABLE_BLURBEHIND (bez laga przy przeciąganiu)
+        data = _WCAD(19, ctypes.cast(ctypes.pointer(acc), ctypes.c_void_p), ctypes.sizeof(acc))
+        fn = ctypes.windll.user32.SetWindowCompositionAttribute
+        fn.argtypes = [wintypes.HWND, ctypes.POINTER(_WCAD)]
+        fn.restype = ctypes.c_int
+        return bool(fn(wintypes.HWND(int(w.winId())), ctypes.byref(data)))
+    except Exception as ex:
+        print(f"[glass] blur: {ex}")
+        return False
+
+
+def _round_region(w, radius):
+    """Przytnij okno (i rozmycie) do zaokrąglonego prostokąta."""
+    if sys.platform != "win32" or not getattr(w, "_blur_ok", False):
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        dpr = w.devicePixelRatioF()
+        W, H = int(w.width() * dpr), int(w.height() * dpr)
+        d = int(radius * 2 * dpr)
+        gdi, usr = ctypes.windll.gdi32, ctypes.windll.user32
+        gdi.CreateRoundRectRgn.restype = wintypes.HRGN
+        gdi.CreateRoundRectRgn.argtypes = [ctypes.c_int] * 6
+        usr.SetWindowRgn.argtypes = [wintypes.HWND, wintypes.HRGN, wintypes.BOOL]
+        rgn = gdi.CreateRoundRectRgn(0, 0, W + 1, H + 1, d, d)
+        usr.SetWindowRgn(wintypes.HWND(int(w.winId())), rgn, True)
+    except Exception as ex:
+        print(f"[glass] region: {ex}")
+
+
+class _GlassFilter(QObject):
+    """Przy pierwszym pokazaniu włącza rozmycie; przy zmianie rozmiaru przycina róg."""
+    def eventFilter(self, o, e):
+        try:
+            t = e.type()
+            if t == QEvent.Type.Show and not getattr(o, "_blur_done", False):
+                o._blur_done = True
+                o._blur_ok = _blur_behind(o)
+                _round_region(o, _GLASS_RADIUS)
+                o.update()
+            elif t == QEvent.Type.Resize and getattr(o, "_blur_done", False):
+                _round_region(o, _GLASS_RADIUS)
+        except Exception as ex:
+            print(f"[glass] filter: {ex}")
+        return False
+
+
+def _glass_attach(w):
+    w._blur_ok = False
+    w._glass_filter = _GlassFilter(w)
+    w.installEventFilter(w._glass_filter)
+
+
+def _draw_glyph(p, name, cx, cy, s, col, width=1.8):
+    """Ikony rysowane ręcznie (bez zależności od czcionek ikon)."""
+    p.save()
+    pen = QPen(col, width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    k = s / 2.0
+    if name == "close":
+        a = k * 0.62
+        p.drawLine(QPointF(cx - a, cy - a), QPointF(cx + a, cy + a))
+        p.drawLine(QPointF(cx + a, cy - a), QPointF(cx - a, cy + a))
+    elif name == "play":
+        poly = QPolygonF([QPointF(cx - k * .42, cy - k * .62), QPointF(cx + k * .62, cy),
+                          QPointF(cx - k * .42, cy + k * .62)])
+        p.drawPolygon(poly)
+    elif name == "pause":
+        p.drawLine(QPointF(cx - k * .34, cy - k * .6), QPointF(cx - k * .34, cy + k * .6))
+        p.drawLine(QPointF(cx + k * .34, cy - k * .6), QPointF(cx + k * .34, cy + k * .6))
+    elif name == "check":
+        path = QPainterPath()
+        path.moveTo(cx - k * .55, cy + k * .02); path.lineTo(cx - k * .15, cy + k * .42)
+        path.lineTo(cx + k * .6, cy - k * .4)
+        p.drawPath(path)
+    elif name == "lock":
+        bw, bh = k * 1.0, k * .78
+        p.drawRoundedRect(QRectF(cx - bw / 2, cy - bh / 2 + k * .22, bw, bh), 2, 2)
+        sh = QPainterPath()
+        sh.moveTo(cx - bw * .3, cy - bh / 2 + k * .22)
+        sh.lineTo(cx - bw * .3, cy - k * .38)
+        sh.arcTo(QRectF(cx - bw * .3, cy - k * .86, bw * .6, k * .96), 180, -180)
+        sh.lineTo(cx + bw * .3, cy - bh / 2 + k * .22)
+        p.drawPath(sh)
+    elif name in ("sound", "soundoff"):
+        sp = QPainterPath()
+        sp.moveTo(cx - k * .7, cy - k * .28); sp.lineTo(cx - k * .32, cy - k * .28)
+        sp.lineTo(cx + k * .1, cy - k * .66); sp.lineTo(cx + k * .1, cy + k * .66)
+        sp.lineTo(cx - k * .32, cy + k * .28); sp.lineTo(cx - k * .7, cy + k * .28)
+        sp.closeSubpath()
+        p.drawPath(sp)
+        if name == "sound":
+            p.drawArc(QRectF(cx - k * .05, cy - k * .42, k * .9, k * .84), -50 * 16, 100 * 16)
+        else:
+            p.drawLine(QPointF(cx + k * .38, cy - k * .3), QPointF(cx + k * .82, cy + k * .3))
+            p.drawLine(QPointF(cx + k * .82, cy - k * .3), QPointF(cx + k * .38, cy + k * .3))
+    elif name == "book":
+        p.drawRoundedRect(QRectF(cx - k * .58, cy - k * .7, k * 1.16, k * 1.4), 2.5, 2.5)
+        p.drawLine(QPointF(cx - k * .2, cy - k * .7), QPointF(cx - k * .2, cy + k * .7))
+    elif name == "sliders":
+        p.drawLine(QPointF(cx - k * .7, cy - k * .32), QPointF(cx + k * .7, cy - k * .32))
+        p.drawLine(QPointF(cx - k * .7, cy + k * .32), QPointF(cx + k * .7, cy + k * .32))
+        p.setBrush(QColor(0, 0, 0, 0))
+        p.drawEllipse(QPointF(cx + k * .22, cy - k * .32), k * .2, k * .2)
+        p.drawEllipse(QPointF(cx - k * .22, cy + k * .32), k * .2, k * .2)
+    p.restore()
+
+
+class GlassButton(QPushButton):
+    """Przycisk rysowany ręcznie: płynna zmiana jasności na hover, uniesienie o 1 px,
+    sprężyste wciśnięcie (skala), wejście z lekkim przesunięciem. Rodzaje:
+    tile · chip · seg · ghost · ico · cta · quiet."""
+    _BASE = {"tile": 18, "chip": 20, "seg": 0, "ghost": 18, "ico": 18, "cta": 0, "quiet": 0}
+    _HOVR = {"tile": 41, "chip": 44, "seg": 22, "ghost": 38, "ico": 41, "cta": 0, "quiet": 0}
+
+    def __init__(self, text="", kind="tile", radius=14, parent=None):
+        super().__init__(text, parent)
+        self.kind = kind
+        self.radius = radius
+        self._hv = 0.0     # hover 0..1
+        self._pr = 0.0     # wciśnięcie 0..1
+        self._op = 1.0     # wejście 0..1
+        self._sel = False
+        self._strong = False
+        self._lock = False
+        self._done = False
+        self._glyph = ""          # ikona na środku (ico) albo przed tekstem (ghost)
+        self._trail = ""          # ikona na prawo (tile)
+        self._left = kind == "tile"
+        self._pad = 16 if kind == "tile" else 13
+        self._px = {"tile": 14, "chip": 13, "seg": 14, "ghost": 13, "ico": 14, "cta": 15, "quiet": 13}[kind]
+        self._wt = QFont.Weight.DemiBold if kind in ("seg", "cta") else QFont.Weight.Medium
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.setFlat(True)
+        if kind == "ico":
+            self.setFixedSize(34, 34)
+            self.radius = 17
+        elif kind == "chip":
+            self.setFixedHeight(32)
+            self.radius = 16
+
+    # ── stan ──
+    def setSelected(self, v):
+        if self._sel != bool(v):
+            self._sel = bool(v); self.update()
+
+    def setStrong(self, v):
+        self._strong = bool(v); self.update()
+
+    def setLocked(self, v):
+        self._lock = bool(v); self.update()
+
+    def setDone(self, v):
+        self._done = bool(v); self.update()
+
+    def setGlyph(self, g):
+        self._glyph = g; self.update()
+
+    def setTrail(self, g):
+        self._trail = g; self.update()
+
+    def setPx(self, px):
+        self._px = px; self.update()
+
+    def sizeHint(self):
+        fm = QFontMetrics(_gfont(self._px, self._wt))
+        w = fm.horizontalAdvance(self.text()) + 2 * self._pad
+        if self._lock:
+            w += 18
+        return QSize(max(w, 40), self.height() if self.height() > 0 else 38)
+
+    # ── ruch ──
+    def _tween(self, attr, end, ms, curve=QEasingCurve.Type.OutCubic):
+        a = getattr(self, "_a_" + attr, None)
+        if a is not None:
+            a.stop()
+        if not UI_MOTION:
+            setattr(self, attr, float(end)); self.update(); return
+        a = QVariantAnimation(self)
+        a.setStartValue(float(getattr(self, attr)))
+        a.setEndValue(float(end))
+        a.setDuration(ms)
+        a.setEasingCurve(curve)
+        a.valueChanged.connect(lambda v, at=attr: (setattr(self, at, float(v)), self.update()))
+        setattr(self, "_a_" + attr, a)
+        a.start()
+
+    def appear(self, delay_ms=0):
+        """Wejście elementu listy: wynurzenie z 8 px i fade (z opóźnieniem — kaskada)."""
+        self._op = 0.0
+        self.update()
+        QTimer.singleShot(delay_ms, lambda: self._tween("_op", 1.0, 300))
+
+    def enterEvent(self, e):
+        self._tween("_hv", 1.0, 150); super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._tween("_hv", 0.0, 220); super().leaveEvent(e)
+
+    def mousePressEvent(self, e):
+        self._tween("_pr", 1.0, 80); super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        self._tween("_pr", 0.0, 260, QEasingCurve.Type.OutBack); super().mouseReleaseEvent(e)
+
+    # ── rysowanie ──
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        W, H = float(self.width()), float(self.height())
+        k = self.kind
+        p.setOpacity(self._op * (1.0 if self.isEnabled() else 0.45))
+        lift = -1.0 * self._hv if k in ("tile", "chip", "ghost", "cta") else 0.0
+        sc = 1.0 - 0.04 * self._pr
+        p.translate(W / 2, H / 2 + lift + (1.0 - self._op) * 8)
+        p.scale(sc, sc)
+        p.translate(-W / 2, -H / 2)
+        r = QRectF(1.0, 1.0, W - 2.0, H - 2.0)
+        rad = min(float(self.radius), r.height() / 2)
+        txt_col = G_INK
+        p.setPen(Qt.PenStyle.NoPen)
+        if k == "cta":
+            if self._hv > 0.01:
+                for i, a in enumerate((26, 16, 8)):
+                    g = QColor(224, 128, 58, int(a * self._hv))
+                    p.setBrush(g)
+                    p.drawRoundedRect(r.adjusted(-2 - i * 3, -1 - i * 3, 2 + i * 3, 3 + i * 3), rad + i * 3, rad + i * 3)
+            g = QLinearGradient(r.topLeft(), r.bottomLeft())
+            g.setColorAt(0, G_ACC_HI); g.setColorAt(1, G_ACC_LO)
+            p.setBrush(QBrush(g)); p.drawRoundedRect(r, rad, rad)
+            p.setPen(QPen(QColor(255, 255, 255, 80), 1))
+            p.drawLine(QPointF(r.left() + rad * .6, r.top() + .5), QPointF(r.right() - rad * .6, r.top() + .5))
+            txt_col = G_ACC_TX
+        elif k == "quiet":
+            txt_col = QColor(238, 242, 255, int(140 + 90 * self._hv))
+        elif self._sel:
+            g = QLinearGradient(r.topLeft(), r.bottomLeft())
+            g.setColorAt(0, G_ACC_HI); g.setColorAt(1, G_ACC)
+            p.setBrush(QBrush(g)); p.drawRoundedRect(r, rad, rad)
+            txt_col = G_ACC_TX
+        else:
+            base = self._BASE[k] + (13 if self._strong else 0)
+            a = base + (self._HOVR[k] - self._BASE[k]) * self._hv
+            if a > 0.5:
+                p.setBrush(QColor(255, 255, 255, int(a)))
+                p.drawRoundedRect(r, rad, rad)
+            if self._lock:
+                txt_col = QColor(238, 242, 255, 115)
+        # treść
+        p.setFont(_gfont(self._px, self._wt))
+        p.setPen(txt_col)
+        text = self.text()
+        if k == "ico":
+            if self._glyph:
+                _draw_glyph(p, self._glyph, r.center().x(), r.center().y(), 17, txt_col)
+            return
+        fm = QFontMetrics(_gfont(self._px, self._wt))
+        tw = fm.horizontalAdvance(text)
+        if self._left:
+            tx = r.left() + self._pad
+            avail = r.width() - 2 * self._pad - (24 if (self._trail or self._done) else 0)
+            shown = fm.elidedText(text, Qt.TextElideMode.ElideRight, int(avail))
+            p.drawText(QRectF(tx, r.top(), avail, r.height()),
+                       int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), shown)
+            gx = r.right() - self._pad
+            if self._done:
+                _draw_glyph(p, "check", gx - 8, r.center().y(), 18, G_OK, 2.1)
+            elif self._trail:
+                _draw_glyph(p, self._trail, gx - 8, r.center().y(), 15,
+                            QColor(238, 242, 255, 150), 1.7)
+        else:
+            gl = 0
+            if self._glyph and k == "ghost":
+                gl = 24
+            lock = 18 if self._lock else 0
+            total = gl + tw + lock
+            x0 = r.center().x() - total / 2
+            if gl:
+                _draw_glyph(p, self._glyph, x0 + 8, r.center().y(), 16, txt_col, 1.7)
+            p.drawText(QRectF(x0 + gl, r.top(), tw + 2, r.height()),
+                       int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), text)
+            if lock:
+                _draw_glyph(p, "lock", x0 + gl + tw + 11, r.center().y() + .5, 13, txt_col, 1.7)
+
+
+class FlowLayout(QLayout):
+    """Układ „zawijany”: chipy układają się w rzędy i łamią do następnej linii."""
+    def __init__(self, parent=None, hspace=6, vspace=6):
+        super().__init__(parent)
+        self._items = []
+        self._h = hspace
+        self._v = vspace
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item): self._items.append(item)
+    def count(self): return len(self._items)
+    def itemAt(self, i): return self._items[i] if 0 <= i < len(self._items) else None
+    def takeAt(self, i): return self._items.pop(i) if 0 <= i < len(self._items) else None
+    def expandingDirections(self): return Qt.Orientation(0)
+    def hasHeightForWidth(self): return True
+    def heightForWidth(self, w): return self._do(QRect(0, 0, w, 0), True)
+    def setGeometry(self, rect):
+        super().setGeometry(rect); self._do(rect, False)
+    def sizeHint(self): return self.minimumSize()
+    def minimumSize(self):
+        s = QSize()
+        for it in self._items:
+            s = s.expandedTo(it.minimumSize())
+        return s
+
+    def _do(self, rect, test):
+        x, y, lh = rect.x(), rect.y(), 0
+        for it in self._items:
+            sz = it.sizeHint()
+            if x + sz.width() > rect.right() + 1 and lh > 0:
+                x = rect.x(); y += lh + self._v; lh = 0
+            if not test:
+                it.setGeometry(QRect(x, y, sz.width(), sz.height()))
+            x += sz.width() + self._h
+            lh = max(lh, sz.height())
+        return y + lh - rect.y()
+
+
+class StatusDot(QWidget):
+    """Kropka statusu z delikatnym pulsem (jak w makiecie). Puls tylko gdy okno widoczne."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(18, 18)
+        self._col = QColor(G_OK)
+        self._t = 0.0
+        self._pulse = True
+        self._anim = QVariantAnimation(self)
+        self._anim.setStartValue(0.0); self._anim.setEndValue(1.0)
+        self._anim.setDuration(2400); self._anim.setLoopCount(-1)
+        self._anim.valueChanged.connect(self._on)
+
+    def _on(self, v):
+        self._t = float(v); self.update()
+
+    def set_color(self, col, pulse=True):
+        self._col = QColor(col); self._pulse = pulse; self.update()
+
+    def showEvent(self, e):
+        if UI_MOTION:
+            self._anim.start()
+        super().showEvent(e)
+
+    def hideEvent(self, e):
+        self._anim.stop(); super().hideEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        c = QPointF(self.width() / 2, self.height() / 2)
+        if self._pulse and UI_MOTION:
+            ring = QColor(self._col); ring.setAlpha(int(120 * (1 - self._t)))
+            p.setBrush(ring); p.setPen(Qt.PenStyle.NoPen)
+            rr = 4 + 5 * self._t
+            p.drawEllipse(c, rr, rr)
+        p.setBrush(self._col); p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(c, 4, 4)
+
+
 class _DraggableWindow(QWidget):
     """Mixin: przeciąganie przez pasek tytułu (górne 32px) + ESC zamyka."""
     DRAG_BAR_HEIGHT = 32   # wysokość strefy drag u góry
@@ -1089,9 +1501,18 @@ class _DraggableWindow(QWidget):
         except Exception as ex:
             print(f"[motion] {ex}")
 
+    def fade_hide(self):
+        """Zamknięcie szybsze niż otwarcie (150 ms): okno odpływa, nie znika skokiem."""
+        if not self.isVisible():
+            return
+        def _fin():
+            QWidget.hide(self)
+            self.setWindowOpacity(1.0)
+        _fade_window(self, 0.0, 150, QEasingCurve.Type.InCubic, then=_fin)
+
     def keyPressEvent(self, e):
         if e.key() == Qt.Key.Key_Escape:
-            self.hide()
+            self.fade_hide()
         else:
             super().keyPressEvent(e)
 
@@ -1105,6 +1526,7 @@ def _right_third_pos(w):
     w.move(rx, cy)
 
 def _styled_window(w):
+    _glass_attach(w)
     w.setWindowFlags(
         Qt.WindowType.FramelessWindowHint |
         Qt.WindowType.WindowStaysOnTopHint |
@@ -1127,53 +1549,51 @@ def _styled_window(w):
         pass
 
 def _paint_bg(widget, _):
-    from PyQt6.QtCore import QRectF, QPointF, QRect
-    from PyQt6.QtGui import QLinearGradient
+    """Szkło: ciemny granat z lekką poświatą (pomarańcz u góry, błękit u dołu), cienka biała
+    krawędź i połysk. Gdy system rozmywa tło (Windows) wypełnienie jest lżejsze."""
     p = QPainter(widget)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    r = QRectF(widget.rect()).adjusted(1, 1, -1, -1)
-    # Tło okna: szkło — lekki gradient, biała krawędź i cienka poświata u góry
-    g = QLinearGradient(r.topLeft(), r.bottomLeft())
-    g.setColorAt(0.0, QColor(26, 34, 62, 214))
-    g.setColorAt(1.0, QColor(13, 19, 36, 224))
-    p.setBrush(QBrush(g))
-    p.setPen(QPen(QColor(255, 255, 255, 46), 1))
-    p.drawRoundedRect(r, 16, 16)
-    hl = QLinearGradient(r.left() + 18, 0, r.right() - 18, 0)
-    hl.setColorAt(0.0, QColor(255, 255, 255, 0))
-    hl.setColorAt(0.5, QColor(255, 255, 255, 64))
-    hl.setColorAt(1.0, QColor(255, 255, 255, 0))
-    p.setPen(QPen(QBrush(hl), 1))
-    p.drawLine(int(r.left() + 18), int(r.top() + 1), int(r.right() - 18), int(r.top() + 1))
-    # Pasek drag u góry - ciemniejszy, zaokrąglony tylko górne narożniki
+    r = QRectF(widget.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+    rad = _GLASS_RADIUS
+    blur = bool(getattr(widget, "_blur_ok", False))
     p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QBrush(QColor(255, 255, 255, 18)))
-    drag_r = QRectF(r.left(), r.top(), r.width(), 32)
-    p.drawRoundedRect(drag_r, 16, 16)
-    # Przykryj dolne zaokrąglenie paska prostokątem
-    p.drawRect(QRectF(r.left(), r.top() + 16, r.width(), 16))
+    p.setBrush(QColor(18, 26, 52, 150 if blur else 226))
+    p.drawRoundedRect(r, rad, rad)
+    path = QPainterPath(); path.addRoundedRect(r, rad, rad)
+    p.setClipPath(path)
+    big = max(r.width(), r.height())
+    g1 = QRadialGradient(r.left() + r.width() * 0.10, r.top() + r.height() * 0.02, big * 0.78)
+    g1.setColorAt(0.0, QColor(224, 128, 58, 70 if blur else 52)); g1.setColorAt(1.0, QColor(224, 128, 58, 0))
+    p.setBrush(QBrush(g1)); p.drawRect(r)
+    g2 = QRadialGradient(r.right() - r.width() * 0.04, r.bottom() + r.height() * 0.02, big * 0.85)
+    g2.setColorAt(0.0, QColor(70, 110, 230, 92 if blur else 70)); g2.setColorAt(1.0, QColor(70, 110, 230, 0))
+    p.setBrush(QBrush(g2)); p.drawRect(r)
+    p.setClipping(False)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(QPen(QColor(255, 255, 255, 44), 1))
+    p.drawRoundedRect(r, rad, rad)
+    hl = QLinearGradient(r.left() + rad, 0, r.right() - rad, 0)
+    hl.setColorAt(0.0, QColor(255, 255, 255, 0)); hl.setColorAt(0.5, QColor(255, 255, 255, 84)); hl.setColorAt(1.0, QColor(255, 255, 255, 0))
+    p.setPen(QPen(QBrush(hl), 1))
+    p.drawLine(QPointF(r.left() + rad, r.top() + 1), QPointF(r.right() - rad, r.top() + 1))
+
+_GHOST_QSS = """
+    QPushButton { background:rgba(255,255,255,20); color:#eef2ff; border:none;
+        border-radius:14px; padding:9px; font-size:12px; }
+    QPushButton:hover { background:rgba(255,255,255,42); }
+    QPushButton:pressed { background:rgba(255,255,255,28); }
+"""
 
 def _close_btn(target):
-    btn = QPushButton("✖  Zamknij")
-    btn.setStyleSheet("""
-        QPushButton { background:rgba(150,40,40,160); color:white;
-            border:1px solid rgba(200,80,80,120);
-            border-radius:10px; padding:7px; font-size:12px; }
-        QPushButton:hover { background:rgba(190,60,60,200); }
-    """)
+    btn = QPushButton("Zamknij")
+    btn.setStyleSheet(_GHOST_QSS)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.clicked.connect(target.hide)
     return btn
 
 def _back_btn(text, cb):
     btn = QPushButton(text)
-    btn.setStyleSheet("""
-        QPushButton { background:rgba(60,60,100,160);
-            color:rgba(200,210,255,200);
-            border:1px solid rgba(96,110,150,120);
-            border-radius:10px; padding:8px; font-size:12px; }
-        QPushButton:hover { background:rgba(72,82,128,200); border-color:rgba(201,106,42,235); }
-    """)
+    btn.setStyleSheet(_GHOST_QSS)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.clicked.connect(cb)
     return btn
@@ -1575,23 +1995,23 @@ class TestCardsWorker(QThread):
 # ──────────────────────────────────────────────────────
 INPUT_STYLE = """
     QLineEdit {
-        background: rgba(26,36,60,190); color: white;
-        border: 1px solid rgba(110,125,165,140);
-        border-radius: 8px; padding: 8px 12px; font-size: 13px;
+        background: rgba(255,255,255,20); color: white;
+        border: 1px solid rgba(255,255,255,46);
+        border-radius: 14px; padding: 8px 14px; font-size: 14px;
+        selection-background-color: rgba(224,128,58,150);
     }
-    QLineEdit:hover { border: 1px solid rgba(201,106,42,140); }
-    QLineEdit:focus { border: 1px solid rgba(224,128,58,235); background: rgba(34,46,76,215); }
+    QLineEdit:hover { border: 1px solid rgba(255,255,255,84); }
+    QLineEdit:focus { border: 1px solid rgba(224,128,58,240); background: rgba(255,255,255,30); }
 """
 BTN_PRIMARY = """
     QPushButton {
-        background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 rgba(40,52,88,215), stop:1 rgba(26,36,64,215));
-        color: white;
-        border: 1.5px solid rgba(201,106,42,235); border-radius: 12px;
-        padding: 9px; font-size: 13px; font-weight: bold;
+        background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f0924d, stop:1 #d8742e);
+        color: #1b1205; border: none; border-radius: 14px;
+        padding: 10px; font-size: 13px; font-weight: bold;
     }
-    QPushButton:hover   { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 rgba(54,68,108,230), stop:1 rgba(36,48,82,230)); border-color: rgba(240,146,77,255); }
-    QPushButton:pressed { background: rgba(22,30,54,235); border-color: rgba(168,86,32,255); }
-    QPushButton:disabled{ background: rgba(40,46,74,120); color: rgba(255,255,255,80); border-color: rgba(90,100,140,90); }
+    QPushButton:hover   { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f6a263, stop:1 #e0803a); }
+    QPushButton:pressed { background: #c46a28; }
+    QPushButton:disabled{ background: rgba(255,255,255,24); color: rgba(255,255,255,90); }
 """
 
 ONBOARDING_KEY = "onboarding_done_v2"
@@ -3144,6 +3564,360 @@ class LanguageWindow(_DraggableWindow):
 # ──────────────────────────────────────────────────────
 # WORKER – zapis własnego zestawu do Supabase
 # ──────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────
+# WYBIERZ NAUKĘ — jedno okno zamiast trzech (język → poziom → kategoria)
+# Zasada: wejście z poprzednim wyborem już ustawionym, więc zwykle wystarcza 1 klik.
+# ──────────────────────────────────────────────────────
+_RECENTS_FILE = Path.home() / ".eyelingo_recents.json"
+
+
+def _recents_load():
+    try:
+        data = json.loads(_RECENTS_FILE.read_text(encoding="utf-8"))
+        out = []
+        for d in data:
+            if all(k in d for k in ("lang", "lvl", "cat", "label")):
+                out.append(d)
+        return out[:3]
+    except Exception:
+        return []
+
+
+def _recents_push(lang, lvl, cat, label):
+    items = [d for d in _recents_load()
+             if not (d["lang"] == lang and d["lvl"] == lvl and d["cat"] == cat)]
+    items.insert(0, {"lang": lang, "lvl": lvl, "cat": cat, "label": label})
+    try:
+        _RECENTS_FILE.write_text(json.dumps(items[:3], ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+class _CatsWorker(QThread):
+    done = pyqtSignal(str, str, list)
+
+    def __init__(self, lang, lvl):
+        super().__init__()
+        self.lang, self.lvl = lang, lvl
+
+    def run(self):
+        cats = []
+        try:
+            load_categories(self.lang, self.lvl)
+            cats = [dict(c) for c in CATEGORIES]
+        except Exception as ex:
+            print(f"[picker] kategorie: {ex}")
+        self.done.emit(self.lang, self.lvl, cats)
+
+
+class _SegBox(QWidget):
+    """Tło segmentowego wyboru poziomu (jedna szara „szyna” z przyciskami w środku)."""
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(255, 255, 255, 18))
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), 16, 16)
+
+
+class PickerWindow(_DraggableWindow):
+    """Jedno okno: Ostatnio · Język · Poziom · Kategoria.
+    on_selected(lang, lvl, cat) — wybrano kategorię; on_action(str) — akcje poboczne
+    (identyczne kody jak w dawnym oknie języków: "my_sets", "create", ...)."""
+    open_purchase = pyqtSignal(str)
+    ANIM_DY = 14
+    DRAG_BAR_HEIGHT = 64
+
+    def __init__(self, on_selected, on_action):
+        super().__init__()
+        self.on_selected = on_selected
+        self.on_action = on_action
+        self.lang, self.lvl = "en", "A1"
+        self._is_premium = False
+        self._bought = []
+        self._done = set()
+        self._cats = []
+        self._want = None
+        self._cw = None
+        self._pending_cat = None
+        self._cat_btns = {}
+        _styled_window(self)
+        sc = QApplication.primaryScreen().availableGeometry()
+        self.setFixedSize(480, max(520, min(800, sc.height() - 48)))
+        self._build()
+        self._center()
+
+    def _center(self):
+        sc = QApplication.primaryScreen().availableGeometry()
+        self.move(sc.center().x() - self.width() // 2, sc.center().y() - self.height() // 2)
+
+    # ── API dla TrayApp ──
+    def set_premium(self, is_premium, bought_levels=None):
+        self._is_premium = bool(is_premium)
+        self._bought = list(bought_levels or [])
+        self._refresh_levels()
+
+    def mark_done(self, code):
+        self._done.add(code)
+        b = self._cat_btns.get(code)
+        if b is not None:
+            b.setDone(True)
+
+    def present(self, lang=None, lvl=None):
+        rec = _recents_load()
+        if not lang:
+            lang = (rec[0]["lang"] if rec else None) or self.lang
+        if not lvl:
+            lvl = (rec[0]["lvl"] if rec and rec[0]["lang"] == lang else None) or self.lvl
+        self.lang = lang
+        self.lvl = lvl if self._level_unlocked(lvl) else "A1"
+        self._pending_cat = None
+        self._build_recents()
+        self._refresh_langs()
+        self._refresh_levels()
+        self._lock_msg.hide()
+        self._request_cats()
+        self._scroll.verticalScrollBar().setValue(0)
+        self._center()
+        self.show(); self.raise_(); self.activateWindow()
+
+    # ── budowa ──
+    def _label(self, text, top=0):
+        l = QLabel(text)
+        l.setFont(_gfont(12))
+        l.setStyleSheet("color:rgba(238,242,255,148);background:transparent;")
+        if top:
+            l.setContentsMargins(0, top, 0, 0)
+        return l
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        hdr = QWidget(); hdr.setFixedHeight(64); hdr.setStyleSheet("background:transparent;")
+        hl = QHBoxLayout(hdr); hl.setContentsMargins(24, 14, 20, 0)
+        t = QLabel("Wybierz naukę"); t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
+        self.btn_close = GlassButton("", "ico"); self.btn_close.setGlyph("close")
+        self.btn_close.setToolTip("Zamknij (Esc)")
+        self.btn_close.clicked.connect(self.fade_hide)
+        hl.addWidget(t); hl.addStretch(1); hl.addWidget(self.btn_close)
+        lay.addWidget(hdr)
+
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setStyleSheet(
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}"
+            "QScrollBar:vertical{width:6px;background:transparent;margin:6px 2px;}"
+            "QScrollBar::handle:vertical{background:rgba(255,255,255,56);border-radius:3px;min-height:36px;}"
+            "QScrollBar::handle:vertical:hover{background:rgba(255,255,255,96);}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+            "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}")
+        body = QWidget(); body.setStyleSheet("background:transparent;")
+        bl = QVBoxLayout(body); bl.setContentsMargins(24, 2, 24, 24); bl.setSpacing(0)
+        self._scroll.setWidget(body)
+        lay.addWidget(self._scroll, 1)
+
+        # Ostatnio
+        self._rec_wrap = QWidget(); self._rec_wrap.setStyleSheet("background:transparent;")
+        rw = QVBoxLayout(self._rec_wrap); rw.setContentsMargins(0, 0, 0, 0); rw.setSpacing(8)
+        rw.addWidget(self._label("Ostatnio"))
+        self._rec_box = QVBoxLayout(); self._rec_box.setSpacing(8)
+        rw.addLayout(self._rec_box)
+        self._rec_div = QFrame(); self._rec_div.setFixedHeight(1)
+        self._rec_div.setStyleSheet("background:rgba(255,255,255,26);border:none;")
+        rw.addSpacing(10); rw.addWidget(self._rec_div); rw.addSpacing(8)
+        bl.addWidget(self._rec_wrap)
+
+        # Język
+        bl.addWidget(self._label("Język"))
+        bl.addSpacing(8)
+        chips = QWidget(); chips.setStyleSheet("background:transparent;")
+        fl = FlowLayout(chips, 6, 6)
+        self._lang_btns = {}
+        for L in LANGUAGES:
+            if not L.get("available", True):
+                continue
+            b = GlassButton(L["label"], "chip")
+            b.clicked.connect(lambda _, c=L["code"]: self._set_lang(c))
+            fl.addWidget(b); self._lang_btns[L["code"]] = b
+        bl.addWidget(chips)
+
+        # Poziom
+        bl.addSpacing(18)
+        bl.addWidget(self._label("Poziom"))
+        bl.addSpacing(8)
+        seg = _SegBox(); seg.setFixedHeight(46)
+        sl = QHBoxLayout(seg); sl.setContentsMargins(4, 4, 4, 4); sl.setSpacing(4)
+        self._lvl_btns = {}
+        for lv in LEVELS:
+            b = GlassButton(lv["label"], "seg", radius=12)
+            b.setFixedHeight(38)
+            b.clicked.connect(lambda _, c=lv["code"]: self._set_level(c))
+            sl.addWidget(b, 1); self._lvl_btns[lv["code"]] = b
+        bl.addWidget(seg)
+        self._lock_msg = QLabel("PRO odblokowuje wszystkie poziomy.")
+        self._lock_msg.setFont(_gfont(12))
+        self._lock_msg.setStyleSheet("color:%s;background:transparent;" % G_SOFT)
+        self._lock_msg.setContentsMargins(0, 8, 0, 0)
+        self._lock_msg.hide()
+        bl.addWidget(self._lock_msg)
+
+        # Kategoria
+        bl.addSpacing(18)
+        bl.addWidget(self._label("Kategoria"))
+        bl.addSpacing(8)
+        self._cat_host = QWidget(); self._cat_host.setStyleSheet("background:transparent;")
+        self._cat_grid = QGridLayout(self._cat_host)
+        self._cat_grid.setContentsMargins(0, 0, 0, 0)
+        self._cat_grid.setHorizontalSpacing(8); self._cat_grid.setVerticalSpacing(8)
+        bl.addWidget(self._cat_host)
+
+        # Akcje poboczne
+        bl.addSpacing(20)
+        row = QHBoxLayout(); row.setSpacing(8)
+        b1 = GlassButton("Moje zestawy", "ghost"); b1.setFixedHeight(40); b1.setGlyph("book")
+        b1.clicked.connect(lambda: (self.fade_hide(), self.on_action("my_sets")))
+        b2 = GlassButton("Własne fiszki · PRO", "ghost"); b2.setFixedHeight(40)
+        b2.clicked.connect(lambda: (self.fade_hide(), self.on_action("create")))
+        row.addWidget(b1, 1); row.addWidget(b2, 1)
+        bl.addLayout(row)
+        bl.addStretch(1)
+
+    # ── odświeżanie sekcji ──
+    def _level_unlocked(self, code):
+        lv = next((l for l in LEVELS if l["code"] == code), None)
+        if not lv:
+            return False
+        return bool(lv["free"] or self._is_premium or f"{self.lang}_{code}" in self._bought)
+
+    def _refresh_langs(self):
+        for c, b in self._lang_btns.items():
+            b.setSelected(c == self.lang)
+
+    def _refresh_levels(self):
+        for c, b in self._lvl_btns.items():
+            un = self._level_unlocked(c)
+            b.setLocked(not un)
+            b.setSelected(c == self.lvl and un)
+
+    def _build_recents(self):
+        while self._rec_box.count():
+            it = self._rec_box.takeAt(0)
+            w = it.widget()
+            if w:
+                w.deleteLater()
+        rec = _recents_load()
+        self._rec_wrap.setVisible(bool(rec))
+        for i, d in enumerate(rec):
+            b = GlassButton(d["label"], "tile", radius=16)
+            b.setFixedHeight(48); b.setTrail("play"); b.setStrong(i == 0)
+            b.clicked.connect(lambda _, dd=d: self._pick_recent(dd))
+            self._rec_box.addWidget(b)
+            b.appear(i * 45)
+
+    def _set_lang(self, code):
+        if code == self.lang:
+            return
+        self.lang = code
+        if not self._level_unlocked(self.lvl):
+            self.lvl = "A1"
+        self._refresh_langs(); self._refresh_levels()
+        self._lock_msg.hide()
+        self._request_cats()
+
+    def _set_level(self, code):
+        if not self._level_unlocked(code):
+            self.open_purchase.emit(f"{self.lang}_{code}")
+            self._lock_msg.show()
+            return
+        self._lock_msg.hide()
+        if code == self.lvl:
+            return
+        self.lvl = code
+        self._refresh_levels()
+        self._request_cats()
+
+    # ── kategorie (w tle — bez zamrażania okna) ──
+    def _clear_cats(self):
+        self._cat_btns = {}
+        while self._cat_grid.count():
+            it = self._cat_grid.takeAt(0)
+            w = it.widget()
+            if w:
+                w.deleteLater()
+
+    def _request_cats(self):
+        self._want = (self.lang, self.lvl)
+        self._clear_cats()
+        ld = QLabel("Ładuję kategorie…"); ld.setFont(_gfont(13))
+        ld.setStyleSheet("color:rgba(238,242,255,120);background:transparent;")
+        self._cat_grid.addWidget(ld, 0, 0, 1, 2)
+        if self._cw is not None and self._cw.isRunning():
+            return                      # po zakończeniu ruszy ostatnie żądanie
+        self._start_cats_worker()
+
+    def _start_cats_worker(self):
+        lang, lvl = self._want
+        self._cw = _CatsWorker(lang, lvl)
+        self._cw.done.connect(self._on_cats)
+        self._cw.start()
+
+    def _on_cats(self, lang, lvl, cats):
+        if self._want != (lang, lvl):
+            self._start_cats_worker()   # użytkownik zdążył zmienić wybór
+            return
+        self._cats = cats
+        self._clear_cats()
+        if not cats:
+            e = QLabel("Brak kategorii dla tego wyboru."); e.setFont(_gfont(13))
+            e.setStyleSheet("color:rgba(238,242,255,120);background:transparent;")
+            self._cat_grid.addWidget(e, 0, 0, 1, 2)
+        for i, c in enumerate(cats):
+            b = GlassButton(c.get("label", c["code"]), "tile", radius=14)
+            b.setFixedHeight(46); b.setPx(14)
+            b._pad = 14
+            b.setDone(c["code"] in self._done)
+            b.clicked.connect(lambda _, cc=c: self._pick(cc["code"], cc.get("label", cc["code"])))
+            self._cat_grid.addWidget(b, i // 2, i % 2)
+            self._cat_btns[c["code"]] = b
+            b.appear(min(i, 10) * 28)
+        try:
+            self._comp = CompletedCatsWorker(lang)
+            self._comp.done.connect(lambda codes: [self.mark_done(x) for x in codes])
+            self._comp.start()
+        except Exception:
+            pass
+        if self._pending_cat:
+            code, self._pending_cat = self._pending_cat, None
+            c = next((x for x in cats if x["code"] == code), None)
+            if c:
+                self._pick(c["code"], c.get("label", c["code"]))
+
+    # ── wybór ──
+    def _pick_recent(self, d):
+        self.lang, self.lvl = d["lang"], d["lvl"]
+        self._refresh_langs(); self._refresh_levels()
+        if self._cats and self._want == (self.lang, self.lvl):
+            self._pick(d["cat"], d["label"].split(" · ")[-1])
+            return
+        self._pending_cat = d["cat"]
+        self._request_cats()
+
+    def _pick(self, code, label):
+        flag_name = lang_label(self.lang)
+        _recents_push(self.lang, self.lvl, code, f"{flag_name} · {self.lvl} · {label}")
+        self.on_selected(self.lang, self.lvl, code)
+        self.fade_hide()
+
+    def paintEvent(self, e):
+        _paint_bg(self, e)
+
+
 class SaveSetWorker(QThread):
     done  = pyqtSignal(int)   # id nowego zestawu
     error = pyqtSignal(str)
@@ -4523,7 +5297,7 @@ class SettingsWindow(_DraggableWindow):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(440, 560)
+        self.setFixedSize(500, 580)
         self._recording   = None
         self._record_hook = None
         self._saved_state = {}
@@ -4565,7 +5339,7 @@ class SettingsWindow(_DraggableWindow):
         def sec(t):
             l = QLabel(t)
             l.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-            l.setStyleSheet("color:rgba(160,185,255,210);margin-top:6px;")
+            l.setStyleSheet("color:rgba(238,242,255,170);margin-top:6px;")
             lay.addWidget(l)
 
         # Wygląd
@@ -4588,9 +5362,9 @@ class SettingsWindow(_DraggableWindow):
         self._fx_cb.setFont(QFont("Segoe UI",11))
         self._fx_cb.setFixedHeight(30)
         self._fx_cb.setStyleSheet("""
-            QComboBox{background:rgba(26,36,54,190);color:white;
-                border:1px solid rgba(70,130,105,150);border-radius:7px;padding:3px 10px;}
-            QComboBox:hover{background:rgba(40,52,70,220);}
+            QComboBox{background:rgba(255,255,255,24);color:white;
+                border:1px solid rgba(255,255,255,46);border-radius:10px;padding:4px 12px;}
+            QComboBox:hover{background:rgba(255,255,255,40);}
             QComboBox::drop-down{border:none;width:22px;}
             QComboBox::down-arrow{width:0;height:0;
                 border-left:5px solid transparent;border-right:5px solid transparent;
@@ -4633,7 +5407,7 @@ class SettingsWindow(_DraggableWindow):
         # Skróty
         sec("Skróty klawiszowe")
         hint = QLabel("Kliknij przycisk → naciśnij kombinację.  ✖ = wyłącz")
-        hint.setStyleSheet("color:rgba(160,185,255,160);font-size:10px;")
+        hint.setStyleSheet("color:rgba(238,242,255,130);font-size:10px;")
         hint.setWordWrap(True)
         lay.addWidget(hint)
 
@@ -4664,30 +5438,30 @@ class SettingsWindow(_DraggableWindow):
         # ── Pasek przycisków na dole ─────────────────────
         bar = QWidget()
         bar.setFixedHeight(52)
-        bar.setStyleSheet("background:rgba(12,15,45,230);"
-                          "border-top:1px solid rgba(210,220,255,20);")
+        bar.setStyleSheet("background:transparent;"
+                          "border-top:1px solid rgba(255,255,255,26);")
         bl = QHBoxLayout(bar); bl.setContentsMargins(14,8,14,8); bl.setSpacing(6)
 
         def mkb(text, bg, hover, slot, bold=False, border="rgba(255,255,255,30)"):
             b = QPushButton(text)
             b.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold if bold else QFont.Weight.Normal))
             b.setFixedHeight(34)
-            b.setStyleSheet(f"QPushButton{{background:{bg};color:white;"
-                            f"border:1px solid {border};border-radius:8px;padding:4px 8px;}}"
-                            f"QPushButton:hover{{background:{hover};border-color:rgba(201,106,42,235);}}")
+            b.setStyleSheet(f"QPushButton{{background:{bg};color:{'#1b1205' if bold else '#eef2ff'};"
+                            f"border:none;border-radius:12px;padding:4px 12px;}}"
+                            f"QPushButton:hover{{background:{hover};}}")
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(slot)
             return b
 
         # Wróć=granat, Zapis=zielony, Zamknij=szary, Domyślne=tekst
-        btn_back  = mkb("\u2190 Wr\u00F3\u0107", "rgba(60,66,92,210)", "rgba(82,90,120,235)", self._revert)
-        btn_save  = mkb("Zapisz",  "rgba(28,38,66,205)", "rgba(38,50,84,225)", self._save, True, "rgba(201,106,42,235)")
-        btn_close = mkb("Zamknij", "rgba(60,66,92,210)",   "rgba(82,90,120,235)",  self.hide)
+        btn_back  = mkb("\u2190 Wr\u00F3\u0107", "rgba(255,255,255,20)", "rgba(255,255,255,42)", self._revert)
+        btn_save  = mkb("Zapisz",  "qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f0924d, stop:1 #d8742e)", "qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f6a263, stop:1 #e0803a)", self._save, True)
+        btn_close = mkb("Zamknij", "rgba(255,255,255,20)", "rgba(255,255,255,42)",  self.hide)
         btn_def   = QPushButton("Przywróć domyślne")
         btn_def.setFont(QFont("Segoe UI", 9))
         btn_def.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_def.setStyleSheet("QPushButton{background:transparent;color:rgba(160,175,210,160);border:none;}"
-                              "QPushButton:hover{color:rgba(170,190,235,225);}")
+                              "QPushButton:hover{color:rgba(238,242,255,225);}")
         btn_def.clicked.connect(self._reset)
 
         bl.addWidget(btn_back)
@@ -4715,14 +5489,15 @@ class SettingsWindow(_DraggableWindow):
         sl.setMinimum(mn); sl.setMaximum(mx); sl.setValue(val)
         sl.setFixedHeight(22)
         sl.setStyleSheet("""
-            QSlider::groove:horizontal{height:4px;background:rgba(70,80,120,120);border-radius:2px;}
-            QSlider::handle:horizontal{width:13px;height:13px;margin:-5px 0;
-                background:rgb(120,140,215);border-radius:6px;}
-            QSlider::sub-page:horizontal{background:rgba(120,140,215,205);border-radius:2px;}
+            QSlider::groove:horizontal{height:4px;background:rgba(255,255,255,36);border-radius:2px;}
+            QSlider::handle:horizontal{width:15px;height:15px;margin:-6px 0;
+                background:#eef2ff;border-radius:7px;}
+            QSlider::handle:horizontal:hover{background:#ffffff;}
+            QSlider::sub-page:horizontal{background:rgb(224,128,58);border-radius:2px;}
         """)
         vl = QLabel(f"{val}{suffix}")
         vl.setFont(QFont("Segoe UI",11,QFont.Weight.Bold))
-        vl.setStyleSheet("color:rgba(150,168,240,235);"); vl.setFixedWidth(34)
+        vl.setStyleSheet("color:#ffb27a;"); vl.setFixedWidth(34)
         sl.valueChanged.connect(lambda v,l=vl,s=suffix: l.setText(f"{v}{s}"))
         row.addWidget(lb); row.addWidget(sl); row.addWidget(vl)
         lay.addLayout(row)
@@ -4730,12 +5505,12 @@ class SettingsWindow(_DraggableWindow):
 
     def _hk_style(self, active):
         if active:
-            return ("QPushButton{background:rgba(52,66,120,185);color:white;"
-                    "border:1px solid rgba(120,140,215,150);border-radius:7px;padding:3px;font-size:10px;}"
-                    "QPushButton:hover{background:rgba(66,82,150,220);}")
-        return ("QPushButton{background:rgba(38,38,58,140);color:rgba(255,255,255,70);"
-                "border:1px solid rgba(80,80,120,80);border-radius:7px;padding:3px;font-size:10px;}"
-                "QPushButton:hover{background:rgba(58,58,88,180);}")
+            return ("QPushButton{background:rgba(255,255,255,30);color:white;"
+                    "border:1px solid rgba(255,255,255,46);border-radius:10px;padding:3px;font-size:10px;}"
+                    "QPushButton:hover{background:rgba(255,255,255,52);}")
+        return ("QPushButton{background:rgba(255,255,255,14);color:rgba(255,255,255,90);"
+                "border:1px solid rgba(255,255,255,26);border-radius:10px;padding:3px;font-size:10px;}"
+                "QPushButton:hover{background:rgba(255,255,255,34);}")
 
     def _on_fx(self, i):
         APP_SETTINGS["card_effect"] = self._fx_ids[i]
@@ -4853,12 +5628,12 @@ def _similarity(a: str, b: str) -> float:
 
 
 class SegmentBar(QWidget):
-    """D5 — segmentowy pasek postępu: zaliczone / bieżące / pozostałe."""
+    """Segmentowy pasek postępu: zaliczone (zielony) / bieżące (akcent) / pozostałe (szkło)."""
     def __init__(self):
         super().__init__()
         self.total = 1
         self.current = 0
-        self.setFixedHeight(6)
+        self.setFixedHeight(4)
 
     def set_state(self, total, current):
         self.total = max(int(total), 1)
@@ -4866,22 +5641,21 @@ class SegmentBar(QWidget):
         self.update()
 
     def paintEvent(self, e):
-        from PyQt6.QtCore import QRectF
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(Qt.PenStyle.NoPen)
         n = self.total
-        gap = 3.0
+        gap = 4.0 if n <= 30 else 2.0
         w = (self.width() - gap * (n - 1)) / n if n > 0 else self.width()
         if w < 1:
             w = 1
         for idx in range(n):
             if idx < self.current:
-                c = QColor(90, 210, 140, 220)     # zaliczone
+                c = QColor(G_OK)
             elif idx == self.current:
-                c = QColor(235, 175, 90, 235)      # bieżące
+                c = QColor(G_ACC)
             else:
-                c = QColor(120, 128, 160, 90)       # pozostałe
+                c = QColor(255, 255, 255, 41)
             p.setBrush(c)
             p.drawRoundedRect(QRectF(idx * (w + gap), 0.0, w, float(self.height())), 2, 2)
 
@@ -4898,95 +5672,96 @@ class TestWindow(_DraggableWindow):
         self.progress_key = ""
         self.save_progress = None
         _styled_window(self)
-        self.setFixedSize(440, 452)
+        self.setFixedSize(440, 548)
         self._build()
         sc = QApplication.primaryScreen().availableGeometry()
-        self.move(sc.center().x() - 220, sc.center().y() - 226)
+        self.move(sc.center().x() - 220, sc.center().y() - 274)
 
     def _build(self):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        # Pasek: tytuł + „X z Y"
-        hdr_w = QWidget(); hdr_w.setFixedHeight(32); hdr_w.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr_w); hl.setContentsMargins(16, 0, 16, 0)
+        # Pasek: tytuł + „X z Y” + zamknij
+        hdr_w = QWidget(); hdr_w.setFixedHeight(56); hdr_w.setStyleSheet("background:transparent;")
+        hl = QHBoxLayout(hdr_w); hl.setContentsMargins(24, 20, 20, 0); hl.setSpacing(10)
         self.lbl_title = QLabel("Tryb nauki")
-        self.lbl_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        self.lbl_title.setStyleSheet("color:white;background:transparent;")
+        self.lbl_title.setFont(_gfont(16, QFont.Weight.DemiBold))
+        self.lbl_title.setStyleSheet("color:#eef2ff;background:transparent;")
         self.lbl_progress = QLabel("")
-        self.lbl_progress.setFont(QFont("Segoe UI", 10))
-        self.lbl_progress.setStyleSheet("color:rgba(200,210,255,180);background:transparent;")
-        self.lbl_progress.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        hl.addWidget(self.lbl_title); hl.addWidget(self.lbl_progress)
+        self.lbl_progress.setFont(_gfont(13))
+        self.lbl_progress.setStyleSheet("color:rgba(238,242,255,148);background:transparent;")
+        hl.addWidget(self.lbl_title); hl.addWidget(self.lbl_progress); hl.addStretch(1)
+        self.btn_x = GlassButton("", "ico"); self.btn_x.setGlyph("close"); self.btn_x.setToolTip("Zamknij (Esc)")
+        self.btn_x.clicked.connect(self.fade_hide)
+        hl.addWidget(self.btn_x)
         lay.addWidget(hdr_w)
 
         # Segmentowy pasek postępu
         seg_wrap = QWidget(); seg_wrap.setStyleSheet("background:transparent;")
-        sw = QVBoxLayout(seg_wrap); sw.setContentsMargins(16, 0, 16, 6)
+        sw = QVBoxLayout(seg_wrap); sw.setContentsMargins(24, 14, 24, 0)
         self.seg_bar = SegmentBar()
         sw.addWidget(self.seg_bar)
         lay.addWidget(seg_wrap)
 
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
         inner_lay = QVBoxLayout(inner)
-        inner_lay.setContentsMargins(28, 12, 28, 20)
+        inner_lay.setContentsMargins(24, 30, 24, 18)
         inner_lay.setSpacing(12)
         lay.addWidget(inner, 1)
 
-        self.lbl_prompt = QLabel("PRZET\u0141UMACZ")
-        self.lbl_prompt.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        self.lbl_prompt.setStyleSheet("color:rgba(150,165,205,170);background:transparent;letter-spacing:1px;")
+        self.lbl_prompt = QLabel("Przet\u0142umacz")
+        self.lbl_prompt.setFont(_gfont(13))
+        self.lbl_prompt.setStyleSheet("color:rgba(238,242,255,148);background:transparent;")
         self.lbl_prompt.setAlignment(Qt.AlignmentFlag.AlignCenter)
         inner_lay.addWidget(self.lbl_prompt)
 
         self.lbl_question = QLabel("")
-        self.lbl_question.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
-        self.lbl_question.setStyleSheet("color:white;background:transparent;")
+        self.lbl_question.setFont(_gfont(36, QFont.Weight.DemiBold))
+        self.lbl_question.setStyleSheet("color:#ffffff;background:transparent;")
         self.lbl_question.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_question.setWordWrap(True)
         inner_lay.addWidget(self.lbl_question)
 
-        self.lbl_hint = QLabel("Najpierw przypomnij sobie \u2014 potem wpisz:")
-        self.lbl_hint.setFont(QFont("Segoe UI", 9))
-        self.lbl_hint.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
+        self.lbl_hint = QLabel("Najpierw przypomnij sobie, potem wpisz. Enter zatwierdza.")
+        self.lbl_hint.setFont(_gfont(13))
+        self.lbl_hint.setWordWrap(True)
+        self.lbl_hint.setStyleSheet("color:rgba(238,242,255,138);background:transparent;")
         self.lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         inner_lay.addWidget(self.lbl_hint)
 
         self.inp = QLineEdit()
         self.inp.setPlaceholderText("wpisz s\u0142\u00F3wko...")
-        self.inp.setStyleSheet(INPUT_STYLE)
+        self.inp.setStyleSheet(INPUT_STYLE.replace("font-size: 14px;", "font-size: 20px;").replace("border-radius: 14px", "border-radius: 18px"))
+        self.inp.setFixedHeight(56)
         self.inp.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.inp.returnPressed.connect(self._check)
         inner_lay.addWidget(self.inp)
 
         self.lbl_feedback = QLabel("")
-        self.lbl_feedback.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        self.lbl_feedback.setFont(_gfont(17, QFont.Weight.DemiBold))
         self.lbl_feedback.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_feedback.setWordWrap(True)
         self.lbl_feedback.setStyleSheet("background:transparent;")
         inner_lay.addWidget(self.lbl_feedback)
 
         self.lbl_sched = QLabel("")
-        self.lbl_sched.setFont(QFont("Segoe UI", 9))
+        self.lbl_sched.setFont(_gfont(13))
         self.lbl_sched.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_sched.setWordWrap(True)
-        self.lbl_sched.setStyleSheet("color:rgba(170,185,225,180);background:transparent;")
+        self.lbl_sched.setStyleSheet("color:rgba(238,242,255,178);background:transparent;")
         inner_lay.addWidget(self.lbl_sched)
 
         inner_lay.addStretch(1)
 
-        self.btn_check = QPushButton("Sprawd\u017A \u2192")
-        self.btn_check.setStyleSheet(BTN_PRIMARY)
-        self.btn_check.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_check = GlassButton("Sprawd\u017A \u2192", "cta", radius=18)
+        self.btn_check.setFixedHeight(52)
+        self.btn_check.setPx(16)
         self.btn_check.clicked.connect(self._check)
         inner_lay.addWidget(self.btn_check)
 
-        self.btn_end = QPushButton("Zako\u0144cz sesj\u0119")
-        self.btn_end.setStyleSheet(
-            "QPushButton{background:transparent;color:rgba(170,180,215,170);"
-            "border:none;font-size:10px;} QPushButton:hover{color:rgba(220,228,255,220);}")
-        self.btn_end.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_end = GlassButton("Zako\u0144cz sesj\u0119", "quiet")
+        self.btn_end.setFixedHeight(30)
         self.btn_end.clicked.connect(self._end_session)
         inner_lay.addWidget(self.btn_end)
 
@@ -4997,7 +5772,7 @@ class TestWindow(_DraggableWindow):
                 lng = lang_label(self.cards[self.index].get("lang", "") or "")
         except Exception:
             lng = ""
-        self.lbl_prompt.setText("PRZET\u0141UMACZ" + (" NA: " + lng.upper() if lng else ""))
+        self.lbl_prompt.setText("Przet\u0142umacz" + (" na " + lng.lower() if lng else ""))
 
     def start_test(self, cards, n_review_from_other=0):
         seen = set(); unique = []
@@ -5077,17 +5852,17 @@ class TestWindow(_DraggableWindow):
         variants = [v for v in variants if v]
         sim = max(_similarity(answer, v) for v in variants)
         if sim >= 0.85:
-            self.lbl_feedback.setStyleSheet("color:rgba(100,255,150,230);")
+            self.lbl_feedback.setStyleSheet("color:#6fdca0;")
             self.lbl_feedback.setText("Zaliczone   (%s)" % correct)
             self.lbl_sched.setText("Odtworzone z pami\u0119ci \u2014 interwa\u0142 si\u0119 wyd\u0142u\u017Ca.")
             self._auto_rate(4); QTimer.singleShot(700, self._next); return
         elif sim >= 0.6:
-            self.lbl_feedback.setStyleSheet("color:rgba(255,200,50,230);")
+            self.lbl_feedback.setStyleSheet("color:#f0c060;")
             self.lbl_feedback.setText("Prawie   Poprawnie: %s" % correct)
             self.lbl_sched.setText("Blisko \u2014 wr\u00F3ci szybciej, \u017Ceby si\u0119 utrwali\u0142o.")
             self._auto_rate(3); QTimer.singleShot(1400, self._next)
         else:
-            self.lbl_feedback.setStyleSheet("color:rgba(255,100,100,230);")
+            self.lbl_feedback.setStyleSheet("color:#ff9a9a;")
             self.lbl_feedback.setText("Do powt\u00F3rki   Poprawnie: %s" % correct)
             self.lbl_sched.setText("Wr\u00F3ci nied\u0142ugo \u2014 bez presji, tak dzia\u0142a nauka.")
             self._shake()
@@ -5620,13 +6395,7 @@ class DueCountWorker(QThread):
             print(f"[DUE] {e}"); self.done.emit(0)
 
 
-_HUB_OUTLINE = """
-    QPushButton { background:rgba(60,65,110,90); color:rgba(210,222,255,220);
-        border:1px solid rgba(120,135,190,150); border-radius:10px;
-        padding:9px; font-size:12px; }
-    QPushButton:hover { background:rgba(80,90,150,150); border-color:rgba(201,106,42,235); }
-    QPushButton:pressed { background:rgba(50,56,100,170); border-color:rgba(168,86,32,255); }
-"""
+_HUB_OUTLINE = _GHOST_QSS
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -5954,17 +6723,11 @@ class HubWindow(_DraggableWindow):
         a.finished.connect(lambda: lbl.setText(str(n)))
         a.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
-    _PRESET_ON = ("QPushButton{background:rgba(120,140,215,215);color:white;border:none;"
-                  "border-radius:8px;padding:7px;font-size:11px;}")
-    _PRESET_OFF = ("QPushButton{background:rgba(55,60,100,140);color:rgba(200,212,245,200);"
-                   "border:1px solid rgba(90,100,160,90);border-radius:8px;padding:7px;font-size:11px;}"
-                   "QPushButton:hover{background:rgba(70,80,140,180);border-color:rgba(201,106,42,235);}")
-
     def __init__(self, app_ref):
         super().__init__()
         self.app_ref = app_ref
         _styled_window(self)
-        self.setFixedSize(360, 520)
+        self.setFixedSize(344, 384)
         self._build()
         self._mirror_timer = QTimer(self)
         self._mirror_timer.timeout.connect(self._tick)
@@ -5979,153 +6742,126 @@ class HubWindow(_DraggableWindow):
     # ── budowa ──
     def _build(self):
         lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0)
+        TXT = "color:#eef2ff;background:transparent;"
+        DIM = "color:rgba(238,242,255,148);background:transparent;"
 
-        # 1. PASEK STATUSU (strefa drag)
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(14, 0, 10, 0); hl.setSpacing(6)
-        self.lbl_status = QLabel("\u25CF  Aktywne")
-        self.lbl_status.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        self.lbl_status.setStyleSheet("color:rgba(120,225,160,230);background:transparent;")
-        hl.addWidget(self.lbl_status); hl.addStretch(1)
-        self.btn_audio = self._icon_btn("\u266A", "D\u017Awi\u0119k"); self.btn_audio.clicked.connect(self._toggle_audio)
-        self.btn_pause = self._icon_btn("\u23F8", "Wstrzymaj");       self.btn_pause.clicked.connect(self._toggle_pause)
-        self.btn_x     = self._icon_btn("\u2715", "Zamknij");         self.btn_x.clicked.connect(self.fade_hide)
-        for b in (self.btn_audio, self.btn_pause, self.btn_x): hl.addWidget(b)
-        lay.addWidget(hdr)
-
+        # Zawartość aktywna (chowana na czas pauzy)
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        il = QVBoxLayout(inner); il.setContentsMargins(16, 8, 16, 16); il.setSpacing(12)
+        il = QVBoxLayout(inner); il.setContentsMargins(18, 16, 18, 14); il.setSpacing(0)
         lay.addWidget(inner, 1)
 
-        # 2. UCZYSZ SIĘ
-        il.addWidget(self._eyebrow("UCZYSZ SI\u0118"))
-        self.lbl_learn = QLabel("\u2014")
-        self.lbl_learn.setFont(QFont("Segoe UI", 11))
-        self.lbl_learn.setStyleSheet("color:rgba(225,235,255,220);background:transparent;")
-        self.lbl_learn.setWordWrap(True)
-        il.addWidget(self.lbl_learn)
-        self.btn_change = QPushButton("Zmie\u0144 nauk\u0119 \u2192")
-        self.btn_change.setStyleSheet(_HUB_OUTLINE); self.btn_change.setCursor(Qt.CursorShape.PointingHandCursor)
+        # 1. STATUS + ikony (strefa przeciągania u góry)
+        hl = QHBoxLayout(); hl.setContentsMargins(0, 0, 0, 0); hl.setSpacing(6)
+        self.dot = StatusDot()
+        self.lbl_status = QLabel("Aktywne"); self.lbl_status.setFont(_gfont(14, QFont.Weight.DemiBold))
+        self.lbl_status.setStyleSheet(TXT)
+        hl.addWidget(self.dot); hl.addWidget(self.lbl_status); hl.addStretch(1)
+        self.btn_audio = self._icon_btn("sound", "Dźwięk");     self.btn_audio.clicked.connect(self._toggle_audio)
+        self.btn_pause = self._icon_btn("pause", "Wstrzymaj");           self.btn_pause.clicked.connect(self._toggle_pause)
+        self.btn_x     = self._icon_btn("close", "Zamknij");             self.btn_x.clicked.connect(self.fade_hide)
+        for b in (self.btn_audio, self.btn_pause, self.btn_x): hl.addWidget(b)
+        il.addLayout(hl)
+        il.addSpacing(16)
+
+        # 2. UCZYSZ SIĘ + Zmień
+        row = QHBoxLayout(); row.setContentsMargins(0, 0, 0, 0)
+        col = QVBoxLayout(); col.setSpacing(0)
+        cap = QLabel("Uczysz się"); cap.setFont(_gfont(12)); cap.setStyleSheet(DIM)
+        self.lbl_lang = QLabel("—"); self.lbl_lang.setFont(_gfont(21, QFont.Weight.DemiBold)); self.lbl_lang.setStyleSheet(TXT)
+        self.lbl_sub = QLabel(""); self.lbl_sub.setFont(_gfont(13)); self.lbl_sub.setStyleSheet("color:rgba(238,242,255,178);background:transparent;")
+        self.lbl_sub.setWordWrap(False)
+        col.addWidget(cap); col.addWidget(self.lbl_lang); col.addWidget(self.lbl_sub)
+        row.addLayout(col, 1)
+        self.btn_change = GlassButton("Zmień", "ghost", radius=18)
+        self.btn_change.setFixedSize(84, 36); self.btn_change._strong = True
         self.btn_change.clicked.connect(lambda: (self.hide(), self.app_ref._show_lang()))
-        il.addWidget(self.btn_change)
+        row.addWidget(self.btn_change, 0, Qt.AlignmentFlag.AlignVCenter)
+        il.addLayout(row)
+        il.addSpacing(18)
 
-        # 3. TERAZ NA EKRANIE (mirror — bez ocen, świadomie)
-        il.addWidget(self._eyebrow("TERAZ NA EKRANIE"))
-        mir = QWidget(); mir.setStyleSheet(
-            "QWidget{background:rgba(30,32,60,140);border:1px solid rgba(80,85,120,80);border-radius:10px;}")
-        ml = QVBoxLayout(mir); ml.setContentsMargins(14, 12, 14, 12); ml.setSpacing(2)
-        self.mir_word = QLabel("\u2014"); self.mir_word.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        self.mir_word.setStyleSheet("color:rgba(255,255,255,240);background:transparent;")
-        self.mir_word.setAlignment(Qt.AlignmentFlag.AlignCenter); self.mir_word.setWordWrap(True)
-        self.mir_tr = QLabel(""); self.mir_tr.setFont(QFont("Segoe UI", 10))
-        self.mir_tr.setStyleSheet("color:rgba(200,220,255,200);background:transparent;")
-        self.mir_tr.setAlignment(Qt.AlignmentFlag.AlignCenter); self.mir_tr.setWordWrap(True)
-        self.mir_note = QLabel("Podgl\u0105d \u2014 oceniasz w trybie testu")
-        self.mir_note.setFont(QFont("Segoe UI", 8))
-        self.mir_note.setStyleSheet("color:rgba(150,160,200,150);background:transparent;")
-        self.mir_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ml.addWidget(self.mir_word); ml.addWidget(self.mir_tr); ml.addWidget(self.mir_note)
-        il.addWidget(mir)
+        # 3. STATYSTYKI — trzy liczby, bez ramek (rozdzielone cienką linią)
+        stats = QHBoxLayout(); stats.setContentsMargins(0, 0, 0, 0); stats.setSpacing(0)
+        self.cell_known, w1 = self._stat_cell("Znane", False)
+        self.cell_due,   w2 = self._stat_cell("Do powtórki", True)
+        self.cell_sess,  w3 = self._stat_cell("Dziś", True)
+        for w in (w1, w2, w3): stats.addWidget(w, 1)
+        il.addLayout(stats)
+        il.addSpacing(18)
 
-        # 4. STATYSTYKI (3 komórki — realne liczby, zero streaka)
-        stats = QWidget(); stats.setStyleSheet("background:transparent;")
-        sl = QHBoxLayout(stats); sl.setContentsMargins(0, 0, 0, 0); sl.setSpacing(8)
-        self.cell_known, w1 = self._stat_cell("Poznane")
-        self.cell_due,   w2 = self._stat_cell("Dojrza\u0142o do powt\u00F3rki")
-        self.cell_sess,  w3 = self._stat_cell("W tej sesji")
-        for w in (w1, w2, w3): sl.addWidget(w, 1)
-        il.addWidget(stats)
+        # (ukryty podgląd bieżącej fiszki — zostaje dla odświeżania, bez kafla na panelu)
+        self.mir_word = QLabel("", self); self.mir_tr = QLabel("", self)
+        self.mir_word.hide(); self.mir_tr.hide()
 
-        il.addStretch(1)
-
-        # 5. AKCJE
-        self.btn_test = QPushButton("Zr\u00F3b test"); self.btn_test.setStyleSheet(BTN_PRIMARY)
-        self.btn_test.setCursor(Qt.CursorShape.PointingHandCursor)
+        # 4. GŁÓWNA AKCJA
+        self.btn_test = GlassButton("Zrób test", "cta", radius=16)
+        self.btn_test.setFixedHeight(50)
         self.btn_test.clicked.connect(lambda: (self.hide(), self.app_ref._start_test()))
         il.addWidget(self.btn_test)
-        row = QWidget(); row.setStyleSheet("background:transparent;")
-        rl = QHBoxLayout(row); rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(8)
-        self.btn_lib = QPushButton("Biblioteka fiszek"); self.btn_lib.setStyleSheet(_HUB_OUTLINE)
-        self.btn_lib.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_lib.clicked.connect(lambda: (self.hide(), self.app_ref._show_my_sets()))
-        self.btn_set = QPushButton("Ustawienia"); self.btn_set.setStyleSheet(_HUB_OUTLINE)
-        self.btn_set.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_set.clicked.connect(lambda: (self.hide(), self.app_ref.win_settings.show(), self.app_ref.win_settings.raise_()))
-        rl.addWidget(self.btn_lib, 1); rl.addWidget(self.btn_set, 1)
-        il.addWidget(row)
+        il.addSpacing(10)
 
-        # 6. FOOTER
-        self.lbl_footer = QPushButton("")
-        self.lbl_footer.setFont(QFont("Segoe UI", 9))
+        # 5. BIBLIOTEKA / USTAWIENIA
+        r2 = QHBoxLayout(); r2.setContentsMargins(0, 0, 0, 0); r2.setSpacing(8)
+        self.btn_lib = GlassButton("Biblioteka", "ghost", radius=14); self.btn_lib.setGlyph("book"); self.btn_lib.setFixedHeight(42)
+        self.btn_lib.clicked.connect(lambda: (self.hide(), self.app_ref._show_my_sets()))
+        self.btn_set = GlassButton("Ustawienia", "ghost", radius=14); self.btn_set.setGlyph("sliders"); self.btn_set.setFixedHeight(42)
+        self.btn_set.clicked.connect(lambda: (self.hide(), self.app_ref.win_settings.show(), self.app_ref.win_settings.raise_()))
+        r2.addWidget(self.btn_lib, 1); r2.addWidget(self.btn_set, 1)
+        il.addLayout(r2)
+        il.addStretch(1)
+
+        # 6. PLAN
+        fr = QHBoxLayout(); fr.setContentsMargins(0, 8, 0, 0)
+        self.lbl_plan = QLabel("Plan FREE"); self.lbl_plan.setFont(_gfont(12)); self.lbl_plan.setStyleSheet("color:rgba(238,242,255,140);background:transparent;")
+        self.lbl_footer = QPushButton("Ulepsz do PRO")
+        self.lbl_footer.setFont(_gfont(12, QFont.Weight.Medium))
         self.lbl_footer.setCursor(Qt.CursorShape.PointingHandCursor)
         self.lbl_footer.setStyleSheet(
-            "QPushButton{background:transparent;color:rgba(160,175,210,180);border:none;}"
-            "QPushButton:hover{color:rgba(170,190,235,235);}")
+            "QPushButton{background:transparent;color:%s;border:none;padding:2px 0;}"
+            "QPushButton:hover{color:#ffd0ad;}" % G_SOFT)
         self.lbl_footer.clicked.connect(self._footer_click)
-        il.addWidget(self.lbl_footer)
+        fr.addWidget(self.lbl_plan); fr.addStretch(1); fr.addWidget(self.lbl_footer)
+        il.addLayout(fr)
 
-        # ── D4: PANEL PAUZY (nakładka na treść aktywną) ──
+        # ── PANEL PAUZY (zastępuje zawartość) ──
         self._active_content = inner
         self.pause_panel = QWidget(); self.pause_panel.setStyleSheet("background:transparent;")
-        pl = QVBoxLayout(self.pause_panel); pl.setContentsMargins(24, 20, 24, 20); pl.setSpacing(8)
-        pl.addStretch(1)
-        gl = QLabel("\u23F8"); gl.setFont(QFont("Segoe UI", 40))
-        gl.setStyleSheet("color:rgba(235,190,110,220);background:transparent;")
-        gl.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addWidget(gl)
-        tt = QLabel("Fiszki wstrzymane"); tt.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        tt.setStyleSheet("color:rgba(255,255,255,235);background:transparent;")
-        tt.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addWidget(tt)
-        self.lbl_countdown = QLabel(""); self.lbl_countdown.setFont(QFont("Segoe UI", 10))
-        self.lbl_countdown.setStyleSheet("color:rgba(200,215,255,190);background:transparent;")
-        self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addWidget(self.lbl_countdown)
-        pl.addSpacing(6)
-        btn_resume = QPushButton("Wzn\u00F3w teraz"); btn_resume.setStyleSheet(BTN_PRIMARY)
-        btn_resume.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_resume.clicked.connect(self._resume); pl.addWidget(btn_resume)
-        prc = QLabel("Wr\u00F3ci automatycznie za:"); prc.setFont(QFont("Segoe UI", 8))
-        prc.setStyleSheet("color:rgba(150,165,205,170);background:transparent;")
-        prc.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addSpacing(4); pl.addWidget(prc)
-        prow = QWidget(); prow.setStyleSheet("background:transparent;")
-        prl = QHBoxLayout(prow); prl.setContentsMargins(0, 0, 0, 0); prl.setSpacing(6)
+        pl = QVBoxLayout(self.pause_panel); pl.setContentsMargins(22, 26, 22, 22); pl.setSpacing(0)
+        tt = QLabel("Fiszki wstrzymane"); tt.setFont(_gfont(21, QFont.Weight.DemiBold)); tt.setStyleSheet(TXT)
+        pl.addWidget(tt)
+        self.lbl_countdown = QLabel(""); self.lbl_countdown.setFont(_gfont(14))
+        self.lbl_countdown.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
+        pl.addSpacing(4); pl.addWidget(self.lbl_countdown)
+        pl.addSpacing(22)
+        prc = QLabel("Wrócą same za:"); prc.setFont(_gfont(12)); prc.setStyleSheet(DIM)
+        pl.addWidget(prc); pl.addSpacing(8)
+        prl = QHBoxLayout(); prl.setSpacing(6)
         self._preset_btns = {}
         for key, label, mins in (("5", "5 min", 5), ("30", "30 min", 30),
                                  ("60", "1 godz", 60), ("d", "Do jutra", None)):
-            b = QPushButton(label); b.setCursor(Qt.CursorShape.PointingHandCursor)
-            b.setStyleSheet(self._PRESET_OFF)
+            b = GlassButton(label, "ghost", radius=12); b.setFixedHeight(38)
             b.clicked.connect(lambda _, m=mins, k=key: self._set_preset(k, m))
             self._preset_btns[key] = b; prl.addWidget(b, 1)
-        pl.addWidget(prow)
-        hint = QLabel("Snooze, nie zamykaj \u2014 wr\u00F3c\u0105 same."); hint.setFont(QFont("Segoe UI", 8))
-        hint.setStyleSheet("color:rgba(140,150,190,150);background:transparent;")
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addSpacing(4); pl.addWidget(hint)
+        pl.addLayout(prl)
         pl.addStretch(1)
+        btn_resume = GlassButton("Wznów teraz", "cta", radius=16); btn_resume.setFixedHeight(50)
+        btn_resume.clicked.connect(self._resume)
+        pl.addWidget(btn_resume)
         self.pause_panel.hide(); lay.addWidget(self.pause_panel, 1)
 
     # ── helpery UI ──
-    def _eyebrow(self, text):
-        l = QLabel(text); l.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        l.setStyleSheet("color:rgba(140,155,200,170);background:transparent;letter-spacing:1px;")
-        return l
-
     def _icon_btn(self, glyph, tip):
-        b = QPushButton(glyph); b.setToolTip(tip); b.setFixedSize(26, 22)
-        b.setCursor(Qt.CursorShape.PointingHandCursor)
-        b.setStyleSheet(
-            "QPushButton{background:rgba(60,65,110,120);color:rgba(220,230,255,210);"
-            "border:1px solid rgba(120,135,190,120);border-radius:6px;font-size:12px;}"
-            "QPushButton:hover{background:rgba(80,90,150,180);border-color:rgba(201,106,42,235);}")
+        b = GlassButton("", "ico"); b.setGlyph(glyph); b.setToolTip(tip)
         return b
 
-    def _stat_cell(self, label):
-        w = QWidget(); w.setStyleSheet(
-            "QWidget{background:rgba(30,32,60,140);border:1px solid rgba(80,85,120,80);border-radius:10px;}")
-        cl = QVBoxLayout(w); cl.setContentsMargins(8, 10, 8, 10); cl.setSpacing(2)
-        val = QLabel("\u2013"); val.setFont(QFont("Segoe UI", 17, QFont.Weight.Bold))
-        val.setStyleSheet("color:rgba(220,235,255,235);background:transparent;")
-        val.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lab = QLabel(label); lab.setFont(QFont("Segoe UI", 8)); lab.setWordWrap(True)
-        lab.setStyleSheet("color:rgba(160,175,210,180);background:transparent;")
-        lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    def _stat_cell(self, label, sep):
+        w = QWidget(); w.setObjectName("statcol")
+        w.setStyleSheet("#statcol{background:transparent;%s}" %
+                        ("border-left:1px solid rgba(255,255,255,26);" if sep else ""))
+        cl = QVBoxLayout(w); cl.setContentsMargins(16 if sep else 0, 0, 0, 0); cl.setSpacing(0)
+        val = QLabel("–"); val.setFont(_gfont(24, QFont.Weight.DemiBold))
+        val.setStyleSheet("color:#eef2ff;background:transparent;border:none;")
+        lab = QLabel(label); lab.setFont(_gfont(11))
+        lab.setStyleSheet("color:rgba(238,242,255,148);background:transparent;border:none;")
         cl.addWidget(val); cl.addWidget(lab)
         return val, w
 
@@ -6156,29 +6892,25 @@ class HubWindow(_DraggableWindow):
     def _refresh_status(self):
         active = getattr(self.app_ref, "visible", True)
         if active:
-            self.lbl_status.setText("\u25CF  Aktywne")
-            self.lbl_status.setStyleSheet("color:rgba(120,225,160,230);background:transparent;")
-            self.btn_pause.setText("\u23F8"); self.btn_pause.setToolTip("Wstrzymaj")
+            self.lbl_status.setText("Aktywne"); self.dot.set_color(G_OK, True)
+            self.btn_pause.setGlyph("pause"); self.btn_pause.setToolTip("Wstrzymaj")
         else:
-            self.lbl_status.setText("\u25CF  Wstrzymane")
-            self.lbl_status.setStyleSheet("color:rgba(235,190,110,230);background:transparent;")
-            self.btn_pause.setText("\u25B6"); self.btn_pause.setToolTip("Wzn\u00F3w")
+            self.lbl_status.setText("Wstrzymane"); self.dot.set_color(G_WARN, False)
+            self.btn_pause.setGlyph("play"); self.btn_pause.setToolTip("Wzn\u00F3w")
         aud = bool(APP_SETTINGS.get("audio_enabled", False))
-        col = "rgba(220,230,255,210)" if aud else "rgba(120,128,160,150)"
-        self.btn_audio.setStyleSheet(
-            "QPushButton{background:rgba(60,65,110,120);color:%s;"
-            "border:none;border-radius:6px;font-size:12px;}"
-            "QPushButton:hover{background:rgba(80,90,150,180);}" % col)
+        self.btn_audio.setGlyph("sound" if aud else "soundoff")
         self.btn_audio.setToolTip("D\u017Awi\u0119k: " + ("w\u0142." if aud else "wy\u0142."))
 
     def _refresh_learn(self):
         ov = self.app_ref.overlay
         if getattr(ov, "_is_custom", False):
-            self.lbl_learn.setText("W\u0142asny zestaw \u00B7 " + (ov.cat or "\u2014"))
+            self.lbl_lang.setText("W\u0142asny zestaw"); self.lbl_sub.setText(ov.cat or "\u2014")
         elif ov.cat:
-            self.lbl_learn.setText("%s \u00B7 %s \u00B7 %s" % (lang_label(ov.lang), ov.level, ov.cat))
+            label = next((c.get("label") for c in CATEGORIES if c.get("code") == ov.cat), None) or ov.cat
+            self.lbl_lang.setText(lang_label(ov.lang))
+            self.lbl_sub.setText("%s \u00B7 %s" % (ov.level, label))
         else:
-            self.lbl_learn.setText("Nie wybrano \u2014 kliknij \u201EZmie\u0144 nauk\u0119\u201D")
+            self.lbl_lang.setText("Nie wybrano"); self.lbl_sub.setText("Kliknij \u201EZmie\u0144\u201D")
 
     def _refresh_live(self):
         ov = self.app_ref.overlay
@@ -6191,12 +6923,12 @@ class HubWindow(_DraggableWindow):
 
     def _refresh_footer(self):
         if getattr(self.app_ref, "_is_premium", False):
-            self.lbl_footer.setText("Plan: PRO")
-            self.lbl_footer.setCursor(Qt.CursorShape.ArrowCursor)
+            self.lbl_plan.setText("Plan PRO")
+            self.lbl_footer.hide()
             self._footer_upgradable = False
         else:
-            self.lbl_footer.setText("Plan: FREE  \u00B7  Ulepsz do PRO")
-            self.lbl_footer.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.lbl_plan.setText("Plan FREE")
+            self.lbl_footer.show()
             self._footer_upgradable = True
 
     def _footer_click(self):
@@ -6248,7 +6980,7 @@ class HubWindow(_DraggableWindow):
         self.app_ref.pause_for(mins)
         self._active_content.hide(); self.pause_panel.show()
         for k, b in self._preset_btns.items():
-            b.setStyleSheet(self._PRESET_ON if k == key else self._PRESET_OFF)
+            b.setSelected(k == key)
         self._refresh_status(); self._update_countdown()
 
     def exit_pause_view(self):
@@ -6318,7 +7050,8 @@ class TrayApp:
         self.win_offer   = TestOfferWindow()
         self.win_offer.accepted.connect(self._start_test)
         self.win_offer.rejected.connect(lambda: None)
-        self.win_lang    = LanguageWindow(self._on_lang)
+        self.win_lang    = PickerWindow(self._on_cat, self._on_lang)
+        self.win_lang.open_purchase.connect(self._show_purchase)
         self.win_lvl     = LevelWindow(self._on_lvl, self._back_to_lang)
         self.win_lvl.open_purchase.connect(self._show_purchase)
         self.win_cat     = CategoryWindow(self._on_cat, self._back_to_lvl)
@@ -6367,7 +7100,8 @@ class TrayApp:
 
     def _show_lang(self):
         self.win_cat.hide(); self.win_lvl.hide()
-        self.win_lang.show(); self.win_lang.raise_(); self.win_lang.activateWindow()
+        ov = self.overlay
+        self.win_lang.present(getattr(ov, "lang", None), getattr(ov, "level", None))
 
     def _show_subscription_required(self):
         """Pokaż okno informujące o wymogu subskrypcji."""
@@ -6670,6 +7404,7 @@ class TrayApp:
             self.win_lvl.set_premium(is_premium)
             self.win_lvl.set_bought_levels(levels_bought)
             self.win_cat.set_premium(is_premium, levels_bought)
+            self.win_lang.set_premium(is_premium, levels_bought)
         except Exception as e:
             print(f"[PREMIUM] propagacja: {e}")
         lang  = self.overlay.lang or "en"
@@ -6704,6 +7439,7 @@ class TrayApp:
             self._levels_bought = levels_bought
             self.win_lvl.set_premium(is_premium)
             self.win_lvl.set_bought_levels(levels_bought)
+            self.win_lang.set_premium(is_premium, levels_bought)
 
         self._refresh_worker = ProfileWorker()
         self._refresh_worker.done.connect(_refresh_after_load)
@@ -6988,6 +7724,7 @@ class TrayApp:
             key = f"{lang}_{level}_{code}"
             self._done_categories.add(key)
             self.win_cat.mark_done(code)
+            self.win_lang.mark_done(code)
 
     def _save_test_progress(self, key, idx, results):
         self._test_progress[key] = {"index": idx, "results": results}
