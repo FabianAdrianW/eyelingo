@@ -1147,16 +1147,24 @@ function closeImm(id){ document.getElementById(id).classList.remove('active'); }
 /* ═══════════════ SILNIK POSTĘPU (PROG) — wspólny ze stroną przez srs_progress ═══════════════ */
 var PROG={}, PROG_READY=false, MASTER_REPS=3, MASTER_IV=21;
 async function loadProg(){
-  PROG={}; if(!UID){ PROG_READY=true; return; }
-  try{
-    var from=0,pg=1000,today=_usrsTodayLocal();
-    while(true){
-      var r=await db.from('srs_progress').select('card_key,repetitions,interval_days,next_review,ease_factor').eq('user_id',UID).range(from,from+pg-1);
-      var d=(r&&r.data)||[];
-      d.forEach(function(x){ if(!x.card_key) return; PROG[x.card_key]={r:(x.repetitions||0),iv:(x.interval_days||0),due:(x.next_review&&x.next_review<=today),ef:(x.ease_factor!=null?x.ease_factor:2.5)}; });
-      if(d.length<pg) break; from+=pg; if(from>20000) break;
-    }
-  }catch(e){}
+  if(!UID){ PROG={}; PROG_READY=true; return; }
+  /* Fix 2026-10-18: supabase-js przy błędzie (wygasły token po wznowieniu PWA, brak sieci) NIE rzuca,
+     tylko zwraca {error}. Dawniej to dawało pusty PROG → „0 / 49" i „nic do powtórki", choć web ma dane.
+     Teraz: przy błędzie odświeżamy sesję i próbujemy ponownie; jeśli dalej błąd — zostaje poprzedni stan. */
+  for(var attempt=0; attempt<2; attempt++){
+    try{
+      var NP={}, from=0, pg=1000, today=_usrsTodayLocal(), failed=false;
+      while(true){
+        var r=await db.from('srs_progress').select('card_key,repetitions,interval_days,next_review,ease_factor').eq('user_id',UID).range(from,from+pg-1);
+        if(!r || r.error){ failed=true; break; }
+        var d=r.data||[];
+        d.forEach(function(x){ if(!x.card_key) return; NP[x.card_key]={r:(x.repetitions||0),iv:(x.interval_days||0),due:(x.next_review&&x.next_review<=today),ef:(x.ease_factor!=null?x.ease_factor:2.5)}; });
+        if(d.length<pg) break; from+=pg; if(from>20000) break;
+      }
+      if(!failed){ PROG=NP; break; }
+    }catch(e){}
+    if(attempt===0){ try{ await db.auth.refreshSession(); }catch(e){} }
+  }
   PROG_READY=true;
 }
 /* Siła słowa 0–100 (model ciągły, WSPÓLNY z index.html — identyczna formuła = identyczny % na app i web).
@@ -4328,18 +4336,21 @@ async function _pwFilterOrphans(rows){
   }catch(e){ return rows; }
 }
 
-async function _pwFetchDue(limit){
+/* strict=true: błąd zapytania RZUCA zamiast zwracać pustą listę (żeby UI nie pokazał fałszywego
+   „Na dziś nic do powtórki"). Przy pierwszym błędzie odświeżamy sesję i ponawiamy raz. */
+async function _pwFetchDue(limit, strict){
   if(!UID) return [];
   var today=_usrsTodayLocal();
   var cap=limit||5000;                     // pełny carryover — parytet z index.html (te same karty, ta sama liczba)
   try{
-    var rows=[];
+    var rows=[], _retried=false;
     for(var _from=0; _from<cap; _from+=1000){
       var _to=Math.min(_from+999, cap-1);
       var {data,error}=await db.from('srs_progress')
         .select('card_key,word,translation,lang,flashcard_id,ease_factor,repetitions,interval_days,next_review')
         .eq('user_id',UID).lte('next_review',today).order('next_review',{ascending:true}).range(_from,_to);
-      if(error) break;
+      if(error && !_retried){ _retried=true; try{ await db.auth.refreshSession(); }catch(e){} _from-=1000; continue; }
+      if(error){ if(strict) throw error; break; }
       var _chunk=data||[];
       rows=rows.concat(_chunk);
       if(_chunk.length<(_to-_from+1)) break;   // ostatnia strona (PostgREST ~1000/stronę)
@@ -4347,6 +4358,7 @@ async function _pwFetchDue(limit){
     rows=rows.filter(function(r){ return String(r.word||'').trim() && String(r.translation||'').trim(); });   // kaleka bez jednej strony → nie do powtórki
     rows=await _pwFilterOrphans(rows);   // usuń karty z usuniętych materiałów/zestawów
     // Kanoniczny język karty (autorytatywnie z bazy → pismo) + cicha naprawa srs_progress.
+    // (strict: błąd rzucony wyżej przechodzi przez catch niżej — patrz rethrow)
     var _fix={};
     rows.forEach(function(r){
       var was=String(r.lang||'');
@@ -4359,7 +4371,7 @@ async function _pwFetchDue(limit){
       if(ids.length){ var fr=await db.from('flashcards').select('id,romaji').in('id',ids); var rm={}; ((fr&&fr.data)||[]).forEach(function(x){ rm[x.id]=x.romaji||''; }); rows.forEach(function(r){ if(r.flashcard_id!=null && rm[r.flashcard_id]) r.romaji=rm[r.flashcard_id]; }); }
     }catch(e){}
     return rows;
-  }catch(e){ return []; }
+  }catch(e){ if(strict) throw e; return []; }
 }
 /* Audyt 2026-09 (P1-1): powtorki byly jednym z czterech rownorzednych kafli, a liczba
    dojrzalych slow miala 11 px. Design Bible §6.10 chce mechaniki PULL — wiec liczba staje sie
@@ -4368,7 +4380,7 @@ async function _pwFetchDue(limit){
 async function refreshDueBadge(){
   var box=document.getElementById('day-state');
   try{
-    var rows=await _pwFetchDue(5000);
+    var rows=await _pwFetchDue(5000,true);
     var _tot=rows.length;
     var n=(typeof eylRevPortionCount==='function')?eylRevPortionCount(_tot):_tot;
     window._eylRevLast={total:_tot,portion:n};
@@ -4414,7 +4426,11 @@ async function openPowt(){
   document.getElementById('pw-grades').style.display='none';
   document.getElementById('pw-hint').textContent='';
   if(stage) stage.innerHTML=eyelingoLoader('Sprawdzam, co dojrzało do powtórki…');
-  _pwQueue=await _pwFetchDue(5000);
+  try{ _pwQueue=await _pwFetchDue(5000,true); }
+  catch(e){
+    if(stage) stage.innerHTML='<div class="empty" style="margin:auto"><div class="h2">Nie udało się wczytać powtórek</div><div class="sub" style="max-width:260px;margin:6px auto 14px">Sprawdź połączenie i spróbuj ponownie.</div><button class="btn btn-ghost" onclick="openPowt()">Spróbuj ponownie</button></div>';
+    return;
+  }
   try{ if(typeof eylRevPortion==='function') _pwQueue=eylRevPortion(_pwQueue).items; }catch(e){}
   try{ var _sq=_eylSeqByLang(_pwQueue); _pwQueue=_sq.items; window._pwMultiLang=_sq.multiLang; }catch(e){ window._pwMultiLang=false; }
   window._pwBlockShown={};
@@ -4927,6 +4943,17 @@ function eylProUntilText(){
 /* Konto jest wspólne z www: PRO włączone na stronie musi być widoczne tutaj bez
    ponownego logowania. Odświeżamy przy powrocie do apki, nie częściej niż raz
    na minutę — dopisek do obietnicy „funkcja pojawi się tutaj od razu". */
+/* Fix 2026-10-18: po wznowieniu PWA (iOS usypia kartę) odświeżamy sesję, postęp i licznik powtórek,
+   żeby ekran nie został ze starym/pustym stanem. Throttle 20 s; nie rusza trwającej powtórki. */
+var _eylResumeLast=0;
+document.addEventListener('visibilitychange',async function(){
+  if(document.visibilityState!=='visible'||!UID) return;
+  var t=Date.now(); if(t-_eylResumeLast<20000) return; _eylResumeLast=t;
+  try{ await db.auth.getSession(); }catch(e){}
+  try{ if(document.getElementById('imm-powt').classList.contains('active')) return; }catch(e){}
+  try{ await loadProg(); homeRefresh(); }catch(e){}
+  try{ refreshDueBadge(); }catch(e){}
+});
 var _eylProLastCheck=0;
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState!=='visible'||!UID) return;
@@ -8880,7 +8907,14 @@ window.eylPagedFetch = async function(makeQuery, opts){
 /* kafelki: bento (jeden kolor, bez pastelowych wariantów) */
 .v2-bento{display:grid;grid-template-columns:1.15fr 1fr;grid-template-rows:auto auto;gap:12px;margin-bottom:12px}
 .v2-bento .big{margin:0;flex-direction:column;align-items:flex-start;gap:12px;padding:16px;border-radius:18px;min-height:112px}
-.v2-bento .big:first-child{grid-row:span 2;justify-content:space-between;min-height:236px}
+/* Fix 2026-10-18: „Zestawy Eyelingo" rozciągał się na 2 wiersze, a tekst spadał na dół kafla.
+   Teraz to szeroki kafel na całą szerokość (ikona + tekst obok siebie, wyśrodkowane w pionie),
+   a „Moje zestawy" i „Rozmowa" leżą pod nim parami. Tylko wygląd — zero zmian logiki. */
+.v2-bento{grid-template-columns:1fr 1fr}
+.v2-bento .big:first-child{grid-column:1/-1;grid-row:auto;flex-direction:row;align-items:center;gap:16px;min-height:0;padding:18px 16px}
+.v2-bento .big:first-child .body{flex:1 1 auto;width:auto;min-width:0}
+.v2-bento .big:first-child .t{font-size:17px}
+.v2-bento .big:first-child .chev{display:block;flex-shrink:0}
 .v2-bento .big .chev{display:none}
 .v2-bento .big .body{flex:0 0 auto;width:100%}
 .v2-bento .big .t{font-size:15.5px;letter-spacing:-.2px}
