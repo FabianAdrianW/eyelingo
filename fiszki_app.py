@@ -1310,7 +1310,7 @@ class GlassButton(QPushButton):
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         W, H = float(self.width()), float(self.height())
         k = self.kind
-        p.setOpacity(self._op * (1.0 if self.isEnabled() else (0.72 if self._kind == 'cta' else 0.5)))
+        p.setOpacity(self._op * (1.0 if self.isEnabled() else (0.72 if self.kind == 'cta' else 0.5)))
         lift = -1.0 * self._hv if k in ("tile", "chip", "ghost", "cta") else 0.0
         sc = 1.0 - 0.04 * self._pr
         p.translate(W / 2, H / 2 + lift + (1.0 - self._op) * 8)
