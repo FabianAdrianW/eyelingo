@@ -1593,7 +1593,7 @@ class _DraggableWindow(QWidget):
         self._fx_snap = None; self._fx_kids = []; self._fx_anim = None
         self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
         self._fx_alpha = 1.0; self._fx_flying = False; self._tilt_v = 0.0
-        self._fx_fill = False
+        self._fx_fill = False; self._fx_mix = 0.0; self._fx_card = None; self._fx_alpha_card = None
         self.installEventFilter(self)
 
     def _in_drag_zone(self, pos):
@@ -1653,6 +1653,7 @@ class _DraggableWindow(QWidget):
         self._fx_kids = []
         self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
         self._fx_alpha = 1.0; self._fx_flying = False; self._fx_fill = False
+        self._fx_mix = 0.0; self._fx_card = None; self._fx_alpha_card = None
         self.update()
 
     def eventFilter(self, obj, ev):
@@ -1671,9 +1672,24 @@ class _DraggableWindow(QWidget):
         p.setOpacity(max(0.0, min(1.0, self._fx_alpha)))
         W, H = self.width(), self.height()
         if self._fx_fill:
-            # lot: zrzut wypełnia całe (zmieniające się) okno — ostatnia klatka = rozmiar karty
-            pm = self._fx_snap
-            p.drawPixmap(QRectF(0, 0, W, H), pm, QRectF(pm.rect()))
+            # lot: okno płynnie staje się kartą — zrzut okna gaśnie, a pod nim rośnie kształt fiszki
+            rr = QRectF(0.5, 0.5, W - 1, H - 1)
+            mix = max(0.0, min(1.0, self._fx_mix))
+            if mix > 0:
+                card = self._fx_card or {}
+                g = QLinearGradient(rr.topLeft(), rr.bottomLeft())
+                if card.get("light"):
+                    g.setColorAt(0.0, QColor(24, 32, 62, 208)); g.setColorAt(1.0, QColor(10, 15, 32, 228))
+                else:
+                    g.setColorAt(0.0, QColor(52, 66, 112, 92)); g.setColorAt(1.0, QColor(30, 40, 78, 112))
+                p.setOpacity(mix * float(card.get("op", 0.9)) * (1.0 if self._fx_alpha_card is None else self._fx_alpha_card))
+                p.setBrush(QBrush(g)); p.setPen(QPen(QColor(255, 255, 255, 44), 1))
+                p.drawRoundedRect(rr, 16, 16)
+            pa = max(0.0, min(1.0, self._fx_alpha))
+            if pa > 0:
+                p.setOpacity(pa)
+                pm = self._fx_snap
+                p.drawPixmap(QRectF(0, 0, W, H), pm, QRectF(pm.rect()))
             p.end()
             return
         p.translate(W / 2 + self._fx_dx, H / 2 + self._fx_dy)
@@ -1711,61 +1727,92 @@ class _DraggableWindow(QWidget):
         self._fx_anim = anim
         anim.start()
 
-    def _fx_fly(self, dst, ms=540):
-        """Okno płynnie zmienia rozmiar i pozycję w rozmiar/miejsce karty fiszki.
-        Ostatnia klatka ma wymiary karty; potem okno gaśnie na tym samym miejscu,
-        a fiszka (już pod spodem) przejmuje obraz."""
+    def _fx_fly(self, dst, ov=None, ms=560):
+        """Okno płynnie zmienia rozmiar i pozycję w rozmiar/miejsce karty fiszki i PRZECHODZI w nią:
+        zrzut okna wyboru gaśnie w trakcie lotu, a pod nim rośnie kształt fiszki. Po lądowaniu
+        czeka, aż fiszka się pojawi, i wtedy gaśnie (bez „zmniejszonego menu” w karcie)."""
         if not self.isVisible() or self._fx_flying:
             return
         self._fx_begin()
         self._fx_fill = True
         self._fx_flying = True
+        self._fx_mix = 0.0
+        self._fx_card = {"light": bool(getattr(ov, "_adapt_light", False)),
+                         "op": float(ov._cur_opacity()) if ov is not None else 0.9}
         self.setWindowOpacity(1.0)
         home = self.geometry()
         x0, y0, w0, h0 = home.x(), home.y(), home.width(), home.height()
-        # okna mają stały rozmiar (setFixedSize) — na czas lotu go zdejmujemy
         self._fx_lock = (self.minimumSize(), self.maximumSize())
         self.setMinimumSize(QSize(0, 0))
         self.setMaximumSize(QSize(16777215, 16777215))
         x1, y1 = dst.x(), dst.y()
         w1, h1 = max(120, dst.width()), max(60, dst.height())
-        ease = QEasingCurve(QEasingCurve.Type.InOutCubic)
         anim = QVariantAnimation(self)
         anim.setDuration(ms)
         anim.setStartValue(0.0); anim.setEndValue(1.0)
-        anim.setEasingCurve(ease)
+        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        def _smooth(a, b, v):
+            t = max(0.0, min(1.0, (v - a) / (b - a)))
+            return t * t * (3 - 2 * t)
 
         def _frame(v):
-            v = float(v)
-            x = round(x0 + (x1 - x0) * v)
-            y = round(y0 + (y1 - y0) * v)
-            w = round(w0 + (w1 - w0) * v)
-            h = round(h0 + (h1 - h0) * v)
-            self.setGeometry(x, y, w, h)
-            self._fx_alpha = 1.0
-            self.update()
+            try:
+                v = float(v)
+                self.setGeometry(round(x0 + (x1 - x0) * v), round(y0 + (y1 - y0) * v),
+                                 round(w0 + (w1 - w0) * v), round(h0 + (h1 - h0) * v))
+                self._fx_alpha = 1.0 - _smooth(0.10, 0.70, v)   # okno wyboru gaśnie
+                self._fx_mix = _smooth(0.05, 0.75, v)           # kształt fiszki rośnie
+                self.update()
+            except Exception as ex:
+                print(f"[motion] fly frame: {ex}")
+
+        def _fade_out():
+            try:
+                fade = QVariantAnimation(self)
+                fade.setDuration(220)
+                fade.setStartValue(1.0); fade.setEndValue(0.0)
+                fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+                fade.valueChanged.connect(lambda v: (setattr(self, "_fx_alpha_card", float(v)), self.update()))
+                fade.finished.connect(_done)
+                self._fx_anim = fade
+                fade.start()
+            except Exception as ex:
+                print(f"[motion] fly fade: {ex}")
+                _done()
+
+        t_land = [0]
+
+        def _wait_for_card():
+            # kształt fiszki trzyma miejsce, aż prawdziwa fiszka się pojawi (maks. 2,5 s)
+            try:
+                t_land[0] += 40
+                if ov is None or ov.isVisible() or t_land[0] >= 2500 or not self.isVisible():
+                    _fade_out()
+                else:
+                    QTimer.singleShot(40, _wait_for_card)
+            except Exception as ex:
+                print(f"[motion] fly wait: {ex}")
+                _done()
 
         def _land():
-            # na końcu: okno ma dokładnie rozmiar karty; teraz gaśnie (fiszka pod spodem)
-            fade = QVariantAnimation(self)
-            fade.setDuration(240)
-            fade.setStartValue(1.0); fade.setEndValue(0.0)
-            fade.setEasingCurve(QEasingCurve.Type.OutCubic)
-            fade.valueChanged.connect(lambda v: (setattr(self, "_fx_alpha", float(v)), self.update()))
-            fade.finished.connect(_done)
-            self._fx_anim = fade
-            fade.start()
+            self._fx_alpha = 0.0; self._fx_mix = 1.0; self._fx_alpha_card = 1.0
+            self.update()
+            _wait_for_card()
 
         def _done():
-            self._fx_flying = False
-            self._fx_end()
-            QWidget.hide(self)
-            self.setWindowOpacity(1.0)
-            mn, mx = getattr(self, "_fx_lock", (None, None))
-            if mn is not None:
-                self.setMinimumSize(mn); self.setMaximumSize(mx)
-            self.setGeometry(home)
-            QTimer.singleShot(60, lambda: (not self.isVisible()) and self.setGeometry(home))
+            try:
+                self._fx_flying = False
+                self._fx_end()
+                QWidget.hide(self)
+                self.setWindowOpacity(1.0)
+                mn, mx = getattr(self, "_fx_lock", (None, None))
+                if mn is not None:
+                    self.setMinimumSize(mn); self.setMaximumSize(mx)
+                self.setGeometry(home)
+                QTimer.singleShot(60, lambda: (not self.isVisible()) and self.setGeometry(home))
+            except Exception as ex:
+                print(f"[motion] fly done: {ex}")
         anim.valueChanged.connect(_frame)
         anim.finished.connect(_land)
         self._fx_anim = anim
@@ -7755,14 +7802,14 @@ class TrayApp:
             if src is None:
                 return
             ov = self.overlay
-            if ov.isVisible() and 120 < ov.width() < 700:
-                dst = QRect(ov.geometry())
-            else:
-                sc = QApplication.primaryScreen().availableGeometry()
-                dst = QRect(sc.center().x() - 170, sc.top() + 70, 340, 120)
+            # fiszka stoi w lewym górnym rogu (kotwica) i ma stałą wysokość CARD_H
+            sc = QApplication.primaryScreen().availableGeometry()
+            ow = ov.width() if 120 < ov.width() < 700 else 320
+            dst = QRect(ov.x() if ov.isVisible() else sc.left() + 20,
+                        ov.y() if ov.isVisible() else sc.top() + 20, ow, CARD_H)
             ov._fly_landing = True          # fiszka wejdzie w to miejsce bez odbicia
             QTimer.singleShot(1500, lambda: setattr(ov, "_fly_landing", False))
-            src._fx_fly(dst)
+            src._fx_fly(dst, ov)
         except Exception as ex:
             print(f"[motion] fly: {ex}")
 
@@ -8488,7 +8535,40 @@ def _apply_font_substitutions():
         pass
 
 
+def _install_crash_guard():
+    """Siatka bezpieczeństwa: w PyQt6 niezłapany wyjątek w dowolnym slocie zamyka całą
+    aplikację. Zamiast tego zapisujemy go do ~/.eyelingo_crash.log i pracujemy dalej.
+    faulthandler zapisuje też ślad przy twardym crashu."""
+    import traceback, threading, datetime
+    log = Path.home() / ".eyelingo_crash.log"
+
+    def _write(txt):
+        try:
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(f"\n--- {datetime.datetime.now():%Y-%m-%d %H:%M:%S} ---\n{txt}")
+        except Exception:
+            pass
+
+    def _hook(et, ev, tb):
+        txt = "".join(traceback.format_exception(et, ev, tb))
+        print("[BŁĄD – aplikacja działa dalej]\n" + txt)
+        _write(txt)
+
+    sys.excepthook = _hook
+    try:
+        threading.excepthook = lambda a: _hook(a.exc_type, a.exc_value, a.exc_traceback)
+    except Exception:
+        pass
+    try:
+        import faulthandler
+        _fh = open(Path.home() / ".eyelingo_fault.log", "a", encoding="utf-8")
+        faulthandler.enable(file=_fh)
+    except Exception:
+        pass
+
+
 def main():
+    _install_crash_guard()
     _dbg_reset()
     _dbg("=== APP START ===")
     _dbg(f"[SESSION] plik sesji: {SESSION_FILE}")
