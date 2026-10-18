@@ -1581,139 +1581,6 @@ class GlassCombo(QComboBox):
 
 
 
-class _Ghost(QWidget):
-    """Przezroczyste okno-duch rysujące zrzut prawdziwego okna z dowolną skalą, przesunięciem
-    i obrotem. Dzięki niemu okno „rośnie”, leci do karty i pochyla się przy przeciąganiu
-    bez przeliczania układu (Qt nie skaluje ani nie obraca okien)."""
-    def __init__(self, margin=28):
-        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool |
-                         Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.NoDropShadowWindowHint |
-                         Qt.WindowType.WindowTransparentForInput)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self.m = margin
-        self.pm = None
-        self.rect_f = None        # gdzie rysować zrzut (współrzędne okna ducha)
-        self.rot = 0.0
-        self.alpha = 1.0
-
-    def cover(self, rect):
-        """Duch pokrywa rect (współrzędne ekranu) + margines."""
-        self.setGeometry(rect.adjusted(-self.m, -self.m, self.m, self.m))
-
-    def snap(self, win):
-        self.pm = win.grab()
-        self.update()
-
-    def paintEvent(self, e):
-        if self.pm is None or self.rect_f is None or self.alpha <= 0:
-            return
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setOpacity(max(0.0, min(1.0, self.alpha)))
-        r = self.rect_f
-        if self.rot:
-            p.translate(r.center()); p.rotate(self.rot); p.translate(-r.center())
-        p.drawPixmap(r, self.pm, QRectF(self.pm.rect()))
-
-
-UI_GHOST = False   # okna-duchy (skalowanie/tilt/lot): na Windowsie widać je jako szerszą ramkę → wyłączone
-
-def _ghost_kill(w):
-    g = getattr(w, "_ghost", None)
-    a = getattr(w, "_ghost_anim", None)
-    if a is not None:
-        try:
-            a.stop()
-        except Exception:
-            pass
-    if g is not None:
-        try:
-            g.close(); g.deleteLater()
-        except Exception:
-            pass
-    w._ghost = None; w._ghost_anim = None
-
-
-def _scale_open(w, ms=380, dy=16, s0=0.93):
-    """Wejście okna jak w podglądzie Glass: skala 0.93→1 + wynurzenie o 16 px,
-    sprężyste osiadnięcie, treść napływa (zrzut odświeżany co klatkę)."""
-    _ghost_kill(w)
-    _ui_anim_stop(w, "_pop_anim"); _ui_anim_stop(w, "_op_anim")
-    g = _Ghost()
-    g.cover(w.geometry())
-    g.snap(w)
-    w._ghost = g
-    W, H = w.width(), w.height()
-    m = g.m
-    w.setWindowOpacity(0.0)
-    g.rect_f = QRectF(m + W * (1 - s0) / 2, m + H * (1 - s0) / 2 + dy, W * s0, H * s0)
-    g.alpha = 0.0
-    g.show()
-    anim = QVariantAnimation(w)
-    anim.setDuration(ms)
-    anim.setStartValue(0.0); anim.setEndValue(1.0)
-    anim.setEasingCurve(_spring_curve(0.9))
-
-    def _frame(v):
-        v = float(v)
-        if w._closing or not w.isVisible():
-            return
-        g.snap(w)
-        sc = s0 + (1 - s0) * v
-        g.rect_f = QRectF(m + W * (1 - sc) / 2, m + H * (1 - sc) / 2 + dy * (1 - v), W * sc, H * sc)
-        g.alpha = min(1.0, v * 2.4)
-        g.update()
-
-    def _done():
-        if getattr(w, "_ghost", None) is g and not w._closing:
-            w.setWindowOpacity(1.0)
-        QTimer.singleShot(30, lambda: (_ghost_kill(w) if getattr(w, "_ghost", None) is g else None))
-    anim.valueChanged.connect(_frame)
-    anim.finished.connect(_done)
-    w._ghost_anim = anim
-    anim.start()
-
-
-def _fly_to_rect(src, dst, ms=460):
-    """Okno src „zapada się” i leci w stronę prostokąta dst (karta), gasnąc na końcu."""
-    try:
-        if not UI_MOTION or not src.isVisible():
-            return
-        a = src.geometry()
-        d = QRect(dst)
-        u = a.united(d)
-        g = _Ghost(margin=20)
-        g.cover(u)
-        g.snap(src)
-        ox, oy = u.left() - g.m, u.top() - g.m
-        g.rect_f = QRectF(a.left() - ox, a.top() - oy, a.width(), a.height())
-        g.show()
-        anim = QVariantAnimation(g)
-        anim.setDuration(ms)
-        anim.setStartValue(0.0); anim.setEndValue(1.0)
-        anim.setEasingCurve(QEasingCurve.Type.InCubic)
-
-        def _frame(v):
-            v = float(v)
-            cx = a.center().x() + (d.center().x() - a.center().x()) * v
-            cy = a.center().y() + (d.center().y() - a.center().y()) * v
-            sc = 1 + (min(d.width() / max(a.width(), 1), d.height() / max(a.height(), 1)) - 1) * v
-            sc = max(sc, 0.12)
-            w2, h2 = a.width() * sc, a.height() * sc
-            g.rect_f = QRectF(cx - ox - w2 / 2, cy - oy - h2 / 2, w2, h2)
-            g.alpha = 1.0 - max(0.0, (v - 0.55) / 0.45)
-            g.update()
-        anim.valueChanged.connect(_frame)
-        anim.finished.connect(lambda: (g.close(), g.deleteLater()))
-        g._anim = anim
-        anim.start()
-    except Exception as ex:
-        print(f"[motion] fly: {ex}")
-
-
 class _DraggableWindow(QWidget):
     """Mixin: przeciąganie przez pasek tytułu (górne 32px) + ESC zamyka."""
     DRAG_BAR_HEIGHT = 32   # wysokość strefy drag u góry
@@ -1721,6 +1588,11 @@ class _DraggableWindow(QWidget):
     def __init__(self):
         super().__init__()
         self._drag_pos_win = None
+        # Animacje z zrzutem WŁASNEGO okna (bez drugiego okna): patrz _fx_paint
+        self._fx_snap = None; self._fx_kids = []; self._fx_anim = None
+        self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
+        self._fx_alpha = 1.0; self._fx_flying = False; self._tilt_v = 0.0
+        self.installEventFilter(self)
 
     def _in_drag_zone(self, pos):
         return pos.y() < self.DRAG_BAR_HEIGHT
@@ -1743,51 +1615,163 @@ class _DraggableWindow(QWidget):
         else:
             super().mouseMoveEvent(e)
 
-    def _tilt(self, dx):
-        """Przeciągane okno lekko się pochyla (±2°) w stronę ruchu i wraca sprężyście."""
-        if not UI_MOTION or not UI_GHOST or self._closing:
-            return
-        try:
-            g = getattr(self, "_drag_ghost", None)
-            if g is None:
-                _ghost_kill(self)
-                g = self._drag_ghost = _Ghost()
-                g.cover(self.geometry()); g.snap(self)
-                self.setWindowOpacity(0.0)
-                g.show()
-                self._tilt_v = 0.0
-            self._tilt_v = 0.65 * self._tilt_v + 0.35 * dx
-            g.rot = max(-2.0, min(2.0, self._tilt_v * 0.5))
-            g.cover(self.geometry())
-            g.rect_f = QRectF(g.m, g.m, self.width(), self.height())
-            g.alpha = 1.0
-            g.update()
-        except Exception as ex:
-            print(f"[motion] tilt: {ex}")
-
-    def _tilt_end(self):
-        g = getattr(self, "_drag_ghost", None)
-        if g is None:
-            return
-        self._drag_ghost = None
-        r0 = g.rot
-        anim = QVariantAnimation(g)
-        anim.setDuration(320)
-        anim.setStartValue(float(r0)); anim.setEndValue(0.0)
-        anim.setEasingCurve(_spring_curve(1.6))
-        anim.valueChanged.connect(lambda v: (setattr(g, "rot", float(v)), g.update()))
-        def _fin():
-            if not self._closing:
-                self.setWindowOpacity(1.0)
-            g.close(); g.deleteLater()
-        anim.finished.connect(_fin)
-        g._anim = anim
-        anim.start()
-
     def mouseReleaseEvent(self, e):
         self._drag_pos_win = None
         self._tilt_end()
         super().mouseReleaseEvent(e)
+
+    # ── animacje przez zrzut własnego okna ─────────────────────────────
+    # Okno maluje w czasie animacji swój zrzut (skala / przesunięcie / obrót), a
+    # prawdziwe elementy są ukryte. Nie ma drugiego okna, więc nic nie wystaje.
+    def _fx_begin(self):
+        if self._fx_snap is not None:
+            return
+        self._fx_snap = self.grab()          # zrzut zanim ukryjemy elementy
+        self._fx_kids = [c for c in self.children()
+                         if isinstance(c, QWidget) and not c.isWindow() and c.isVisible()]
+        for c in self._fx_kids:
+            c.hide()
+        self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
+        self._fx_alpha = 1.0
+        self.update()
+
+    def _fx_end(self):
+        if self._fx_anim is not None:
+            try:
+                self._fx_anim.stop()
+            except Exception:
+                pass
+            self._fx_anim = None
+        self._fx_snap = None
+        for c in self._fx_kids:
+            try:
+                c.show()
+            except Exception:
+                pass
+        self._fx_kids = []
+        self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
+        self._fx_alpha = 1.0; self._fx_flying = False
+        self.update()
+
+    def eventFilter(self, obj, ev):
+        if obj is self and self._fx_snap is not None and ev.type() == QEvent.Type.Paint:
+            self._fx_paint()
+            return True
+        return super().eventFilter(obj, ev)
+
+    def _fx_paint(self):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        p.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        p.setOpacity(max(0.0, min(1.0, self._fx_alpha)))
+        W, H = self.width(), self.height()
+        p.translate(W / 2 + self._fx_dx, H / 2 + self._fx_dy)
+        if self._fx_rot:
+            p.rotate(self._fx_rot)
+        p.scale(self._fx_sc, self._fx_sc)
+        pm = self._fx_snap
+        p.drawPixmap(QRectF(-W / 2, -H / 2, W, H), pm, QRectF(pm.rect()))
+        p.end()
+
+    def _fx_scale_open(self, ms=380, dy=16, s0=0.93):
+        """Wejście: skala 0.93→1 + wynurzenie o dy px, sprężyste osiadnięcie."""
+        self._fx_begin()
+        self.setWindowOpacity(1.0)
+        self._fx_alpha = 0.0; self._fx_sc = s0; self._fx_dy = float(dy)
+        anim = QVariantAnimation(self)
+        anim.setDuration(ms)
+        anim.setStartValue(0.0); anim.setEndValue(1.0)
+        anim.setEasingCurve(_spring_curve(0.9))
+
+        def _frame(v):
+            if self._closing or self._fx_snap is None:
+                return
+            v = float(v)
+            self._fx_sc = s0 + (1 - s0) * v
+            self._fx_dy = dy * (1 - v)
+            self._fx_alpha = min(1.0, v * 2.4)
+            self.update()
+
+        def _done():
+            if not self._closing:
+                self._fx_end()
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(_done)
+        self._fx_anim = anim
+        anim.start()
+
+    def _fx_fly(self, dst, ms=460):
+        """Okno „zapada się” i leci w stronę prostokąta dst (karta fiszki), gasnąc."""
+        if not self.isVisible() or self._fx_flying:
+            return
+        self._fx_begin()
+        self._fx_flying = True
+        self.setWindowOpacity(1.0)
+        home = self.pos()
+        W, H = self.width(), self.height()
+        c0x, c0y = home.x() + W / 2, home.y() + H / 2
+        c1x, c1y = dst.center().x(), dst.center().y()
+        s1 = max(0.12, min(dst.width() / max(W, 1), dst.height() / max(H, 1)))
+        anim = QVariantAnimation(self)
+        anim.setDuration(ms)
+        anim.setStartValue(0.0); anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.InCubic)
+
+        def _frame(v):
+            v = float(v)
+            cx = c0x + (c1x - c0x) * v
+            cy = c0y + (c1y - c0y) * v
+            self.move(int(cx - W / 2), int(cy - H / 2))
+            self._fx_sc = 1 + (s1 - 1) * v
+            self._fx_alpha = 1 - max(0.0, (v - 0.55) / 0.45)
+            self.update()
+
+        def _done():
+            self._fx_flying = False
+            self._fx_end()
+            QWidget.hide(self)
+            self.setWindowOpacity(1.0)
+            self.move(home)
+            # system okien może odesłać opóźnione zdarzenie przesunięcia z ostatniej klatki
+            QTimer.singleShot(60, lambda: (not self.isVisible()) and self.move(home))
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(_done)
+        self._fx_anim = anim
+        anim.start()
+
+    def _tilt(self, dx):
+        """Przeciągane okno lekko się pochyla (±2°) w stronę ruchu."""
+        if not UI_MOTION or self._closing or not self.isVisible():
+            return
+        if self._fx_snap is None:
+            self._fx_begin()
+            self._tilt_v = 0.0
+        self._tilt_v = 0.65 * self._tilt_v + 0.35 * dx
+        self._fx_rot = max(-2.0, min(2.0, self._tilt_v * 0.5))
+        self._fx_sc = 0.985          # lekko mniej, żeby róg nie wypadał poza okno
+        self.update()
+
+    def _tilt_end(self):
+        if self._fx_snap is None or self._fx_flying:
+            return
+        r0, sc0 = self._fx_rot, self._fx_sc
+        anim = QVariantAnimation(self)
+        anim.setDuration(320)
+        anim.setStartValue(0.0); anim.setEndValue(1.0)
+        anim.setEasingCurve(_spring_curve(1.6))
+
+        def _frame(v):
+            v = float(v)
+            self._fx_rot = r0 * (1 - v)
+            self._fx_sc = sc0 + (1 - sc0) * v
+            self.update()
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(self._fx_end)
+        self._fx_anim = anim
+        anim.start()
 
     ANIM_DY = 16  # okno wynurza się z dołu o tyle px (jak w podglądzie Glass)
     SCALE_OPEN = True   # wejście ze skalowaniem (zrzut-duch); False = tylko fade+ruch
@@ -1846,12 +1830,12 @@ class _DraggableWindow(QWidget):
         super().showEvent(e)
         try:
             self._ensure_close_x()
-            if UI_MOTION and UI_GHOST and self.SCALE_OPEN:
+            if UI_MOTION and self.SCALE_OPEN:
                 try:
-                    _scale_open(self, dy=self.ANIM_DY or 16)
+                    self._fx_scale_open(dy=self.ANIM_DY or 16)
                 except Exception as ex:
                     print(f"[motion] scale: {ex}")
-                    _ghost_kill(self)
+                    self._fx_end()
                     _pop_in(self, self.ANIM_DY)
             else:
                 _pop_in(self, self.ANIM_DY)
@@ -1869,6 +1853,8 @@ class _DraggableWindow(QWidget):
             QWidget.hide(self)
 
     def show(self):
+        if self._fx_snap is not None and not self.isVisible():
+            self._fx_end()
         if self._closing:               # ktoś chce okno z powrotem w trakcie zamykania
             self._closing = False
             _ui_anim_stop(self, "_op_anim")
@@ -1884,13 +1870,10 @@ class _DraggableWindow(QWidget):
 
     def _close_anim(self):
         """Zamknięcie szybsze niż otwarcie (170 ms): okno opada o 8 px i gaśnie."""
-        if not self.isVisible() or self._closing:
-            return
-        _ghost_kill(self)
-        dg = getattr(self, "_drag_ghost", None)
-        if dg is not None:
-            self._drag_ghost = None
-            dg.close(); dg.deleteLater()
+        if not self.isVisible() or self._closing or self._fx_flying:
+            return                      # lot do karty sam się schowa
+        if self._fx_snap is not None:
+            self._fx_end()
         self.setWindowOpacity(1.0)
         home = self._home = self.pos()
         self._closing = True
@@ -7732,8 +7715,6 @@ class TrayApp:
     def _fly_picker_to_card(self):
         """Wybór kategorii: okno wyboru „zapada się” i leci w miejsce fiszki."""
         try:
-            if not UI_GHOST:
-                return
             src = next((w for w in (self.win_lang, self.win_cat)
                         if w.isVisible() and not w._closing), None)
             if src is None:
@@ -7744,7 +7725,7 @@ class TrayApp:
             else:
                 sc = QApplication.primaryScreen().availableGeometry()
                 dst = QRect(sc.center().x() - 170, sc.top() + 70, 340, 120)
-            _fly_to_rect(src, dst)
+            src._fx_fly(dst)
         except Exception as ex:
             print(f"[motion] fly: {ex}")
 
