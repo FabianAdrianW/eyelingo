@@ -1182,7 +1182,8 @@ class _GlassFilter(QObject):
                 o._blur_ok = _blur_behind(o)
                 _round_region(o, _GLASS_RADIUS)
                 o.update()
-            elif t == QEvent.Type.Resize and getattr(o, "_blur_done", False):
+            elif t == QEvent.Type.Resize and getattr(o, "_blur_done", False) \
+                    and getattr(o, "_fx_snap", None) is None:
                 _round_region(o, _GLASS_RADIUS)
         except Exception as ex:
             print(f"[glass] filter: {ex}")
@@ -1592,6 +1593,7 @@ class _DraggableWindow(QWidget):
         self._fx_snap = None; self._fx_kids = []; self._fx_anim = None
         self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
         self._fx_alpha = 1.0; self._fx_flying = False; self._tilt_v = 0.0
+        self._fx_fill = False
         self.installEventFilter(self)
 
     def _in_drag_zone(self, pos):
@@ -1650,7 +1652,7 @@ class _DraggableWindow(QWidget):
                 pass
         self._fx_kids = []
         self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
-        self._fx_alpha = 1.0; self._fx_flying = False
+        self._fx_alpha = 1.0; self._fx_flying = False; self._fx_fill = False
         self.update()
 
     def eventFilter(self, obj, ev):
@@ -1668,6 +1670,12 @@ class _DraggableWindow(QWidget):
         p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         p.setOpacity(max(0.0, min(1.0, self._fx_alpha)))
         W, H = self.width(), self.height()
+        if self._fx_fill:
+            # lot: zrzut wypełnia całe (zmieniające się) okno — ostatnia klatka = rozmiar karty
+            pm = self._fx_snap
+            p.drawPixmap(QRectF(0, 0, W, H), pm, QRectF(pm.rect()))
+            p.end()
+            return
         p.translate(W / 2 + self._fx_dx, H / 2 + self._fx_dy)
         if self._fx_rot:
             p.rotate(self._fx_rot)
@@ -1703,42 +1711,63 @@ class _DraggableWindow(QWidget):
         self._fx_anim = anim
         anim.start()
 
-    def _fx_fly(self, dst, ms=460):
-        """Okno „zapada się” i leci w stronę prostokąta dst (karta fiszki), gasnąc."""
+    def _fx_fly(self, dst, ms=540):
+        """Okno płynnie zmienia rozmiar i pozycję w rozmiar/miejsce karty fiszki.
+        Ostatnia klatka ma wymiary karty; potem okno gaśnie na tym samym miejscu,
+        a fiszka (już pod spodem) przejmuje obraz."""
         if not self.isVisible() or self._fx_flying:
             return
         self._fx_begin()
+        self._fx_fill = True
         self._fx_flying = True
         self.setWindowOpacity(1.0)
-        home = self.pos()
-        W, H = self.width(), self.height()
-        c0x, c0y = home.x() + W / 2, home.y() + H / 2
-        c1x, c1y = dst.center().x(), dst.center().y()
-        s1 = max(0.12, min(dst.width() / max(W, 1), dst.height() / max(H, 1)))
+        home = self.geometry()
+        x0, y0, w0, h0 = home.x(), home.y(), home.width(), home.height()
+        # okna mają stały rozmiar (setFixedSize) — na czas lotu go zdejmujemy
+        self._fx_lock = (self.minimumSize(), self.maximumSize())
+        self.setMinimumSize(QSize(0, 0))
+        self.setMaximumSize(QSize(16777215, 16777215))
+        x1, y1 = dst.x(), dst.y()
+        w1, h1 = max(120, dst.width()), max(60, dst.height())
+        ease = QEasingCurve(QEasingCurve.Type.InOutCubic)
         anim = QVariantAnimation(self)
         anim.setDuration(ms)
         anim.setStartValue(0.0); anim.setEndValue(1.0)
-        anim.setEasingCurve(QEasingCurve.Type.InCubic)
+        anim.setEasingCurve(ease)
 
         def _frame(v):
             v = float(v)
-            cx = c0x + (c1x - c0x) * v
-            cy = c0y + (c1y - c0y) * v
-            self.move(int(cx - W / 2), int(cy - H / 2))
-            self._fx_sc = 1 + (s1 - 1) * v
-            self._fx_alpha = 1 - max(0.0, (v - 0.55) / 0.45)
+            x = round(x0 + (x1 - x0) * v)
+            y = round(y0 + (y1 - y0) * v)
+            w = round(w0 + (w1 - w0) * v)
+            h = round(h0 + (h1 - h0) * v)
+            self.setGeometry(x, y, w, h)
+            self._fx_alpha = 1.0
             self.update()
+
+        def _land():
+            # na końcu: okno ma dokładnie rozmiar karty; teraz gaśnie (fiszka pod spodem)
+            fade = QVariantAnimation(self)
+            fade.setDuration(240)
+            fade.setStartValue(1.0); fade.setEndValue(0.0)
+            fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+            fade.valueChanged.connect(lambda v: (setattr(self, "_fx_alpha", float(v)), self.update()))
+            fade.finished.connect(_done)
+            self._fx_anim = fade
+            fade.start()
 
         def _done():
             self._fx_flying = False
             self._fx_end()
             QWidget.hide(self)
             self.setWindowOpacity(1.0)
-            self.move(home)
-            # system okien może odesłać opóźnione zdarzenie przesunięcia z ostatniej klatki
-            QTimer.singleShot(60, lambda: (not self.isVisible()) and self.move(home))
+            mn, mx = getattr(self, "_fx_lock", (None, None))
+            if mn is not None:
+                self.setMinimumSize(mn); self.setMaximumSize(mx)
+            self.setGeometry(home)
+            QTimer.singleShot(60, lambda: (not self.isVisible()) and self.setGeometry(home))
         anim.valueChanged.connect(_frame)
-        anim.finished.connect(_done)
+        anim.finished.connect(_land)
         self._fx_anim = anim
         anim.start()
 
@@ -1790,6 +1819,8 @@ class _DraggableWindow(QWidget):
             QTimer.singleShot(60, cb)
 
     def _ensure_back(self):
+        if self._fx_snap is not None:
+            return
         """Strzałka „←” obok „✕”: wszędzie da się cofnąć bez wychodzenia z programu."""
         if self.back_cb is None:
             b = getattr(self, "_auto_back", None)
@@ -1807,6 +1838,8 @@ class _DraggableWindow(QWidget):
         b.show(); b.raise_()
 
     def _ensure_close_x(self):
+        if self._fx_snap is not None:
+            return
         """Każde okno ma ZAWSZE widoczny przycisk zamknięcia w prawym górnym rogu —
         użytkownik nigdy nie utknie w oknie bez wyjścia."""
         self._ensure_back()
@@ -3471,11 +3504,13 @@ class FlashcardOverlay(QWidget):
         if fresh and UI_MOTION:
             self.setWindowOpacity(0.0)
         super().show()
+        landing = getattr(self, "_fly_landing", False)
+        self._fly_landing = False
         if (fresh or was) and UI_MOTION:
             target = 0.0 if self._hover_hidden else self._cur_opacity()
-            _fade_window(self, target, 380)
+            _fade_window(self, target, 260 if landing else 380)
             end = self.pos()
-            if not was:
+            if not was and not landing:
                 self.move(end.x(), end.y() + 14)
                 a = QPropertyAnimation(self, b"pos", self)
                 a.setDuration(380); a.setStartValue(self.pos()); a.setEndValue(end)
@@ -7725,6 +7760,8 @@ class TrayApp:
             else:
                 sc = QApplication.primaryScreen().availableGeometry()
                 dst = QRect(sc.center().x() - 170, sc.top() + 70, 340, 120)
+            ov._fly_landing = True          # fiszka wejdzie w to miejsce bez odbicia
+            QTimer.singleShot(1500, lambda: setattr(ov, "_fly_landing", False))
             src._fx_fly(dst)
         except Exception as ex:
             print(f"[motion] fly: {ex}")
