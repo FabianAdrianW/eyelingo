@@ -1549,8 +1549,7 @@ def _styled_window(w):
         pass
 
 def _paint_bg(widget, _):
-    """Szkło: ciemny granat z lekką poświatą (pomarańcz u góry, błękit u dołu), cienka biała
-    krawędź i połysk. Gdy system rozmywa tło (Windows) wypełnienie jest lżejsze."""
+    """Szkło: jednolity ciemny granat (bez plam i poświat), cienka biała krawędź i połysk. Gdy system rozmywa tło (Windows) wypełnienie jest lżejsze."""
     p = QPainter(widget)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     r = QRectF(widget.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
@@ -1559,16 +1558,6 @@ def _paint_bg(widget, _):
     p.setPen(Qt.PenStyle.NoPen)
     p.setBrush(QColor(18, 26, 52, 150 if blur else 226))
     p.drawRoundedRect(r, rad, rad)
-    path = QPainterPath(); path.addRoundedRect(r, rad, rad)
-    p.setClipPath(path)
-    big = max(r.width(), r.height())
-    g1 = QRadialGradient(r.left() + r.width() * 0.10, r.top() + r.height() * 0.02, big * 0.78)
-    g1.setColorAt(0.0, QColor(224, 128, 58, 70 if blur else 52)); g1.setColorAt(1.0, QColor(224, 128, 58, 0))
-    p.setBrush(QBrush(g1)); p.drawRect(r)
-    g2 = QRadialGradient(r.right() - r.width() * 0.04, r.bottom() + r.height() * 0.02, big * 0.85)
-    g2.setColorAt(0.0, QColor(70, 110, 230, 92 if blur else 70)); g2.setColorAt(1.0, QColor(70, 110, 230, 0))
-    p.setBrush(QBrush(g2)); p.drawRect(r)
-    p.setClipping(False)
     p.setBrush(Qt.BrushStyle.NoBrush)
     p.setPen(QPen(QColor(255, 255, 255, 44), 1))
     p.drawRoundedRect(r, rad, rad)
