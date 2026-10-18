@@ -19,7 +19,7 @@
  * ──────────────────────────────────────────────────────────────────────────
  */
 
-const CACHE = 'eyelingo-shell-v2';   // bump wersji => stary, zepsuty cache zostaje wyczyszczony
+const CACHE = 'eyelingo-shell-v3';   // bump wersji => stary, zepsuty cache zostaje wyczyszczony
 
 // Pliki shellu (ścieżki względne — działają też pod /repo/ na GitHub Pages)
 const SHELL = [
@@ -41,7 +41,7 @@ self.addEventListener('install', function (event) {
         // addAll przewraca się w całości, gdy JEDEN plik nie istnieje.
         // Dodajemy pojedynczo — brak np. jednej ikony nie może zablokować instalacji.
         return Promise.all(SHELL.map(function (u) {
-          return cache.add(u).catch(function () { /* pomijamy brakujący plik */ });
+          return cache.add(new Request(u, { cache: 'reload' })).catch(function () { /* pomijamy brakujący plik */ });
         }));
       })
       .then(function () { return self.skipWaiting(); })
@@ -76,7 +76,7 @@ self.addEventListener('fetch', function (event) {
   // Nawigacja (otwarcie strony lub aplikacji): sieć najpierw, cache jako zapas offline.
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then(function (res) {
           // KLUCZOWE: zapisujemy pod adresem TEJ konkretnej strony, nie pod index.html.
           const copy = res.clone();
