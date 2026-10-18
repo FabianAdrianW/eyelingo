@@ -1252,6 +1252,10 @@ def _draw_glyph(p, name, cx, cy, s, col, width=1.8):
         p.setBrush(QColor(0, 0, 0, 0))
         p.drawEllipse(QPointF(cx + k * .22, cy - k * .32), k * .2, k * .2)
         p.drawEllipse(QPointF(cx - k * .22, cy + k * .32), k * .2, k * .2)
+    elif name == "back":
+        p.drawLine(QPointF(cx + k * .6, cy), QPointF(cx - k * .6, cy))
+        p.drawLine(QPointF(cx - k * .6, cy), QPointF(cx - k * .1, cy - k * .5))
+        p.drawLine(QPointF(cx - k * .6, cy), QPointF(cx - k * .1, cy + k * .5))
     elif name == "refresh":
         rr = QRectF(cx - k * .62, cy - k * .62, k * 1.24, k * 1.24)
         path = QPainterPath()
@@ -1609,9 +1613,39 @@ class _DraggableWindow(QWidget):
     ANIM_DY = 16  # okno wynurza się z dołu o tyle px (jak w podglądzie Glass)
     HAS_CLOSE = False   # True: okno ma własny przycisk wyjścia (albo nie wolno go zamknąć)
 
+    back_cb = None      # ustawiane przez TrayApp: dokąd prowadzi „←” (np. do panelu)
+
+    def set_back(self, cb):
+        self.back_cb = cb
+        self._ensure_back()
+
+    def _go_back_cb(self):
+        cb = self.back_cb
+        self.fade_hide()
+        if cb:
+            QTimer.singleShot(60, cb)
+
+    def _ensure_back(self):
+        """Strzałka „←” obok „✕”: wszędzie da się cofnąć bez wychodzenia z programu."""
+        if self.back_cb is None:
+            b = getattr(self, "_auto_back", None)
+            if b is not None:
+                b.hide()
+            return
+        b = getattr(self, "_auto_back", None)
+        if b is None:
+            b = GlassButton("", "ico", parent=self)
+            b.setGlyph("back"); b.setToolTip("Wróć")
+            b.clicked.connect(self._go_back_cb)
+            self._auto_back = b
+        x_right = 14 if not self.HAS_CLOSE else 20
+        b.move(self.width() - 34 - x_right - 34 - 8, 12 if not self.HAS_CLOSE else 20)
+        b.show(); b.raise_()
+
     def _ensure_close_x(self):
         """Każde okno ma ZAWSZE widoczny przycisk zamknięcia w prawym górnym rogu —
         użytkownik nigdy nie utknie w oknie bez wyjścia."""
+        self._ensure_back()
         if self.HAS_CLOSE:
             return
         b = getattr(self, "_auto_x", None)
@@ -1625,7 +1659,7 @@ class _DraggableWindow(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        if getattr(self, "_auto_x", None) is not None:
+        if getattr(self, "_auto_x", None) is not None or getattr(self, "_auto_back", None) is not None:
             self._ensure_close_x()
 
     def showEvent(self, e):
@@ -6903,9 +6937,14 @@ class HubWindow(_DraggableWindow):
         btn_resume.clicked.connect(self._resume)
         pl.addWidget(btn_resume)
         pl.addSpacing(8)
+        prow = QHBoxLayout(); prow.setSpacing(10)
+        btn_pback = GlassButton("\u2190 Wróć", "ghost", radius=14); btn_pback.setFixedHeight(42)
+        btn_pback.setToolTip("Wróć do panelu (pauza trwa)")
+        btn_pback.clicked.connect(self.exit_pause_view)
         btn_pclose = GlassButton("Zamknij", "ghost", radius=14); btn_pclose.setFixedHeight(42)
         btn_pclose.clicked.connect(self.fade_hide)
-        pl.addWidget(btn_pclose)
+        prow.addWidget(btn_pback, 1); prow.addWidget(btn_pclose, 1)
+        pl.addLayout(prow)
         self.pause_panel.hide(); lay.addWidget(self.pause_panel, 1)
 
     # ── helpery UI ──
@@ -7298,6 +7337,10 @@ class TrayApp:
 
         self.win_hub = HubWindow(self)
         self.win_update = UpdateWindow()
+        # „←” w każdym oknie bez własnego „Wróć”: cofa do panelu głównego
+        for _w in (self.win_stats, self.win_test, self.win_purchase,
+                   self.win_premium, self.win_update):
+            _w.set_back(self._toggle_hub_open)
 
         self.tray = QSystemTrayIcon(make_tray_icon())
         self.tray.setToolTip("Fiszki w tle")
