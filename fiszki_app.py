@@ -1658,16 +1658,14 @@ _GHOST_QSS = """
 """
 
 def _close_btn(target):
-    btn = QPushButton("Zamknij")
-    btn.setStyleSheet(_GHOST_QSS)
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    btn.clicked.connect(target.hide)
+    btn = GlassButton("Zamknij", "ghost", radius=14)
+    btn.setFixedHeight(42)
+    btn.clicked.connect(getattr(target, "fade_hide", target.hide))
     return btn
 
 def _back_btn(text, cb):
-    btn = QPushButton(text)
-    btn.setStyleSheet(_GHOST_QSS)
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn = GlassButton(text, "ghost", radius=14)
+    btn.setFixedHeight(42)
     btn.clicked.connect(cb)
     return btn
 
@@ -2493,6 +2491,7 @@ class LoginWindow(_DraggableWindow):
 # OKNO FISZKI
 # ──────────────────────────────────────────────────────
 class FlashcardOverlay(QWidget):
+    _suspended = False   # True na czas pauzy/ukrycia: nowy zestaw ładuje się, ale okno się NIE pokazuje
     def __init__(self):
         super().__init__()
         self.index = 0
@@ -2579,7 +2578,8 @@ class FlashcardOverlay(QWidget):
         self.lang  = lang
         self.level = level
         self.cat   = cat
-        _session.slides_started(lang, level, cat)
+        if not self._suspended:
+            _session.slides_started(lang, level, cat)
         _session.track("slides_started", {
             "language": lang, "level": level, "category": cat
         })
@@ -2603,7 +2603,8 @@ class FlashcardOverlay(QWidget):
         self.index = 0
         self._is_custom = False
         self._fit_to_cards()
-        self.show()
+        if not self._suspended:
+            self.show()
         self._update()
 
     def _on_error(self, msg):
@@ -2621,7 +2622,8 @@ class FlashcardOverlay(QWidget):
                       for i, c in enumerate(cards)]
         self.index = 0
         self._fit_to_cards()
-        self.show()
+        if not self._suspended:
+            self.show()
         self._update()
 
     # ── Zegar rotacji fiszek ──────────────────────────────────────────
@@ -4158,7 +4160,7 @@ class CustomSetWindow(_DraggableWindow):
         self.card_rows   = []
         self._is_premium = False
         _styled_window(self)
-        self.setFixedSize(440, 580)
+        self.setFixedSize(440, 650)
         self._build()
         _right_third_pos(self)
 
@@ -4178,27 +4180,26 @@ class CustomSetWindow(_DraggableWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        # Pasek drag
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
+        # Nagłówek (też strefa przeciągania); „✕” dokłada _DraggableWindow
+        hdr = QWidget(); hdr.setFixedHeight(56); hdr.setStyleSheet("background:transparent;")
+        hl = QHBoxLayout(hdr); hl.setContentsMargins(24, 16, 60, 0)
         t = QLabel("Stwórz własny zestaw")
-        t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        t.setStyleSheet("color:white;background:transparent;")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
         hl.addWidget(t)
         lay.addWidget(hdr)
 
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
         self.main_lay = QVBoxLayout(inner)
-        self.main_lay.setContentsMargins(20, 10, 20, 16)
+        self.main_lay.setContentsMargins(24, 6, 24, 18)
         self.main_lay.setSpacing(8)
         lay.addWidget(inner, 1)
 
         # Info o limicie dla darmowych
         self.lbl_limit = QLabel(f"Plan darmowy: do {MAX_CARDS} fiszek w zestawie · Subskrypcja = bez limitu")
-        self.lbl_limit.setFont(QFont("Segoe UI", 9))
-        self.lbl_limit.setStyleSheet("color:rgba(150,120,230,200);background:transparent;")
-        self.lbl_limit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_limit.setFont(_gfont(12))
+        self.lbl_limit.setStyleSheet("color:%s;background:transparent;" % G_SOFT)
+        self.lbl_limit.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.lbl_limit.setWordWrap(True)
         self.main_lay.addWidget(self.lbl_limit)
 
@@ -4214,15 +4215,15 @@ class CustomSetWindow(_DraggableWindow):
         hdr_lay = QHBoxLayout(hdr_w); hdr_lay.setContentsMargins(4, 0, 4, 0)
         for txt in ["Słowo / pytanie", "Tłumaczenie / odpowiedź", ""]:
             lh = QLabel(txt)
-            lh.setFont(QFont("Segoe UI", 8))
-            lh.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
+            lh.setFont(_gfont(12))
+            lh.setStyleSheet("color:rgba(238,242,255,176);background:transparent;")
             hdr_lay.addWidget(lh, 0 if txt == "" else 1)
         self.main_lay.addWidget(hdr_w)
 
         # Scroll na fiszki — stała wysokość
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(340)
+        scroll.setFixedHeight(300)
         scroll.setStyleSheet("""
             QScrollArea { border:none; background:transparent; }
             QScrollBar:vertical { background:rgba(255,255,255,.04); width:5px; border-radius:2px; }
@@ -4242,32 +4243,25 @@ class CustomSetWindow(_DraggableWindow):
             self._add_row()
 
         # Przyciski
-        btn_add = QPushButton("+ Dodaj wiersz")
-        btn_add.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(120,135,190,150);
-                border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-        """)
-        btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_add = GlassButton("+ Dodaj wiersz", "ghost", radius=14)
+        btn_add.setFixedHeight(42)
         btn_add.clicked.connect(self._add_row)
         self.main_lay.addWidget(btn_add)
 
         self.lbl_error = QLabel("")
-        self.lbl_error.setStyleSheet("color:rgba(255,100,100,220);font-size:11px;background:transparent;")
+        self.lbl_error.setStyleSheet("color:#ff8a8a;font-size:12px;background:transparent;")
         self.lbl_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.main_lay.addWidget(self.lbl_error)
 
-        self.btn_save = QPushButton("Zapisz zestaw")
-        self.btn_save.setMinimumHeight(36)
-        self.btn_save.setStyleSheet(BTN_PRIMARY)
-        self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_save = GlassButton("Zapisz zestaw", "cta", radius=16)
+        self.btn_save.setFixedHeight(50)
         self.btn_save.clicked.connect(self._save)
         self.main_lay.addWidget(self.btn_save)
-
-        self.main_lay.addWidget(_back_btn("← Wróć", self._go_back))
-        self.main_lay.addWidget(_close_btn(self))
+        self.main_lay.addSpacing(2)
+        fr = QHBoxLayout(); fr.setSpacing(8)
+        fr.addWidget(_back_btn("\u2190 Wróć", self._go_back), 1)
+        fr.addWidget(_close_btn(self), 1)
+        self.main_lay.addLayout(fr)
 
     def _add_row(self):
         limit = 9999 if self._is_premium else MAX_CARDS
@@ -4292,11 +4286,9 @@ class CustomSetWindow(_DraggableWindow):
         inp_tr.setMinimumHeight(32)
         inp_tr.setStyleSheet(INPUT_STYLE)
 
-        btn_del = QPushButton("✕")
-        btn_del.setFixedSize(28, 28)
-        btn_del.setStyleSheet("QPushButton{background:rgba(150,40,40,140);color:white;border-radius:6px;font-size:10px;}"
-                              "QPushButton:hover{background:rgba(190,60,60,200);}")
-        btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_del = GlassButton("", "ico")
+        btn_del.setGlyph("close"); btn_del.setToolTip("Usuń wiersz")
+        btn_del.setFixedSize(34, 34)
 
         row_lay.addWidget(inp_word)
         row_lay.addWidget(inp_tr)
@@ -6655,7 +6647,20 @@ class HubWindow(_DraggableWindow):
         self.lbl_countdown = QLabel(""); self.lbl_countdown.setFont(_gfont(14))
         self.lbl_countdown.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
         pl.addSpacing(4); pl.addWidget(self.lbl_countdown)
-        pl.addSpacing(22)
+        pl.addSpacing(18)
+        prow = QHBoxLayout(); prow.setContentsMargins(0, 0, 0, 0)
+        pcol = QVBoxLayout(); pcol.setSpacing(0)
+        pcap = QLabel("Uczysz się"); pcap.setFont(_gfont(12)); pcap.setStyleSheet(DIM)
+        self.lbl_lang_p = QLabel("—"); self.lbl_lang_p.setFont(_gfont(17, QFont.Weight.DemiBold)); self.lbl_lang_p.setStyleSheet(TXT)
+        self.lbl_sub_p = QLabel(""); self.lbl_sub_p.setFont(_gfont(13))
+        self.lbl_sub_p.setStyleSheet("color:rgba(238,242,255,178);background:transparent;")
+        pcol.addWidget(pcap); pcol.addWidget(self.lbl_lang_p); pcol.addWidget(self.lbl_sub_p)
+        prow.addLayout(pcol, 1)
+        pchg = GlassButton("Zmień", "ghost", radius=18); pchg.setFixedSize(84, 36)
+        pchg.clicked.connect(lambda: (self.hide(), self.app_ref._show_lang()))
+        prow.addWidget(pchg, 0, Qt.AlignmentFlag.AlignVCenter)
+        pl.addLayout(prow)
+        pl.addSpacing(18)
         prc = QLabel("Wrócą same za:"); prc.setFont(_gfont(12)); prc.setStyleSheet(DIM)
         pl.addWidget(prc); pl.addSpacing(8)
         prl = QHBoxLayout(); prl.setSpacing(6)
@@ -6745,6 +6750,7 @@ class HubWindow(_DraggableWindow):
                                  if c.get("srs") else "Fiszki w toku")
         else:
             self.lbl_lang.setText("Nie wybrano"); self.lbl_sub.setText("Kliknij \u201EZmie\u0144\u201D")
+        self.lbl_lang_p.setText(self.lbl_lang.text()); self.lbl_sub_p.setText(self.lbl_sub.text())
 
     def _refresh_live(self):
         ov = self.app_ref.overlay
@@ -7099,8 +7105,13 @@ class TrayApp:
         self.win_lang.hide(); self.win_lvl.hide()
         self._on_lvl(lang, lvl)
 
+    def _back_to_hub_if_paused(self):
+        if not self.visible:
+            QTimer.singleShot(250, self.win_hub.open)
+
     def _on_cat(self, lang, lvl, cat):
         self.overlay.load_from_supabase(lang, lvl, cat)
+        self._back_to_hub_if_paused()
         self._track_views(lang, lvl, cat)
         _session.track("category_selected", {
             "language": lang, "level": lvl, "category": cat
@@ -7398,6 +7409,7 @@ class TrayApp:
 
     def _on_custom_set_picked(self, name, cards):
         self.overlay.load_custom(name, cards)
+        self._back_to_hub_if_paused()
         self._custom_sets_cache = self.win_my_sets.sets if hasattr(self.win_my_sets, 'sets') else []
 
     def _back_to_lang(self):
@@ -7412,6 +7424,7 @@ class TrayApp:
         if self.visible:
             self.overlay.hide()
             self.overlay._rotation_pause()
+            self.overlay._suspended = True
             tts_mute(True)
             self.act_toggle.setText("▶  Pokaż fiszki")
             _session.slides_stopped()
@@ -7420,6 +7433,7 @@ class TrayApp:
             self._pause_until = None
             if hasattr(self, "_pause_timer"): self._pause_timer.stop()
             tts_mute(False)
+            self.overlay._suspended = False
             self.overlay.show()
             self.overlay._rotation_resume()
             if not self.overlay.timer.isActive():
@@ -7442,6 +7456,7 @@ class TrayApp:
         else:
             secs = int(minutes) * 60
         self._pause_until = _t.time() + secs
+        self.overlay._suspended = True
         tts_mute(True)                       # żadnego czytania w trakcie pauzy
         if self.visible:
             self.overlay.hide()
@@ -7463,6 +7478,7 @@ class TrayApp:
         if hasattr(self, "_pause_timer"):
             self._pause_timer.stop()
         tts_mute(False)
+        self.overlay._suspended = False
         if not self.visible:
             self.overlay.show()
             self.overlay._rotation_resume()
