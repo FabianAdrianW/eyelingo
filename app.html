@@ -36,7 +36,7 @@
   input{font-size:16px;font-family:inherit}
   .phone{position:relative;width:100%;max-width:402px;height:100%;max-height:874px;background:var(--paper);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.45)}
   @media(min-width:440px){.phone{border-radius:46px;border:11px solid #0a0c12;height:874px}}
-  @media(max-width:439px){body{background:var(--paper)}.phone{box-shadow:none}}
+  @media(max-width:439px){body{background:var(--paper)}.phone{box-shadow:none;max-width:none;max-height:none;height:100vh;height:100dvh}}
   .app{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
   .topbar{display:flex;align-items:center;justify-content:space-between;padding:calc(var(--safe-top) + 14px) 20px 12px;flex-shrink:0}
   .brand{display:flex;align-items:center;gap:9px}.brand .mark{width:30px;height:30px}
@@ -8745,20 +8745,11 @@ window.eylPagedFetch = async function(makeQuery, opts){
    zmiana jest warstwą NA wierzchu (kolory/tła/ruch) — układ i logika zostają nietknięte.
    Jasne, mrożone szkło: ciemny tekst z reszty pliku nadal ma pełny kontrast (AA).
    Awaryjne wyłączenie: usuń ten jeden blok <style id="eyl-glass-theme">. */
-:root{--g-fill:rgba(255,255,255,.58);--g-fill2:rgba(255,255,255,.42);--g-line:rgba(255,255,255,.78);--g-sh:0 10px 30px rgba(26,35,64,.09);
-  --g-hi:inset 0 1px 0 rgba(255,255,255,.9);--g-blur:blur(16px) saturate(1.5);--g-ease:cubic-bezier(.22,1,.36,1);--g-spring:cubic-bezier(.3,1.4,.5,1)}
-.phone{background:#eef0f6}
-.phone::before{content:"";position:absolute;inset:-12%;z-index:0;pointer-events:none;
-  background:
-    radial-gradient(46% 32% at 12% 8%,rgba(240,146,77,.55),transparent 72%),
-    radial-gradient(48% 40% at 100% 28%,rgba(84,112,226,.50),transparent 72%),
-    radial-gradient(62% 44% at 20% 100%,rgba(104,152,236,.55),transparent 72%),
-    radial-gradient(42% 30% at 90% 92%,rgba(240,146,77,.34),transparent 72%),
-    linear-gradient(180deg,#f1eeea,#e4e9f5);
-  animation:eyl-drift 26s ease-in-out infinite alternate}
-@keyframes eyl-drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(-3%,2.5%,0) scale(1.07)}}
+:root{--g-fill:rgba(255,255,255,.9);--g-fill2:rgba(255,255,255,.7);--g-line:rgba(26,35,64,.09);--g-sh:0 4px 14px rgba(26,35,64,.06);
+  --g-hi:inset 0 1px 0 rgba(255,255,255,.9);--g-blur:blur(10px);--g-ease:cubic-bezier(.22,1,.36,1);--g-spring:cubic-bezier(.3,1.4,.5,1)}
+.phone{background:var(--paper)}
 .app{z-index:1}
-.topbar{background:linear-gradient(to bottom,rgba(255,255,255,.5),rgba(255,255,255,0));backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.topbar{background:transparent}
 .avatar{background:linear-gradient(145deg,#2a3a68,#141c38);box-shadow:0 6px 16px rgba(26,35,64,.28),inset 0 1px 0 rgba(255,255,255,.22)}
 
 /* powierzchnie */
@@ -8776,13 +8767,11 @@ window.eylPagedFetch = async function(makeQuery, opts){
 #lex-board-backdrop{background:rgba(26,35,64,.22);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 
 /* pełnoekranowe tryby — przez nie nadal prześwituje tło */
-.immersive{background:linear-gradient(180deg,rgba(244,241,237,.76),rgba(228,233,246,.8))!important;-webkit-backdrop-filter:blur(26px) saturate(1.4);backdrop-filter:blur(26px) saturate(1.4)}
-.immersive::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
-  background:radial-gradient(50% 30% at 90% 0%,rgba(240,146,77,.4),transparent 70%),radial-gradient(60% 40% at 6% 100%,rgba(100,146,236,.42),transparent 70%)}
+.immersive{background:var(--paper)!important}
 .immersive>*{position:relative;z-index:1}
 
 /* fiszka — najbardziej "przezroczysta" rzecz w aplikacji */
-.face{background:linear-gradient(160deg,rgba(255,255,255,.74),rgba(255,255,255,.4))!important;border:1px solid var(--g-line);
+.face{background:#fff!important;border:1px solid var(--g-line);
   -webkit-backdrop-filter:blur(22px) saturate(1.6);backdrop-filter:blur(22px) saturate(1.6);
   box-shadow:0 28px 60px rgba(26,35,64,.14),0 2px 0 rgba(255,255,255,.7) inset;
   transition:opacity .32s var(--g-ease),transform .5s var(--g-ease)}
@@ -8822,12 +8811,33 @@ window.eylPagedFetch = async function(makeQuery, opts){
 .login>*{animation:eyl-screen .6s var(--g-ease) backwards}
 .login>:nth-child(2){animation-delay:.05s}.login>:nth-child(3){animation-delay:.1s}.login>:nth-child(4){animation-delay:.15s}.login>:nth-child(5){animation-delay:.2s}.login>:nth-child(6){animation-delay:.25s}.login>:nth-child(7){animation-delay:.3s}
 
+
+/* stany zaznaczone/semantyczne — oryginalne kolory (ciemne tło = biały tekst), szkło ich nie nadpisuje */
+.opt.sel{background:#fffaf6!important;border:2px solid var(--orange)}
+.lbw.rev{background:#fffaf6!important;border-color:rgba(201,106,42,.28)}
+.nsc-opt.on{background:#fffaf6!important;border-color:rgba(201,106,42,.4)}
+.day.due{background:#fffaf6!important;border-color:#efd9c3}
+.big.due-active,.action.primary,.resume{background:#fffaf6!important;border-color:rgba(201,106,42,.4)}
+.lexx-opt.sel{background:#f2f4f8!important;border-color:var(--navy)}
+.lexx-opt.ok{background:var(--success-bg,#e4f3ec)!important;border-color:var(--success);color:var(--success)}
+.lexx-opt.bad{background:#f7e7e3!important;border-color:var(--error);color:var(--error)}
+.lexx-tile.placed{background:var(--navy)!important;color:#fff!important;border-color:var(--navy)}
+.eyl-tile.done,.eyl-cat.done{background:#eef5e6!important;border-color:#cfe3bf}
+.eyl-chip.done{background:#eef5e6!important;border-color:#cfe3bf;color:#2f6b2f}
+.eyl-chip.on{background:var(--orange-btn)!important;border-color:var(--orange-btn);color:#fff!important}
+.eyl-chip.done.on{background:#2f6b2f!important;border-color:#2f6b2f;color:#fff!important}
+.ns-chip.on,.nsc-chip.on{background:var(--navy)!important;border-color:var(--navy);color:#fff!important}
+.nsc-chip.over{background:var(--orange-btn)!important;border-color:var(--orange-btn)!important;color:#fff!important}
+.action.know{background:#eef5e6!important;border:.5px solid #cfe3bf}
+.ecj-tab.sel{background:#fff6ef!important;border-color:var(--orange,#c96a2a);color:#a8531b}
+/* logo: czcionka marki + bezpieczny fallback */
+.brand .wm,.login h1{font-family:'DM Sans',Inter,system-ui,-apple-system,'Segoe UI',sans-serif}
 /* urządzenia bez blura (stare WebView) — gęstsze tło zamiast szkła */
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   :root{--g-fill:rgba(255,255,255,.92)}
-  .face{background:#fff!important}.immersive{background:#f6f5f2!important}
+  .face{background:#fff!important}
   #lex-board-sheet,#set-preview-sheet,#nsc-sheet,#eyl-conj-sheet{background:#fff!important}}
-@media (prefers-reduced-motion:reduce){.phone::before,.login .mk,.login>*,.screen,.immersive.active{animation:none!important}
+@media (prefers-reduced-motion:reduce){.login .mk,.login>*,.screen,.immersive.active{animation:none!important}
   .face,.btn,.nav-arrow,.speak,.rz-bar i,.lex-portionbar i{transition:none!important}}
 </style>
 </body>
