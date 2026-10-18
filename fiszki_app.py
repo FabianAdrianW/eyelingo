@@ -1061,7 +1061,7 @@ UI_BLUR = True            # prawdziwe rozmycie tła pod oknami (tylko Windows)
 _GLASS_RADIUS = 26
 
 G_INK    = QColor(238, 242, 255)
-G_DIM    = QColor(238, 242, 255, 148)
+G_DIM    = QColor(238, 242, 255, 186)
 G_ACC    = QColor(224, 128, 58)
 G_ACC_HI = QColor(240, 146, 77)
 G_ACC_LO = QColor(216, 116, 46)
@@ -1209,8 +1209,8 @@ class GlassButton(QPushButton):
     """Przycisk rysowany ręcznie: płynna zmiana jasności na hover, uniesienie o 1 px,
     sprężyste wciśnięcie (skala), wejście z lekkim przesunięciem. Rodzaje:
     tile · chip · seg · ghost · ico · cta · quiet."""
-    _BASE = {"tile": 18, "chip": 20, "seg": 0, "ghost": 18, "ico": 18, "cta": 0, "quiet": 0}
-    _HOVR = {"tile": 41, "chip": 44, "seg": 22, "ghost": 38, "ico": 41, "cta": 0, "quiet": 0}
+    _BASE = {"tile": 34, "chip": 40, "seg": 0, "ghost": 36, "ico": 36, "cta": 0, "quiet": 0}
+    _HOVR = {"tile": 66, "chip": 72, "seg": 44, "ghost": 66, "ico": 66, "cta": 0, "quiet": 0}
 
     def __init__(self, text="", kind="tile", radius=14, parent=None):
         super().__init__(text, parent)
@@ -1310,7 +1310,7 @@ class GlassButton(QPushButton):
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
         W, H = float(self.width()), float(self.height())
         k = self.kind
-        p.setOpacity(self._op * (1.0 if self.isEnabled() else 0.45))
+        p.setOpacity(self._op * (1.0 if self.isEnabled() else (0.72 if self.kind == 'cta' else 0.5)))
         lift = -1.0 * self._hv if k in ("tile", "chip", "ghost", "cta") else 0.0
         sc = 1.0 - 0.04 * self._pr
         p.translate(W / 2, H / 2 + lift + (1.0 - self._op) * 8)
@@ -1345,8 +1345,13 @@ class GlassButton(QPushButton):
             if a > 0.5:
                 p.setBrush(QColor(255, 255, 255, int(a)))
                 p.drawRoundedRect(r, rad, rad)
+                if k != "seg":      # cienka krawędź — przycisk jest czytelny nawet na jasnym tle
+                    p.setBrush(Qt.BrushStyle.NoBrush)
+                    p.setPen(QPen(QColor(255, 255, 255, int(40 + 50 * self._hv)), 1))
+                    p.drawRoundedRect(r, rad, rad)
+                    p.setPen(Qt.PenStyle.NoPen)
             if self._lock:
-                txt_col = QColor(238, 242, 255, 115)
+                txt_col = QColor(238, 242, 255, 150)
         # treść
         p.setFont(_gfont(self._px, self._wt))
         p.setPen(txt_col)
@@ -1493,10 +1498,31 @@ class _DraggableWindow(QWidget):
         super().mouseReleaseEvent(e)
 
     ANIM_DY = 0   # >0: okno wynurza się z dołu o tyle px (np. panel traya)
+    HAS_CLOSE = False   # True: okno ma własny przycisk wyjścia (albo nie wolno go zamknąć)
+
+    def _ensure_close_x(self):
+        """Każde okno ma ZAWSZE widoczny przycisk zamknięcia w prawym górnym rogu —
+        użytkownik nigdy nie utknie w oknie bez wyjścia."""
+        if self.HAS_CLOSE:
+            return
+        b = getattr(self, "_auto_x", None)
+        if b is None:
+            b = GlassButton("", "ico", parent=self)
+            b.setGlyph("close"); b.setToolTip("Zamknij (Esc)")
+            b.clicked.connect(self.fade_hide)
+            self._auto_x = b
+        b.move(self.width() - 34 - 14, 12)
+        b.show(); b.raise_()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if getattr(self, "_auto_x", None) is not None:
+            self._ensure_close_x()
 
     def showEvent(self, e):
         super().showEvent(e)
         try:
+            self._ensure_close_x()
             _pop_in(self, self.ANIM_DY)
         except Exception as ex:
             print(f"[motion] {ex}")
@@ -1556,7 +1582,7 @@ def _paint_bg(widget, _):
     rad = _GLASS_RADIUS
     blur = bool(getattr(widget, "_blur_ok", False))
     p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(18, 26, 52, 150 if blur else 226))
+    p.setBrush(QColor(14, 21, 44, 208 if blur else 238))
     p.drawRoundedRect(r, rad, rad)
     p.setBrush(Qt.BrushStyle.NoBrush)
     p.setPen(QPen(QColor(255, 255, 255, 44), 1))
@@ -1807,6 +1833,7 @@ class KnownWordsWorker(QThread):
                         .in_("flashcard_id", card_ids)
                         .gte("repetitions", MASTER_REPS_MIN)
                         .gte("interval_days", MASTER_INTERVAL_MIN).execute())
+                _KNOWN_CACHE[(self.lang, self.level, self.cat)] = resp.count or 0
                 self.done.emit(resp.count or 0)
                 return
             except Exception as e:
@@ -2153,6 +2180,12 @@ class OnboardingWindow(_DraggableWindow):
             self.hide()
             self.finished.emit()
 
+    def fade_hide(self):
+        """„✕” / Esc = pomiń onboarding i przejdź do logowania (zawsze jest wyjście)."""
+        self._mark_done()
+        self.hide()
+        self.finished.emit()
+
     def _mark_done(self):
         try:
             import json as _j
@@ -2182,6 +2215,7 @@ class OnboardingWindow(_DraggableWindow):
 
 
 class LoginWindow(_DraggableWindow):
+    HAS_CLOSE = True   # logowanie ma własny przycisk „Zamknij aplikację”
     logged_in = pyqtSignal(object)
 
     def __init__(self):
@@ -3605,7 +3639,7 @@ class _SegBox(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(255, 255, 255, 18))
+        p.setBrush(QColor(255, 255, 255, 30))
         p.drawRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), 16, 16)
 
 
@@ -3616,11 +3650,13 @@ class PickerWindow(_DraggableWindow):
     open_purchase = pyqtSignal(str)
     ANIM_DY = 14
     DRAG_BAR_HEIGHT = 64
+    HAS_CLOSE = True
 
-    def __init__(self, on_selected, on_action):
+    def __init__(self, on_selected, on_action, on_back=None):
         super().__init__()
         self.on_selected = on_selected
         self.on_action = on_action
+        self.on_back = on_back
         self.lang, self.lvl = "en", "A1"
         self._is_premium = False
         self._bought = []
@@ -3673,8 +3709,8 @@ class PickerWindow(_DraggableWindow):
     # ── budowa ──
     def _label(self, text, top=0):
         l = QLabel(text)
-        l.setFont(_gfont(12))
-        l.setStyleSheet("color:rgba(238,242,255,148);background:transparent;")
+        l.setFont(_gfont(13))
+        l.setStyleSheet("color:rgba(238,242,255,186);background:transparent;")
         if top:
             l.setContentsMargins(0, top, 0, 0)
         return l
@@ -3776,6 +3812,21 @@ class PickerWindow(_DraggableWindow):
         row.addWidget(b1, 1); row.addWidget(b2, 1)
         bl.addLayout(row)
         bl.addStretch(1)
+
+        # Stała stopka (poza przewijaniem): wyjście zawsze pod ręką
+        foot = QWidget(); foot.setFixedHeight(64); foot.setStyleSheet("background:transparent;")
+        fl2 = QHBoxLayout(foot); fl2.setContentsMargins(24, 10, 24, 14); fl2.setSpacing(8)
+        bb = GlassButton("← Wróć", "ghost"); bb.setFixedHeight(40)
+        bb.clicked.connect(self._go_back)
+        bc = GlassButton("Zamknij", "ghost"); bc.setFixedHeight(40)
+        bc.clicked.connect(self.fade_hide)
+        fl2.addWidget(bb, 1); fl2.addWidget(bc, 1)
+        lay.addWidget(foot)
+
+    def _go_back(self):
+        self.fade_hide()
+        if self.on_back:
+            self.on_back()
 
     # ── odświeżanie sekcji ──
     def _level_unlocked(self, code):
@@ -3981,208 +4032,6 @@ class LoadSetCardsWorker(QThread):
 
 
 
-class LoadPublicSetsWorker(QThread):
-    done  = pyqtSignal(list)
-    error = pyqtSignal(str)
-
-    def __init__(self, query=""):
-        super().__init__()
-        self.finished.connect(self.deleteLater)
-        self.query = query
-
-    def run(self):
-        try:
-            q = supabase.table("user_sets").select(
-                "id,name,likes_count,user_id,user_set_cards(word,translation)"
-            ).eq("is_public", True).order("likes_count", desc=True).limit(50)
-            if self.query:
-                q = q.ilike("name", f"%{self.query}%")
-            resp = q.execute()
-            self.done.emit(resp.data or [])
-        except Exception as e:
-            self.error.emit(str(e))
-
-
-class ImportSetWorker(QThread):
-    done  = pyqtSignal(str)   # nazwa zestawu
-    error = pyqtSignal(str)
-
-    def __init__(self, set_id, set_name, cards):
-        super().__init__()
-        self.finished.connect(self.deleteLater)
-        self.set_id   = set_id
-        self.set_name = set_name
-        self.cards    = cards
-
-    def run(self):
-        try:
-            uid = current_uid()
-            # Sprawdź czy już zaimportowany
-            existing = supabase.table("user_sets").select("id").eq("user_id", uid).eq("name", self.set_name).execute()
-            if existing.data:
-                self.done.emit(self.set_name)
-                return
-            resp = supabase.table("user_sets").insert({
-                "user_id": uid,
-                "name": self.set_name,
-                "is_public": False,
-            }).execute()
-            new_id = resp.data[0]["id"]
-            rows = [{"set_id": new_id, "word": c["word"],
-                     "translation": c["translation"], "sort_order": i}
-                    for i, c in enumerate(self.cards)]
-            supabase.table("user_set_cards").insert(rows).execute()
-            self.done.emit(self.set_name)
-        except Exception as e:
-            self.error.emit(str(e))
-
-
-class PublicSetsWindow(_DraggableWindow):
-    """Okno przeglądania i importu publicznych zestawów."""
-    set_imported = pyqtSignal()
-
-    def __init__(self):
-        super().__init__()
-        self._is_premium = False
-        _styled_window(self)
-        self.setFixedSize(440, 560)
-        self._build()
-        _right_third_pos(self)
-
-    def set_premium(self, v): self._is_premium = v
-
-    def _build(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("Zestawy społeczności")
-        t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        t.setStyleSheet("color:white;background:transparent;")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl.addWidget(t)
-        lay.addWidget(hdr)
-
-        inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        il = QVBoxLayout(inner); il.setContentsMargins(20, 10, 20, 16); il.setSpacing(8)
-        lay.addWidget(inner, 1)
-
-        # Wyszukiwarka
-        self.inp_search = QLineEdit()
-        self.inp_search.setPlaceholderText("Szukaj zestawów...")
-        self.inp_search.setMinimumHeight(34)
-        self.inp_search.setStyleSheet(INPUT_STYLE)
-        self.inp_search.textChanged.connect(self._on_search)
-        il.addWidget(self.inp_search)
-
-        # Lista zestawów
-        from PyQt6.QtWidgets import QScrollArea
-        sa = QScrollArea(); sa.setWidgetResizable(True)
-        sa.setStyleSheet("""
-            QScrollArea{background:transparent;border:none;}
-            QScrollBar:vertical{background:rgba(255,255,255,.04);width:5px;border-radius:2px;}
-            QScrollBar::handle:vertical{background:rgba(255,255,255,.22);border-radius:2px;}
-            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}
-        """)
-        self._list_w = QWidget(); self._list_w.setStyleSheet("background:transparent;")
-        self._list_l = QVBoxLayout(self._list_w); self._list_l.setContentsMargins(0,0,4,0); self._list_l.setSpacing(6)
-        self._list_l.addStretch()
-        sa.setWidget(self._list_w)
-        il.addWidget(sa, 1)
-
-        self.lbl_status = QLabel("Ładowanie...")
-        self.lbl_status.setFont(QFont("Segoe UI", 9))
-        self.lbl_status.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
-        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        il.addWidget(self.lbl_status)
-
-        il.addWidget(_back_btn("← Wróć do moich zestawów", self._go_back_to_my_sets))
-        il.addWidget(_close_btn(self))
-
-    def _go_back_to_my_sets(self):
-        self.hide()
-        # Sygnał do TrayApp żeby pokazać MySetsPicker
-        if hasattr(self, '_on_back_callback') and self._on_back_callback:
-            self._on_back_callback()
-
-    def set_back_callback(self, cb):
-        self._on_back_callback = cb
-
-    def show_and_load(self):
-        self.show(); self.raise_(); self.activateWindow()
-        self._load()
-
-    def _load(self, query=""):
-        self.lbl_status.setText("Ładowanie...")
-        self._clear_list()
-        self._worker = LoadPublicSetsWorker(query)
-        self._worker.done.connect(self._on_loaded)
-        self._worker.error.connect(lambda e: self.lbl_status.setText(f"Błąd: {e}"))
-        self._worker.start()
-
-    def _on_search(self, text):
-        QTimer.singleShot(400, lambda: self._load(text.strip()))
-
-    def _clear_list(self):
-        while self._list_l.count() > 1:
-            item = self._list_l.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-
-    def _on_loaded(self, sets):
-        self._clear_list()
-        if not sets:
-            self.lbl_status.setText("Brak zestawów.")
-            return
-        self.lbl_status.setText(f"{len(sets)} zestaw(ów)")
-        for s in sets:
-            self._add_row(s)
-
-    def _add_row(self, s):
-        row = QWidget(); row.setStyleSheet("background:transparent;")
-        rl = QHBoxLayout(row); rl.setContentsMargins(0,0,0,0); rl.setSpacing(6)
-
-        info = QVBoxLayout(); info.setSpacing(1)
-        lname = QLabel(f"{s['name']}")
-        lname.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        lname.setStyleSheet("color:white;background:transparent;")
-        cards = s.get("user_set_cards", [])
-        lmeta = QLabel(f"{s.get('likes_count',0)} · {len(cards)} fiszek")
-        lmeta.setFont(QFont("Segoe UI", 9))
-        lmeta.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
-        info.addWidget(lname); info.addWidget(lmeta)
-
-        btn = QPushButton("Importuj")
-        btn.setFixedWidth(90)
-        btn.setStyleSheet("""
-            QPushButton{background:rgba(30,32,60,160);color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);border-left:3px solid rgba(120,135,190,150);
-                border-radius:8px;padding:6px 10px;font-size:11px;}
-            QPushButton:hover{background:rgba(30,50,90,180);color:white;}
-            QPushButton:disabled{color:rgba(150,120,230,220);border-left-color:rgba(130,80,220,150);}
-        """)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        if not self._is_premium:
-            btn.setEnabled(False)
-            btn.setText("Premium")
-        else:
-            btn.clicked.connect(lambda _, sid=s["id"], sname=s["name"], sc=cards: self._import(sid, sname, sc, btn))
-
-        rl.addLayout(info, 1)
-        rl.addWidget(btn)
-        self._list_l.insertWidget(self._list_l.count()-1, row)
-
-    def _import(self, set_id, set_name, cards, btn):
-        btn.setEnabled(False); btn.setText("")
-        self._import_worker = ImportSetWorker(set_id, set_name, cards)
-        self._import_worker.done.connect(lambda n: (btn.__setattr__('_done', True), btn.setText("Dodano"), self.set_imported.emit()))
-        self._import_worker.error.connect(lambda e: (btn.setEnabled(True), btn.setText("Importuj")))
-        self._import_worker.start()
-
-    def paintEvent(self, e):
-        _paint_bg(self, e)
 class CategoryViewWorker(QThread):
     done = pyqtSignal(int)  # łączna liczba widoków
 
@@ -4455,20 +4304,21 @@ class CustomSetWindow(_DraggableWindow):
 # OKNO WYBORU WŁASNEGO ZESTAWU
 # ──────────────────────────────────────────────────────
 class MySetsPicker(_DraggableWindow):
+    """Moje zestawy — lista własnych zestawów + „Stwórz nowy”. Zawsze widoczne wyjście."""
     set_picked = pyqtSignal(str, list)
 
     FREE_SET_LIMIT = 1
     FREE_CARD_LIMIT = 20
+    ANIM_DY = 14
 
     def __init__(self, on_back, on_create, on_browse_community=None):
         super().__init__()
         self.on_back   = on_back
         self.on_create = on_create
-        self.on_browse_community = on_browse_community
         self.sets      = []
         self._is_premium = False
         _styled_window(self)
-        self.setFixedSize(360, 460)
+        self.setFixedSize(420, 560)
         self._build()
         _right_third_pos(self)
 
@@ -4477,116 +4327,76 @@ class MySetsPicker(_DraggableWindow):
 
     def _build(self):
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(24, 20, 24, 20)
         lay.setSpacing(0)
 
-        # Pasek drag
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
         t = QLabel("Moje zestawy")
-        t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        t.setStyleSheet("color:white;background:transparent;")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl.addWidget(t)
-        lay.addWidget(hdr)
+        t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
+        lay.addWidget(t)
+        lay.addSpacing(4)
 
-        inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        self.lay = QVBoxLayout(inner)
-        self.lay.setContentsMargins(20, 10, 20, 16)
-        self.lay.setSpacing(8)
-        lay.addWidget(inner, 1)
-
-        # Info o limicie
         self.lbl_limit = QLabel("")
-        self.lbl_limit.setFont(QFont("Segoe UI", 9))
-        self.lbl_limit.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
-        self.lbl_limit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_limit.setFont(_gfont(13))
+        self.lbl_limit.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
         self.lbl_limit.setWordWrap(True)
-        self.lay.addWidget(self.lbl_limit)
+        lay.addWidget(self.lbl_limit)
+        lay.addSpacing(14)
 
-        sep = QWidget(); sep.setFixedHeight(1)
-        sep.setStyleSheet("background:rgba(210,220,255,18);")
-        self.lay.addWidget(sep)
-
-        self.lbl_status = QLabel("Ładowanie...")
-        self.lbl_status.setFont(QFont("Segoe UI", 9))
-        self.lbl_status.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
-        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lay.addWidget(self.lbl_status)
+        self.lbl_status = QLabel("Ładowanie…")
+        self.lbl_status.setFont(_gfont(13))
+        self.lbl_status.setStyleSheet("color:rgba(238,242,255,160);background:transparent;")
+        lay.addWidget(self.lbl_status)
+        lay.addSpacing(8)
 
         _sa = QScrollArea(); _sa.setWidgetResizable(True)
+        _sa.setFrameShape(QScrollArea.Shape.NoFrame)
         _sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         _sa.setStyleSheet(
-            "QScrollArea { background: rgba(20,20,50,120); border: 1px solid rgba(120,135,190,70); border-radius: 10px; }"
-            "QScrollBar:vertical { background: rgba(255,255,255,0.05); width: 6px; border-radius: 3px; }"
-            "QScrollBar::handle:vertical { background: rgba(255,255,255,0.25); border-radius: 3px; }"
-            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
-        _sets_w = QWidget(); _sets_w.setStyleSheet("background:transparent;")
-        self.sets_lay = QVBoxLayout(_sets_w)
-        self.sets_lay.setContentsMargins(8, 8, 8, 8)
-        self.sets_lay.setSpacing(6)
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}"
+            "QScrollBar:vertical{width:6px;background:transparent;margin:2px;}"
+            "QScrollBar::handle:vertical{background:rgba(255,255,255,70);border-radius:3px;min-height:36px;}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+            "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}")
+        _w = QWidget(); _w.setStyleSheet("background:transparent;")
+        self.sets_lay = QVBoxLayout(_w)
+        self.sets_lay.setContentsMargins(0, 0, 8, 0)
+        self.sets_lay.setSpacing(8)
         self.sets_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
-        _sa.setWidget(_sets_w)
-        self.lay.addWidget(_sa, 1)
+        _sa.setWidget(_w)
+        lay.addWidget(_sa, 1)
+        lay.addSpacing(12)
 
-        # Przycisk nowego zestawu
-        self.btn_new = QPushButton("Stwórz nowy zestaw")
-        self.btn_new.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(120,135,190,150);
-                border-radius:10px; padding:9px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-            QPushButton:disabled { color:rgba(120,125,145,120);
-                border-left:3px solid rgba(80,80,100,60); }
-        """)
-        self.btn_new.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_new = GlassButton("Stwórz nowy zestaw", "cta", radius=16)
+        self.btn_new.setFixedHeight(50)
         self.btn_new.clicked.connect(self._on_create_clicked)
-        self.lay.addWidget(self.btn_new)
+        lay.addWidget(self.btn_new)
 
-        # Premium info (ukryty domyślnie)
         self.lbl_premium = QLabel("Subskrypcja odblokuje nieograniczone zestawy")
-        self.lbl_premium.setFont(QFont("Segoe UI", 9))
-        self.lbl_premium.setStyleSheet("color:rgba(150,120,230,200);background:transparent;")
+        self.lbl_premium.setFont(_gfont(12))
+        self.lbl_premium.setStyleSheet("color:%s;background:transparent;" % G_SOFT)
         self.lbl_premium.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_premium.setWordWrap(True)
         self.lbl_premium.hide()
-        self.lay.addWidget(self.lbl_premium)
+        lay.addSpacing(8)
+        lay.addWidget(self.lbl_premium)
 
-        # Przycisk lokalnego przeglądania zestawów w programie
-        btn_browse_local = QPushButton("Przeglądaj zestawy w programie")
-        btn_browse_local.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(120,135,190,150);
-                border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-        """)
-        btn_browse_local.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_browse_local.clicked.connect(self._on_browse_community)
-        self.lay.addWidget(btn_browse_local)
-
-        # Przycisk przeglądania na stronie www
-        btn_browse_www = QPushButton("Materiały na stronie eyelingo")
-        btn_browse_www.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(90,100,140,180);
-                border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(40,44,72,180); color:white; }
-        """)
-        btn_browse_www.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_browse_www.clicked.connect(lambda: webbrowser.open(f"{BASE}?page=community"))
-        self.lay.addWidget(btn_browse_www)
-
-        self.lay.addWidget(_back_btn("← Wróć do języków", self._go_back))
-        self.lay.addWidget(_close_btn(self))
+        lay.addSpacing(12)
+        fr = QHBoxLayout(); fr.setSpacing(8)
+        b_back = GlassButton("← Wróć", "ghost"); b_back.setFixedHeight(42)
+        b_back.clicked.connect(self._go_back)
+        b_close = GlassButton("Zamknij", "ghost"); b_close.setFixedHeight(42)
+        b_close.clicked.connect(self.fade_hide)
+        fr.addWidget(b_back, 1); fr.addWidget(b_close, 1)
+        lay.addLayout(fr)
 
     def load_sets(self):
-        self.lbl_status.setText("Ładowanie...")
+        self.lbl_status.setText("Ładowanie…")
         for i in reversed(range(self.sets_lay.count())):
             w = self.sets_lay.itemAt(i).widget()
-            if w: w.deleteLater()
+            if w:
+                w.deleteLater()
         self._loader = LoadSetsWorker()
         self._loader.done.connect(self._on_sets_loaded)
         self._loader.error.connect(lambda e: self.lbl_status.setText(f"Błąd: {e}"))
@@ -4596,127 +4406,31 @@ class MySetsPicker(_DraggableWindow):
         self.sets = sets
         count = len(sets)
         at_limit = not self._is_premium and count >= self.FREE_SET_LIMIT
-
-        if not sets:
-            self.lbl_status.setText("")
-            if not self._is_premium:
-                self.lbl_limit.setText(f"Możesz stworzyć 1 darmowy zestaw ({self.FREE_CARD_LIMIT} fiszek)")
-            else:
-                self.lbl_limit.setText("Nieograniczone zestawy ")
-        else:
-            self.lbl_status.setText(f"Twoje zestawy ({count}):")
-            if not self._is_premium:
-                self.lbl_limit.setText(f"Plan darmowy: {count}/{self.FREE_SET_LIMIT} zestaw")
-            else:
-                self.lbl_limit.setText(f"Plan Premium: {count} zestaw(ów) ")
-
-        for s in sets:
-            row = QWidget(); row.setStyleSheet("background:transparent;")
-            rl = QHBoxLayout(row); rl.setContentsMargins(0,0,0,0); rl.setSpacing(6)
-
-            btn = QPushButton(f"{s['name']}")
-            btn.setStyleSheet("""
-                QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                    border:1px solid rgba(80,85,120,80);
-                    border-left:3px solid rgba(120,135,190,150);
-                    border-radius:10px; padding:9px 16px; font-size:12px; text-align:left; }
-                QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-            """)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(lambda _, sid=s["id"], sname=s.get("name","Zestaw"): self._pick_set(sid, sname))
-
-            # Przełącznik publiczny/prywatny
-            is_public = s.get("is_public", False)
-            btn_pub = QPushButton("Publiczny" if is_public else "Prywatny")
-            btn_pub.setFixedSize(34, 34)
-            btn_pub.setToolTip("Publiczny" if is_public else "Prywatny")
-            btn_pub.setStyleSheet(f"""
-                QPushButton {{ background:{'rgba(30,100,50,160)' if is_public else 'rgba(60,40,40,160)'};
-                    border:1px solid {'rgba(60,200,100,100)' if is_public else 'rgba(120,60,60,100)'};
-                    border-radius:8px; font-size:14px; }}
-                QPushButton:hover {{ background:rgba(60,60,90,200); }}
-            """)
-            btn_pub.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_pub.clicked.connect(lambda _, sid=s["id"], pub=is_public, b=btn_pub: self._toggle_public(sid, pub, b))
-
-            rl.addWidget(btn, 1)
-            rl.addWidget(btn_pub)
-            self.sets_lay.addWidget(row)
-
-        if at_limit:
-            self.btn_new.setEnabled(False)
-            self.btn_new.setText("Stwórz nowy zestaw  ·  limit osiągnięty")
-            self.lbl_premium.show()
-        else:
-            self.btn_new.setEnabled(True)
-            self.btn_new.setText("Stwórz nowy zestaw")
-            self.lbl_premium.setVisible(not self._is_premium)
-
-    def _toggle_public(self, set_id, currently_public, btn):
-        new_public = not currently_public
-        try:
-            supabase.from_("user_sets").update({"is_public": new_public}).eq("id", set_id).execute()
-            btn.setText("Publiczny" if new_public else "Prywatny")
-            btn.setToolTip("Publiczny" if new_public else "Prywatny")
-            btn.setStyleSheet(f"""
-                QPushButton {{ background:{'rgba(30,100,50,160)' if new_public else 'rgba(60,40,40,160)'};
-                    border:1px solid {'rgba(60,200,100,100)' if new_public else 'rgba(120,60,60,100)'};
-                    border-radius:8px; font-size:14px; }}
-                QPushButton:hover {{ background:rgba(60,60,90,200); }}
-            """)
-            # Aktualizuj referencję dla następnego kliknięcia
-            btn.clicked.disconnect()
-            btn.clicked.connect(lambda _, sid=set_id, pub=new_public, b=btn: self._toggle_public(sid, pub, b))
-        except Exception as e:
-            print(f"[TOGGLE PUBLIC] {e}")
-
-    def _on_browse_community(self):
-        if self.on_browse_community:
-            self.on_browse_community()
-
-    def _on_create_clicked(self):
-        count = len(self.sets)
-        if not self._is_premium and count >= self.FREE_SET_LIMIT:
-            self.lbl_premium.show()
-            return
-        self.on_create()
-        count = len(self.sets)
-        if not self._is_premium and count >= self.FREE_SET_LIMIT:
-            self.lbl_premium.show()
-            return
-        self.on_create()
-
-    def load_sets(self):
-        self.lbl_status.setText("Ładowanie...")
-        # wyczyść stare przyciski
-        for i in reversed(range(self.sets_lay.count())):
-            w = self.sets_lay.itemAt(i).widget()
-            if w:
-                w.deleteLater()
-
-        self._loader = LoadSetsWorker()
-        self._loader.done.connect(self._on_sets_loaded)
-        self._loader.error.connect(lambda e: self.lbl_status.setText(f"Błąd: {e}"))
-        self._loader.start()
-
-    def _on_sets_loaded(self, sets):
-        self.sets = sets
         if not sets:
             self.lbl_status.setText("Nie masz jeszcze żadnych zestawów.")
-            return
-        self.lbl_status.setText(f"Masz {len(sets)} zestaw(ów):")
-        for s in sets:
-            btn = QPushButton(f"{s['name']}")
-            btn.setStyleSheet("""
-                QPushButton { background:rgba(30,40,68,190); color:white;
-                    border:1px solid rgba(96,110,150,120);
-                    border-radius:10px; padding:9px; font-size:12px;
-                    text-align:left; }
-                QPushButton:hover { background:rgba(42,54,90,220); border-color:rgba(201,106,42,235); }
-            """)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(lambda _, sid=s["id"], sname=s.get("name","Zestaw"): self._pick_set(sid, sname))
+            self.lbl_limit.setText(
+                f"Możesz stworzyć 1 darmowy zestaw ({self.FREE_CARD_LIMIT} fiszek)"
+                if not self._is_premium else "Plan PRO: nieograniczone zestawy")
+        else:
+            self.lbl_status.setText(f"Twoje zestawy ({count})")
+            self.lbl_limit.setText(
+                f"Plan darmowy: {count}/{self.FREE_SET_LIMIT} zestaw"
+                if not self._is_premium else f"Plan PRO: {count} zestawów")
+        for i, s in enumerate(sets):
+            btn = GlassButton(f"{s['name']}", "tile", radius=14)
+            btn.setFixedHeight(48); btn.setTrail("play")
+            btn.clicked.connect(lambda _, sid=s["id"], sname=s.get("name", "Zestaw"): self._pick_set(sid, sname))
             self.sets_lay.addWidget(btn)
+            btn.appear(min(i, 8) * 35)
+        self.btn_new.setEnabled(not at_limit)
+        self.btn_new.setText("Stwórz nowy zestaw" + ("  ·  limit osiągnięty" if at_limit else ""))
+        self.lbl_premium.setVisible(at_limit)
+
+    def _on_create_clicked(self):
+        if not self._is_premium and len(self.sets) >= self.FREE_SET_LIMIT:
+            self.lbl_premium.show()
+            return
+        self.on_create()
 
     def _pick_set(self, set_id, set_name="Mój zestaw"):
         self._current_set_name = set_name
@@ -5651,6 +5365,7 @@ class SegmentBar(QWidget):
 
 class TestWindow(_DraggableWindow):
     test_done = pyqtSignal(list)
+    HAS_CLOSE = True
 
     def __init__(self):
         super().__init__()
@@ -5679,7 +5394,7 @@ class TestWindow(_DraggableWindow):
         self.lbl_title.setStyleSheet("color:#eef2ff;background:transparent;")
         self.lbl_progress = QLabel("")
         self.lbl_progress.setFont(_gfont(13))
-        self.lbl_progress.setStyleSheet("color:rgba(238,242,255,148);background:transparent;")
+        self.lbl_progress.setStyleSheet("color:rgba(238,242,255,186);background:transparent;")
         hl.addWidget(self.lbl_title); hl.addWidget(self.lbl_progress); hl.addStretch(1)
         self.btn_x = GlassButton("", "ico"); self.btn_x.setGlyph("close"); self.btn_x.setToolTip("Zamknij (Esc)")
         self.btn_x.clicked.connect(self.fade_hide)
@@ -5701,7 +5416,7 @@ class TestWindow(_DraggableWindow):
 
         self.lbl_prompt = QLabel("Przet\u0142umacz")
         self.lbl_prompt.setFont(_gfont(13))
-        self.lbl_prompt.setStyleSheet("color:rgba(238,242,255,148);background:transparent;")
+        self.lbl_prompt.setStyleSheet("color:rgba(238,242,255,186);background:transparent;")
         self.lbl_prompt.setAlignment(Qt.AlignmentFlag.AlignCenter)
         inner_lay.addWidget(self.lbl_prompt)
 
@@ -6368,6 +6083,11 @@ def make_tray_icon() -> QIcon:
 # ──────────────────────────────────────────────────────
 # D3 — TRAY WINDOW (HUB)
 # ──────────────────────────────────────────────────────
+_DUE_CAP = 100          # panel pokazuje „100+” — pobieranie 500 pełnych kart było powodem wolnego ładowania
+_DUE_CACHE = {}         # lang -> ostatnia znana liczba (pokazywana natychmiast)
+_KNOWN_CACHE = {}       # (lang, level, cat) -> ostatnia znana liczba
+
+
 class DueCountWorker(QThread):
     """Zlicza karty dojrzałe do powtórki (PULL) — realna liczba, nie streak."""
     done = pyqtSignal(int)
@@ -6378,8 +6098,10 @@ class DueCountWorker(QThread):
     def run(self):
         try:
             resp = supabase.rpc("get_due_cards_all",
-                                {"p_lang": self.lang, "p_limit": 500}).execute()
-            self.done.emit(len(resp.data or []))
+                                {"p_lang": self.lang, "p_limit": _DUE_CAP}).execute()
+            n = len(resp.data or [])
+            _DUE_CACHE[self.lang] = n
+            self.done.emit(n)
         except Exception as e:
             print(f"[DUE] {e}"); self.done.emit(0)
 
@@ -6684,6 +6406,7 @@ class HubWindow(_DraggableWindow):
     """D3 — trwałe okno traya. Lewy klik na ikonę traya otwiera/zamyka je.
     Menu kontekstowe (prawy klik) zostaje jako szybki dostęp."""
     ANIM_DY = 16
+    HAS_CLOSE = True
 
     def fade_hide(self):
         """Zamknięcie szybsze niż otwarcie (150 ms) — panel „odpływa”, nie znika skokiem."""
@@ -6732,7 +6455,7 @@ class HubWindow(_DraggableWindow):
     def _build(self):
         lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0)
         TXT = "color:#eef2ff;background:transparent;"
-        DIM = "color:rgba(238,242,255,148);background:transparent;"
+        DIM = "color:rgba(238,242,255,186);background:transparent;"
 
         # Zawartość aktywna (chowana na czas pauzy)
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
@@ -6850,7 +6573,7 @@ class HubWindow(_DraggableWindow):
         val = QLabel("–"); val.setFont(_gfont(24, QFont.Weight.DemiBold))
         val.setStyleSheet("color:#eef2ff;background:transparent;border:none;")
         lab = QLabel(label); lab.setFont(_gfont(11))
-        lab.setStyleSheet("color:rgba(238,242,255,148);background:transparent;border:none;")
+        lab.setStyleSheet("color:rgba(238,242,255,186);background:transparent;border:none;")
         cl.addWidget(val); cl.addWidget(lab)
         return val, w
 
@@ -6929,17 +6652,44 @@ class HubWindow(_DraggableWindow):
         ov = self.app_ref.overlay
         self.cell_sess.setText(str(getattr(ov, "_cards_shown", 0)))
         if ov.lang and ov.cat and not getattr(ov, "_is_custom", False):
-            self._kw = KnownWordsWorker(ov.lang, ov.level, ov.cat)
-            self._kw.done.connect(lambda n: self._count_to(self.cell_known, n))
-            self._kw.start()
+            ck = (ov.lang, ov.level, ov.cat)
+            if ck in _KNOWN_CACHE:
+                self.cell_known.setText(str(_KNOWN_CACHE[ck]))      # od razu, bez czekania na sieć
+            if not (getattr(self, "_kw", None) and self._kw.isRunning()):
+                self._kw = KnownWordsWorker(ov.lang, ov.level, ov.cat)
+                self._kw.done.connect(lambda n: self._count_to(self.cell_known, n))
+                self._kw.start()
         else:
             self.cell_known.setText("\u2013")
         if ov.lang:
-            self._dw = DueCountWorker(ov.lang)
-            self._dw.done.connect(lambda n: self._count_to(self.cell_due, n))
-            self._dw.start()
+            if ov.lang in _DUE_CACHE:
+                self.cell_due.setText(self._due_txt(_DUE_CACHE[ov.lang]))
+            if not (getattr(self, "_dw", None) and self._dw.isRunning()):
+                self._dw = DueCountWorker(ov.lang)
+                self._dw.done.connect(self._on_due)
+                self._dw.start()
         else:
             self.cell_due.setText("\u2013")
+
+    @staticmethod
+    def _due_txt(n):
+        return "%d+" % _DUE_CAP if n >= _DUE_CAP else str(n)
+
+    def _on_due(self, n):
+        if n >= _DUE_CAP:
+            self.cell_due.setText(self._due_txt(n))
+        else:
+            self._count_to(self.cell_due, n)
+
+    def prefetch(self):
+        """Rozgrzewka po zalogowaniu: liczby są gotowe, zanim ktoś otworzy panel."""
+        try:
+            ov = self.app_ref.overlay
+            if ov.lang:
+                if not (getattr(self, "_pre_dw", None) and self._pre_dw.isRunning()):
+                    self._pre_dw = DueCountWorker(ov.lang); self._pre_dw.start()
+        except Exception as ex:
+            print(f"[prefetch] {ex}")
 
     # ── akcje paska statusu ──
     def _toggle_pause(self):
@@ -7039,18 +6789,15 @@ class TrayApp:
         self.win_offer   = TestOfferWindow()
         self.win_offer.accepted.connect(self._start_test)
         self.win_offer.rejected.connect(lambda: None)
-        self.win_lang    = PickerWindow(self._on_cat, self._on_lang)
+        self.win_lang    = PickerWindow(self._on_cat, self._on_lang, self._toggle_hub_open)
         self.win_lang.open_purchase.connect(self._show_purchase)
         self.win_lvl     = LevelWindow(self._on_lvl, self._back_to_lang)
         self.win_lvl.open_purchase.connect(self._show_purchase)
         self.win_cat     = CategoryWindow(self._on_cat, self._back_to_lvl)
         self.win_purchase = PurchaseWindow()
         self.win_purchase.purchased.connect(self._on_purchase_done)
-        self.win_my_sets = MySetsPicker(self._show_lang, self._show_custom_create, self._show_public_sets)
+        self.win_my_sets = MySetsPicker(self._show_lang, self._show_custom_create)
         self.win_custom  = CustomSetWindow(self._show_my_sets)
-        self.win_public_sets = PublicSetsWindow()
-        self.win_public_sets.set_imported.connect(self._show_my_sets)
-        self.win_public_sets.set_back_callback(self._show_my_sets)
         self.win_custom.set_created.connect(self._on_custom_set_created)
         self.win_my_sets.set_picked.connect(self._on_custom_set_picked)
 
@@ -7080,6 +6827,10 @@ class TrayApp:
         # Cicha kontrola aktualizacji przy starcie (max raz na dobe). Z opoznieniem,
         # zeby nie konkurowac z ladowaniem sesji i fiszek o pierwsze sekundy.
         QTimer.singleShot(6000, lambda: self.check_updates(manual=False))
+
+    def _toggle_hub_open(self):
+        if not self.win_hub.isVisible():
+            self.win_hub.open()
 
     def _toggle_hub(self):
         if self.win_hub.isVisible():
@@ -7403,6 +7154,7 @@ class TrayApp:
         self._known_worker.done.connect(self.overlay.set_known_words)
         self._known_worker.start()
         self._load_completed_cats(self.overlay.lang or "en")
+        self.win_hub.prefetch()
 
     def _load_profile(self):
         """Odśwież profil użytkownika po zakupie."""
@@ -7506,11 +7258,6 @@ class TrayApp:
             self.win_custom.show()
             self.win_custom.raise_()
             self.win_custom.activateWindow()
-
-    def _show_public_sets(self):
-        self.win_public_sets.set_premium(getattr(self, '_is_premium', False))
-        self.win_my_sets.hide()
-        self.win_public_sets.show_and_load()
 
     def _show_custom_create(self):
         self.win_my_sets.hide()
