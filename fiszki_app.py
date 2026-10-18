@@ -905,7 +905,7 @@ ADAPT_LIGHT_LUMA   = 190     # 0-255: powyżej tej luminancji piksel uznajemy za
 ADAPT_ENTER_RATIO  = 0.75    # >=75% jasnych pikseli → tło jasne (próg z wymagania)
 ADAPT_EXIT_RATIO   = 0.60    # <=60% → tło znów ciemne (histereza, chroni przed migotaniem)
 ADAPT_CONFIRM_HITS = 2       # ile kolejnych pomiarów musi potwierdzić zmianę stanu
-ADAPT_DELTA        = 0.10    # o ile bardziej przezroczysta fiszka na jasnym tle
+ADAPT_DELTA        = 0.12    # o ile mniej przezroczysta (ciemniejsza) fiszka na jasnym tle
 ADAPT_MIN_OPACITY  = 0.20    # podłoga — fiszka nigdy nie znika całkiem
 
 # ── Konfiguracja: geometria karty (szerokość dopasowana do treści kategorii) ──
@@ -3004,8 +3004,14 @@ class FlashcardOverlay(QWidget):
         # przychodzi z ustawienia „Przezroczystość” (windowOpacity).
         rr = r.adjusted(0.5, 0.5, -0.5, -0.5)
         g = QLinearGradient(rr.topLeft(), rr.bottomLeft())
-        g.setColorAt(0.0, QColor(34, 44, 80, 122))
-        g.setColorAt(1.0, QColor(14, 20, 40, 146))
+        if getattr(self, "_adapt_light", False):
+            # jasne tło pod fiszką → ciemniejsze, bardziej kryjące wypełnienie
+            g.setColorAt(0.0, QColor(24, 32, 62, 208))
+            g.setColorAt(1.0, QColor(10, 15, 32, 228))
+        else:
+            # ciemne tło → jaśniejsze, bardziej przezroczyste szkło
+            g.setColorAt(0.0, QColor(52, 66, 112, 92))
+            g.setColorAt(1.0, QColor(30, 40, 78, 112))
         p.setBrush(QBrush(g))
         p.setPen(QPen(QColor(255, 255, 255, 44), 1))
         p.drawRoundedRect(rr, 16, 16)
@@ -3054,11 +3060,12 @@ class FlashcardOverlay(QWidget):
         return min(1.0, max(0.05, v))
 
     def _cur_opacity(self) -> float:
-        """Efektywna przezroczystość okna: baza z ustawień, pomniejszona o ADAPT_DELTA,
-        gdy tło pod fiszką jest jasne. Gdy tło ciemnieje — wracamy do bazy."""
+        """Efektywna przezroczystość okna: baza z ustawień. Na JASNYM tle fiszka robi się
+        mocniejsza (baza + ADAPT_DELTA) — ciemna karta czytelna na jasnym; na ciemnym
+        wraca do bazy, a samo wypełnienie karty jest lżejsze (patrz paintEvent)."""
         v = self._base_opacity()
         if getattr(self, "_adapt_light", False):
-            v = max(ADAPT_MIN_OPACITY, v - ADAPT_DELTA)
+            v = v + ADAPT_DELTA
         return min(1.0, max(0.05, v))
 
     def apply_opacity(self):
@@ -3067,6 +3074,7 @@ class FlashcardOverlay(QWidget):
             return                      # pod kursorem okno jest na 0.0 — nie ruszamy
         _ui_anim_stop(self, "_op_anim")
         self.setWindowOpacity(self._cur_opacity())
+        self.update()                   # wypełnienie karty zależy od jasności tła
 
     def _init_hover_hide(self):
         self._hover_timer = QTimer(self)
