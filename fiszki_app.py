@@ -1619,6 +1619,8 @@ class _Ghost(QWidget):
         p.drawPixmap(r, self.pm, QRectF(self.pm.rect()))
 
 
+UI_GHOST = False   # okna-duchy (skalowanie/tilt/lot): na Windowsie widać je jako szerszą ramkę → wyłączone
+
 def _ghost_kill(w):
     g = getattr(w, "_ghost", None)
     a = getattr(w, "_ghost_anim", None)
@@ -1743,7 +1745,7 @@ class _DraggableWindow(QWidget):
 
     def _tilt(self, dx):
         """Przeciągane okno lekko się pochyla (±2°) w stronę ruchu i wraca sprężyście."""
-        if not UI_MOTION or self._closing:
+        if not UI_MOTION or not UI_GHOST or self._closing:
             return
         try:
             g = getattr(self, "_drag_ghost", None)
@@ -1844,7 +1846,7 @@ class _DraggableWindow(QWidget):
         super().showEvent(e)
         try:
             self._ensure_close_x()
-            if UI_MOTION and self.SCALE_OPEN:
+            if UI_MOTION and UI_GHOST and self.SCALE_OPEN:
                 try:
                     _scale_open(self, dy=self.ANIM_DY or 16)
                 except Exception as ex:
@@ -1873,6 +1875,8 @@ class _DraggableWindow(QWidget):
             _ui_anim_stop(self, "_pop_anim")
             self.setWindowOpacity(1.0)
             self.move(self._home)
+        elif UI_MOTION and not self.isVisible():
+            self.setWindowOpacity(0.0)      # bez błysku: okno startuje niewidoczne
         super().show()
 
     def fade_hide(self):
@@ -7728,6 +7732,8 @@ class TrayApp:
     def _fly_picker_to_card(self):
         """Wybór kategorii: okno wyboru „zapada się” i leci w miejsce fiszki."""
         try:
+            if not UI_GHOST:
+                return
             src = next((w for w in (self.win_lang, self.win_cat)
                         if w.isVisible() and not w._closing), None)
             if src is None:
