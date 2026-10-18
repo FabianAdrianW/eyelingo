@@ -1580,6 +1580,138 @@ class GlassCombo(QComboBox):
         p.drawLine(QPointF(cx, cy + 2.6), QPointF(cx + 5, cy - 2.4))
 
 
+
+class _Ghost(QWidget):
+    """Przezroczyste okno-duch rysujące zrzut prawdziwego okna z dowolną skalą, przesunięciem
+    i obrotem. Dzięki niemu okno „rośnie”, leci do karty i pochyla się przy przeciąganiu
+    bez przeliczania układu (Qt nie skaluje ani nie obraca okien)."""
+    def __init__(self, margin=28):
+        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool |
+                         Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.NoDropShadowWindowHint |
+                         Qt.WindowType.WindowTransparentForInput)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.m = margin
+        self.pm = None
+        self.rect_f = None        # gdzie rysować zrzut (współrzędne okna ducha)
+        self.rot = 0.0
+        self.alpha = 1.0
+
+    def cover(self, rect):
+        """Duch pokrywa rect (współrzędne ekranu) + margines."""
+        self.setGeometry(rect.adjusted(-self.m, -self.m, self.m, self.m))
+
+    def snap(self, win):
+        self.pm = win.grab()
+        self.update()
+
+    def paintEvent(self, e):
+        if self.pm is None or self.rect_f is None or self.alpha <= 0:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setOpacity(max(0.0, min(1.0, self.alpha)))
+        r = self.rect_f
+        if self.rot:
+            p.translate(r.center()); p.rotate(self.rot); p.translate(-r.center())
+        p.drawPixmap(r, self.pm, QRectF(self.pm.rect()))
+
+
+def _ghost_kill(w):
+    g = getattr(w, "_ghost", None)
+    a = getattr(w, "_ghost_anim", None)
+    if a is not None:
+        try:
+            a.stop()
+        except Exception:
+            pass
+    if g is not None:
+        try:
+            g.close(); g.deleteLater()
+        except Exception:
+            pass
+    w._ghost = None; w._ghost_anim = None
+
+
+def _scale_open(w, ms=380, dy=16, s0=0.93):
+    """Wejście okna jak w podglądzie Glass: skala 0.93→1 + wynurzenie o 16 px,
+    sprężyste osiadnięcie, treść napływa (zrzut odświeżany co klatkę)."""
+    _ghost_kill(w)
+    _ui_anim_stop(w, "_pop_anim"); _ui_anim_stop(w, "_op_anim")
+    g = _Ghost()
+    g.cover(w.geometry())
+    g.snap(w)
+    w._ghost = g
+    W, H = w.width(), w.height()
+    m = g.m
+    w.setWindowOpacity(0.0)
+    g.rect_f = QRectF(m + W * (1 - s0) / 2, m + H * (1 - s0) / 2 + dy, W * s0, H * s0)
+    g.alpha = 0.0
+    g.show()
+    anim = QVariantAnimation(w)
+    anim.setDuration(ms)
+    anim.setStartValue(0.0); anim.setEndValue(1.0)
+    anim.setEasingCurve(_spring_curve(0.9))
+
+    def _frame(v):
+        v = float(v)
+        if w._closing or not w.isVisible():
+            return
+        g.snap(w)
+        sc = s0 + (1 - s0) * v
+        g.rect_f = QRectF(m + W * (1 - sc) / 2, m + H * (1 - sc) / 2 + dy * (1 - v), W * sc, H * sc)
+        g.alpha = min(1.0, v * 2.4)
+        g.update()
+
+    def _done():
+        if getattr(w, "_ghost", None) is g and not w._closing:
+            w.setWindowOpacity(1.0)
+        QTimer.singleShot(30, lambda: (_ghost_kill(w) if getattr(w, "_ghost", None) is g else None))
+    anim.valueChanged.connect(_frame)
+    anim.finished.connect(_done)
+    w._ghost_anim = anim
+    anim.start()
+
+
+def _fly_to_rect(src, dst, ms=460):
+    """Okno src „zapada się” i leci w stronę prostokąta dst (karta), gasnąc na końcu."""
+    try:
+        if not UI_MOTION or not src.isVisible():
+            return
+        a = src.geometry()
+        d = QRect(dst)
+        u = a.united(d)
+        g = _Ghost(margin=20)
+        g.cover(u)
+        g.snap(src)
+        ox, oy = u.left() - g.m, u.top() - g.m
+        g.rect_f = QRectF(a.left() - ox, a.top() - oy, a.width(), a.height())
+        g.show()
+        anim = QVariantAnimation(g)
+        anim.setDuration(ms)
+        anim.setStartValue(0.0); anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.InCubic)
+
+        def _frame(v):
+            v = float(v)
+            cx = a.center().x() + (d.center().x() - a.center().x()) * v
+            cy = a.center().y() + (d.center().y() - a.center().y()) * v
+            sc = 1 + (min(d.width() / max(a.width(), 1), d.height() / max(a.height(), 1)) - 1) * v
+            sc = max(sc, 0.12)
+            w2, h2 = a.width() * sc, a.height() * sc
+            g.rect_f = QRectF(cx - ox - w2 / 2, cy - oy - h2 / 2, w2, h2)
+            g.alpha = 1.0 - max(0.0, (v - 0.55) / 0.45)
+            g.update()
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(lambda: (g.close(), g.deleteLater()))
+        g._anim = anim
+        anim.start()
+    except Exception as ex:
+        print(f"[motion] fly: {ex}")
+
+
 class _DraggableWindow(QWidget):
     """Mixin: przeciąganie przez pasek tytułu (górne 32px) + ESC zamyka."""
     DRAG_BAR_HEIGHT = 32   # wysokość strefy drag u góry
@@ -1601,16 +1733,62 @@ class _DraggableWindow(QWidget):
 
     def mouseMoveEvent(self, e):
         if self._drag_pos_win and e.buttons() == Qt.MouseButton.LeftButton:
-            self.move(e.globalPosition().toPoint() - self._drag_pos_win)
+            new = e.globalPosition().toPoint() - self._drag_pos_win
+            dx = new.x() - self.x()
+            self.move(new)
+            self._tilt(dx)
             e.accept()
         else:
             super().mouseMoveEvent(e)
 
+    def _tilt(self, dx):
+        """Przeciągane okno lekko się pochyla (±2°) w stronę ruchu i wraca sprężyście."""
+        if not UI_MOTION or self._closing:
+            return
+        try:
+            g = getattr(self, "_drag_ghost", None)
+            if g is None:
+                _ghost_kill(self)
+                g = self._drag_ghost = _Ghost()
+                g.cover(self.geometry()); g.snap(self)
+                self.setWindowOpacity(0.0)
+                g.show()
+                self._tilt_v = 0.0
+            self._tilt_v = 0.65 * self._tilt_v + 0.35 * dx
+            g.rot = max(-2.0, min(2.0, self._tilt_v * 0.5))
+            g.cover(self.geometry())
+            g.rect_f = QRectF(g.m, g.m, self.width(), self.height())
+            g.alpha = 1.0
+            g.update()
+        except Exception as ex:
+            print(f"[motion] tilt: {ex}")
+
+    def _tilt_end(self):
+        g = getattr(self, "_drag_ghost", None)
+        if g is None:
+            return
+        self._drag_ghost = None
+        r0 = g.rot
+        anim = QVariantAnimation(g)
+        anim.setDuration(320)
+        anim.setStartValue(float(r0)); anim.setEndValue(0.0)
+        anim.setEasingCurve(_spring_curve(1.6))
+        anim.valueChanged.connect(lambda v: (setattr(g, "rot", float(v)), g.update()))
+        def _fin():
+            if not self._closing:
+                self.setWindowOpacity(1.0)
+            g.close(); g.deleteLater()
+        anim.finished.connect(_fin)
+        g._anim = anim
+        anim.start()
+
     def mouseReleaseEvent(self, e):
         self._drag_pos_win = None
+        self._tilt_end()
         super().mouseReleaseEvent(e)
 
     ANIM_DY = 16  # okno wynurza się z dołu o tyle px (jak w podglądzie Glass)
+    SCALE_OPEN = True   # wejście ze skalowaniem (zrzut-duch); False = tylko fade+ruch
     HAS_CLOSE = False   # True: okno ma własny przycisk wyjścia (albo nie wolno go zamknąć)
 
     back_cb = None      # ustawiane przez TrayApp: dokąd prowadzi „←” (np. do panelu)
@@ -1666,7 +1844,15 @@ class _DraggableWindow(QWidget):
         super().showEvent(e)
         try:
             self._ensure_close_x()
-            _pop_in(self, self.ANIM_DY)
+            if UI_MOTION and self.SCALE_OPEN:
+                try:
+                    _scale_open(self, dy=self.ANIM_DY or 16)
+                except Exception as ex:
+                    print(f"[motion] scale: {ex}")
+                    _ghost_kill(self)
+                    _pop_in(self, self.ANIM_DY)
+            else:
+                _pop_in(self, self.ANIM_DY)
         except Exception as ex:
             print(f"[motion] {ex}")
 
@@ -1696,6 +1882,12 @@ class _DraggableWindow(QWidget):
         """Zamknięcie szybsze niż otwarcie (170 ms): okno opada o 8 px i gaśnie."""
         if not self.isVisible() or self._closing:
             return
+        _ghost_kill(self)
+        dg = getattr(self, "_drag_ghost", None)
+        if dg is not None:
+            self._drag_ghost = None
+            dg.close(); dg.deleteLater()
+        self.setWindowOpacity(1.0)
         home = self._home = self.pos()
         self._closing = True
         def _fin():
@@ -6003,57 +6195,74 @@ class TestWindow(_DraggableWindow):
         _paint_bg(self, e)
 
 
-class TestOfferWindow(QWidget):
+class GlassDialog(_DraggableWindow):
+    """Komunikat w stylu Glass (zamiast systemowego QMessageBox): tytuł, treść i przyciski.
+    buttons = [(napis, rodzaj 'cta'|'ghost', callback_lub_None), ...]; ✕ i Esc zawsze zamykają."""
+    def __init__(self, title="", text="", buttons=None, width=380):
+        super().__init__()
+        _styled_window(self)
+        self.setFixedWidth(width)
+        self._lay = QVBoxLayout(self)
+        self._lay.setContentsMargins(26, 26, 26, 22)
+        self._lay.setSpacing(12)
+        self.lbl_t = QLabel(title); self.lbl_t.setFont(_gfont(18, QFont.Weight.DemiBold))
+        self.lbl_t.setStyleSheet("color:#eef2ff;background:transparent;")
+        self.lbl_t.setWordWrap(True)
+        self.lbl_x = QLabel(text); self.lbl_x.setFont(_gfont(14))
+        self.lbl_x.setStyleSheet("color:rgba(238,242,255,200);background:transparent;")
+        self.lbl_x.setWordWrap(True)
+        self._lay.addSpacing(6)
+        self._lay.addWidget(self.lbl_t); self._lay.addWidget(self.lbl_x)
+        self._lay.addSpacing(10)
+        self._brow = QVBoxLayout(); self._brow.setSpacing(10)
+        self._lay.addLayout(self._brow)
+        self.set_buttons(buttons or [])
+        self._pos_set = False
+
+    def set_buttons(self, buttons):
+        while self._brow.count():
+            it = self._brow.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        for label, kind, cb in buttons:
+            b = GlassButton(label, kind, radius=16)
+            b.setFixedHeight(48 if kind == "cta" else 42)
+            def _go(_=None, cb=cb):
+                self.fade_hide()
+                if cb:
+                    QTimer.singleShot(120, cb)
+            b.clicked.connect(_go)
+            self._brow.addWidget(b)
+        self.adjustSize()
+
+    def present(self, title=None, text=None, buttons=None):
+        if title is not None: self.lbl_t.setText(title)
+        if text is not None: self.lbl_x.setText(text)
+        if buttons is not None: self.set_buttons(buttons)
+        self.adjustSize()
+        _right_third_pos(self)
+        self.show(); self.raise_(); self.activateWindow()
+
+    def paintEvent(self, e):
+        _paint_bg(self, e)
+
+
+class TestOfferWindow(GlassDialog):
     accepted = pyqtSignal()
     rejected = pyqtSignal()
 
     def __init__(self):
-        super().__init__()
-        _styled_window(self)
-        self.setFixedSize(360, 210)
+        super().__init__("Czas na test!", "", None, 360)
         self._cat_name = ""
-        self._build()
-        _right_third_pos(self)
 
     def show_for(self, cat_name):
         self._cat_name = cat_name
-        self.lbl_sub.setText(f'Obejrzałeś kategorię\n"{cat_name}" 15 razy.\nChcesz sprawdzić swoją wiedzę?')
-        self.show(); self.raise_(); self.activateWindow()
+        self.present(
+            "Czas na test!",
+            f'Obejrzałeś kategorię „{cat_name}” 15 razy.\nChcesz sprawdzić swoją wiedzę?',
+            [("Tak, sprawdźmy", "cta", self.accepted.emit),
+             ("Może później", "ghost", self.rejected.emit)])
 
-    def _build(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(24, 24, 24, 24)
-        lay.setSpacing(12)
-
-        title = QLabel("Czas na test!")
-        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        title.setStyleSheet("color:white;")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(title)
-
-        self.lbl_sub = QLabel("")
-        self.lbl_sub.setFont(QFont("Segoe UI", 10))
-        self.lbl_sub.setStyleSheet("color:rgba(200,210,255,180);")
-        self.lbl_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(self.lbl_sub)
-
-        btns = QHBoxLayout()
-        btn_tak = QPushButton("Tak!")
-        btn_tak.setStyleSheet(BTN_PRIMARY)
-        btn_tak.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_tak.clicked.connect(lambda: (self.hide(), self.accepted.emit()))
-
-        btn_nie = QPushButton("Może później")
-        btn_nie.setStyleSheet("QPushButton { background:rgba(60,60,100,160); color:rgba(200,210,255,200); border:1px solid rgba(96,110,150,120); border-radius:10px; padding:8px; } QPushButton:hover { background:rgba(72,82,128,200); border-color:rgba(201,106,42,235); }")
-        btn_nie.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_nie.clicked.connect(lambda: (self.hide(), self.rejected.emit()))
-
-        btns.addWidget(btn_tak)
-        btns.addWidget(btn_nie)
-        lay.addLayout(btns)
-
-    def paintEvent(self, e):
-        _paint_bg(self, e)
 
 # ──────────────────────────────────────────────────────
 # OKNO PROPOZYCJI TESTU SRS (przy zmianie kategorii)
@@ -7382,16 +7591,15 @@ class TrayApp:
                               None if getattr(ov, "_is_custom", False) else (getattr(ov, "cat", None) or None))
 
     def _show_subscription_required(self):
-        """Pokaż okno informujące o wymogu subskrypcji."""
-        msg = QMessageBox()
-        msg.setWindowTitle("Funkcja Premium")
-        msg.setText("Własne zestawy fiszek\n\nTa funkcja dostępna jest tylko w subskrypcji Premium.\n\n39 zł/mies lub 329 zł/rok · wszystkie poziomy + własne fiszki")
-        msg.setIcon(QMessageBox.Icon.Information)
-        btn_sub = msg.addButton("Kup subskrypcję", QMessageBox.ButtonRole.AcceptRole)
-        msg.addButton("Zamknij", QMessageBox.ButtonRole.RejectRole)
-        msg.exec()
-        if msg.clickedButton() == btn_sub:
-            self._show_purchase_subscription()
+        """Własne zestawy to funkcja Premium – komunikat w stylu Glass z drogą do zakupu."""
+        if not hasattr(self, "_dlg_premium"):
+            self._dlg_premium = GlassDialog("Funkcja Premium", "", None, 380)
+        self._dlg_premium.present(
+            "Własne zestawy fiszek",
+            "Ta funkcja jest dostępna w subskrypcji Premium.\n\n"
+            "39 zł/mies lub 329 zł/rok · wszystkie poziomy + własne fiszki",
+            [("Kup subskrypcję", "cta", self._show_purchase_subscription),
+             ("Wróć", "ghost", None)])
 
     def _show_purchase_subscription(self):
         """Otwórz okno zakupu subskrypcji."""
@@ -7517,7 +7725,25 @@ class TrayApp:
         if not self.visible:
             QTimer.singleShot(250, self.win_hub.open)
 
+    def _fly_picker_to_card(self):
+        """Wybór kategorii: okno wyboru „zapada się” i leci w miejsce fiszki."""
+        try:
+            src = next((w for w in (self.win_lang, self.win_cat)
+                        if w.isVisible() and not w._closing), None)
+            if src is None:
+                return
+            ov = self.overlay
+            if ov.isVisible() and 120 < ov.width() < 700:
+                dst = QRect(ov.geometry())
+            else:
+                sc = QApplication.primaryScreen().availableGeometry()
+                dst = QRect(sc.center().x() - 170, sc.top() + 70, 340, 120)
+            _fly_to_rect(src, dst)
+        except Exception as ex:
+            print(f"[motion] fly: {ex}")
+
     def _on_cat(self, lang, lvl, cat):
+        self._fly_picker_to_card()
         self.overlay.load_from_supabase(lang, lvl, cat)
         self._back_to_hub_if_paused()
         self._track_views(lang, lvl, cat)
