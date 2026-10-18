@@ -32,7 +32,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,
     QLabel, QLineEdit, QSystemTrayIcon, QScrollArea,
-    QMenu, QPushButton, QGridLayout, QMessageBox, QHBoxLayout, QCheckBox,
+    QMenu, QWidgetAction, QPushButton, QGridLayout, QMessageBox, QHBoxLayout, QCheckBox,
     QProgressBar
 )
 from PyQt6.QtCore import (Qt, QTimer, QThread, pyqtSignal, QPropertyAnimation,
@@ -1050,8 +1050,14 @@ def _fade_window(w, target, ms, curve=None, then=None):
     w._op_anim = a
     a.start()
 
-def _pop_in(w, dy=0, ms=260):
-    """Wejście okna: fade-in + (opcjonalnie) wynurzenie z dołu o dy px."""
+def _spring_curve(overshoot=1.1):
+    c = QEasingCurve(QEasingCurve.Type.OutBack)
+    c.setOvershoot(overshoot)
+    return c
+
+def _pop_in(w, dy=0, ms=380):
+    """Wejście okna (jak w podglądzie Glass): fade-in 380 ms + wynurzenie z dołu
+    o dy px z lekkim przeskokiem (-2 px) i osiadnięciem."""
     if not UI_MOTION:
         return
     _ui_anim_stop(w, "_pop_anim")
@@ -1062,10 +1068,10 @@ def _pop_in(w, dy=0, ms=260):
         end = w.pos()
         w.move(end.x(), end.y() + dy)
         a = QPropertyAnimation(w, b"pos", w)
-        a.setDuration(ms + 60)
+        a.setDuration(ms)
         a.setStartValue(w.pos())
         a.setEndValue(end)
-        a.setEasingCurve(QEasingCurve.Type.OutBack)
+        a.setEasingCurve(_spring_curve(0.9))
         w._pop_anim = a
         a.start()
 
@@ -1225,6 +1231,30 @@ def _draw_glyph(p, name, cx, cy, s, col, width=1.8):
         p.setBrush(QColor(0, 0, 0, 0))
         p.drawEllipse(QPointF(cx + k * .22, cy - k * .32), k * .2, k * .2)
         p.drawEllipse(QPointF(cx - k * .22, cy + k * .32), k * .2, k * .2)
+    elif name == "refresh":
+        rr = QRectF(cx - k * .62, cy - k * .62, k * 1.24, k * 1.24)
+        path = QPainterPath()
+        path.arcMoveTo(rr, 40)
+        path.arcTo(rr, 40, 280)
+        p.drawPath(path)
+        ex, ey = cx + k * .62 * 0.766, cy - k * .62 * 0.643
+        p.drawLine(QPointF(ex, ey), QPointF(ex + k * .05, ey - k * .42))
+        p.drawLine(QPointF(ex, ey), QPointF(ex + k * .45, ey + k * .04))
+    elif name == "logout":
+        p.drawLine(QPointF(cx - k * .15, cy), QPointF(cx + k * .7, cy))
+        p.drawLine(QPointF(cx + k * .7, cy), QPointF(cx + k * .4, cy - k * .28))
+        p.drawLine(QPointF(cx + k * .7, cy), QPointF(cx + k * .4, cy + k * .28))
+        path = QPainterPath()
+        path.moveTo(cx - k * .15, cy - k * .62); path.lineTo(cx - k * .7, cy - k * .62)
+        path.lineTo(cx - k * .7, cy + k * .62); path.lineTo(cx - k * .15, cy + k * .62)
+        p.drawPath(path)
+    elif name == "eye":
+        path = QPainterPath()
+        path.moveTo(cx - k * .8, cy)
+        path.quadTo(cx, cy - k * .85, cx + k * .8, cy)
+        path.quadTo(cx, cy + k * .85, cx - k * .8, cy)
+        p.drawPath(path)
+        p.drawEllipse(QPointF(cx, cy), k * .2, k * .2)
     p.restore()
 
 
@@ -1555,7 +1585,7 @@ class _DraggableWindow(QWidget):
         self._drag_pos_win = None
         super().mouseReleaseEvent(e)
 
-    ANIM_DY = 0   # >0: okno wynurza się z dołu o tyle px (np. panel traya)
+    ANIM_DY = 16  # okno wynurza się z dołu o tyle px (jak w podglądzie Glass)
     HAS_CLOSE = False   # True: okno ma własny przycisk wyjścia (albo nie wolno go zamknąć)
 
     def _ensure_close_x(self):
@@ -1586,13 +1616,24 @@ class _DraggableWindow(QWidget):
             print(f"[motion] {ex}")
 
     def fade_hide(self):
-        """Zamknięcie szybsze niż otwarcie (150 ms): okno odpływa, nie znika skokiem."""
+        """Zamknięcie szybsze niż otwarcie (170 ms): okno opada o 8 px i gaśnie."""
         if not self.isVisible():
             return
+        home = self.pos()
         def _fin():
             QWidget.hide(self)
             self.setWindowOpacity(1.0)
-        _fade_window(self, 0.0, 150, QEasingCurve.Type.InCubic, then=_fin)
+            self.move(home)
+        if UI_MOTION:
+            _ui_anim_stop(self, "_pop_anim")
+            a = QPropertyAnimation(self, b"pos", self)
+            a.setDuration(170)
+            a.setStartValue(home)
+            a.setEndValue(QPoint(home.x(), home.y() + 8))
+            a.setEasingCurve(QEasingCurve.Type.InQuad)
+            self._pop_anim = a
+            a.start()
+        _fade_window(self, 0.0, 170, QEasingCurve.Type.InCubic, then=_fin)
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key.Key_Escape:
@@ -2888,14 +2929,16 @@ class FlashcardOverlay(QWidget):
             from PyQt6.QtWidgets import QGraphicsOpacityEffect
             self._fx_token = getattr(self, "_fx_token", 0) + 1
             token = self._fx_token
-            for i, lbl in enumerate((self.lbl_word, self.lbl_romaji, self.lbl_tr)):
+            self._word_reveal(token)
+            n = len(self.lbl_word.text())
+            for i, lbl in enumerate((self.lbl_romaji, self.lbl_tr)):
                 if lbl.isHidden():
                     continue
                 eff = QGraphicsOpacityEffect(lbl)
                 eff.setOpacity(0.0)
                 lbl.setGraphicsEffect(eff)
                 a = QPropertyAnimation(eff, b"opacity", eff)
-                a.setDuration(380)
+                a.setDuration(500)
                 a.setStartValue(0.0)
                 a.setEndValue(1.0)
                 a.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -2907,7 +2950,89 @@ class FlashcardOverlay(QWidget):
                         except Exception:
                             pass
                 a.finished.connect(_done)
-                QTimer.singleShot(i * 110, a.start)
+                QTimer.singleShot(200 + min(n, 24) * 30 + i * 60, a.start)
+        except Exception as ex:
+            print(f"[motion] {ex}")
+
+    def _word_reveal(self, token):
+        """Słowo wchodzi litera po literze (30 ms odstępu, 560 ms na literę) – jak w
+        podglądzie Glass. Po animacji wraca zwykły tekst; nowe słowo przerywa starą."""
+        import re as _re, html as _html
+        lbl = self.lbl_word
+        text = lbl.text()
+        m = _re.search(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*(\d+)\)", lbl.styleSheet())
+        if not text or not m or len(text) > 60:
+            return
+        r, g, b, a0 = (int(x) for x in m.groups())
+        n = len(text)
+        total = (n - 1) * 30 + 560
+        old = getattr(self, "_rev_anim", None)
+        if old is not None:
+            try:
+                old.stop()
+            except Exception:
+                pass
+        anim = QVariantAnimation(self)
+        anim.setDuration(total)
+        anim.setStartValue(0.0)
+        anim.setEndValue(float(total))
+        anim.setEasingCurve(QEasingCurve.Type.Linear)
+
+        def _frame(v):
+            if getattr(self, "_fx_token", 0) != token:
+                return
+            t = float(v)
+            out = []
+            for i, ch in enumerate(text):
+                p = max(0.0, min(1.0, (t - i * 30) / 560.0))
+                p = 1 - (1 - p) ** 3
+                out.append(f'<span style="color:rgba({r},{g},{b},{int(a0 * p)})">'
+                           f'{"&nbsp;" if ch == " " else _html.escape(ch)}</span>')
+            lbl.setText("".join(out))
+
+        def _end():
+            if getattr(self, "_fx_token", 0) == token:
+                lbl.setText(text)
+        _frame(0.0)
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(_end)
+        self._rev_anim = anim
+        anim.start()
+
+    def _word_glow(self):
+        """Delikatny blask nowego słowa: start po 450 ms, szczyt po ~550 ms, zanik do 2,2 s."""
+        try:
+            from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+            lbl = self.lbl_romaji if (self.lang in NON_LATIN_LANGS and self.lbl_romaji.isVisible()) else self.lbl_word
+            token = self._fx_token = getattr(self, "_fx_token", 0)
+            eff = QGraphicsDropShadowEffect(lbl)
+            eff.setOffset(0, 0)
+            eff.setBlurRadius(0)
+            eff.setColor(QColor(255, 226, 196, 0))
+            lbl.setGraphicsEffect(eff)
+            anim = QVariantAnimation(eff)
+            anim.setDuration(2200)
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.Type.Linear)
+
+            def _frame(v):
+                v = float(v)
+                k = v / 0.25 if v < 0.25 else 1 - (v - 0.25) / 0.75
+                k = max(0.0, min(1.0, k))
+                eff.setBlurRadius(10 + 26 * k)
+                eff.setColor(QColor(255, 226, 196, int(235 * k)))
+
+            def _end():
+                if getattr(self, "_fx_token", 0) == token:
+                    try:
+                        lbl.setGraphicsEffect(None)
+                    except Exception:
+                        pass
+            anim.valueChanged.connect(_frame)
+            anim.finished.connect(_end)
+            self._glow_anim = anim
+            QTimer.singleShot(450, lambda: (getattr(self, "_fx_token", 0) == token) and anim.start())
         except Exception as ex:
             print(f"[motion] {ex}")
 
@@ -2926,6 +3051,9 @@ class FlashcardOverlay(QWidget):
         """Efekt wizualny TYLKO koloru słówka - bez zmiany rozmiaru/pozycji. Max ~300ms."""
         fx = APP_SETTINGS.get("card_effect", "none")
         if fx == "none" or not fx:
+            return
+        if fx == "glow_white":
+            self._word_glow()
             return
         # Efekt na transliteracji jeśli pismo nielatyńskie, inaczej na słówku
         lbl  = self.lbl_romaji if (self.lang in NON_LATIN_LANGS and self.lbl_romaji.isVisible()) else self.lbl_word
@@ -6889,6 +7017,125 @@ class HubWindow(_DraggableWindow):
         _paint_bg(self, e)
 
 
+
+class _TrayRow(QWidget):
+    """Wiersz menu traya: ikona + podpis, najazd rozjaśnia tło, klik wykonuje akcję."""
+    def __init__(self, icon, text, danger=False, parent=None):
+        super().__init__(parent)
+        self._icon, self._text, self._danger = icon, text, danger
+        self._h = 0.0
+        self._cb = None
+        self.setFixedSize(236, 42)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._anim = QVariantAnimation(self)
+        self._anim.setDuration(130)
+        self._anim.valueChanged.connect(self._set_h)
+
+    def _set_h(self, v):
+        self._h = float(v); self.update()
+
+    def set_content(self, icon, text):
+        self._icon, self._text = icon, text; self.update()
+
+    def _go(self, on):
+        self._anim.stop()
+        self._anim.setStartValue(self._h)
+        self._anim.setEndValue(1.0 if on else 0.0)
+        self._anim.start()
+
+    def enterEvent(self, e):
+        self._go(True); super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._go(False); super().leaveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self._cb:
+            self._cb()
+        super().mouseReleaseEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(6, 2, -6, -2)
+        if self._h > 0:
+            base = QColor(255, 120, 120, int(46 * self._h)) if self._danger \
+                else QColor(224, 128, 58, int(58 * self._h))
+            p.setPen(Qt.PenStyle.NoPen); p.setBrush(base)
+            p.drawRoundedRect(r, 12, 12)
+        col = QColor(G_BAD) if self._danger else (QColor(G_SOFT) if self._h > .5 else QColor(G_INK))
+        _draw_glyph(p, self._icon, 28, self.height() / 2, 17,
+                    QColor(G_BAD) if self._danger else QColor(G_SOFT), 1.7)
+        p.setPen(col); p.setFont(_gfont(14))
+        p.drawText(QRectF(48, 0, self.width() - 56, self.height()),
+                   int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), self._text)
+
+
+class _TraySep(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(236, 9)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setPen(QColor(255, 255, 255, 28))
+        p.drawLine(18, 4, self.width() - 18, 4)
+
+
+class _TrayToggle:
+    """Zastępnik dawnego QAction: TrayApp zmienia tylko podpis „Ukryj / Pokaż fiszki”."""
+    def __init__(self, row):
+        self._row = row
+
+    def setText(self, t):
+        show = "Pokaż" in t
+        self._row.set_content("play" if show else "pause", "Pokaż fiszki" if show else "Ukryj fiszki")
+
+
+class GlassTrayMenu(QMenu):
+    """Menu ikony w zasobniku w stylu Glass: ciemne szkło, zaokrąglenia, ikony, miękkie wejście."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint |
+                            Qt.WindowType.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setStyleSheet("QMenu{background:transparent;border:none;padding:8px 4px;}")
+
+    def add_row(self, icon, text, callback, danger=False):
+        row = _TrayRow(icon, text, danger, self)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(row)
+        def _run():
+            self.hide()
+            QTimer.singleShot(0, callback)
+        row._cb = _run
+        self.addAction(act)
+        return row
+
+    def add_sep(self):
+        sp = _TraySep(self)
+        act = QWidgetAction(self); act.setDefaultWidget(sp); self.addAction(act)
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        try:
+            _pop_in(self, 8, 220)
+        except Exception as ex:
+            print(f"[motion] {ex}")
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(14, 21, 44, 238))
+        p.drawRoundedRect(r, 20, 20)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(255, 255, 255, 48), 1))
+        p.drawRoundedRect(r, 20, 20)
+
+
 class TrayApp:
     def __init__(self, app, overlay, login_window):
         self.app          = app
@@ -6944,16 +7191,15 @@ class TrayApp:
         self.tray = QSystemTrayIcon(make_tray_icon())
         self.tray.setToolTip("Fiszki w tle")
 
-        menu = QMenu()
-        self.act_toggle = menu.addAction("⏸  Ukryj fiszki")
-        self.act_toggle.triggered.connect(self._toggle)
-        menu.addAction("Otwórz panel").triggered.connect(self._toggle_hub)  # awaryjne wejście
-        menu.addSeparator()
-        menu.addAction("Sprawdź aktualizacje").triggered.connect(
-            lambda: self.check_updates(manual=True))
-        menu.addSeparator()
-        menu.addAction("Wyloguj").triggered.connect(self._logout)
-        menu.addAction("✖  Zamknij").triggered.connect(self._quit)
+        menu = GlassTrayMenu()
+        self.act_toggle = _TrayToggle(menu.add_row("pause", "Ukryj fiszki", self._toggle))
+        menu.add_row("sliders", "Otwórz panel", self._toggle_hub)  # awaryjne wejście
+        menu.add_sep()
+        menu.add_row("refresh", "Sprawdź aktualizacje", lambda: self.check_updates(manual=True))
+        menu.add_row("logout", "Wyloguj", self._logout)
+        menu.add_sep()
+        menu.add_row("close", "Zamknij Eyelingo", self._quit, danger=True)
+        self._tray_menu = menu
 
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(
