@@ -1075,6 +1075,27 @@ def _pop_in(w, dy=0, ms=380):
         w._pop_anim = a
         a.start()
 
+def _fade_in_widgets(widgets, ms=320, stagger=70):
+    """Miękkie wejście treści w oknie (np. nowe pytanie, wynik): kolejne elementy
+    wpływają jeden po drugim; efekt jest zdejmowany po animacji."""
+    if not UI_MOTION:
+        return
+    try:
+        from PyQt6.QtWidgets import QGraphicsOpacityEffect
+        for i, w in enumerate(widgets):
+            if w is None or not w.isVisible():
+                continue
+            eff = QGraphicsOpacityEffect(w)
+            eff.setOpacity(0.0)
+            w.setGraphicsEffect(eff)
+            a = QPropertyAnimation(eff, b"opacity", eff)
+            a.setDuration(ms); a.setStartValue(0.0); a.setEndValue(1.0)
+            a.setEasingCurve(QEasingCurve.Type.OutCubic)
+            a.finished.connect(lambda w=w: w.setGraphicsEffect(None))
+            QTimer.singleShot(i * stagger, a.start)
+    except Exception as ex:
+        print(f"[motion] {ex}")
+
 # ── SZKŁO: baza wizualna (zgodna z makietami "Eyelingo Glass") ────────────
 # Jedno źródło prawdy dla kolorów i klocków UI. Wyłącznik awaryjny rozmycia: UI_BLUR = False.
 from PyQt6.QtWidgets import QLayout, QScrollArea, QSizePolicy, QFrame, QComboBox
@@ -1615,15 +1636,43 @@ class _DraggableWindow(QWidget):
         except Exception as ex:
             print(f"[motion] {ex}")
 
-    def fade_hide(self):
-        """Zamknięcie szybsze niż otwarcie (170 ms): okno opada o 8 px i gaśnie."""
-        if not self.isVisible():
-            return
-        home = self.pos()
-        def _fin():
+    _closing = False
+
+    def hide(self):
+        """Każde ukrycie okna jest animowane – przejście A→B to płynne „odpłynięcie” A
+        nałożone na wejście B (zamiast nagłego znikania)."""
+        if UI_MOTION and self.isVisible() and not self._closing:
+            self._close_anim()
+        elif not self._closing:
             QWidget.hide(self)
+
+    def show(self):
+        if self._closing:               # ktoś chce okno z powrotem w trakcie zamykania
+            self._closing = False
+            _ui_anim_stop(self, "_op_anim")
+            _ui_anim_stop(self, "_pop_anim")
+            self.setWindowOpacity(1.0)
+            self.move(self._home)
+        super().show()
+
+    def fade_hide(self):
+        self._close_anim()
+
+    def _close_anim(self):
+        """Zamknięcie szybsze niż otwarcie (170 ms): okno opada o 8 px i gaśnie."""
+        if not self.isVisible() or self._closing:
+            return
+        home = self._home = self.pos()
+        self._closing = True
+        def _fin():
+            if not self._closing:       # w międzyczasie okno przywrócono
+                return
+            self._closing = False
+            QWidget.hide(self)
+            _ui_anim_stop(self, "_pop_anim")
             self.setWindowOpacity(1.0)
             self.move(home)
+            QTimer.singleShot(40, lambda: (not self.isVisible()) and self.move(home))
         if UI_MOTION:
             _ui_anim_stop(self, "_pop_anim")
             a = QPropertyAnimation(self, b"pos", self)
@@ -3195,6 +3244,55 @@ class FlashcardOverlay(QWidget):
         if getattr(self, "_adapt_light", False):
             v = v + ADAPT_DELTA
         return min(1.0, max(0.05, v))
+
+    _ov_closing = False
+
+    def show(self):
+        """Fiszka wynurza się (380 ms, +14 px) zamiast pojawiać się skokiem."""
+        was = self._ov_closing
+        if was:
+            self._ov_closing = False
+            _ui_anim_stop(self, "_op_anim"); _ui_anim_stop(self, "_pop_anim")
+            self.move(self._ov_home)
+        fresh = not self.isVisible()
+        if fresh and UI_MOTION:
+            self.setWindowOpacity(0.0)
+        super().show()
+        if (fresh or was) and UI_MOTION:
+            target = 0.0 if self._hover_hidden else self._cur_opacity()
+            _fade_window(self, target, 380)
+            end = self.pos()
+            if not was:
+                self.move(end.x(), end.y() + 14)
+                a = QPropertyAnimation(self, b"pos", self)
+                a.setDuration(380); a.setStartValue(self.pos()); a.setEndValue(end)
+                a.setEasingCurve(_spring_curve(0.9))
+                self._pop_anim = a; a.start()
+
+    def hide(self):
+        """Fiszka odpływa (200 ms, −8 px) zamiast znikać."""
+        if not (UI_MOTION and self.isVisible()) or self._ov_closing:
+            if not self._ov_closing:
+                QWidget.hide(self)
+            return
+        self._ov_closing = True
+        home = self._ov_home = self.pos()
+        def _fin():
+            if not self._ov_closing:
+                return
+            self._ov_closing = False
+            QWidget.hide(self)
+            _ui_anim_stop(self, "_pop_anim")
+            self.move(home)
+            QTimer.singleShot(40, lambda: (not self.isVisible()) and self.move(home))
+            self.setWindowOpacity(0.0 if self._hover_hidden else self._cur_opacity())
+        a = QPropertyAnimation(self, b"pos", self)
+        a.setDuration(200); a.setStartValue(home)
+        a.setEndValue(QPoint(home.x(), home.y() + 8))
+        a.setEasingCurve(QEasingCurve.Type.InQuad)
+        _ui_anim_stop(self, "_pop_anim")
+        self._pop_anim = a; a.start()
+        _fade_window(self, 0.0, 200, QEasingCurve.Type.InCubic, then=_fin)
 
     def apply_opacity(self):
         """Wymusza przeliczenie i nałożenie efektywnej przezroczystości."""
@@ -5768,6 +5866,7 @@ class TestWindow(_DraggableWindow):
         self.lbl_progress.setText("%d z %d" % (self.index + 1, len(self.cards)))
         self.seg_bar.set_state(len(self.cards), self.index)
         self.inp.setFocus()
+        _fade_in_widgets([self.lbl_prompt, self.lbl_question, self.inp], 300, 70)
 
     def _check(self):
         if self.answered: return
@@ -5863,6 +5962,7 @@ class TestWindow(_DraggableWindow):
         try: self.btn_check.clicked.disconnect()
         except: pass
         self.btn_check.clicked.connect(self.hide)
+        _fade_in_widgets([self.lbl_question, self.lbl_hint, self.btn_check], 420, 120)
         self.test_done.emit(self.results)
 
     def paintEvent(self, e):
@@ -6644,15 +6744,6 @@ class HubWindow(_DraggableWindow):
     ANIM_DY = 16
     HAS_CLOSE = True
 
-    def fade_hide(self):
-        """Zamknięcie szybsze niż otwarcie (150 ms) — panel „odpływa”, nie znika skokiem."""
-        if not self.isVisible():
-            return
-        def _fin():
-            QWidget.hide(self)
-            self.setWindowOpacity(1.0)
-        _fade_window(self, 0.0, 150, QEasingCurve.Type.InCubic, then=_fin)
-
     def _count_to(self, lbl, n):
         try:
             n = int(n)
@@ -6979,15 +7070,35 @@ class HubWindow(_DraggableWindow):
     def _enter_pause(self):
         self._set_preset("30", 30)   # domyślnie 30 min
 
+    def _swap_panels(self, hide_w, show_w):
+        """Przełączenie paneli w hubie: nowy panel wpływa miękko (240 ms)."""
+        hide_w.hide()
+        was = show_w.isVisible()
+        show_w.show()
+        if was or not UI_MOTION or not self.isVisible():
+            return
+        try:
+            from PyQt6.QtWidgets import QGraphicsOpacityEffect
+            eff = QGraphicsOpacityEffect(show_w)
+            eff.setOpacity(0.0)
+            show_w.setGraphicsEffect(eff)
+            a = QPropertyAnimation(eff, b"opacity", eff)
+            a.setDuration(240); a.setStartValue(0.0); a.setEndValue(1.0)
+            a.setEasingCurve(QEasingCurve.Type.OutCubic)
+            a.finished.connect(lambda: show_w.setGraphicsEffect(None))
+            a.start()
+        except Exception as ex:
+            print(f"[motion] {ex}")
+
     def _set_preset(self, key, mins):
         self.app_ref.pause_for(mins)
-        self._active_content.hide(); self.pause_panel.show()
+        self._swap_panels(self._active_content, self.pause_panel)
         for k, b in self._preset_btns.items():
             b.setSelected(k == key)
         self._refresh_status(); self._update_countdown()
 
     def exit_pause_view(self):
-        self.pause_panel.hide(); self._active_content.show()
+        self._swap_panels(self.pause_panel, self._active_content)
         if self.isVisible():
             self._refresh_status(); self._refresh_stats()
 
@@ -7216,7 +7327,7 @@ class TrayApp:
             self.win_hub.open()
 
     def _toggle_hub(self):
-        if self.win_hub.isVisible():
+        if self.win_hub.isVisible() and not self.win_hub._closing:
             self.win_hub.fade_hide()
         else:
             self.win_hub.open()
