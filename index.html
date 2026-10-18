@@ -25645,3 +25645,68 @@ select::-ms-expand{display:none}
   };
 })();
 </script>
+<style id="eyl-brand-consistency">
+/* ███ SPOJNOSC WIZERUNKU: strona = aplikacja mobilna = program ███████████
+   Warstwa addytywna (sama skorka i ruch): usun ten blok, a strona wraca
+   do poprzedniego wygladu. Bez zmian tresci, ukladu, logo i fontow.      */
+:root{
+  --eyl-ease:cubic-bezier(.3,1.4,.5,1);   /* sprezyna: wejscie / nacisk */
+  --eyl-out:cubic-bezier(.4,0,.2,1);      /* wyjscie */
+  --eyl-ring:0 0 0 3px rgba(169,76,19,.22);
+  --eyl-ring-dark:0 0 0 3px rgba(228,130,60,.38);
+}
+/* 1. Przyciski: jeden jezyk nacisku (scale .97) i sprezyste puszczenie */
+.btn,.lp-btn,.srs-rate,.eylcf-btn,.eylpk-btn{
+  transition:background-color .2s var(--eyl-out),color .2s var(--eyl-out),border-color .2s var(--eyl-out),
+             box-shadow .2s var(--eyl-out),transform .25s var(--eyl-ease)}
+.btn:active,.lp-btn:active,.srs-rate:active{transform:scale(.97);transition-duration:.12s}
+.btn-orange:active,.lp-btn--fill:active{transform:scale(.97)}
+/* lift tylko tam, gdzie jest prawdziwy hover (nie na dotyku) */
+@media(hover:none){
+  .btn:hover,.lp-btn:hover,.lp-btn--fill:hover,.lp-btn--line:hover{transform:none}
+}
+/* CTA pomaranczowy: biel na #A94C13 = 5.63:1 (AA), takze w stanie hover/active */
+.btn-orange,.lp-btn--fill{color:#fff}
+.btn-orange:hover,.lp-btn--fill:hover{background-color:#8F3D0C;color:#fff}
+/* ghost/secondary: ten sam obrys i hover co w aplikacji */
+.btn-ghost:hover,.lp-btn--line:hover{border-color:rgba(26,35,64,.42);background:rgba(26,35,64,.045)}
+
+/* 2. Fokus klawiatury: pierscien akcentu (jasne tlo) / jasny akcent (ciemne) */
+.btn:focus-visible,.lp-btn:focus-visible,a:focus-visible,button:focus-visible,
+[role="button"]:focus-visible,[tabindex]:focus-visible{
+  outline:2px solid var(--orange,#A94C13);outline-offset:2px;box-shadow:var(--eyl-ring)}
+nav .btn:focus-visible,nav a:focus-visible,.lp-dark a:focus-visible,.lp-dark button:focus-visible,
+.lp-dark .lp-btn:focus-visible{outline-color:var(--orange-hi,#E4823C);box-shadow:var(--eyl-ring-dark)}
+
+/* 3. Pola formularzy: jeden promien i pierscien fokusu */
+.fi,.lexx-input,.tcp-input,.lexcat-search,select,textarea,
+input[type="text"],input[type="email"],input[type="password"],input[type="search"],input[type="number"]{
+  border-radius:12px;
+  transition:border-color .18s var(--eyl-out),box-shadow .18s var(--eyl-out),background-color .18s var(--eyl-out)}
+.fi:focus,.lexx-input:focus,.tcp-input:focus,.lexcat-search:focus,select:focus,textarea:focus,
+input[type="text"]:focus,input[type="email"]:focus,input[type="password"]:focus,
+input[type="search"]:focus,input[type="number"]:focus{
+  border-color:var(--orange,#A94C13);box-shadow:var(--eyl-ring)!important;outline:none}
+.fi:focus-visible,.lexx-input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none}
+
+/* 4. Karty: ten sam promien i cien; uniesienie 2 px tylko przy hoverze */
+.lp-plan,.card{border-radius:22px}
+.lp-plan,.card{transition:transform .25s var(--eyl-ease),box-shadow .25s var(--eyl-out),border-color .2s var(--eyl-out)}
+@media(hover:hover){
+  .lp-plan:hover,.card:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(26,35,64,.12)}
+}
+
+/* 5. Wejscie sekcji: tylko przezroczystosc (bez przesuniec — zero layout shift) */
+@keyframes eylSecIn{from{opacity:0}to{opacity:1}}
+.page.active{animation:eylSecIn .25s var(--eyl-out) both}
+
+/* 6. Zaznaczenie: nigdy bialy tekst na jasnym tle */
+.btn-orange::selection,.lp-btn--fill::selection{background:rgba(255,255,255,.28);color:#fff}
+::selection{background:rgba(169,76,19,.22);color:inherit}
+
+/* 7. Ograniczony ruch */
+@media(prefers-reduced-motion:reduce){
+  .btn,.lp-btn,.lp-plan,.card,.page.active{animation:none!important;transition-duration:.01ms!important}
+  .btn:hover,.btn:active,.lp-btn:hover,.lp-btn:active,.lp-plan:hover,.card:hover{transform:none!important}
+}
+</style>
