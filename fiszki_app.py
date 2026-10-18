@@ -112,6 +112,19 @@ _tts_bridge   = None
 _tts_player   = None
 _tts_audioout = None
 _tts_tmp      = []
+_tts_muted    = False     # True na czas pauzy/ukrycia fiszek: nic nie czytamy i nic nie gramy
+
+
+def tts_mute(on):
+    """Pauza: zatrzymaj bieżące odtwarzanie i zablokuj nowe (także już pobierane MP3)."""
+    global _tts_muted
+    _tts_muted = bool(on)
+    if on:
+        try:
+            if _tts_player is not None:
+                _tts_player.stop()
+        except Exception:
+            pass
 
 
 class _TTSBridge(_QObject):
@@ -123,6 +136,12 @@ class _TTSBridge(_QObject):
 
     def _play(self, path):
         global _tts_player, _tts_audioout, _tts_tmp
+        if _tts_muted:                      # MP3 doszedł już po pauzie — nie gramy
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+            return
         # Sprzątanie poprzednich plików tymczasowych (nie kasujemy tego, co gra teraz)
         for old_p in _tts_tmp[:-1]:
             try:
@@ -150,7 +169,7 @@ class _TTSBridge(_QObject):
 
 def speak_word(word, lang_code):
     """Czytaj słowo: gTTS (wątek) → QMediaPlayer (wątek GUI)."""
-    if not _tts_available or not _gTTS:
+    if not _tts_available or not _gTTS or _tts_muted:
         return
     try:
         if not APP_SETTINGS.get("audio_enabled", False):
@@ -1052,7 +1071,7 @@ def _pop_in(w, dy=0, ms=260):
 
 # ── SZKŁO: baza wizualna (zgodna z makietami "Eyelingo Glass") ────────────
 # Jedno źródło prawdy dla kolorów i klocków UI. Wyłącznik awaryjny rozmycia: UI_BLUR = False.
-from PyQt6.QtWidgets import QLayout, QScrollArea, QSizePolicy, QFrame
+from PyQt6.QtWidgets import QLayout, QScrollArea, QSizePolicy, QFrame, QComboBox
 from PyQt6.QtCore import QRect, QSize, QRectF, QPointF, QObject, QEvent
 from PyQt6.QtGui import (QFontMetrics, QPainterPath, QPolygonF,
                          QLinearGradient, QRadialGradient)
@@ -1469,6 +1488,41 @@ class StatusDot(QWidget):
             p.drawEllipse(c, rr, rr)
         p.setBrush(self._col); p.setPen(Qt.PenStyle.NoPen)
         p.drawEllipse(c, 4, 4)
+
+
+class GlassCombo(QComboBox):
+    """Lista rozwijana w stylu Eyelingo Glass: półprzezroczysta kapsuła + rysowany szewron
+    (zamiast kwadratowej strzałki ze stylów Qt)."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(40)
+        self.setStyleSheet(
+            "QComboBox{background:transparent;border:none;}"
+            "QComboBox::drop-down{width:0;border:none;}"
+            "QComboBox::down-arrow{image:none;width:0;height:0;}"
+            "QComboBox QAbstractItemView{background:#141c34;color:#eef2ff;"
+            "selection-background-color:rgba(240,146,77,215);selection-color:#1a1206;"
+            "border:1px solid rgba(255,255,255,56);border-radius:10px;padding:4px;outline:none;}"
+            "QComboBox QAbstractItemView::item{min-height:32px;padding-left:10px;border-radius:7px;}")
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(.5, .5, -.5, -.5)
+        hv = self.underMouse() or self.hasFocus()
+        p.setBrush(QColor(255, 255, 255, 52 if hv else 38))
+        p.setPen(QPen(QColor(255, 255, 255, 96 if hv else 70), 1))
+        p.drawRoundedRect(r, 13, 13)
+        p.setPen(QColor(238, 242, 255))
+        f = _gfont(14); p.setFont(f)
+        tr = QRectF(14, 0, self.width() - 14 - 38, self.height())
+        txt = QFontMetrics(f).elidedText(self.currentText(), Qt.TextElideMode.ElideRight, int(tr.width()))
+        p.drawText(tr, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), txt)
+        cx, cy = self.width() - 22.0, self.height() / 2.0
+        p.setPen(QPen(QColor(255, 178, 122), 1.9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.drawLine(QPointF(cx - 5, cy - 2.4), QPointF(cx, cy + 2.6))
+        p.drawLine(QPointF(cx, cy + 2.6), QPointF(cx + 5, cy - 2.4))
 
 
 class _DraggableWindow(QWidget):
@@ -5120,22 +5174,8 @@ class SettingsWindow(_DraggableWindow):
             ("glow_white", "Delikatne wyróżnienie nowego słowa"),
         ]
         self._fx_ids = [f[0] for f in FX]
-        self._fx_cb  = QComboBox()
-        self._fx_cb.setFont(QFont("Segoe UI",11))
-        self._fx_cb.setFixedHeight(30)
-        self._fx_cb.setStyleSheet("""
-            QComboBox{background:rgba(255,255,255,24);color:white;
-                border:1px solid rgba(255,255,255,46);border-radius:10px;padding:4px 12px;}
-            QComboBox:hover{background:rgba(255,255,255,40);}
-            QComboBox::drop-down{border:none;width:22px;}
-            QComboBox::down-arrow{width:0;height:0;
-                border-left:5px solid transparent;border-right:5px solid transparent;
-                border-top:6px solid rgba(200,210,255,200);}
-            QComboBox QAbstractItemView{background:rgba(20,28,44,245);color:white;
-                selection-background-color:rgba(120,140,215,205);
-                border:1px solid rgba(96,110,150,140);border-radius:6px;
-                padding:2px;outline:none;}
-        """)
+        self._fx_cb  = GlassCombo()
+        self._fx_cb.setFont(_gfont(14))
         cur = APP_SETTINGS.get("card_effect","none")
         for fid,flbl in FX:
             self._fx_cb.addItem(flbl, fid)
@@ -6606,8 +6646,12 @@ class HubWindow(_DraggableWindow):
         self._active_content = inner
         self.pause_panel = QWidget(); self.pause_panel.setStyleSheet("background:transparent;")
         pl = QVBoxLayout(self.pause_panel); pl.setContentsMargins(22, 26, 22, 22); pl.setSpacing(0)
+        ph = QHBoxLayout(); ph.setContentsMargins(0, 0, 0, 0)
         tt = QLabel("Fiszki wstrzymane"); tt.setFont(_gfont(21, QFont.Weight.DemiBold)); tt.setStyleSheet(TXT)
-        pl.addWidget(tt)
+        ph.addWidget(tt, 1)
+        px = self._icon_btn("close", "Zamknij (Esc)"); px.clicked.connect(self.fade_hide)
+        ph.addWidget(px, 0, Qt.AlignmentFlag.AlignTop)
+        pl.addLayout(ph)
         self.lbl_countdown = QLabel(""); self.lbl_countdown.setFont(_gfont(14))
         self.lbl_countdown.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
         pl.addSpacing(4); pl.addWidget(self.lbl_countdown)
@@ -6626,6 +6670,10 @@ class HubWindow(_DraggableWindow):
         btn_resume = GlassButton("Wznów teraz", "cta", radius=16); btn_resume.setFixedHeight(50)
         btn_resume.clicked.connect(self._resume)
         pl.addWidget(btn_resume)
+        pl.addSpacing(8)
+        btn_pclose = GlassButton("Zamknij", "ghost", radius=14); btn_pclose.setFixedHeight(42)
+        btn_pclose.clicked.connect(self.fade_hide)
+        pl.addWidget(btn_pclose)
         self.pause_panel.hide(); lay.addWidget(self.pause_panel, 1)
 
     # ── helpery UI ──
@@ -7363,13 +7411,19 @@ class TrayApp:
     def _toggle(self):
         if self.visible:
             self.overlay.hide()
+            self.overlay._rotation_pause()
+            tts_mute(True)
             self.act_toggle.setText("▶  Pokaż fiszki")
             _session.slides_stopped()
             _session.track("slides_hidden")
         else:
             self._pause_until = None
             if hasattr(self, "_pause_timer"): self._pause_timer.stop()
+            tts_mute(False)
             self.overlay.show()
+            self.overlay._rotation_resume()
+            if not self.overlay.timer.isActive():
+                self.overlay._rotation_restart()
             self.act_toggle.setText("⏸  Ukryj fiszki")
             if self.overlay.cat:
                 _session.slides_started(self.overlay.lang, self.overlay.level, self.overlay.cat)
@@ -7388,8 +7442,10 @@ class TrayApp:
         else:
             secs = int(minutes) * 60
         self._pause_until = _t.time() + secs
+        tts_mute(True)                       # żadnego czytania w trakcie pauzy
         if self.visible:
             self.overlay.hide()
+            self.overlay._rotation_pause()   # zegar rotacji staje (zapamiętuje resztę czasu)
             self.visible = False
             self.act_toggle.setText("▶  Pokaż fiszki")
             _session.slides_stopped()
@@ -7406,8 +7462,12 @@ class TrayApp:
         self._pause_until = None
         if hasattr(self, "_pause_timer"):
             self._pause_timer.stop()
+        tts_mute(False)
         if not self.visible:
             self.overlay.show()
+            self.overlay._rotation_resume()
+            if not self.overlay.timer.isActive():
+                self.overlay._rotation_restart()
             self.visible = True
             self.act_toggle.setText("⏸  Ukryj fiszki")
             if self.overlay.cat:
