@@ -150,11 +150,14 @@ class _TTSBridge(_QObject):
                 pass
         _tts_tmp = _tts_tmp[-1:]
         try:
-            from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+            from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices
             if _tts_player is None:
                 _tts_player   = QMediaPlayer()
                 _tts_audioout = QAudioOutput()
                 _tts_player.setAudioOutput(_tts_audioout)
+            # Odtwarzacz trzymał urządzenie z chwili startu aplikacji. Przy każdym
+            # słowie wskazujemy aktualne domyślne wyjście (słuchawki podłączone później).
+            _tts_audioout.setDevice(QMediaDevices.defaultAudioOutput())
             _tts_audioout.setVolume(1.0)
             _tts_player.setSource(_QUrl.fromLocalFile(path))
             _tts_player.play()
