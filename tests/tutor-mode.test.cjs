@@ -5,7 +5,7 @@ const R = __dirname + '/../';
 const html = `<!doctype html><body>
 <div id="page-community"><div id="mat-main-content">
   <div class="page-head page-head-row"><div><h2 id="mat-main-title">Ucz się z fiszek</h2><p id="mat-main-sub">x</p></div>
-  <div><input id="mat-search"><button id="mat-create-btn">Nowy zestaw</button></div></div>
+  <div><input id="mat-search"><button id="mat-create-ai-btn">Z AI</button><button id="mat-create-btn">Nowy zestaw</button></div></div>
   <div id="mat-continue-wrap"></div><div id="mat-grid"></div>
 </div></div></body>`;
 const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://eyelingo.app/', pretendToBeVisual: true });
@@ -14,19 +14,19 @@ let fails = 0;
 const t = (name, ok, extra) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + name + (ok ? '' : ' :: ' + extra)); if (!ok) fails++; };
 
 // ── atrapa bazy ──
-const calls = { upserts: 0, rpc: [] };
+const calls = { upserts: 0, rpc: [], ins: {}, del: [], created: [] };
 const state = { pro: true, noDb: false, owner: 'T1', students: [{ link_id: 'L1', student_id: 'S1', label: null, student_name: 'Kasia' }], linkSets: [{ link_id: 'L1', set_id: 7 }], tutors: [] };
 function builder(table) {
   const b = {
     _t: table,
     select() { return b; }, eq() { return b; }, in() { return b; }, order() { return b; }, limit() { return b; }, maybeSingle() { return b; }, single() { return b; },
     upsert() { calls.upserts++; return Promise.resolve({ data: null, error: null }); },
-    insert() { calls.upserts++; return Promise.resolve({ data: null, error: null }); },
-    update() { return b; }, delete() { return b; },
+    insert(v) { calls.upserts++; (calls.ins[table] = calls.ins[table] || []).push(v); return Promise.resolve({ data: null, error: null }); },
+    update() { return b; }, delete() { calls.del.push(table); return b; },
     then(res, rej) {
       let data = [];
       if (table === 'tutor_link_sets') data = state.linkSets;
-      if (table === 'user_sets') data = [{ id: 7, name: 'Zestaw dla Kasi', user_id: state.owner, user_set_cards: [{ id: 1, word: 'dog', translation: 'pies' }] }];
+      if (table === 'user_sets') { data = [{ id: 7, name: 'Zestaw dla Kasi', lang: 'en', user_id: state.owner, user_set_cards: [{ id: 1, word: 'dog', translation: 'pies' }] }]; if (state.newSet) data.push({ id: 99, name: 'Nowy AI', user_id: state.owner, user_set_cards: [] }); }
       return Promise.resolve({ data, error: null }).then(res, rej);
     },
   };
@@ -53,6 +53,10 @@ w._usrsSaveAll = function () { srsLocal++; };
 let matRendered = 0; w.matRenderMine = function () { matRendered++; };
 w.setCard = function (s) { return '<div class="mat-card"><div class="mat-card-count">' + s.name + '</div></div>'; };
 w.loadMySets = async function () { w._matSets = []; };
+w.showPage = function (n) { w._page = n; };
+w.openCreateSet = function () { calls.created.push('manual'); };
+w.openCreateSetAI = function () { calls.created.push('ai'); };
+w.eylPreviewSet = function () {};
 w.eval(fs.readFileSync(R + 'vendor/qrcode-generator.min.js', 'utf8'));
 w.eval(fs.readFileSync(R + 'tutor-mode.js', 'utf8'));
 const T = w.EylTutor;
@@ -89,15 +93,33 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   await wait(100);
   const panel = w.document.getElementById('tutor-panel');
   t('panel istnieje, klasa tutor-on, pill widoczny', !!panel && w.document.getElementById('mat-main-content').classList.contains('tutor-on') && w.document.getElementById('tutor-pill').style.display === 'flex');
-  t('lista uczniów renderuje Kasię i liczbę zestawów', /Kasia/.test(panel.innerHTML) && /1 zestaw/.test(panel.innerHTML), panel.innerHTML.slice(0, 200));
+  t('lista uczniów renderuje Kasię, inicjał i liczbę zestawów', /Kasia/.test(panel.innerHTML) && /1 zestaw/.test(panel.innerHTML) && /sr-av">K</.test(panel.innerHTML), panel.innerHTML.slice(0, 300));
   t('tytuł strony zmieniony', w.document.getElementById('mat-main-title').textContent === 'Tryb nauczyciela');
-  panel.querySelector('.tp-card').click(); await wait(150);
-  t('widok ucznia: zestaw + przyciski', /Zestaw dla Kasi/.test(panel.innerHTML) && /Przypisz zestaw/.test(panel.innerHTML) && /Odepnij/.test(panel.innerHTML));
+  panel.querySelector('.sr').click(); await wait(150);
+  t('widok ucznia: zestaw + przyciski bez nakładania (własna stopka „Odepnij”)', /Zestaw dla Kasi/.test(panel.innerHTML) && /Przypisz istniejący/.test(panel.innerHTML) && /Z AI/.test(panel.innerHTML) && !!panel.querySelector('.tc-ft .tc-un'));
   t('zestaw ucznia trafił do _matSets (żeby openSet działał)', (w._matSets || []).some(s => s.id === 7));
+  const sw = w.document.getElementById('tutor-toggle-btn');
+  t('przełącznik: role=switch, aria-checked=true, klasa on', !!sw && sw.getAttribute('role') === 'switch' && sw.getAttribute('aria-checked') === 'true' && sw.classList.contains('on'));
+  t('w trybie nauczyciela ukryte przyciski tworzenia z nagłówka', w.getComputedStyle(w.document.getElementById('mat-create-btn')).display === 'none' && w.getComputedStyle(w.document.getElementById('mat-create-ai-btn')).display === 'none');
+  // nowy zestaw z panelu → po zapisie sam trafia do ucznia
+  panel.querySelector('[data-a="ai"]').click(); await wait(100);
+  t('„Z AI” otwiera kreator AI', calls.created.indexOf('ai') >= 0, calls.created);
+  state.newSet = true; await w.loadMySets(); await wait(300);
+  const li = (calls.ins.tutor_link_sets || []).reduce((a, x) => a.concat(x), []);
+  t('nowy zestaw sam przypisany do ucznia (set 99, link L1)', li.some(r => r.set_id === 99 && r.link_id === 'L1'), JSON.stringify(calls.ins));
+  state.newSet = false;
+  panel.querySelector('[data-a="unpin"]').click(); await wait(80);
+  w.document.querySelector('.tmd [data-x="1"]').click(); await wait(150);
+  t('odepnij: potwierdzenie → delete na tutor_link_sets', calls.del.indexOf('tutor_link_sets') >= 0, calls.del);
+  // zakres: poza „Moje fiszki" tryb się wyłącza, nauka z panelu go zachowuje
+  panel.querySelector('[data-a="srs"]') && panel.querySelector('[data-a="srs"]').click();
+  w.showPage('tryb'); t('nauka uruchomiona z panelu: tryb zostaje', T.on());
+  w.showPage('community'); await wait(80); t('powrót do Moje fiszki: tryb zostaje', T.on());
+  T._test.forgetStudy(); w.showPage('dash'); t('wyjście do innej sekcji wyłącza tryb', !T.on() && !w.document.getElementById('mat-main-content').classList.contains('tutor-on'));
+  T.setMode(true); await wait(150);
 
   // 5. kod zaproszenia
-  w.document.getElementById('tp-back').click(); await wait(100);
-  w.document.getElementById('tp-add').click(); await wait(150);
+  panel.querySelector('[data-a="add"]').click(); await wait(150);
   const code = w.document.getElementById('tmd-code');
   t('modal kodu: pokazuje ABCD-2345 i QR', !!code && code.textContent === 'ABCD-2345' && !!w.document.querySelector('.tmd-qr svg'));
   w.document.getElementById('tmd-ok').click(); await wait(100);
@@ -167,5 +189,43 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   tt('stan pusty usunięty', !L.querySelector('.empty'));
   tt('pasek „Mam kod od nauczyciela” nad listą', /Mam kod od nauczyciela/.test((v.document.getElementById('tutor-student-bar') || {}).innerHTML || ''));
   tt('apostrof w nazwie nie psuje onclick', /openSet\('7','Zestaw d\\'Ani'/.test(L.innerHTML), L.innerHTML.slice(0, 260));
+
+  // ── PWA: tryb nauczyciela (przełącznik, katalogi, tworzenie, zakres) ──
+  const d3 = new JSDOM('<body><section id="s-mine"><div class="scroll"><div class="h1 mb16">Moje zestawy</div><div id="ns-entry"></div><div id="mine-list"></div></div></section><section id="s-set"></section></body>', { runScripts: 'outside-only', url: 'https://eyelingo.app/app.html', pretendToBeVisual: true });
+  const x = d3.window; const log = { ai: 0, man: 0, go: [], topic: 0, ins: [] };
+  const mk3 = (table) => { const b = { select() { return b; }, eq() { return b; }, in() { return b; }, order() { return b; }, limit() { return b; },
+    insert(v) { log.ins.push([table, v]); return Promise.resolve({ data: null, error: null }); }, delete() { return b; },
+    then(res, rej) { let data = []; if (table === 'tutor_link_sets') data = [{ link_id: 'L1', set_id: 7 }]; if (table === 'user_sets') data = [{ id: 7, name: 'Zestaw dla Kasi', lang: 'en', user_set_cards: [{ count: 12 }] }]; return Promise.resolve({ data, error: null }).then(res, rej); } }; return b; };
+  x.db = { from: mk3, auth: { getSession: async () => ({ data: { session: { user: { id: 'T1' } } } }), onAuthStateChange() {} },
+    rpc: async (n) => n === 'tutor_list_students' ? { data: [{ link_id: 'L1', student_id: 'S1', label: null, student_name: 'Kasia' }], error: null } : n === 'tutor_my_tutors' ? { data: [], error: null } : { data: null, error: null } };
+  x.eylIsPremium = async () => true;
+  x.loadMine = async function () { x.document.getElementById('mine-list').innerHTML = '<div class="row">Mój</div>'; };
+  x.go = function (n) { log.go.push(n); };
+  x.eylNewSetOpen = async function () { log.man++; }; x._nsGo = function (v) { if (v === 'topic') log.topic++; };
+  x.openSet = function () { log.opened = true; };
+  x.eval(fs.readFileSync(R + 'vendor/qrcode-generator.min.js', 'utf8'));
+  x.eval(fs.readFileSync(R + 'tutor-mode.js', 'utf8'));
+  await new Promise(r => setTimeout(r, 600));
+  await x.loadMine(); await new Promise(r => setTimeout(r, 300));
+  const seg = x.document.getElementById('tutor-seg');
+  tt('segment „Moje zestawy / Tryb nauczyciela” pod tytułem', !!seg && seg.previousElementSibling.classList.contains('h1') && seg.querySelectorAll('button').length === 2);
+  seg.querySelector('[data-m="1"]').click(); await new Promise(r => setTimeout(r, 400));
+  const sm = x.document.getElementById('s-mine'), P = x.document.getElementById('tutor-panel');
+  tt('przełączenie: tutor-on, tytuł, segment on', sm.classList.contains('tutor-on') && x.document.querySelector('#s-mine .h1').textContent === 'Tryb nauczyciela' && seg.classList.contains('on'));
+  tt('lista własnych zestawów i kafel „Nowy zestaw” ukryte w trybie', x.getComputedStyle(x.document.getElementById('mine-list')).display === 'none' && x.getComputedStyle(x.document.getElementById('ns-entry')).display === 'none');
+  tt('panel pokazuje uczennicę', /Kasia/.test(P.innerHTML));
+  P.querySelector('.sr').click(); await new Promise(r => setTimeout(r, 200));
+  tt('katalog ucznia: wiersz zestawu, podgląd, odepnij, 3 akcje', /Zestaw dla Kasi/.test(P.innerHTML) && /12 fiszek/.test(P.innerHTML) && !!P.querySelector('.trow [data-a="eye"]') && !!P.querySelector('.trow [data-a="unpin"]') && !!P.querySelector('[data-a="new"]') && !!P.querySelector('[data-a="ai"]') && !!P.querySelector('[data-a="assign"]'));
+  P.querySelector('[data-a="ai"]').click(); await new Promise(r => setTimeout(r, 200));
+  tt('„Z AI” otwiera kreator nowego zestawu od razu na temacie', log.man === 1 && log.topic === 1, JSON.stringify(log));
+  P.querySelector('[data-a="new"]').click(); await new Promise(r => setTimeout(r, 200));
+  tt('„Nowy zestaw” otwiera kreator (widok wyboru)', log.man === 2 && log.topic === 1);
+  P.querySelector('.trow').click();
+  tt('klik w wiersz otwiera zestaw (openSet)', !!log.opened);
+  x.go('set'); tt('ekran zestawu: tryb zostaje', x.EylTutor.on());
+  x.go('ucz'); tt('wyjście z Moich zestawów wyłącza tryb', !x.EylTutor.on() && !sm.classList.contains('tutor-on') && x.document.querySelector('#s-mine .h1').textContent === 'Moje zestawy');
+  seg.querySelector('[data-m="1"]').click(); await new Promise(r => setTimeout(r, 300));
+  seg.querySelector('[data-m="0"]').click(); await new Promise(r => setTimeout(r, 100));
+  tt('segment „Moje zestawy” wyłącza tryb', !x.EylTutor.on() && !seg.classList.contains('on'));
   process.exit(f2 ? 1 : 0);
 })();
