@@ -3013,9 +3013,17 @@ class FlashcardOverlay(QWidget):
         self.lbl_info.setText(f"{cat}  ·  {level}  ·  {lang_label(lang)}")
         self.lbl_word.setText("Ładowanie...")
         self.lbl_tr.setText("")
+        # Zestaw z bazy od razu zdejmuje tryb „własny” i stare karty — inaczej do czasu
+        # odpowiedzi (lub przy błędzie) overlay pokazuje Eyelingo pod etykietą zestawu własnego.
+        self._is_custom = False
+        self.cards = []
+        self.index = 0
+        # Odpowiedź ze spóźnionego żądania (poprzedni zestaw) nie może nadpisać nowszego wyboru.
+        self._load_seq = getattr(self, "_load_seq", 0) + 1
+        seq = self._load_seq
         self._worker = FetchWorker(lang, level, cat)
-        self._worker.done.connect(self._on_loaded)
-        self._worker.error.connect(self._on_error)
+        self._worker.done.connect(lambda cards, s=seq: self._on_loaded(cards) if s == self._load_seq else None)
+        self._worker.error.connect(lambda msg, s=seq: self._on_error(msg) if s == self._load_seq else None)
         self._worker.start()
 
     def _on_loaded(self, cards):
