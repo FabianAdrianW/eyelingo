@@ -4944,13 +4944,10 @@ window.loadMySets = async function loadMySets(){
             var g=window.lexGuessLang(cards);
             if(!g||!g.code||!g.confident) return;
             var cur=st.lang||null;
-            var strong=(g.scores && (g.scores[g.code]>=4 || g.code==='jp'));
+            // Heurystyka może TYLKO uzupełnić pusty język. Zapisanego (zwłaszcza wybranego ręcznie) nigdy nie nadpisuje:
+            // fragmenty „ee/ui/oo" w angielskich słowach (fruit, coffee…) fałszywie wskazywały niderlandzki.
             if(!cur){
               try{ await db.from('user_sets').update({lang:g.code}).eq('id', st.id); }catch(e){}
-              st.lang=g.code; if(typeof matRenderMine==='function') matRenderMine();
-            } else if(cur!==g.code && strong){
-              try{ await db.from('user_sets').update({lang:g.code}).eq('id', st.id); }catch(e){}
-              console.info('[Eyelingo] poprawiono jezyk zestawu', st.id, cur, '->', g.code);
               st.lang=g.code; if(typeof matRenderMine==='function') matRenderMine();
             }
           }catch(e){}
@@ -5200,9 +5197,15 @@ window.matSetLangPicker=function(setId, currentLang){
   box.appendChild(h); box.appendChild(sub); box.appendChild(grid);
   m.appendChild(box); document.body.appendChild(m);
 };
+// Ręcznie wybrany język zestawu jest „zablokowany" w metadanych konta (działa między urządzeniami, bez zmian w bazie):
+// automatyczna naprawa języka (eylRepairSetLangs) takich zestawów już nie zmienia.
+window.eylSetLangLocks=async function(){
+  try{ var s=(await db.auth.getSession()).data.session; return Object.assign({}, (s&&s.user&&s.user.user_metadata&&s.user.user_metadata.set_lang_locks)||{}); }catch(e){ return {}; }
+};
 window.matSetLangApply=async function(setId, code){
   var m=document.getElementById('mat-setlang-modal'); if(m) m.remove();
   try{ await db.from('user_sets').update({lang:code}).eq('id', setId); }catch(e){ console.warn('[Eyelingo] zapis języka zestawu:', e&&e.message); }
+  try{ var _lk=await window.eylSetLangLocks(); _lk[String(setId)]=code; await db.auth.updateUser({data:{set_lang_locks:_lk}}); }catch(e){}
   try{ var i=(_matSets||[]).findIndex(function(x){ return String(x.id)===String(setId); }); if(i>=0) _matSets[i].lang=code; }catch(e){}
   if(typeof matRenderMine==='function' && document.getElementById('mat-grid')) matRenderMine();
   try{ var _cvL=document.getElementById('mat-collection-view'); if(_cvL && _cvL.style.display!=='none' && _matActiveCollection!=null && typeof openCollectionView==='function') openCollectionView(_matActiveCollection); }catch(e){}
@@ -6308,8 +6311,10 @@ async function eylRepairSetLangs(sets){
     if(typeof window.eylDetectLangByCatalog!=='function') return;
     window._eylSetLangFixDone=true;
     var list=(sets||[]).filter(function(s){ return s && s.id && (s.user_set_cards||[]).length>=3; });
+    var _locks={}; try{ _locks=await window.eylSetLangLocks(); }catch(e){}
     for(var i=0;i<list.length && i<40;i++){
       var s=list[i];
+      if(_locks[String(s.id)]) continue;                          // język wybrany ręcznie przez użytkownika — nie ruszamy
       var stored=(typeof _eylNormLang==='function')?_eylNormLang(s.lang):String(s.lang||'');
       var res=null;
       try{ res=await window.eylDetectLangByCatalog(s.user_set_cards||[]); }catch(e){ continue; }
