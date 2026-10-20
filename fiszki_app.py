@@ -170,8 +170,36 @@ class _TTSBridge(_QObject):
                 pass
 
 
+_tts_gen = 0   # numer ostatniego żądania; spóźnione MP3 ze starszych słówek są odrzucane
+
+
+def _tts_lang_for(card, set_lang):
+    """Język do czytania KONKRETNEJ karty.
+    Kolejność: jawny język karty > język zestawu (jeśli pismo słowa mu odpowiada)
+    > pismo słowa (kana/hangul/cyrylica/arabski) > język zestawu > en.
+    Zestaw własny nie ma języka w bazie, więc jego wartość to '' → angielski domyślnie."""
+    hint = _srs_norm_lang(card.get("lang") or set_lang or "")
+    txt = str(card.get("word") or "")
+
+    def _in(ranges):
+        return any(lo <= ord(ch) <= hi for ch in txt for lo, hi in ranges)
+
+    if hint in _SRS_SCRIPT_RANGES and _in(_SRS_SCRIPT_RANGES[hint]):
+        return hint
+    if _in([(0x3040, 0x30FF)]):
+        return "jp"
+    if _in([(0xAC00, 0xD7AF), (0x1100, 0x11FF)]):
+        return "ko"
+    if _in([(0x0400, 0x04FF)]):
+        return hint if hint in ("ru", "uk") else "ru"
+    if _in([(0x0600, 0x06FF), (0x0750, 0x077F)]):
+        return "ar"
+    return hint or "en"
+
+
 def speak_word(word, lang_code):
     """Czytaj słowo: gTTS (wątek) → QMediaPlayer (wątek GUI)."""
+    global _tts_gen
     if not _tts_available or not _gTTS or _tts_muted:
         return
     try:
@@ -184,14 +212,20 @@ def speak_word(word, lang_code):
         _tts_bridge = _TTSBridge()
     bridge = _tts_bridge
     import threading, tempfile
+    _tts_gen += 1
+    my_gen = _tts_gen
 
     def _fetch():
+        tmp = None
         try:
             tts_lang = LANG_TTS_MAP.get(lang_code, "en")
             tts = _gTTS(text=word, lang=tts_lang, slow=False)
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 tmp = f.name
             tts.save(tmp)
+            if my_gen != _tts_gen or _tts_muted:      # zdążyła przyjść już inna karta / pauza
+                os.unlink(tmp)
+                return
             bridge.ready.emit(tmp)
         except Exception as e:
             print(f"[TTS] {e}")
@@ -3002,6 +3036,7 @@ class FlashcardOverlay(QWidget):
         short_name = name[:15] if len(name) > 15 else name
         self.cat   = short_name
         self.level = ""
+        self.lang  = ""          # zestaw własny nie ma języka w bazie — nie dziedzicz po poprzednim zestawie
         self._is_custom = True
         self.cards = [{"word": c["word"], "translation": c["translation"],
                        "romaji": "", "flashcard_id": i, "custom": True, "set_name": short_name}
@@ -3260,7 +3295,7 @@ class FlashcardOverlay(QWidget):
         # pod kursorem (hover), użytkownik jej nie widzi, więc jej nie czytamy.
         if APP_SETTINGS.get("audio_enabled", False) and not getattr(self, "_hover_hidden", False):
             raw = c.get("word", "")
-            lang = self.lang or "en"
+            lang = _tts_lang_for(c, self.lang)
             if lang == "jp":
                 raw = _jp_tts_word(raw)
             speak_word(raw, lang)
@@ -7382,6 +7417,7 @@ class HubWindow(_DraggableWindow):
         self._refresh_status()
 
     def _tick(self):
+        self._refresh_status()
         if self.pause_panel.isVisible():
             self._update_countdown()
         else:
@@ -8344,7 +8380,7 @@ class TrayApp:
             if self.overlay.cards:
                 card = self.overlay.cards[self.overlay.index]
                 word = card.get("word", "")
-                lang = self.overlay.lang or "en"
+                lang = _tts_lang_for(card, self.overlay.lang)
                 if lang == "jp" and "(" in word:
                     word = word.split("(")[0].strip()
                 speak_word(word, lang)
