@@ -8717,6 +8717,17 @@ async function _usrsLiveCustomKeys(uid){
     var sr=await db.from('user_sets').select('id,lang').eq('user_id',uid);
     if(sr&&sr.error) return null;
     var sets=((sr&&sr.data)||[]);
+    // Tryb nauczyciela: zestawy udostępnione uczniowi liczą się jako „żywe" (inaczej ich słowa wypadałyby z powtórek)
+    try{
+      if(!window.__tutorNoDb){
+        var _sh=await db.from('tutor_link_sets').select('set_id');
+        var _shIds=((_sh&&_sh.data)||[]).map(function(x){return x.set_id;});
+        if(_shIds.length){
+          var _ss=await db.from('user_sets').select('id,lang').in('id',_shIds);
+          ((_ss&&_ss.data)||[]).forEach(function(s){ if(!sets.some(function(x){return x.id===s.id;})) sets.push(s); });
+        }
+      }
+    }catch(_e){}
     var ids=sets.map(function(s){return s.id;});
     var slang={}; sets.forEach(function(s){ slang[s.id]=_eylNormLang(s.lang); });
     var keys={}, langByKey={};
@@ -25710,3 +25721,6 @@ input[type="search"]:focus,input[type="number"]:focus{
   .btn:hover,.btn:active,.lp-btn:hover,.lp-btn:active,.lp-plan:hover,.card:hover{transform:none!important}
 }
 </style>
+
+<script src="vendor/qrcode-generator.min.js" defer></script>
+<script src="tutor-mode.js" defer></script>

@@ -4267,6 +4267,17 @@ async function _pwLiveCustomKeys(){
     var sr=await db.from('user_sets').select('id,lang').eq('user_id',UID);
     if(sr&&sr.error) return null;                 // błąd → null → nie filtrujemy (bezpieczny fallback)
     var sets=((sr&&sr.data)||[]);
+    // Tryb nauczyciela: zestawy udostępnione uczniowi liczą się jako „żywe" (parytet z index.html)
+    try{
+      if(!window.__tutorNoDb){
+        var _sh=await db.from('tutor_link_sets').select('set_id');
+        var _shIds=((_sh&&_sh.data)||[]).map(function(x){ return x.set_id; });
+        if(_shIds.length){
+          var _ss=await db.from('user_sets').select('id,lang').in('id',_shIds);
+          ((_ss&&_ss.data)||[]).forEach(function(s){ if(!sets.some(function(x){ return x.id===s.id; })) sets.push(s); });
+        }
+      }
+    }catch(_e){}
     var ids=sets.map(function(s){ return s.id; });
     var slang={}; sets.forEach(function(s){ slang[s.id]=_eylNormLang(s.lang); });
     var keys={}, langByKey={};
@@ -9029,5 +9040,7 @@ window.eylPagedFetch = async function(makeQuery, opts){
   }catch(err){}
 })();
 </script>
+<script src="vendor/qrcode-generator.min.js" defer></script>
+<script src="tutor-mode.js" defer></script>
 </body>
 </html>
