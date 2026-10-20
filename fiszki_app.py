@@ -2178,6 +2178,28 @@ class AuthWorker(QThread):
 # ──────────────────────────────────────────────────────
 # WORKER – pobieranie fiszek
 # ──────────────────────────────────────────────────────
+def _retry_net(fn, tries=3):
+    """Ponów wywołanie przy PRZEJŚCIOWYM błędzie gniazda (Windows WinError 10035
+    „operacja nie blokująca nie mogła być natychmiast ukończona” itp.).
+    Inne błędy lecą od razu."""
+    import time as _t
+    last = None
+    for i in range(tries):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            msg = str(e).lower()
+            transient = (getattr(e, "winerror", None) in (10035, 10053, 10054, 10060)
+                         or "10035" in msg or "nie blokuj" in msg or "would block" in msg
+                         or "timed out" in msg or "server disconnected" in msg
+                         or "connection reset" in msg)
+            if not transient or i == tries - 1:
+                raise
+            _t.sleep(0.5 * (i + 1))
+    raise last
+
+
 class FetchWorker(QThread):
     done  = pyqtSignal(list)
     error = pyqtSignal(str)
@@ -2200,11 +2222,11 @@ class FetchWorker(QThread):
             _refresh_and_sync()
         try:
             # Pobierz normalne fiszki
-            resp = supabase.rpc("get_flashcards", {
+            resp = _retry_net(lambda: supabase.rpc("get_flashcards", {
                 "p_lang":  self.lang,
                 "p_level": self.level,
                 "p_cat":   self.cat,
-            }).execute()
+            }).execute())
             # Deduplikacja - tylko unikalne słowa w kategorii
             seen_words = set()
             normal = []
@@ -2217,9 +2239,9 @@ class FetchWorker(QThread):
                                    "flashcard_id": r.get("id", 0)})
             # Pobierz słowa do powtórki SRS (trudne z poprzednich kategorii)
             try:
-                srs_resp = supabase.rpc("get_due_cards_all", {
+                srs_resp = _retry_net(lambda: supabase.rpc("get_due_cards_all", {
                     "p_lang": self.lang, "p_limit": CARRY_OVERLAY_MAX * 3,
-                }).execute()
+                }).execute())
                 srs_cards = []
                 _seen_srs = set(seen_words)   # nie powielaj słów z bieżącej kategorii
                 for r in (srs_resp.data or []):
