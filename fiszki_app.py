@@ -3036,10 +3036,13 @@ class FlashcardOverlay(QWidget):
         short_name = name[:15] if len(name) > 15 else name
         self.cat   = short_name
         self.level = ""
-        self.lang  = ""          # zestaw własny nie ma języka w bazie — nie dziedzicz po poprzednim zestawie
+        # Język zestawu z bazy (user_sets.lang); pusty = brak → język z pisma słowa, domyślnie en
+        set_lang = _srs_norm_lang(cards[0].get("lang") or "") if cards else ""
+        self.lang  = set_lang
         self._is_custom = True
         self.cards = [{"word": c["word"], "translation": c["translation"],
-                       "romaji": "", "flashcard_id": i, "custom": True, "set_name": short_name}
+                       "romaji": "", "flashcard_id": i, "custom": True, "set_name": short_name,
+                       "lang": set_lang}
                       for i, c in enumerate(cards)]
         self.index = 0
         self._fit_to_cards()
@@ -4656,7 +4659,15 @@ class LoadSetCardsWorker(QThread):
             resp = supabase.table("user_set_cards").select(
                 "word,translation"
             ).eq("set_id", self.set_id).order("sort_order").execute()
-            self.done.emit(resp.data or [])
+            set_lang = ""
+            try:
+                sr = supabase.table("user_sets").select("lang").eq("id", self.set_id).limit(1).execute()
+                if sr.data:
+                    set_lang = _srs_norm_lang(sr.data[0].get("lang") or "")
+            except Exception:
+                set_lang = ""
+            rows = [dict(r, lang=set_lang) for r in (resp.data or [])]
+            self.done.emit(rows)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -8375,6 +8386,7 @@ class TrayApp:
         save_settings(APP_SETTINGS)
         if hasattr(self.win_settings, 'chk_audio'):
             self.win_settings.chk_audio.setChecked(enabled)
+        info_prev = self.overlay.lbl_info.text()
         if enabled:
             self.overlay.lbl_info.setText("Audio włączone")
             if self.overlay.cards:
@@ -8383,10 +8395,11 @@ class TrayApp:
                 lang = _tts_lang_for(card, self.overlay.lang)
                 if lang == "jp" and "(" in word:
                     word = word.split("(")[0].strip()
-                speak_word(word, lang)
+                speak_word(word, lang)          # jedno czytanie na włączenie
         else:
             self.overlay.lbl_info.setText("Audio wyłączone")
-        QTimer.singleShot(2000, lambda: self.overlay._update())
+        # Tylko przywracamy etykietę. NIE wołamy _update(): ono też czyta słowo → dwukrotne odtworzenie.
+        QTimer.singleShot(2000, lambda: self.overlay.lbl_info.setText(info_prev))
 
     def _reload_cat_without_known(self, lang, level, cat, known_ids):
         if not self.overlay.cards: return
