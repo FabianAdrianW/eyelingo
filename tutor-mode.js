@@ -136,6 +136,7 @@
      +'.tmd-menu{display:flex;flex-direction:column;gap:8px;margin-top:10px}.tmd-menu .tmd-b{width:100%;text-align:center;padding:13px}'
      +'@media (max-width:600px){.tmd-ov{align-items:flex-end;padding:0}.tmd{max-width:none;border-radius:20px 20px 0 0;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}}'
      +'#tutor-panel{display:none}'
+     +'#mat-main-content .page-head{align-items:flex-start;gap:14px}#mat-main-content .page-head > div:first-child{flex:1;min-width:0}#mat-main-content .page-head > .tsw{flex-shrink:0;align-self:flex-start;margin-top:2px}'
      +'#mat-main-content.tutor-on > *:not(.page-head):not(#tutor-panel){display:none !important}'
      +'#mat-main-content.tutor-on #tutor-panel{display:block}'
      +'#mat-main-content.tutor-on #mat-search,#mat-main-content.tutor-on #mat-create-btn,#mat-main-content.tutor-on #mat-create-ai-btn{display:none !important}'
@@ -296,11 +297,11 @@
       var mc=$('mat-main-content'); if(!mc) return false;
       if(!$('tutor-panel')){ var p2=document.createElement('div'); p2.id='tutor-panel'; mc.appendChild(p2); }
       if(!$('tutor-toggle-btn')){
-        var host=($('mat-create-btn')||{}).parentNode;
+        var host=($('mat-create-btn')||{}).parentNode, head=host&&host.parentNode;
         if(host){
           var b=document.createElement('button'); b.id='tutor-toggle-btn'; b.type='button'; b.className='tsw'; b.setAttribute('role','switch'); b.setAttribute('aria-checked','false');
           b.innerHTML='<span class="tsw-lbl">Tryb nauczyciela</span><span class="tsw-track"><span class="tsw-knob"></span></span>';
-          b.addEventListener('click',T.toggle); host.insertBefore(b,host.firstChild);
+          b.addEventListener('click',T.toggle); (head||host).appendChild(b);   // zawsze skrajnie po prawej w nagłówku — nie skacze po zmianie trybu
         }
       }
     }
