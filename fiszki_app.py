@@ -32,7 +32,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,
     QLabel, QLineEdit, QSystemTrayIcon, QScrollArea,
-    QMenu, QPushButton, QGridLayout, QMessageBox, QHBoxLayout, QCheckBox,
+    QMenu, QWidgetAction, QPushButton, QGridLayout, QMessageBox, QHBoxLayout, QCheckBox,
     QProgressBar
 )
 from PyQt6.QtCore import (Qt, QTimer, QThread, pyqtSignal, QPropertyAnimation,
@@ -112,6 +112,19 @@ _tts_bridge   = None
 _tts_player   = None
 _tts_audioout = None
 _tts_tmp      = []
+_tts_muted    = False     # True na czas pauzy/ukrycia fiszek: nic nie czytamy i nic nie gramy
+
+
+def tts_mute(on):
+    """Pauza: zatrzymaj bieżące odtwarzanie i zablokuj nowe (także już pobierane MP3)."""
+    global _tts_muted
+    _tts_muted = bool(on)
+    if on:
+        try:
+            if _tts_player is not None:
+                _tts_player.stop()
+        except Exception:
+            pass
 
 
 class _TTSBridge(_QObject):
@@ -123,6 +136,12 @@ class _TTSBridge(_QObject):
 
     def _play(self, path):
         global _tts_player, _tts_audioout, _tts_tmp
+        if _tts_muted:                      # MP3 doszedł już po pauzie — nie gramy
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+            return
         # Sprzątanie poprzednich plików tymczasowych (nie kasujemy tego, co gra teraz)
         for old_p in _tts_tmp[:-1]:
             try:
@@ -131,11 +150,14 @@ class _TTSBridge(_QObject):
                 pass
         _tts_tmp = _tts_tmp[-1:]
         try:
-            from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+            from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices
             if _tts_player is None:
                 _tts_player   = QMediaPlayer()
                 _tts_audioout = QAudioOutput()
                 _tts_player.setAudioOutput(_tts_audioout)
+            # Odtwarzacz trzymał urządzenie z chwili startu aplikacji. Przy każdym
+            # słowie wskazujemy aktualne domyślne wyjście (słuchawki podłączone później).
+            _tts_audioout.setDevice(QMediaDevices.defaultAudioOutput())
             _tts_audioout.setVolume(1.0)
             _tts_player.setSource(_QUrl.fromLocalFile(path))
             _tts_player.play()
@@ -148,9 +170,37 @@ class _TTSBridge(_QObject):
                 pass
 
 
+_tts_gen = 0   # numer ostatniego żądania; spóźnione MP3 ze starszych słówek są odrzucane
+
+
+def _tts_lang_for(card, set_lang):
+    """Język do czytania KONKRETNEJ karty.
+    Kolejność: jawny język karty > język zestawu (jeśli pismo słowa mu odpowiada)
+    > pismo słowa (kana/hangul/cyrylica/arabski) > język zestawu > en.
+    Zestaw własny nie ma języka w bazie, więc jego wartość to '' → angielski domyślnie."""
+    hint = _srs_norm_lang(card.get("lang") or set_lang or "")
+    txt = str(card.get("word") or "")
+
+    def _in(ranges):
+        return any(lo <= ord(ch) <= hi for ch in txt for lo, hi in ranges)
+
+    if hint in _SRS_SCRIPT_RANGES and _in(_SRS_SCRIPT_RANGES[hint]):
+        return hint
+    if _in([(0x3040, 0x30FF)]):
+        return "jp"
+    if _in([(0xAC00, 0xD7AF), (0x1100, 0x11FF)]):
+        return "ko"
+    if _in([(0x0400, 0x04FF)]):
+        return hint if hint in ("ru", "uk") else "ru"
+    if _in([(0x0600, 0x06FF), (0x0750, 0x077F)]):
+        return "ar"
+    return hint or "en"
+
+
 def speak_word(word, lang_code):
     """Czytaj słowo: gTTS (wątek) → QMediaPlayer (wątek GUI)."""
-    if not _tts_available or not _gTTS:
+    global _tts_gen
+    if not _tts_available or not _gTTS or _tts_muted:
         return
     try:
         if not APP_SETTINGS.get("audio_enabled", False):
@@ -162,14 +212,20 @@ def speak_word(word, lang_code):
         _tts_bridge = _TTSBridge()
     bridge = _tts_bridge
     import threading, tempfile
+    _tts_gen += 1
+    my_gen = _tts_gen
 
     def _fetch():
+        tmp = None
         try:
             tts_lang = LANG_TTS_MAP.get(lang_code, "en")
             tts = _gTTS(text=word, lang=tts_lang, slow=False)
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
                 tmp = f.name
             tts.save(tmp)
+            if my_gen != _tts_gen or _tts_muted:      # zdążyła przyjść już inna karta / pauza
+                os.unlink(tmp)
+                return
             bridge.ready.emit(tmp)
         except Exception as e:
             print(f"[TTS] {e}")
@@ -886,7 +942,7 @@ ADAPT_LIGHT_LUMA   = 190     # 0-255: powyżej tej luminancji piksel uznajemy za
 ADAPT_ENTER_RATIO  = 0.75    # >=75% jasnych pikseli → tło jasne (próg z wymagania)
 ADAPT_EXIT_RATIO   = 0.60    # <=60% → tło znów ciemne (histereza, chroni przed migotaniem)
 ADAPT_CONFIRM_HITS = 2       # ile kolejnych pomiarów musi potwierdzić zmianę stanu
-ADAPT_DELTA        = 0.10    # o ile bardziej przezroczysta fiszka na jasnym tle
+ADAPT_DELTA        = 0.12    # o ile mniej przezroczysta (ciemniejsza) fiszka na jasnym tle
 ADAPT_MIN_OPACITY  = 0.20    # podłoga — fiszka nigdy nie znika całkiem
 
 # ── Konfiguracja: geometria karty (szerokość dopasowana do treści kategorii) ──
@@ -1031,8 +1087,14 @@ def _fade_window(w, target, ms, curve=None, then=None):
     w._op_anim = a
     a.start()
 
-def _pop_in(w, dy=0, ms=260):
-    """Wejście okna: fade-in + (opcjonalnie) wynurzenie z dołu o dy px."""
+def _spring_curve(overshoot=1.1):
+    c = QEasingCurve(QEasingCurve.Type.OutBack)
+    c.setOvershoot(overshoot)
+    return c
+
+def _pop_in(w, dy=0, ms=380):
+    """Wejście okna (jak w podglądzie Glass): fade-in 380 ms + wynurzenie z dołu
+    o dy px z lekkim przeskokiem (-2 px) i osiadnięciem."""
     if not UI_MOTION:
         return
     _ui_anim_stop(w, "_pop_anim")
@@ -1043,12 +1105,519 @@ def _pop_in(w, dy=0, ms=260):
         end = w.pos()
         w.move(end.x(), end.y() + dy)
         a = QPropertyAnimation(w, b"pos", w)
-        a.setDuration(ms + 60)
+        a.setDuration(ms)
         a.setStartValue(w.pos())
         a.setEndValue(end)
-        a.setEasingCurve(QEasingCurve.Type.OutBack)
+        a.setEasingCurve(_spring_curve(0.9))
         w._pop_anim = a
         a.start()
+
+def _fade_in_widgets(widgets, ms=320, stagger=70):
+    """Miękkie wejście treści w oknie (np. nowe pytanie, wynik): kolejne elementy
+    wpływają jeden po drugim; efekt jest zdejmowany po animacji."""
+    if not UI_MOTION:
+        return
+    try:
+        from PyQt6.QtWidgets import QGraphicsOpacityEffect
+        for i, w in enumerate(widgets):
+            if w is None or not w.isVisible():
+                continue
+            eff = QGraphicsOpacityEffect(w)
+            eff.setOpacity(0.0)
+            w.setGraphicsEffect(eff)
+            a = QPropertyAnimation(eff, b"opacity", eff)
+            a.setDuration(ms); a.setStartValue(0.0); a.setEndValue(1.0)
+            a.setEasingCurve(QEasingCurve.Type.OutCubic)
+            a.finished.connect(lambda w=w: w.setGraphicsEffect(None))
+            QTimer.singleShot(i * stagger, a.start)
+    except Exception as ex:
+        print(f"[motion] {ex}")
+
+# ── SZKŁO: baza wizualna (zgodna z makietami "Eyelingo Glass") ────────────
+# Jedno źródło prawdy dla kolorów i klocków UI. Wyłącznik awaryjny rozmycia: UI_BLUR = False.
+from PyQt6.QtWidgets import QLayout, QScrollArea, QSizePolicy, QFrame, QComboBox
+from PyQt6.QtCore import QRect, QSize, QRectF, QPointF, QObject, QEvent
+from PyQt6.QtGui import (QFontMetrics, QPainterPath, QPolygonF,
+                         QLinearGradient, QRadialGradient)
+
+UI_BLUR = True            # prawdziwe rozmycie tła pod oknami (tylko Windows)
+_GLASS_RADIUS = 26
+
+G_INK    = QColor(238, 242, 255)
+G_DIM    = QColor(238, 242, 255, 186)
+G_ACC    = QColor(224, 128, 58)
+G_ACC_HI = QColor(240, 146, 77)
+G_ACC_LO = QColor(216, 116, 46)
+G_ACC_TX = QColor(27, 18, 5)
+G_OK     = QColor(111, 220, 160)
+G_WARN   = QColor(240, 192, 96)
+G_BAD    = QColor(255, 154, 154)
+G_SOFT   = "#ffb27a"      # akcent do tekstu na ciemnym tle
+
+
+def _gfont(px, weight=QFont.Weight.Medium):
+    f = QFont("Segoe UI")
+    f.setPixelSize(int(px))
+    f.setWeight(weight)
+    return f
+
+
+def _blur_behind(w):
+    """Rozmycie tła pod oknem (Windows 10/11). True, gdy system je przyjął."""
+    if not UI_BLUR or sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _ACCENT(ctypes.Structure):
+            _fields_ = [("AccentState", ctypes.c_int), ("AccentFlags", ctypes.c_int),
+                        ("GradientColor", ctypes.c_uint), ("AnimationId", ctypes.c_int)]
+
+        class _WCAD(ctypes.Structure):
+            _fields_ = [("Attribute", ctypes.c_int), ("Data", ctypes.c_void_p),
+                        ("SizeOfData", ctypes.c_size_t)]
+
+        acc = _ACCENT(3, 0, 0, 0)          # 3 = ENABLE_BLURBEHIND (bez laga przy przeciąganiu)
+        data = _WCAD(19, ctypes.cast(ctypes.pointer(acc), ctypes.c_void_p), ctypes.sizeof(acc))
+        fn = ctypes.windll.user32.SetWindowCompositionAttribute
+        fn.argtypes = [wintypes.HWND, ctypes.POINTER(_WCAD)]
+        fn.restype = ctypes.c_int
+        return bool(fn(wintypes.HWND(int(w.winId())), ctypes.byref(data)))
+    except Exception as ex:
+        print(f"[glass] blur: {ex}")
+        return False
+
+
+def _round_region(w, radius):
+    """Przytnij okno (i rozmycie) do zaokrąglonego prostokąta."""
+    if sys.platform != "win32" or not getattr(w, "_blur_ok", False):
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        dpr = w.devicePixelRatioF()
+        W, H = int(w.width() * dpr), int(w.height() * dpr)
+        d = int(radius * 2 * dpr)
+        gdi, usr = ctypes.windll.gdi32, ctypes.windll.user32
+        gdi.CreateRoundRectRgn.restype = wintypes.HRGN
+        gdi.CreateRoundRectRgn.argtypes = [ctypes.c_int] * 6
+        usr.SetWindowRgn.argtypes = [wintypes.HWND, wintypes.HRGN, wintypes.BOOL]
+        rgn = gdi.CreateRoundRectRgn(0, 0, W + 1, H + 1, d, d)
+        usr.SetWindowRgn(wintypes.HWND(int(w.winId())), rgn, True)
+    except Exception as ex:
+        print(f"[glass] region: {ex}")
+
+
+class _GlassFilter(QObject):
+    """Przy pierwszym pokazaniu włącza rozmycie; przy zmianie rozmiaru przycina róg."""
+    def eventFilter(self, o, e):
+        try:
+            t = e.type()
+            if t == QEvent.Type.Show and not getattr(o, "_blur_done", False):
+                o._blur_done = True
+                o._blur_ok = _blur_behind(o)
+                _round_region(o, _GLASS_RADIUS)
+                o.update()
+            elif t == QEvent.Type.Resize and getattr(o, "_blur_done", False) \
+                    and getattr(o, "_fx_snap", None) is None:
+                _round_region(o, _GLASS_RADIUS)
+        except Exception as ex:
+            print(f"[glass] filter: {ex}")
+        return False
+
+
+def _glass_attach(w):
+    w._blur_ok = False
+    w._glass_filter = _GlassFilter(w)
+    w.installEventFilter(w._glass_filter)
+
+
+def _draw_glyph(p, name, cx, cy, s, col, width=1.8):
+    """Ikony rysowane ręcznie (bez zależności od czcionek ikon)."""
+    p.save()
+    pen = QPen(col, width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    k = s / 2.0
+    if name == "close":
+        a = k * 0.62
+        p.drawLine(QPointF(cx - a, cy - a), QPointF(cx + a, cy + a))
+        p.drawLine(QPointF(cx + a, cy - a), QPointF(cx - a, cy + a))
+    elif name == "play":
+        poly = QPolygonF([QPointF(cx - k * .42, cy - k * .62), QPointF(cx + k * .62, cy),
+                          QPointF(cx - k * .42, cy + k * .62)])
+        p.drawPolygon(poly)
+    elif name == "pause":
+        p.drawLine(QPointF(cx - k * .34, cy - k * .6), QPointF(cx - k * .34, cy + k * .6))
+        p.drawLine(QPointF(cx + k * .34, cy - k * .6), QPointF(cx + k * .34, cy + k * .6))
+    elif name == "check":
+        path = QPainterPath()
+        path.moveTo(cx - k * .55, cy + k * .02); path.lineTo(cx - k * .15, cy + k * .42)
+        path.lineTo(cx + k * .6, cy - k * .4)
+        p.drawPath(path)
+    elif name == "lock":
+        bw, bh = k * 1.0, k * .78
+        p.drawRoundedRect(QRectF(cx - bw / 2, cy - bh / 2 + k * .22, bw, bh), 2, 2)
+        sh = QPainterPath()
+        sh.moveTo(cx - bw * .3, cy - bh / 2 + k * .22)
+        sh.lineTo(cx - bw * .3, cy - k * .38)
+        sh.arcTo(QRectF(cx - bw * .3, cy - k * .86, bw * .6, k * .96), 180, -180)
+        sh.lineTo(cx + bw * .3, cy - bh / 2 + k * .22)
+        p.drawPath(sh)
+    elif name in ("sound", "soundoff"):
+        sp = QPainterPath()
+        sp.moveTo(cx - k * .7, cy - k * .28); sp.lineTo(cx - k * .32, cy - k * .28)
+        sp.lineTo(cx + k * .1, cy - k * .66); sp.lineTo(cx + k * .1, cy + k * .66)
+        sp.lineTo(cx - k * .32, cy + k * .28); sp.lineTo(cx - k * .7, cy + k * .28)
+        sp.closeSubpath()
+        p.drawPath(sp)
+        if name == "sound":
+            p.drawArc(QRectF(cx - k * .05, cy - k * .42, k * .9, k * .84), -50 * 16, 100 * 16)
+        else:
+            p.drawLine(QPointF(cx + k * .38, cy - k * .3), QPointF(cx + k * .82, cy + k * .3))
+            p.drawLine(QPointF(cx + k * .82, cy - k * .3), QPointF(cx + k * .38, cy + k * .3))
+    elif name == "book":
+        p.drawRoundedRect(QRectF(cx - k * .58, cy - k * .7, k * 1.16, k * 1.4), 2.5, 2.5)
+        p.drawLine(QPointF(cx - k * .2, cy - k * .7), QPointF(cx - k * .2, cy + k * .7))
+    elif name == "globe":
+        p.drawEllipse(QPointF(cx, cy), k * .72, k * .72)
+        p.drawEllipse(QPointF(cx, cy), k * .3, k * .72)
+        p.drawLine(QPointF(cx - k * .72, cy), QPointF(cx + k * .72, cy))
+    elif name == "sliders":
+        p.drawLine(QPointF(cx - k * .7, cy - k * .32), QPointF(cx + k * .7, cy - k * .32))
+        p.drawLine(QPointF(cx - k * .7, cy + k * .32), QPointF(cx + k * .7, cy + k * .32))
+        p.setBrush(QColor(0, 0, 0, 0))
+        p.drawEllipse(QPointF(cx + k * .22, cy - k * .32), k * .2, k * .2)
+        p.drawEllipse(QPointF(cx - k * .22, cy + k * .32), k * .2, k * .2)
+    elif name == "back":
+        p.drawLine(QPointF(cx + k * .6, cy), QPointF(cx - k * .6, cy))
+        p.drawLine(QPointF(cx - k * .6, cy), QPointF(cx - k * .1, cy - k * .5))
+        p.drawLine(QPointF(cx - k * .6, cy), QPointF(cx - k * .1, cy + k * .5))
+    elif name == "refresh":
+        rr = QRectF(cx - k * .62, cy - k * .62, k * 1.24, k * 1.24)
+        path = QPainterPath()
+        path.arcMoveTo(rr, 40)
+        path.arcTo(rr, 40, 280)
+        p.drawPath(path)
+        ex, ey = cx + k * .62 * 0.766, cy - k * .62 * 0.643
+        p.drawLine(QPointF(ex, ey), QPointF(ex + k * .05, ey - k * .42))
+        p.drawLine(QPointF(ex, ey), QPointF(ex + k * .45, ey + k * .04))
+    elif name == "logout":
+        p.drawLine(QPointF(cx - k * .15, cy), QPointF(cx + k * .7, cy))
+        p.drawLine(QPointF(cx + k * .7, cy), QPointF(cx + k * .4, cy - k * .28))
+        p.drawLine(QPointF(cx + k * .7, cy), QPointF(cx + k * .4, cy + k * .28))
+        path = QPainterPath()
+        path.moveTo(cx - k * .15, cy - k * .62); path.lineTo(cx - k * .7, cy - k * .62)
+        path.lineTo(cx - k * .7, cy + k * .62); path.lineTo(cx - k * .15, cy + k * .62)
+        p.drawPath(path)
+    elif name == "eye":
+        path = QPainterPath()
+        path.moveTo(cx - k * .8, cy)
+        path.quadTo(cx, cy - k * .85, cx + k * .8, cy)
+        path.quadTo(cx, cy + k * .85, cx - k * .8, cy)
+        p.drawPath(path)
+        p.drawEllipse(QPointF(cx, cy), k * .2, k * .2)
+    p.restore()
+
+
+class GlassButton(QPushButton):
+    """Przycisk rysowany ręcznie: płynna zmiana jasności na hover, uniesienie o 1 px,
+    sprężyste wciśnięcie (skala), wejście z lekkim przesunięciem. Rodzaje:
+    tile · chip · seg · ghost · ico · cta · quiet."""
+    _BASE = {"tile": 34, "chip": 40, "seg": 0, "ghost": 36, "ico": 36, "cta": 0, "quiet": 0}
+    _HOVR = {"tile": 66, "chip": 72, "seg": 44, "ghost": 66, "ico": 66, "cta": 0, "quiet": 0}
+
+    def __init__(self, text="", kind="tile", radius=14, parent=None):
+        super().__init__(text, parent)
+        self.kind = kind
+        self.radius = radius
+        self._hv = 0.0     # hover 0..1
+        self._pr = 0.0     # wciśnięcie 0..1
+        self._op = 1.0     # wejście 0..1
+        self._sel = False
+        self._strong = False
+        self._lock = False
+        self._done = False
+        self._glyph = ""          # ikona na środku (ico) albo przed tekstem (ghost)
+        self._trail = ""          # ikona na prawo (tile)
+        self._left = kind == "tile"
+        self._pad = 16 if kind == "tile" else 13
+        self._px = {"tile": 14, "chip": 13, "seg": 14, "ghost": 13, "ico": 14, "cta": 15, "quiet": 13}[kind]
+        self._wt = QFont.Weight.DemiBold if kind in ("seg", "cta") else QFont.Weight.Medium
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.setFlat(True)
+        if kind == "ico":
+            self.setFixedSize(34, 34)
+            self.radius = 17
+        elif kind == "chip":
+            self.setFixedHeight(32)
+            self.radius = 16
+
+    # ── stan ──
+    def setSelected(self, v):
+        if self._sel != bool(v):
+            self._sel = bool(v); self.update()
+
+    def setStrong(self, v):
+        self._strong = bool(v); self.update()
+
+    def setLocked(self, v):
+        self._lock = bool(v); self.update()
+
+    def setDone(self, v):
+        self._done = bool(v); self.update()
+
+    def setGlyph(self, g):
+        self._glyph = g; self.update()
+
+    def setTrail(self, g):
+        self._trail = g; self.update()
+
+    def setPx(self, px):
+        self._px = px; self.update()
+
+    def sizeHint(self):
+        fm = QFontMetrics(_gfont(self._px, self._wt))
+        w = fm.horizontalAdvance(self.text()) + 2 * self._pad
+        if self._lock:
+            w += 18
+        return QSize(max(w, 40), self.height() if self.height() > 0 else 38)
+
+    # ── ruch ──
+    def _tween(self, attr, end, ms, curve=QEasingCurve.Type.OutCubic):
+        a = getattr(self, "_a_" + attr, None)
+        if a is not None:
+            a.stop()
+        if not UI_MOTION:
+            setattr(self, attr, float(end)); self.update(); return
+        a = QVariantAnimation(self)
+        a.setStartValue(float(getattr(self, attr)))
+        a.setEndValue(float(end))
+        a.setDuration(ms)
+        a.setEasingCurve(curve)
+        a.valueChanged.connect(lambda v, at=attr: (setattr(self, at, float(v)), self.update()))
+        setattr(self, "_a_" + attr, a)
+        a.start()
+
+    def appear(self, delay_ms=0):
+        """Wejście elementu listy: wynurzenie z 8 px i fade (z opóźnieniem — kaskada)."""
+        self._op = 0.0
+        self.update()
+        QTimer.singleShot(delay_ms, lambda: self._tween("_op", 1.0, 300))
+
+    def enterEvent(self, e):
+        self._tween("_hv", 1.0, 150); super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._tween("_hv", 0.0, 220); super().leaveEvent(e)
+
+    def mousePressEvent(self, e):
+        self._tween("_pr", 1.0, 80); super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        self._tween("_pr", 0.0, 260, QEasingCurve.Type.OutBack); super().mouseReleaseEvent(e)
+
+    # ── rysowanie ──
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        W, H = float(self.width()), float(self.height())
+        k = self.kind
+        p.setOpacity(self._op * (1.0 if self.isEnabled() else (0.72 if self.kind == 'cta' else 0.5)))
+        lift = -1.0 * self._hv if k in ("tile", "chip", "ghost", "cta") else 0.0
+        sc = 1.0 - 0.04 * self._pr
+        p.translate(W / 2, H / 2 + lift + (1.0 - self._op) * 8)
+        p.scale(sc, sc)
+        p.translate(-W / 2, -H / 2)
+        r = QRectF(1.0, 1.0, W - 2.0, H - 2.0)
+        rad = min(float(self.radius), r.height() / 2)
+        txt_col = G_INK
+        p.setPen(Qt.PenStyle.NoPen)
+        if k == "cta":
+            if self._hv > 0.01:
+                for i, a in enumerate((26, 16, 8)):
+                    g = QColor(224, 128, 58, int(a * self._hv))
+                    p.setBrush(g)
+                    p.drawRoundedRect(r.adjusted(-2 - i * 3, -1 - i * 3, 2 + i * 3, 3 + i * 3), rad + i * 3, rad + i * 3)
+            g = QLinearGradient(r.topLeft(), r.bottomLeft())
+            g.setColorAt(0, G_ACC_HI); g.setColorAt(1, G_ACC_LO)
+            p.setBrush(QBrush(g)); p.drawRoundedRect(r, rad, rad)
+            p.setPen(QPen(QColor(255, 255, 255, 80), 1))
+            p.drawLine(QPointF(r.left() + rad * .6, r.top() + .5), QPointF(r.right() - rad * .6, r.top() + .5))
+            txt_col = G_ACC_TX
+        elif k == "quiet":
+            txt_col = QColor(238, 242, 255, int(140 + 90 * self._hv))
+        elif self._sel:
+            g = QLinearGradient(r.topLeft(), r.bottomLeft())
+            g.setColorAt(0, G_ACC_HI); g.setColorAt(1, G_ACC)
+            p.setBrush(QBrush(g)); p.drawRoundedRect(r, rad, rad)
+            txt_col = G_ACC_TX
+        else:
+            base = self._BASE[k] + (13 if self._strong else 0)
+            a = base + (self._HOVR[k] - self._BASE[k]) * self._hv
+            if a > 0.5:
+                p.setBrush(QColor(255, 255, 255, int(a)))
+                p.drawRoundedRect(r, rad, rad)
+                if k != "seg":      # cienka krawędź — przycisk jest czytelny nawet na jasnym tle
+                    p.setBrush(Qt.BrushStyle.NoBrush)
+                    p.setPen(QPen(QColor(255, 255, 255, int(40 + 50 * self._hv)), 1))
+                    p.drawRoundedRect(r, rad, rad)
+                    p.setPen(Qt.PenStyle.NoPen)
+            if self._lock:
+                txt_col = QColor(238, 242, 255, 150)
+        # treść
+        p.setFont(_gfont(self._px, self._wt))
+        p.setPen(txt_col)
+        text = self.text()
+        if k == "ico":
+            if self._glyph:
+                _draw_glyph(p, self._glyph, r.center().x(), r.center().y(), 17, txt_col)
+            return
+        fm = QFontMetrics(_gfont(self._px, self._wt))
+        tw = fm.horizontalAdvance(text)
+        if self._left:
+            tx = r.left() + self._pad
+            avail = r.width() - 2 * self._pad - (24 if (self._trail or self._done) else 0)
+            shown = fm.elidedText(text, Qt.TextElideMode.ElideRight, int(avail))
+            p.drawText(QRectF(tx, r.top(), avail, r.height()),
+                       int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), shown)
+            gx = r.right() - self._pad
+            if self._done:
+                _draw_glyph(p, "check", gx - 8, r.center().y(), 18, G_OK, 2.1)
+            elif self._trail:
+                _draw_glyph(p, self._trail, gx - 8, r.center().y(), 15,
+                            QColor(238, 242, 255, 150), 1.7)
+        else:
+            gl = 0
+            if self._glyph and k == "ghost":
+                gl = 24
+            lock = 18 if self._lock else 0
+            total = gl + tw + lock
+            x0 = r.center().x() - total / 2
+            if gl:
+                _draw_glyph(p, self._glyph, x0 + 8, r.center().y(), 16, txt_col, 1.7)
+            p.drawText(QRectF(x0 + gl, r.top(), tw + 2, r.height()),
+                       int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter), text)
+            if lock:
+                _draw_glyph(p, "lock", x0 + gl + tw + 11, r.center().y() + .5, 13, txt_col, 1.7)
+
+
+class FlowLayout(QLayout):
+    """Układ „zawijany”: chipy układają się w rzędy i łamią do następnej linii."""
+    def __init__(self, parent=None, hspace=6, vspace=6):
+        super().__init__(parent)
+        self._items = []
+        self._h = hspace
+        self._v = vspace
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item): self._items.append(item)
+    def count(self): return len(self._items)
+    def itemAt(self, i): return self._items[i] if 0 <= i < len(self._items) else None
+    def takeAt(self, i): return self._items.pop(i) if 0 <= i < len(self._items) else None
+    def expandingDirections(self): return Qt.Orientation(0)
+    def hasHeightForWidth(self): return True
+    def heightForWidth(self, w): return self._do(QRect(0, 0, w, 0), True)
+    def setGeometry(self, rect):
+        super().setGeometry(rect); self._do(rect, False)
+    def sizeHint(self): return self.minimumSize()
+    def minimumSize(self):
+        s = QSize()
+        for it in self._items:
+            s = s.expandedTo(it.minimumSize())
+        return s
+
+    def _do(self, rect, test):
+        x, y, lh = rect.x(), rect.y(), 0
+        for it in self._items:
+            sz = it.sizeHint()
+            if x + sz.width() > rect.right() + 1 and lh > 0:
+                x = rect.x(); y += lh + self._v; lh = 0
+            if not test:
+                it.setGeometry(QRect(x, y, sz.width(), sz.height()))
+            x += sz.width() + self._h
+            lh = max(lh, sz.height())
+        return y + lh - rect.y()
+
+
+class StatusDot(QWidget):
+    """Kropka statusu z delikatnym pulsem (jak w makiecie). Puls tylko gdy okno widoczne."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(18, 18)
+        self._col = QColor(G_OK)
+        self._t = 0.0
+        self._pulse = True
+        self._anim = QVariantAnimation(self)
+        self._anim.setStartValue(0.0); self._anim.setEndValue(1.0)
+        self._anim.setDuration(2400); self._anim.setLoopCount(-1)
+        self._anim.valueChanged.connect(self._on)
+
+    def _on(self, v):
+        self._t = float(v); self.update()
+
+    def set_color(self, col, pulse=True):
+        self._col = QColor(col); self._pulse = pulse; self.update()
+
+    def showEvent(self, e):
+        if UI_MOTION:
+            self._anim.start()
+        super().showEvent(e)
+
+    def hideEvent(self, e):
+        self._anim.stop(); super().hideEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        c = QPointF(self.width() / 2, self.height() / 2)
+        if self._pulse and UI_MOTION:
+            ring = QColor(self._col); ring.setAlpha(int(120 * (1 - self._t)))
+            p.setBrush(ring); p.setPen(Qt.PenStyle.NoPen)
+            rr = 4 + 5 * self._t
+            p.drawEllipse(c, rr, rr)
+        p.setBrush(self._col); p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(c, 4, 4)
+
+
+class GlassCombo(QComboBox):
+    """Lista rozwijana w stylu Eyelingo Glass: półprzezroczysta kapsuła + rysowany szewron
+    (zamiast kwadratowej strzałki ze stylów Qt)."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(40)
+        self.setStyleSheet(
+            "QComboBox{background:transparent;border:none;}"
+            "QComboBox::drop-down{width:0;border:none;}"
+            "QComboBox::down-arrow{image:none;width:0;height:0;}"
+            "QComboBox QAbstractItemView{background:#141c34;color:#eef2ff;"
+            "selection-background-color:rgba(240,146,77,215);selection-color:#1a1206;"
+            "border:1px solid rgba(255,255,255,56);border-radius:10px;padding:4px;outline:none;}"
+            "QComboBox QAbstractItemView::item{min-height:32px;padding-left:10px;border-radius:7px;}")
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(.5, .5, -.5, -.5)
+        hv = self.underMouse() or self.hasFocus()
+        p.setBrush(QColor(255, 255, 255, 52 if hv else 38))
+        p.setPen(QPen(QColor(255, 255, 255, 96 if hv else 70), 1))
+        p.drawRoundedRect(r, 13, 13)
+        p.setPen(QColor(238, 242, 255))
+        f = _gfont(14); p.setFont(f)
+        tr = QRectF(14, 0, self.width() - 14 - 38, self.height())
+        txt = QFontMetrics(f).elidedText(self.currentText(), Qt.TextElideMode.ElideRight, int(tr.width()))
+        p.drawText(tr, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), txt)
+        cx, cy = self.width() - 22.0, self.height() / 2.0
+        p.setPen(QPen(QColor(255, 178, 122), 1.9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        p.drawLine(QPointF(cx - 5, cy - 2.4), QPointF(cx, cy + 2.6))
+        p.drawLine(QPointF(cx, cy + 2.6), QPointF(cx + 5, cy - 2.4))
+
+
 
 class _DraggableWindow(QWidget):
     """Mixin: przeciąganie przez pasek tytułu (górne 32px) + ESC zamyka."""
@@ -1057,6 +1626,12 @@ class _DraggableWindow(QWidget):
     def __init__(self):
         super().__init__()
         self._drag_pos_win = None
+        # Animacje z zrzutem WŁASNEGO okna (bez drugiego okna): patrz _fx_paint
+        self._fx_snap = None; self._fx_kids = []; self._fx_anim = None
+        self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
+        self._fx_alpha = 1.0; self._fx_flying = False; self._tilt_v = 0.0
+        self._fx_fill = False; self._fx_mix = 0.0; self._fx_card = None; self._fx_alpha_card = None
+        self.installEventFilter(self)
 
     def _in_drag_zone(self, pos):
         return pos.y() < self.DRAG_BAR_HEIGHT
@@ -1071,27 +1646,377 @@ class _DraggableWindow(QWidget):
 
     def mouseMoveEvent(self, e):
         if self._drag_pos_win and e.buttons() == Qt.MouseButton.LeftButton:
-            self.move(e.globalPosition().toPoint() - self._drag_pos_win)
+            new = e.globalPosition().toPoint() - self._drag_pos_win
+            dx = new.x() - self.x()
+            self.move(new)
+            self._tilt(dx)
             e.accept()
         else:
             super().mouseMoveEvent(e)
 
     def mouseReleaseEvent(self, e):
         self._drag_pos_win = None
+        self._tilt_end()
         super().mouseReleaseEvent(e)
 
-    ANIM_DY = 0   # >0: okno wynurza się z dołu o tyle px (np. panel traya)
+    # ── animacje przez zrzut własnego okna ─────────────────────────────
+    # Okno maluje w czasie animacji swój zrzut (skala / przesunięcie / obrót), a
+    # prawdziwe elementy są ukryte. Nie ma drugiego okna, więc nic nie wystaje.
+    def _fx_begin(self):
+        if self._fx_snap is not None:
+            return
+        self._fx_snap = self.grab()          # zrzut zanim ukryjemy elementy
+        self._fx_kids = [c for c in self.children()
+                         if isinstance(c, QWidget) and not c.isWindow() and c.isVisible()]
+        for c in self._fx_kids:
+            c.hide()
+        self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
+        self._fx_alpha = 1.0
+        self.update()
+
+    def _fx_end(self):
+        if self._fx_anim is not None:
+            try:
+                self._fx_anim.stop()
+            except Exception:
+                pass
+            self._fx_anim = None
+        self._fx_snap = None
+        for c in self._fx_kids:
+            try:
+                c.show()
+            except Exception:
+                pass
+        self._fx_kids = []
+        self._fx_sc = 1.0; self._fx_rot = 0.0; self._fx_dx = 0.0; self._fx_dy = 0.0
+        self._fx_alpha = 1.0; self._fx_flying = False; self._fx_fill = False
+        self._fx_mix = 0.0; self._fx_card = None; self._fx_alpha_card = None
+        self.update()
+
+    def eventFilter(self, obj, ev):
+        if obj is self and self._fx_snap is not None and ev.type() == QEvent.Type.Paint:
+            self._fx_paint()
+            return True
+        return super().eventFilter(obj, ev)
+
+    def _fx_paint(self):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+        p.fillRect(self.rect(), QColor(0, 0, 0, 0))
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        p.setOpacity(max(0.0, min(1.0, self._fx_alpha)))
+        W, H = self.width(), self.height()
+        if self._fx_fill:
+            # lot: okno płynnie staje się kartą — zrzut okna gaśnie, a pod nim rośnie kształt fiszki
+            rr = QRectF(0.5, 0.5, W - 1, H - 1)
+            mix = max(0.0, min(1.0, self._fx_mix))
+            if mix > 0:
+                card = self._fx_card or {}
+                g = QLinearGradient(rr.topLeft(), rr.bottomLeft())
+                if card.get("light"):
+                    g.setColorAt(0.0, QColor(24, 32, 62, 208)); g.setColorAt(1.0, QColor(10, 15, 32, 228))
+                else:
+                    g.setColorAt(0.0, QColor(52, 66, 112, 92)); g.setColorAt(1.0, QColor(30, 40, 78, 112))
+                p.setOpacity(mix * float(card.get("op", 0.9)) * (1.0 if self._fx_alpha_card is None else self._fx_alpha_card))
+                p.setBrush(QBrush(g)); p.setPen(QPen(QColor(255, 255, 255, 44), 1))
+                p.drawRoundedRect(rr, 16, 16)
+            pa = max(0.0, min(1.0, self._fx_alpha))
+            if pa > 0:
+                p.setOpacity(pa)
+                pm = self._fx_snap
+                p.drawPixmap(QRectF(0, 0, W, H), pm, QRectF(pm.rect()))
+            p.end()
+            return
+        p.translate(W / 2 + self._fx_dx, H / 2 + self._fx_dy)
+        if self._fx_rot:
+            p.rotate(self._fx_rot)
+        p.scale(self._fx_sc, self._fx_sc)
+        pm = self._fx_snap
+        p.drawPixmap(QRectF(-W / 2, -H / 2, W, H), pm, QRectF(pm.rect()))
+        p.end()
+
+    def _fx_scale_open(self, ms=380, dy=16, s0=0.93):
+        """Wejście: skala 0.93→1 + wynurzenie o dy px, sprężyste osiadnięcie."""
+        self._fx_begin()
+        self.setWindowOpacity(1.0)
+        self._fx_alpha = 0.0; self._fx_sc = s0; self._fx_dy = float(dy)
+        anim = QVariantAnimation(self)
+        anim.setDuration(ms)
+        anim.setStartValue(0.0); anim.setEndValue(1.0)
+        anim.setEasingCurve(_spring_curve(0.9))
+
+        def _frame(v):
+            if self._closing or self._fx_snap is None:
+                return
+            v = float(v)
+            self._fx_sc = s0 + (1 - s0) * v
+            self._fx_dy = dy * (1 - v)
+            self._fx_alpha = min(1.0, v * 2.4)
+            self.update()
+
+        def _done():
+            if not self._closing:
+                self._fx_end()
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(_done)
+        self._fx_anim = anim
+        anim.start()
+
+    def _fx_fly(self, dst, ov=None, ms=560):
+        """Okno płynnie zmienia rozmiar i pozycję w rozmiar/miejsce karty fiszki i PRZECHODZI w nią:
+        zrzut okna wyboru gaśnie w trakcie lotu, a pod nim rośnie kształt fiszki. Po lądowaniu
+        czeka, aż fiszka się pojawi, i wtedy gaśnie (bez „zmniejszonego menu” w karcie)."""
+        if not self.isVisible() or self._fx_flying:
+            return
+        self._fx_begin()
+        self._fx_fill = True
+        self._fx_flying = True
+        self._fx_mix = 0.0
+        self._fx_card = {"light": bool(getattr(ov, "_adapt_light", False)),
+                         "op": float(ov._cur_opacity()) if ov is not None else 0.9}
+        self.setWindowOpacity(1.0)
+        home = self.geometry()
+        x0, y0, w0, h0 = home.x(), home.y(), home.width(), home.height()
+        self._fx_lock = (self.minimumSize(), self.maximumSize())
+        self.setMinimumSize(QSize(0, 0))
+        self.setMaximumSize(QSize(16777215, 16777215))
+        x1, y1 = dst.x(), dst.y()
+        w1, h1 = max(120, dst.width()), max(60, dst.height())
+        anim = QVariantAnimation(self)
+        anim.setDuration(ms)
+        anim.setStartValue(0.0); anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        def _smooth(a, b, v):
+            t = max(0.0, min(1.0, (v - a) / (b - a)))
+            return t * t * (3 - 2 * t)
+
+        def _frame(v):
+            try:
+                v = float(v)
+                self.setGeometry(round(x0 + (x1 - x0) * v), round(y0 + (y1 - y0) * v),
+                                 round(w0 + (w1 - w0) * v), round(h0 + (h1 - h0) * v))
+                self._fx_alpha = 1.0 - _smooth(0.10, 0.70, v)   # okno wyboru gaśnie
+                self._fx_mix = _smooth(0.05, 0.75, v)           # kształt fiszki rośnie
+                self.update()
+            except Exception as ex:
+                print(f"[motion] fly frame: {ex}")
+
+        def _fade_out():
+            try:
+                fade = QVariantAnimation(self)
+                fade.setDuration(220)
+                fade.setStartValue(1.0); fade.setEndValue(0.0)
+                fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+                fade.valueChanged.connect(lambda v: (setattr(self, "_fx_alpha_card", float(v)), self.update()))
+                fade.finished.connect(_done)
+                self._fx_anim = fade
+                fade.start()
+            except Exception as ex:
+                print(f"[motion] fly fade: {ex}")
+                _done()
+
+        t_land = [0]
+
+        def _wait_for_card():
+            # kształt fiszki trzyma miejsce, aż prawdziwa fiszka się pojawi (maks. 2,5 s)
+            try:
+                t_land[0] += 40
+                if ov is None or ov.isVisible() or t_land[0] >= 2500 or not self.isVisible():
+                    _fade_out()
+                else:
+                    QTimer.singleShot(40, _wait_for_card)
+            except Exception as ex:
+                print(f"[motion] fly wait: {ex}")
+                _done()
+
+        def _land():
+            self._fx_alpha = 0.0; self._fx_mix = 1.0; self._fx_alpha_card = 1.0
+            self.update()
+            _wait_for_card()
+
+        def _done():
+            try:
+                self._fx_flying = False
+                self._fx_end()
+                QWidget.hide(self)
+                self.setWindowOpacity(1.0)
+                mn, mx = getattr(self, "_fx_lock", (None, None))
+                if mn is not None:
+                    self.setMinimumSize(mn); self.setMaximumSize(mx)
+                self.setGeometry(home)
+                QTimer.singleShot(60, lambda: (not self.isVisible()) and self.setGeometry(home))
+            except Exception as ex:
+                print(f"[motion] fly done: {ex}")
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(_land)
+        self._fx_anim = anim
+        anim.start()
+
+    def _tilt(self, dx):
+        """Przeciągane okno lekko się pochyla (±2°) w stronę ruchu."""
+        if not UI_MOTION or self._closing or not self.isVisible():
+            return
+        if self._fx_snap is None:
+            self._fx_begin()
+            self._tilt_v = 0.0
+        self._tilt_v = 0.65 * self._tilt_v + 0.35 * dx
+        self._fx_rot = max(-2.0, min(2.0, self._tilt_v * 0.5))
+        self._fx_sc = 0.985          # lekko mniej, żeby róg nie wypadał poza okno
+        self.update()
+
+    def _tilt_end(self):
+        if self._fx_snap is None or self._fx_flying:
+            return
+        r0, sc0 = self._fx_rot, self._fx_sc
+        anim = QVariantAnimation(self)
+        anim.setDuration(320)
+        anim.setStartValue(0.0); anim.setEndValue(1.0)
+        anim.setEasingCurve(_spring_curve(1.6))
+
+        def _frame(v):
+            v = float(v)
+            self._fx_rot = r0 * (1 - v)
+            self._fx_sc = sc0 + (1 - sc0) * v
+            self.update()
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(self._fx_end)
+        self._fx_anim = anim
+        anim.start()
+
+    ANIM_DY = 16  # okno wynurza się z dołu o tyle px (jak w podglądzie Glass)
+    SCALE_OPEN = True   # wejście ze skalowaniem (zrzut-duch); False = tylko fade+ruch
+    HAS_CLOSE = False   # True: okno ma własny przycisk wyjścia (albo nie wolno go zamknąć)
+
+    back_cb = None      # ustawiane przez TrayApp: dokąd prowadzi „←” (np. do panelu)
+
+    def set_back(self, cb):
+        self.back_cb = cb
+        self._ensure_back()
+
+    def _go_back_cb(self):
+        cb = self.back_cb
+        self.fade_hide()
+        if cb:
+            QTimer.singleShot(60, cb)
+
+    def _ensure_back(self):
+        if self._fx_snap is not None:
+            return
+        """Strzałka „←” obok „✕”: wszędzie da się cofnąć bez wychodzenia z programu."""
+        if self.back_cb is None:
+            b = getattr(self, "_auto_back", None)
+            if b is not None:
+                b.hide()
+            return
+        b = getattr(self, "_auto_back", None)
+        if b is None:
+            b = GlassButton("", "ico", parent=self)
+            b.setGlyph("back"); b.setToolTip("Wróć")
+            b.clicked.connect(self._go_back_cb)
+            self._auto_back = b
+        x_right = 14 if not self.HAS_CLOSE else 20
+        b.move(self.width() - 34 - x_right - 34 - 8, 12 if not self.HAS_CLOSE else 20)
+        b.show(); b.raise_()
+
+    def _ensure_close_x(self):
+        if self._fx_snap is not None:
+            return
+        """Każde okno ma ZAWSZE widoczny przycisk zamknięcia w prawym górnym rogu —
+        użytkownik nigdy nie utknie w oknie bez wyjścia."""
+        self._ensure_back()
+        if self.HAS_CLOSE:
+            return
+        b = getattr(self, "_auto_x", None)
+        if b is None:
+            b = GlassButton("", "ico", parent=self)
+            b.setGlyph("close"); b.setToolTip("Zamknij (Esc)")
+            b.clicked.connect(self.fade_hide)
+            self._auto_x = b
+        b.move(self.width() - 34 - 14, 12)
+        b.show(); b.raise_()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if getattr(self, "_auto_x", None) is not None or getattr(self, "_auto_back", None) is not None:
+            self._ensure_close_x()
 
     def showEvent(self, e):
         super().showEvent(e)
         try:
-            _pop_in(self, self.ANIM_DY)
+            self._ensure_close_x()
+            if UI_MOTION and self.SCALE_OPEN:
+                try:
+                    self._fx_scale_open(dy=self.ANIM_DY or 16)
+                except Exception as ex:
+                    print(f"[motion] scale: {ex}")
+                    self._fx_end()
+                    _pop_in(self, self.ANIM_DY)
+            else:
+                _pop_in(self, self.ANIM_DY)
         except Exception as ex:
             print(f"[motion] {ex}")
 
+    _closing = False
+
+    def hide(self):
+        """Każde ukrycie okna jest animowane – przejście A→B to płynne „odpłynięcie” A
+        nałożone na wejście B (zamiast nagłego znikania)."""
+        if UI_MOTION and self.isVisible() and not self._closing:
+            self._close_anim()
+        elif not self._closing:
+            QWidget.hide(self)
+
+    def show(self):
+        if self._fx_snap is not None and not self.isVisible():
+            self._fx_end()
+        if self._closing:               # ktoś chce okno z powrotem w trakcie zamykania
+            self._closing = False
+            _ui_anim_stop(self, "_op_anim")
+            _ui_anim_stop(self, "_pop_anim")
+            self.setWindowOpacity(1.0)
+            self.move(self._home)
+        elif UI_MOTION and not self.isVisible():
+            self.setWindowOpacity(0.0)      # bez błysku: okno startuje niewidoczne
+        super().show()
+
+    def fade_hide(self):
+        self._close_anim()
+
+    def _close_anim(self):
+        """Zamknięcie szybsze niż otwarcie (170 ms): okno opada o 8 px i gaśnie."""
+        if not self.isVisible() or self._closing or self._fx_flying:
+            return                      # lot do karty sam się schowa
+        if self._fx_snap is not None:
+            self._fx_end()
+        self.setWindowOpacity(1.0)
+        home = self._home = self.pos()
+        self._closing = True
+        def _fin():
+            if not self._closing:       # w międzyczasie okno przywrócono
+                return
+            self._closing = False
+            QWidget.hide(self)
+            _ui_anim_stop(self, "_pop_anim")
+            self.setWindowOpacity(1.0)
+            self.move(home)
+            QTimer.singleShot(40, lambda: (not self.isVisible()) and self.move(home))
+        if UI_MOTION:
+            _ui_anim_stop(self, "_pop_anim")
+            a = QPropertyAnimation(self, b"pos", self)
+            a.setDuration(170)
+            a.setStartValue(home)
+            a.setEndValue(QPoint(home.x(), home.y() + 8))
+            a.setEasingCurve(QEasingCurve.Type.InQuad)
+            self._pop_anim = a
+            a.start()
+        _fade_window(self, 0.0, 170, QEasingCurve.Type.InCubic, then=_fin)
+
     def keyPressEvent(self, e):
         if e.key() == Qt.Key.Key_Escape:
-            self.hide()
+            self.fade_hide()
         else:
             super().keyPressEvent(e)
 
@@ -1105,6 +2030,7 @@ def _right_third_pos(w):
     w.move(rx, cy)
 
 def _styled_window(w):
+    _glass_attach(w)
     w.setWindowFlags(
         Qt.WindowType.FramelessWindowHint |
         Qt.WindowType.WindowStaysOnTopHint |
@@ -1127,54 +2053,39 @@ def _styled_window(w):
         pass
 
 def _paint_bg(widget, _):
-    from PyQt6.QtCore import QRectF, QPointF, QRect
-    from PyQt6.QtGui import QLinearGradient
+    """Szkło: jednolity ciemny granat (bez plam i poświat), cienka biała krawędź i połysk. Gdy system rozmywa tło (Windows) wypełnienie jest lżejsze."""
     p = QPainter(widget)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    r = QRectF(widget.rect()).adjusted(1, 1, -1, -1)
-    # Tło okna: szkło — lekki gradient, biała krawędź i cienka poświata u góry
-    g = QLinearGradient(r.topLeft(), r.bottomLeft())
-    g.setColorAt(0.0, QColor(26, 34, 62, 214))
-    g.setColorAt(1.0, QColor(13, 19, 36, 224))
-    p.setBrush(QBrush(g))
-    p.setPen(QPen(QColor(255, 255, 255, 46), 1))
-    p.drawRoundedRect(r, 16, 16)
-    hl = QLinearGradient(r.left() + 18, 0, r.right() - 18, 0)
-    hl.setColorAt(0.0, QColor(255, 255, 255, 0))
-    hl.setColorAt(0.5, QColor(255, 255, 255, 64))
-    hl.setColorAt(1.0, QColor(255, 255, 255, 0))
-    p.setPen(QPen(QBrush(hl), 1))
-    p.drawLine(int(r.left() + 18), int(r.top() + 1), int(r.right() - 18), int(r.top() + 1))
-    # Pasek drag u góry - ciemniejszy, zaokrąglony tylko górne narożniki
+    r = QRectF(widget.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+    rad = _GLASS_RADIUS
+    blur = bool(getattr(widget, "_blur_ok", False))
     p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QBrush(QColor(255, 255, 255, 18)))
-    drag_r = QRectF(r.left(), r.top(), r.width(), 32)
-    p.drawRoundedRect(drag_r, 16, 16)
-    # Przykryj dolne zaokrąglenie paska prostokątem
-    p.drawRect(QRectF(r.left(), r.top() + 16, r.width(), 16))
+    p.setBrush(QColor(14, 21, 44, 208 if blur else 238))
+    p.drawRoundedRect(r, rad, rad)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.setPen(QPen(QColor(255, 255, 255, 44), 1))
+    p.drawRoundedRect(r, rad, rad)
+    hl = QLinearGradient(r.left() + rad, 0, r.right() - rad, 0)
+    hl.setColorAt(0.0, QColor(255, 255, 255, 0)); hl.setColorAt(0.5, QColor(255, 255, 255, 84)); hl.setColorAt(1.0, QColor(255, 255, 255, 0))
+    p.setPen(QPen(QBrush(hl), 1))
+    p.drawLine(QPointF(r.left() + rad, r.top() + 1), QPointF(r.right() - rad, r.top() + 1))
+
+_GHOST_QSS = """
+    QPushButton { background:rgba(255,255,255,20); color:#eef2ff; border:none;
+        border-radius:14px; padding:9px; font-size:12px; }
+    QPushButton:hover { background:rgba(255,255,255,42); }
+    QPushButton:pressed { background:rgba(255,255,255,28); }
+"""
 
 def _close_btn(target):
-    btn = QPushButton("✖  Zamknij")
-    btn.setStyleSheet("""
-        QPushButton { background:rgba(150,40,40,160); color:white;
-            border:1px solid rgba(200,80,80,120);
-            border-radius:10px; padding:7px; font-size:12px; }
-        QPushButton:hover { background:rgba(190,60,60,200); }
-    """)
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    btn.clicked.connect(target.hide)
+    btn = GlassButton("Zamknij", "ghost", radius=14)
+    btn.setFixedHeight(42)
+    btn.clicked.connect(getattr(target, "fade_hide", target.hide))
     return btn
 
 def _back_btn(text, cb):
-    btn = QPushButton(text)
-    btn.setStyleSheet("""
-        QPushButton { background:rgba(60,60,100,160);
-            color:rgba(200,210,255,200);
-            border:1px solid rgba(96,110,150,120);
-            border-radius:10px; padding:8px; font-size:12px; }
-        QPushButton:hover { background:rgba(72,82,128,200); border-color:rgba(201,106,42,235); }
-    """)
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn = GlassButton(text, "ghost", radius=14)
+    btn.setFixedHeight(42)
     btn.clicked.connect(cb)
     return btn
 
@@ -1267,6 +2178,28 @@ class AuthWorker(QThread):
 # ──────────────────────────────────────────────────────
 # WORKER – pobieranie fiszek
 # ──────────────────────────────────────────────────────
+def _retry_net(fn, tries=3):
+    """Ponów wywołanie przy PRZEJŚCIOWYM błędzie gniazda (Windows WinError 10035
+    „operacja nie blokująca nie mogła być natychmiast ukończona” itp.).
+    Inne błędy lecą od razu."""
+    import time as _t
+    last = None
+    for i in range(tries):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            msg = str(e).lower()
+            transient = (getattr(e, "winerror", None) in (10035, 10053, 10054, 10060)
+                         or "10035" in msg or "nie blokuj" in msg or "would block" in msg
+                         or "timed out" in msg or "server disconnected" in msg
+                         or "connection reset" in msg)
+            if not transient or i == tries - 1:
+                raise
+            _t.sleep(0.5 * (i + 1))
+    raise last
+
+
 class FetchWorker(QThread):
     done  = pyqtSignal(list)
     error = pyqtSignal(str)
@@ -1289,11 +2222,11 @@ class FetchWorker(QThread):
             _refresh_and_sync()
         try:
             # Pobierz normalne fiszki
-            resp = supabase.rpc("get_flashcards", {
+            resp = _retry_net(lambda: supabase.rpc("get_flashcards", {
                 "p_lang":  self.lang,
                 "p_level": self.level,
                 "p_cat":   self.cat,
-            }).execute()
+            }).execute())
             # Deduplikacja - tylko unikalne słowa w kategorii
             seen_words = set()
             normal = []
@@ -1306,9 +2239,9 @@ class FetchWorker(QThread):
                                    "flashcard_id": r.get("id", 0)})
             # Pobierz słowa do powtórki SRS (trudne z poprzednich kategorii)
             try:
-                srs_resp = supabase.rpc("get_due_cards_all", {
+                srs_resp = _retry_net(lambda: supabase.rpc("get_due_cards_all", {
                     "p_lang": self.lang, "p_limit": CARRY_OVERLAY_MAX * 3,
-                }).execute()
+                }).execute())
                 srs_cards = []
                 _seen_srs = set(seen_words)   # nie powielaj słów z bieżącej kategorii
                 for r in (srs_resp.data or []):
@@ -1398,6 +2331,7 @@ class KnownWordsWorker(QThread):
                         .in_("flashcard_id", card_ids)
                         .gte("repetitions", MASTER_REPS_MIN)
                         .gte("interval_days", MASTER_INTERVAL_MIN).execute())
+                _KNOWN_CACHE[(self.lang, self.level, self.cat)] = resp.count or 0
                 self.done.emit(resp.count or 0)
                 return
             except Exception as e:
@@ -1575,23 +2509,23 @@ class TestCardsWorker(QThread):
 # ──────────────────────────────────────────────────────
 INPUT_STYLE = """
     QLineEdit {
-        background: rgba(26,36,60,190); color: white;
-        border: 1px solid rgba(110,125,165,140);
-        border-radius: 8px; padding: 8px 12px; font-size: 13px;
+        background: rgba(255,255,255,20); color: white;
+        border: 1px solid rgba(255,255,255,46);
+        border-radius: 14px; padding: 8px 14px; font-size: 14px;
+        selection-background-color: rgba(224,128,58,150);
     }
-    QLineEdit:hover { border: 1px solid rgba(201,106,42,140); }
-    QLineEdit:focus { border: 1px solid rgba(224,128,58,235); background: rgba(34,46,76,215); }
+    QLineEdit:hover { border: 1px solid rgba(255,255,255,84); }
+    QLineEdit:focus { border: 1px solid rgba(224,128,58,240); background: rgba(255,255,255,30); }
 """
 BTN_PRIMARY = """
     QPushButton {
-        background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 rgba(40,52,88,215), stop:1 rgba(26,36,64,215));
-        color: white;
-        border: 1.5px solid rgba(201,106,42,235); border-radius: 12px;
-        padding: 9px; font-size: 13px; font-weight: bold;
+        background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f0924d, stop:1 #d8742e);
+        color: #1b1205; border: none; border-radius: 14px;
+        padding: 10px; font-size: 13px; font-weight: bold;
     }
-    QPushButton:hover   { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 rgba(54,68,108,230), stop:1 rgba(36,48,82,230)); border-color: rgba(240,146,77,255); }
-    QPushButton:pressed { background: rgba(22,30,54,235); border-color: rgba(168,86,32,255); }
-    QPushButton:disabled{ background: rgba(40,46,74,120); color: rgba(255,255,255,80); border-color: rgba(90,100,140,90); }
+    QPushButton:hover   { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f6a263, stop:1 #e0803a); }
+    QPushButton:pressed { background: #c46a28; }
+    QPushButton:disabled{ background: rgba(255,255,255,24); color: rgba(255,255,255,90); }
 """
 
 ONBOARDING_KEY = "onboarding_done_v2"
@@ -1744,6 +2678,12 @@ class OnboardingWindow(_DraggableWindow):
             self.hide()
             self.finished.emit()
 
+    def fade_hide(self):
+        """„✕” / Esc = pomiń onboarding i przejdź do logowania (zawsze jest wyjście)."""
+        self._mark_done()
+        self.hide()
+        self.finished.emit()
+
     def _mark_done(self):
         try:
             import json as _j
@@ -1773,6 +2713,7 @@ class OnboardingWindow(_DraggableWindow):
 
 
 class LoginWindow(_DraggableWindow):
+    HAS_CLOSE = True   # logowanie ma własny przycisk „Zamknij aplikację”
     logged_in = pyqtSignal(object)
 
     def __init__(self):
@@ -1992,6 +2933,7 @@ class LoginWindow(_DraggableWindow):
 # OKNO FISZKI
 # ──────────────────────────────────────────────────────
 class FlashcardOverlay(QWidget):
+    _suspended = False   # True na czas pauzy/ukrycia: nowy zestaw ładuje się, ale okno się NIE pokazuje
     def __init__(self):
         super().__init__()
         self.index = 0
@@ -2078,7 +3020,8 @@ class FlashcardOverlay(QWidget):
         self.lang  = lang
         self.level = level
         self.cat   = cat
-        _session.slides_started(lang, level, cat)
+        if not self._suspended:
+            _session.slides_started(lang, level, cat)
         _session.track("slides_started", {
             "language": lang, "level": level, "category": cat
         })
@@ -2092,9 +3035,17 @@ class FlashcardOverlay(QWidget):
         self.lbl_info.setText(f"{cat}  ·  {level}  ·  {lang_label(lang)}")
         self.lbl_word.setText("Ładowanie...")
         self.lbl_tr.setText("")
+        # Zestaw z bazy od razu zdejmuje tryb „własny” i stare karty — inaczej do czasu
+        # odpowiedzi (lub przy błędzie) overlay pokazuje Eyelingo pod etykietą zestawu własnego.
+        self._is_custom = False
+        self.cards = []
+        self.index = 0
+        # Odpowiedź ze spóźnionego żądania (poprzedni zestaw) nie może nadpisać nowszego wyboru.
+        self._load_seq = getattr(self, "_load_seq", 0) + 1
+        seq = self._load_seq
         self._worker = FetchWorker(lang, level, cat)
-        self._worker.done.connect(self._on_loaded)
-        self._worker.error.connect(self._on_error)
+        self._worker.done.connect(lambda cards, s=seq: self._on_loaded(cards) if s == self._load_seq else None)
+        self._worker.error.connect(lambda msg, s=seq: self._on_error(msg) if s == self._load_seq else None)
         self._worker.start()
 
     def _on_loaded(self, cards):
@@ -2102,7 +3053,8 @@ class FlashcardOverlay(QWidget):
         self.index = 0
         self._is_custom = False
         self._fit_to_cards()
-        self.show()
+        if not self._suspended:
+            self.show()
         self._update()
 
     def _on_error(self, msg):
@@ -2114,13 +3066,18 @@ class FlashcardOverlay(QWidget):
         short_name = name[:15] if len(name) > 15 else name
         self.cat   = short_name
         self.level = ""
+        # Język zestawu z bazy (user_sets.lang); pusty = brak → język z pisma słowa, domyślnie en
+        set_lang = _srs_norm_lang(cards[0].get("lang") or "") if cards else ""
+        self.lang  = set_lang
         self._is_custom = True
         self.cards = [{"word": c["word"], "translation": c["translation"],
-                       "romaji": "", "flashcard_id": i, "custom": True, "set_name": short_name}
+                       "romaji": "", "flashcard_id": i, "custom": True, "set_name": short_name,
+                       "lang": set_lang}
                       for i, c in enumerate(cards)]
         self.index = 0
         self._fit_to_cards()
-        self.show()
+        if not self._suspended:
+            self.show()
         self._update()
 
     # ── Zegar rotacji fiszek ──────────────────────────────────────────
@@ -2371,7 +3328,7 @@ class FlashcardOverlay(QWidget):
         # pod kursorem (hover), użytkownik jej nie widzi, więc jej nie czytamy.
         if APP_SETTINGS.get("audio_enabled", False) and not getattr(self, "_hover_hidden", False):
             raw = c.get("word", "")
-            lang = self.lang or "en"
+            lang = _tts_lang_for(c, self.lang)
             if lang == "jp":
                 raw = _jp_tts_word(raw)
             speak_word(raw, lang)
@@ -2385,14 +3342,16 @@ class FlashcardOverlay(QWidget):
             from PyQt6.QtWidgets import QGraphicsOpacityEffect
             self._fx_token = getattr(self, "_fx_token", 0) + 1
             token = self._fx_token
-            for i, lbl in enumerate((self.lbl_word, self.lbl_romaji, self.lbl_tr)):
+            self._word_reveal(token)
+            n = len(self.lbl_word.text())
+            for i, lbl in enumerate((self.lbl_romaji, self.lbl_tr)):
                 if lbl.isHidden():
                     continue
                 eff = QGraphicsOpacityEffect(lbl)
                 eff.setOpacity(0.0)
                 lbl.setGraphicsEffect(eff)
                 a = QPropertyAnimation(eff, b"opacity", eff)
-                a.setDuration(380)
+                a.setDuration(500)
                 a.setStartValue(0.0)
                 a.setEndValue(1.0)
                 a.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -2404,7 +3363,89 @@ class FlashcardOverlay(QWidget):
                         except Exception:
                             pass
                 a.finished.connect(_done)
-                QTimer.singleShot(i * 110, a.start)
+                QTimer.singleShot(200 + min(n, 24) * 30 + i * 60, a.start)
+        except Exception as ex:
+            print(f"[motion] {ex}")
+
+    def _word_reveal(self, token):
+        """Słowo wchodzi litera po literze (30 ms odstępu, 560 ms na literę) – jak w
+        podglądzie Glass. Po animacji wraca zwykły tekst; nowe słowo przerywa starą."""
+        import re as _re, html as _html
+        lbl = self.lbl_word
+        text = lbl.text()
+        m = _re.search(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*(\d+)\)", lbl.styleSheet())
+        if not text or not m or len(text) > 60:
+            return
+        r, g, b, a0 = (int(x) for x in m.groups())
+        n = len(text)
+        total = (n - 1) * 30 + 560
+        old = getattr(self, "_rev_anim", None)
+        if old is not None:
+            try:
+                old.stop()
+            except Exception:
+                pass
+        anim = QVariantAnimation(self)
+        anim.setDuration(total)
+        anim.setStartValue(0.0)
+        anim.setEndValue(float(total))
+        anim.setEasingCurve(QEasingCurve.Type.Linear)
+
+        def _frame(v):
+            if getattr(self, "_fx_token", 0) != token:
+                return
+            t = float(v)
+            out = []
+            for i, ch in enumerate(text):
+                p = max(0.0, min(1.0, (t - i * 30) / 560.0))
+                p = 1 - (1 - p) ** 3
+                out.append(f'<span style="color:rgba({r},{g},{b},{int(a0 * p)})">'
+                           f'{"&nbsp;" if ch == " " else _html.escape(ch)}</span>')
+            lbl.setText("".join(out))
+
+        def _end():
+            if getattr(self, "_fx_token", 0) == token:
+                lbl.setText(text)
+        _frame(0.0)
+        anim.valueChanged.connect(_frame)
+        anim.finished.connect(_end)
+        self._rev_anim = anim
+        anim.start()
+
+    def _word_glow(self):
+        """Delikatny blask nowego słowa: start po 450 ms, szczyt po ~550 ms, zanik do 2,2 s."""
+        try:
+            from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+            lbl = self.lbl_romaji if (self.lang in NON_LATIN_LANGS and self.lbl_romaji.isVisible()) else self.lbl_word
+            token = self._fx_token = getattr(self, "_fx_token", 0)
+            eff = QGraphicsDropShadowEffect(lbl)
+            eff.setOffset(0, 0)
+            eff.setBlurRadius(0)
+            eff.setColor(QColor(255, 226, 196, 0))
+            lbl.setGraphicsEffect(eff)
+            anim = QVariantAnimation(eff)
+            anim.setDuration(2200)
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.Type.Linear)
+
+            def _frame(v):
+                v = float(v)
+                k = v / 0.25 if v < 0.25 else 1 - (v - 0.25) / 0.75
+                k = max(0.0, min(1.0, k))
+                eff.setBlurRadius(10 + 26 * k)
+                eff.setColor(QColor(255, 226, 196, int(235 * k)))
+
+            def _end():
+                if getattr(self, "_fx_token", 0) == token:
+                    try:
+                        lbl.setGraphicsEffect(None)
+                    except Exception:
+                        pass
+            anim.valueChanged.connect(_frame)
+            anim.finished.connect(_end)
+            self._glow_anim = anim
+            QTimer.singleShot(450, lambda: (getattr(self, "_fx_token", 0) == token) and anim.start())
         except Exception as ex:
             print(f"[motion] {ex}")
 
@@ -2423,6 +3464,9 @@ class FlashcardOverlay(QWidget):
         """Efekt wizualny TYLKO koloru słówka - bez zmiany rozmiaru/pozycji. Max ~300ms."""
         fx = APP_SETTINGS.get("card_effect", "none")
         if fx == "none" or not fx:
+            return
+        if fx == "glow_white":
+            self._word_glow()
             return
         # Efekt na transliteracji jeśli pismo nielatyńskie, inaczej na słówku
         lbl  = self.lbl_romaji if (self.lang in NON_LATIN_LANGS and self.lbl_romaji.isVisible()) else self.lbl_word
@@ -2501,8 +3545,14 @@ class FlashcardOverlay(QWidget):
         # przychodzi z ustawienia „Przezroczystość” (windowOpacity).
         rr = r.adjusted(0.5, 0.5, -0.5, -0.5)
         g = QLinearGradient(rr.topLeft(), rr.bottomLeft())
-        g.setColorAt(0.0, QColor(34, 44, 80, 122))
-        g.setColorAt(1.0, QColor(14, 20, 40, 146))
+        if getattr(self, "_adapt_light", False):
+            # jasne tło pod fiszką → ciemniejsze, bardziej kryjące wypełnienie
+            g.setColorAt(0.0, QColor(24, 32, 62, 208))
+            g.setColorAt(1.0, QColor(10, 15, 32, 228))
+        else:
+            # ciemne tło → jaśniejsze, bardziej przezroczyste szkło
+            g.setColorAt(0.0, QColor(52, 66, 112, 92))
+            g.setColorAt(1.0, QColor(30, 40, 78, 112))
         p.setBrush(QBrush(g))
         p.setPen(QPen(QColor(255, 255, 255, 44), 1))
         p.drawRoundedRect(rr, 16, 16)
@@ -2551,12 +3601,64 @@ class FlashcardOverlay(QWidget):
         return min(1.0, max(0.05, v))
 
     def _cur_opacity(self) -> float:
-        """Efektywna przezroczystość okna: baza z ustawień, pomniejszona o ADAPT_DELTA,
-        gdy tło pod fiszką jest jasne. Gdy tło ciemnieje — wracamy do bazy."""
+        """Efektywna przezroczystość okna: baza z ustawień. Na JASNYM tle fiszka robi się
+        mocniejsza (baza + ADAPT_DELTA) — ciemna karta czytelna na jasnym; na ciemnym
+        wraca do bazy, a samo wypełnienie karty jest lżejsze (patrz paintEvent)."""
         v = self._base_opacity()
         if getattr(self, "_adapt_light", False):
-            v = max(ADAPT_MIN_OPACITY, v - ADAPT_DELTA)
+            v = v + ADAPT_DELTA
         return min(1.0, max(0.05, v))
+
+    _ov_closing = False
+
+    def show(self):
+        """Fiszka wynurza się (380 ms, +14 px) zamiast pojawiać się skokiem."""
+        was = self._ov_closing
+        if was:
+            self._ov_closing = False
+            _ui_anim_stop(self, "_op_anim"); _ui_anim_stop(self, "_pop_anim")
+            self.move(self._ov_home)
+        fresh = not self.isVisible()
+        if fresh and UI_MOTION:
+            self.setWindowOpacity(0.0)
+        super().show()
+        landing = getattr(self, "_fly_landing", False)
+        self._fly_landing = False
+        if (fresh or was) and UI_MOTION:
+            target = 0.0 if self._hover_hidden else self._cur_opacity()
+            _fade_window(self, target, 260 if landing else 380)
+            end = self.pos()
+            if not was and not landing:
+                self.move(end.x(), end.y() + 14)
+                a = QPropertyAnimation(self, b"pos", self)
+                a.setDuration(380); a.setStartValue(self.pos()); a.setEndValue(end)
+                a.setEasingCurve(_spring_curve(0.9))
+                self._pop_anim = a; a.start()
+
+    def hide(self):
+        """Fiszka odpływa (200 ms, −8 px) zamiast znikać."""
+        if not (UI_MOTION and self.isVisible()) or self._ov_closing:
+            if not self._ov_closing:
+                QWidget.hide(self)
+            return
+        self._ov_closing = True
+        home = self._ov_home = self.pos()
+        def _fin():
+            if not self._ov_closing:
+                return
+            self._ov_closing = False
+            QWidget.hide(self)
+            _ui_anim_stop(self, "_pop_anim")
+            self.move(home)
+            QTimer.singleShot(40, lambda: (not self.isVisible()) and self.move(home))
+            self.setWindowOpacity(0.0 if self._hover_hidden else self._cur_opacity())
+        a = QPropertyAnimation(self, b"pos", self)
+        a.setDuration(200); a.setStartValue(home)
+        a.setEndValue(QPoint(home.x(), home.y() + 8))
+        a.setEasingCurve(QEasingCurve.Type.InQuad)
+        _ui_anim_stop(self, "_pop_anim")
+        self._pop_anim = a; a.start()
+        _fade_window(self, 0.0, 200, QEasingCurve.Type.InCubic, then=_fin)
 
     def apply_opacity(self):
         """Wymusza przeliczenie i nałożenie efektywnej przezroczystości."""
@@ -2564,6 +3666,7 @@ class FlashcardOverlay(QWidget):
             return                      # pod kursorem okno jest na 0.0 — nie ruszamy
         _ui_anim_stop(self, "_op_anim")
         self.setWindowOpacity(self._cur_opacity())
+        self.update()                   # wypełnienie karty zależy od jasności tła
 
     def _init_hover_hide(self):
         self._hover_timer = QTimer(self)
@@ -3144,6 +4247,380 @@ class LanguageWindow(_DraggableWindow):
 # ──────────────────────────────────────────────────────
 # WORKER – zapis własnego zestawu do Supabase
 # ──────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────
+# WYBIERZ NAUKĘ — jedno okno zamiast trzech (język → poziom → kategoria)
+# Zasada: wejście z poprzednim wyborem już ustawionym, więc zwykle wystarcza 1 klik.
+# ──────────────────────────────────────────────────────
+_RECENTS_FILE = Path.home() / ".eyelingo_recents.json"
+
+
+def _recents_load():
+    try:
+        data = json.loads(_RECENTS_FILE.read_text(encoding="utf-8"))
+        out = []
+        for d in data:
+            if all(k in d for k in ("lang", "lvl", "cat", "label")):
+                out.append(d)
+        return out[:3]
+    except Exception:
+        return []
+
+
+def _recents_push(lang, lvl, cat, label):
+    items = [d for d in _recents_load()
+             if not (d["lang"] == lang and d["lvl"] == lvl and d["cat"] == cat)]
+    items.insert(0, {"lang": lang, "lvl": lvl, "cat": cat, "label": label})
+    try:
+        _RECENTS_FILE.write_text(json.dumps(items[:3], ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+class _CatsWorker(QThread):
+    done = pyqtSignal(str, str, list)
+
+    def __init__(self, lang, lvl):
+        super().__init__()
+        self.lang, self.lvl = lang, lvl
+
+    def run(self):
+        cats = []
+        try:
+            load_categories(self.lang, self.lvl)
+            cats = [dict(c) for c in CATEGORIES]
+        except Exception as ex:
+            print(f"[picker] kategorie: {ex}")
+        self.done.emit(self.lang, self.lvl, cats)
+
+
+class _SegBox(QWidget):
+    """Tło segmentowego wyboru poziomu (jedna szara „szyna” z przyciskami w środku)."""
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(255, 255, 255, 30))
+        p.drawRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), 16, 16)
+
+
+class PickerWindow(_DraggableWindow):
+    """Jedno okno: Ostatnio · Język · Poziom · Kategoria.
+    on_selected(lang, lvl, cat) — wybrano kategorię; on_action(str) — akcje poboczne
+    (identyczne kody jak w dawnym oknie języków: "my_sets", "create", ...)."""
+    open_purchase = pyqtSignal(str)
+    ANIM_DY = 14
+    DRAG_BAR_HEIGHT = 64
+    HAS_CLOSE = True
+
+    def __init__(self, on_selected, on_action, on_back=None):
+        super().__init__()
+        self.on_selected = on_selected
+        self.on_action = on_action
+        self.on_back = on_back
+        self.lang, self.lvl = "en", "A1"
+        self._is_premium = False
+        self._bought = []
+        self._done = set()
+        self._cats = []
+        self._want = None
+        self._cw = None
+        self._pending_cat = None
+        self._cat_btns = {}
+        _styled_window(self)
+        sc = QApplication.primaryScreen().availableGeometry()
+        self.setFixedSize(480, max(520, min(800, sc.height() - 48)))
+        self._build()
+        self._center()
+
+    def _center(self):
+        sc = QApplication.primaryScreen().availableGeometry()
+        self.move(sc.center().x() - self.width() // 2, sc.center().y() - self.height() // 2)
+
+    # ── API dla TrayApp ──
+    def set_premium(self, is_premium, bought_levels=None):
+        self._is_premium = bool(is_premium)
+        self._bought = list(bought_levels or [])
+        self._refresh_levels()
+
+    def mark_done(self, code):
+        self._done.add(code)
+        b = self._cat_btns.get(code)
+        if b is not None:
+            b.setDone(True)
+
+    def present(self, lang=None, lvl=None, cat=None):
+        self._active = (lang, lvl, cat) if (lang and lvl and cat) else None
+        rec = _recents_load()
+        if not lang:
+            lang = (rec[0]["lang"] if rec else None) or self.lang
+        if not lvl:
+            lvl = (rec[0]["lvl"] if rec and rec[0]["lang"] == lang else None) or self.lvl
+        self.lang = lang
+        self.lvl = lvl if self._level_unlocked(lvl) else "A1"
+        self._pending_cat = None
+        self._build_recents()
+        self._refresh_langs()
+        self._refresh_levels()
+        self._lock_msg.hide()
+        self._request_cats()
+        self._scroll.verticalScrollBar().setValue(0)
+        self._center()
+        self.show(); self.raise_(); self.activateWindow()
+
+    # ── budowa ──
+    def _label(self, text, top=0):
+        l = QLabel(text)
+        l.setFont(_gfont(13))
+        l.setStyleSheet("color:rgba(238,242,255,186);background:transparent;")
+        if top:
+            l.setContentsMargins(0, top, 0, 0)
+        return l
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        hdr = QWidget(); hdr.setFixedHeight(64); hdr.setStyleSheet("background:transparent;")
+        hl = QHBoxLayout(hdr); hl.setContentsMargins(24, 14, 20, 0)
+        t = QLabel("Wybierz naukę"); t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
+        self.btn_close = GlassButton("", "ico"); self.btn_close.setGlyph("close")
+        self.btn_close.setToolTip("Zamknij (Esc)")
+        self.btn_close.clicked.connect(self.fade_hide)
+        hl.addWidget(t); hl.addStretch(1); hl.addWidget(self.btn_close)
+        lay.addWidget(hdr)
+
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll.setStyleSheet(
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}"
+            "QScrollBar:vertical{width:6px;background:transparent;margin:6px 2px;}"
+            "QScrollBar::handle:vertical{background:rgba(255,255,255,56);border-radius:3px;min-height:36px;}"
+            "QScrollBar::handle:vertical:hover{background:rgba(255,255,255,96);}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+            "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}")
+        body = QWidget(); body.setStyleSheet("background:transparent;")
+        bl = QVBoxLayout(body); bl.setContentsMargins(24, 2, 24, 24); bl.setSpacing(0)
+        self._scroll.setWidget(body)
+        lay.addWidget(self._scroll, 1)
+
+        # Ostatnio
+        self._rec_wrap = QWidget(); self._rec_wrap.setStyleSheet("background:transparent;")
+        rw = QVBoxLayout(self._rec_wrap); rw.setContentsMargins(0, 0, 0, 0); rw.setSpacing(8)
+        rw.addWidget(self._label("Ostatnio"))
+        self._rec_box = QVBoxLayout(); self._rec_box.setSpacing(8)
+        rw.addLayout(self._rec_box)
+        self._rec_div = QFrame(); self._rec_div.setFixedHeight(1)
+        self._rec_div.setStyleSheet("background:rgba(255,255,255,26);border:none;")
+        rw.addSpacing(10); rw.addWidget(self._rec_div); rw.addSpacing(8)
+        bl.addWidget(self._rec_wrap)
+
+        # Język
+        bl.addWidget(self._label("Język"))
+        bl.addSpacing(8)
+        chips = QWidget(); chips.setStyleSheet("background:transparent;")
+        fl = FlowLayout(chips, 6, 6)
+        self._lang_btns = {}
+        for L in LANGUAGES:
+            if not L.get("available", True):
+                continue
+            b = GlassButton(L["label"], "chip")
+            b.clicked.connect(lambda _, c=L["code"]: self._set_lang(c))
+            fl.addWidget(b); self._lang_btns[L["code"]] = b
+        bl.addWidget(chips)
+
+        # Poziom
+        bl.addSpacing(18)
+        bl.addWidget(self._label("Poziom"))
+        bl.addSpacing(8)
+        seg = _SegBox(); seg.setFixedHeight(46)
+        sl = QHBoxLayout(seg); sl.setContentsMargins(4, 4, 4, 4); sl.setSpacing(4)
+        self._lvl_btns = {}
+        for lv in LEVELS:
+            b = GlassButton(lv["label"], "seg", radius=12)
+            b.setFixedHeight(38)
+            b.clicked.connect(lambda _, c=lv["code"]: self._set_level(c))
+            sl.addWidget(b, 1); self._lvl_btns[lv["code"]] = b
+        bl.addWidget(seg)
+        self._lock_msg = QLabel("PRO odblokowuje wszystkie poziomy.")
+        self._lock_msg.setFont(_gfont(12))
+        self._lock_msg.setStyleSheet("color:%s;background:transparent;" % G_SOFT)
+        self._lock_msg.setContentsMargins(0, 8, 0, 0)
+        self._lock_msg.hide()
+        bl.addWidget(self._lock_msg)
+
+        # Kategoria
+        bl.addSpacing(18)
+        bl.addWidget(self._label("Kategoria"))
+        bl.addSpacing(8)
+        self._cat_host = QWidget(); self._cat_host.setStyleSheet("background:transparent;")
+        self._cat_grid = QGridLayout(self._cat_host)
+        self._cat_grid.setContentsMargins(0, 0, 0, 0)
+        self._cat_grid.setHorizontalSpacing(8); self._cat_grid.setVerticalSpacing(8)
+        bl.addWidget(self._cat_host)
+
+        # Akcje poboczne
+        bl.addSpacing(20)
+        row = QHBoxLayout(); row.setSpacing(8)
+        b1 = GlassButton("Moje zestawy", "ghost"); b1.setFixedHeight(40); b1.setGlyph("book")
+        b1.clicked.connect(lambda: (self.fade_hide(), self.on_action("my_sets")))
+        b2 = GlassButton("Własne fiszki · PRO", "ghost"); b2.setFixedHeight(40)
+        b2.clicked.connect(lambda: (self.fade_hide(), self.on_action("create")))
+        row.addWidget(b1, 1); row.addWidget(b2, 1)
+        bl.addLayout(row)
+        bl.addStretch(1)
+
+        # Stała stopka (poza przewijaniem): wyjście zawsze pod ręką
+        foot = QWidget(); foot.setFixedHeight(64); foot.setStyleSheet("background:transparent;")
+        fl2 = QHBoxLayout(foot); fl2.setContentsMargins(24, 10, 24, 14); fl2.setSpacing(8)
+        bb = GlassButton("← Wróć", "ghost"); bb.setFixedHeight(40)
+        bb.clicked.connect(self._go_back)
+        bc = GlassButton("Zamknij", "ghost"); bc.setFixedHeight(40)
+        bc.clicked.connect(self.fade_hide)
+        fl2.addWidget(bb, 1); fl2.addWidget(bc, 1)
+        lay.addWidget(foot)
+
+    def _go_back(self):
+        self.fade_hide()
+        if self.on_back:
+            self.on_back()
+
+    # ── odświeżanie sekcji ──
+    def _level_unlocked(self, code):
+        lv = next((l for l in LEVELS if l["code"] == code), None)
+        if not lv:
+            return False
+        return bool(lv["free"] or self._is_premium or f"{self.lang}_{code}" in self._bought)
+
+    def _refresh_langs(self):
+        for c, b in self._lang_btns.items():
+            b.setSelected(c == self.lang)
+
+    def _refresh_levels(self):
+        for c, b in self._lvl_btns.items():
+            un = self._level_unlocked(c)
+            b.setLocked(not un)
+            b.setSelected(c == self.lvl and un)
+
+    def _build_recents(self):
+        while self._rec_box.count():
+            it = self._rec_box.takeAt(0)
+            w = it.widget()
+            if w:
+                w.deleteLater()
+        rec = _recents_load()
+        self._rec_wrap.setVisible(bool(rec))
+        for i, d in enumerate(rec):
+            b = GlassButton(d["label"], "tile", radius=16)
+            b.setFixedHeight(48); b.setTrail("play"); b.setStrong(i == 0)
+            b.clicked.connect(lambda _, dd=d: self._pick_recent(dd))
+            self._rec_box.addWidget(b)
+            b.appear(i * 45)
+
+    def _set_lang(self, code):
+        if code == self.lang:
+            return
+        self.lang = code
+        if not self._level_unlocked(self.lvl):
+            self.lvl = "A1"
+        self._refresh_langs(); self._refresh_levels()
+        self._lock_msg.hide()
+        self._request_cats()
+
+    def _set_level(self, code):
+        if not self._level_unlocked(code):
+            self.open_purchase.emit(f"{self.lang}_{code}")
+            self._lock_msg.show()
+            return
+        self._lock_msg.hide()
+        if code == self.lvl:
+            return
+        self.lvl = code
+        self._refresh_levels()
+        self._request_cats()
+
+    # ── kategorie (w tle — bez zamrażania okna) ──
+    def _clear_cats(self):
+        self._cat_btns = {}
+        while self._cat_grid.count():
+            it = self._cat_grid.takeAt(0)
+            w = it.widget()
+            if w:
+                w.deleteLater()
+
+    def _request_cats(self):
+        self._want = (self.lang, self.lvl)
+        self._clear_cats()
+        ld = QLabel("Ładuję kategorie…"); ld.setFont(_gfont(13))
+        ld.setStyleSheet("color:rgba(238,242,255,120);background:transparent;")
+        self._cat_grid.addWidget(ld, 0, 0, 1, 2)
+        if _thread_alive(self._cw):
+            return                      # po zakończeniu ruszy ostatnie żądanie
+        self._start_cats_worker()
+
+    def _start_cats_worker(self):
+        lang, lvl = self._want
+        self._cw = _CatsWorker(lang, lvl)
+        self._cw.done.connect(self._on_cats)
+        self._cw.start()
+
+    def _on_cats(self, lang, lvl, cats):
+        if self._want != (lang, lvl):
+            self._start_cats_worker()   # użytkownik zdążył zmienić wybór
+            return
+        self._cats = cats
+        self._clear_cats()
+        if not cats:
+            e = QLabel("Brak kategorii dla tego wyboru."); e.setFont(_gfont(13))
+            e.setStyleSheet("color:rgba(238,242,255,120);background:transparent;")
+            self._cat_grid.addWidget(e, 0, 0, 1, 2)
+        for i, c in enumerate(cats):
+            b = GlassButton(c.get("label", c["code"]), "tile", radius=14)
+            b.setFixedHeight(46); b.setPx(14)
+            b._pad = 14
+            b.setDone(c["code"] in self._done)
+            act = getattr(self, "_active", None)
+            b.setSelected(bool(act and act == (lang, lvl, c["code"])))
+            b.clicked.connect(lambda _, cc=c: self._pick(cc["code"], cc.get("label", cc["code"])))
+            self._cat_grid.addWidget(b, i // 2, i % 2)
+            self._cat_btns[c["code"]] = b
+            b.appear(min(i, 10) * 28)
+        try:
+            self._comp = CompletedCatsWorker(lang)
+            self._comp.done.connect(lambda codes: [self.mark_done(x) for x in codes])
+            self._comp.start()
+        except Exception:
+            pass
+        if self._pending_cat:
+            code, self._pending_cat = self._pending_cat, None
+            c = next((x for x in cats if x["code"] == code), None)
+            if c:
+                self._pick(c["code"], c.get("label", c["code"]))
+
+    # ── wybór ──
+    def _pick_recent(self, d):
+        self.lang, self.lvl = d["lang"], d["lvl"]
+        self._refresh_langs(); self._refresh_levels()
+        if self._cats and self._want == (self.lang, self.lvl):
+            self._pick(d["cat"], d["label"].split(" · ")[-1])
+            return
+        self._pending_cat = d["cat"]
+        self._request_cats()
+
+    def _pick(self, code, label):
+        flag_name = lang_label(self.lang)
+        _recents_push(self.lang, self.lvl, code, f"{flag_name} · {self.lvl} · {label}")
+        self.on_selected(self.lang, self.lvl, code)
+        self.fade_hide()
+
+    def paintEvent(self, e):
+        _paint_bg(self, e)
+
+
 class SaveSetWorker(QThread):
     done  = pyqtSignal(int)   # id nowego zestawu
     error = pyqtSignal(str)
@@ -3212,214 +4689,20 @@ class LoadSetCardsWorker(QThread):
             resp = supabase.table("user_set_cards").select(
                 "word,translation"
             ).eq("set_id", self.set_id).order("sort_order").execute()
-            self.done.emit(resp.data or [])
+            set_lang = ""
+            try:
+                sr = supabase.table("user_sets").select("lang").eq("id", self.set_id).limit(1).execute()
+                if sr.data:
+                    set_lang = _srs_norm_lang(sr.data[0].get("lang") or "")
+            except Exception:
+                set_lang = ""
+            rows = [dict(r, lang=set_lang) for r in (resp.data or [])]
+            self.done.emit(rows)
         except Exception as e:
             self.error.emit(str(e))
 
 
 
-class LoadPublicSetsWorker(QThread):
-    done  = pyqtSignal(list)
-    error = pyqtSignal(str)
-
-    def __init__(self, query=""):
-        super().__init__()
-        self.finished.connect(self.deleteLater)
-        self.query = query
-
-    def run(self):
-        try:
-            q = supabase.table("user_sets").select(
-                "id,name,likes_count,user_id,user_set_cards(word,translation)"
-            ).eq("is_public", True).order("likes_count", desc=True).limit(50)
-            if self.query:
-                q = q.ilike("name", f"%{self.query}%")
-            resp = q.execute()
-            self.done.emit(resp.data or [])
-        except Exception as e:
-            self.error.emit(str(e))
-
-
-class ImportSetWorker(QThread):
-    done  = pyqtSignal(str)   # nazwa zestawu
-    error = pyqtSignal(str)
-
-    def __init__(self, set_id, set_name, cards):
-        super().__init__()
-        self.finished.connect(self.deleteLater)
-        self.set_id   = set_id
-        self.set_name = set_name
-        self.cards    = cards
-
-    def run(self):
-        try:
-            uid = current_uid()
-            # Sprawdź czy już zaimportowany
-            existing = supabase.table("user_sets").select("id").eq("user_id", uid).eq("name", self.set_name).execute()
-            if existing.data:
-                self.done.emit(self.set_name)
-                return
-            resp = supabase.table("user_sets").insert({
-                "user_id": uid,
-                "name": self.set_name,
-                "is_public": False,
-            }).execute()
-            new_id = resp.data[0]["id"]
-            rows = [{"set_id": new_id, "word": c["word"],
-                     "translation": c["translation"], "sort_order": i}
-                    for i, c in enumerate(self.cards)]
-            supabase.table("user_set_cards").insert(rows).execute()
-            self.done.emit(self.set_name)
-        except Exception as e:
-            self.error.emit(str(e))
-
-
-class PublicSetsWindow(_DraggableWindow):
-    """Okno przeglądania i importu publicznych zestawów."""
-    set_imported = pyqtSignal()
-
-    def __init__(self):
-        super().__init__()
-        self._is_premium = False
-        _styled_window(self)
-        self.setFixedSize(440, 560)
-        self._build()
-        _right_third_pos(self)
-
-    def set_premium(self, v): self._is_premium = v
-
-    def _build(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
-        t = QLabel("Zestawy społeczności")
-        t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        t.setStyleSheet("color:white;background:transparent;")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl.addWidget(t)
-        lay.addWidget(hdr)
-
-        inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        il = QVBoxLayout(inner); il.setContentsMargins(20, 10, 20, 16); il.setSpacing(8)
-        lay.addWidget(inner, 1)
-
-        # Wyszukiwarka
-        self.inp_search = QLineEdit()
-        self.inp_search.setPlaceholderText("Szukaj zestawów...")
-        self.inp_search.setMinimumHeight(34)
-        self.inp_search.setStyleSheet(INPUT_STYLE)
-        self.inp_search.textChanged.connect(self._on_search)
-        il.addWidget(self.inp_search)
-
-        # Lista zestawów
-        from PyQt6.QtWidgets import QScrollArea
-        sa = QScrollArea(); sa.setWidgetResizable(True)
-        sa.setStyleSheet("""
-            QScrollArea{background:transparent;border:none;}
-            QScrollBar:vertical{background:rgba(255,255,255,.04);width:5px;border-radius:2px;}
-            QScrollBar::handle:vertical{background:rgba(255,255,255,.22);border-radius:2px;}
-            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}
-        """)
-        self._list_w = QWidget(); self._list_w.setStyleSheet("background:transparent;")
-        self._list_l = QVBoxLayout(self._list_w); self._list_l.setContentsMargins(0,0,4,0); self._list_l.setSpacing(6)
-        self._list_l.addStretch()
-        sa.setWidget(self._list_w)
-        il.addWidget(sa, 1)
-
-        self.lbl_status = QLabel("Ładowanie...")
-        self.lbl_status.setFont(QFont("Segoe UI", 9))
-        self.lbl_status.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
-        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        il.addWidget(self.lbl_status)
-
-        il.addWidget(_back_btn("← Wróć do moich zestawów", self._go_back_to_my_sets))
-        il.addWidget(_close_btn(self))
-
-    def _go_back_to_my_sets(self):
-        self.hide()
-        # Sygnał do TrayApp żeby pokazać MySetsPicker
-        if hasattr(self, '_on_back_callback') and self._on_back_callback:
-            self._on_back_callback()
-
-    def set_back_callback(self, cb):
-        self._on_back_callback = cb
-
-    def show_and_load(self):
-        self.show(); self.raise_(); self.activateWindow()
-        self._load()
-
-    def _load(self, query=""):
-        self.lbl_status.setText("Ładowanie...")
-        self._clear_list()
-        self._worker = LoadPublicSetsWorker(query)
-        self._worker.done.connect(self._on_loaded)
-        self._worker.error.connect(lambda e: self.lbl_status.setText(f"Błąd: {e}"))
-        self._worker.start()
-
-    def _on_search(self, text):
-        QTimer.singleShot(400, lambda: self._load(text.strip()))
-
-    def _clear_list(self):
-        while self._list_l.count() > 1:
-            item = self._list_l.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-
-    def _on_loaded(self, sets):
-        self._clear_list()
-        if not sets:
-            self.lbl_status.setText("Brak zestawów.")
-            return
-        self.lbl_status.setText(f"{len(sets)} zestaw(ów)")
-        for s in sets:
-            self._add_row(s)
-
-    def _add_row(self, s):
-        row = QWidget(); row.setStyleSheet("background:transparent;")
-        rl = QHBoxLayout(row); rl.setContentsMargins(0,0,0,0); rl.setSpacing(6)
-
-        info = QVBoxLayout(); info.setSpacing(1)
-        lname = QLabel(f"{s['name']}")
-        lname.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        lname.setStyleSheet("color:white;background:transparent;")
-        cards = s.get("user_set_cards", [])
-        lmeta = QLabel(f"{s.get('likes_count',0)} · {len(cards)} fiszek")
-        lmeta.setFont(QFont("Segoe UI", 9))
-        lmeta.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
-        info.addWidget(lname); info.addWidget(lmeta)
-
-        btn = QPushButton("Importuj")
-        btn.setFixedWidth(90)
-        btn.setStyleSheet("""
-            QPushButton{background:rgba(30,32,60,160);color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);border-left:3px solid rgba(120,135,190,150);
-                border-radius:8px;padding:6px 10px;font-size:11px;}
-            QPushButton:hover{background:rgba(30,50,90,180);color:white;}
-            QPushButton:disabled{color:rgba(150,120,230,220);border-left-color:rgba(130,80,220,150);}
-        """)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        if not self._is_premium:
-            btn.setEnabled(False)
-            btn.setText("Premium")
-        else:
-            btn.clicked.connect(lambda _, sid=s["id"], sname=s["name"], sc=cards: self._import(sid, sname, sc, btn))
-
-        rl.addLayout(info, 1)
-        rl.addWidget(btn)
-        self._list_l.insertWidget(self._list_l.count()-1, row)
-
-    def _import(self, set_id, set_name, cards, btn):
-        btn.setEnabled(False); btn.setText("")
-        self._import_worker = ImportSetWorker(set_id, set_name, cards)
-        self._import_worker.done.connect(lambda n: (btn.__setattr__('_done', True), btn.setText("Dodano"), self.set_imported.emit()))
-        self._import_worker.error.connect(lambda e: (btn.setEnabled(True), btn.setText("Importuj")))
-        self._import_worker.start()
-
-    def paintEvent(self, e):
-        _paint_bg(self, e)
 class CategoryViewWorker(QThread):
     done = pyqtSignal(int)  # łączna liczba widoków
 
@@ -3485,7 +4768,7 @@ class CustomSetWindow(_DraggableWindow):
         self.card_rows   = []
         self._is_premium = False
         _styled_window(self)
-        self.setFixedSize(440, 580)
+        self.setFixedSize(440, 650)
         self._build()
         _right_third_pos(self)
 
@@ -3505,27 +4788,26 @@ class CustomSetWindow(_DraggableWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        # Pasek drag
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
+        # Nagłówek (też strefa przeciągania); „✕” dokłada _DraggableWindow
+        hdr = QWidget(); hdr.setFixedHeight(56); hdr.setStyleSheet("background:transparent;")
+        hl = QHBoxLayout(hdr); hl.setContentsMargins(24, 16, 60, 0)
         t = QLabel("Stwórz własny zestaw")
-        t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        t.setStyleSheet("color:white;background:transparent;")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
         hl.addWidget(t)
         lay.addWidget(hdr)
 
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
         self.main_lay = QVBoxLayout(inner)
-        self.main_lay.setContentsMargins(20, 10, 20, 16)
+        self.main_lay.setContentsMargins(24, 6, 24, 18)
         self.main_lay.setSpacing(8)
         lay.addWidget(inner, 1)
 
         # Info o limicie dla darmowych
         self.lbl_limit = QLabel(f"Plan darmowy: do {MAX_CARDS} fiszek w zestawie · Subskrypcja = bez limitu")
-        self.lbl_limit.setFont(QFont("Segoe UI", 9))
-        self.lbl_limit.setStyleSheet("color:rgba(150,120,230,200);background:transparent;")
-        self.lbl_limit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_limit.setFont(_gfont(12))
+        self.lbl_limit.setStyleSheet("color:%s;background:transparent;" % G_SOFT)
+        self.lbl_limit.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.lbl_limit.setWordWrap(True)
         self.main_lay.addWidget(self.lbl_limit)
 
@@ -3541,15 +4823,15 @@ class CustomSetWindow(_DraggableWindow):
         hdr_lay = QHBoxLayout(hdr_w); hdr_lay.setContentsMargins(4, 0, 4, 0)
         for txt in ["Słowo / pytanie", "Tłumaczenie / odpowiedź", ""]:
             lh = QLabel(txt)
-            lh.setFont(QFont("Segoe UI", 8))
-            lh.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
+            lh.setFont(_gfont(12))
+            lh.setStyleSheet("color:rgba(238,242,255,176);background:transparent;")
             hdr_lay.addWidget(lh, 0 if txt == "" else 1)
         self.main_lay.addWidget(hdr_w)
 
         # Scroll na fiszki — stała wysokość
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(340)
+        scroll.setFixedHeight(300)
         scroll.setStyleSheet("""
             QScrollArea { border:none; background:transparent; }
             QScrollBar:vertical { background:rgba(255,255,255,.04); width:5px; border-radius:2px; }
@@ -3569,32 +4851,25 @@ class CustomSetWindow(_DraggableWindow):
             self._add_row()
 
         # Przyciski
-        btn_add = QPushButton("+ Dodaj wiersz")
-        btn_add.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(120,135,190,150);
-                border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-        """)
-        btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_add = GlassButton("+ Dodaj wiersz", "ghost", radius=14)
+        btn_add.setFixedHeight(42)
         btn_add.clicked.connect(self._add_row)
         self.main_lay.addWidget(btn_add)
 
         self.lbl_error = QLabel("")
-        self.lbl_error.setStyleSheet("color:rgba(255,100,100,220);font-size:11px;background:transparent;")
+        self.lbl_error.setStyleSheet("color:#ff8a8a;font-size:12px;background:transparent;")
         self.lbl_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.main_lay.addWidget(self.lbl_error)
 
-        self.btn_save = QPushButton("Zapisz zestaw")
-        self.btn_save.setMinimumHeight(36)
-        self.btn_save.setStyleSheet(BTN_PRIMARY)
-        self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_save = GlassButton("Zapisz zestaw", "cta", radius=16)
+        self.btn_save.setFixedHeight(50)
         self.btn_save.clicked.connect(self._save)
         self.main_lay.addWidget(self.btn_save)
-
-        self.main_lay.addWidget(_back_btn("← Wróć", self._go_back))
-        self.main_lay.addWidget(_close_btn(self))
+        self.main_lay.addSpacing(2)
+        fr = QHBoxLayout(); fr.setSpacing(8)
+        fr.addWidget(_back_btn("\u2190 Wróć", self._go_back), 1)
+        fr.addWidget(_close_btn(self), 1)
+        self.main_lay.addLayout(fr)
 
     def _add_row(self):
         limit = 9999 if self._is_premium else MAX_CARDS
@@ -3619,11 +4894,9 @@ class CustomSetWindow(_DraggableWindow):
         inp_tr.setMinimumHeight(32)
         inp_tr.setStyleSheet(INPUT_STYLE)
 
-        btn_del = QPushButton("✕")
-        btn_del.setFixedSize(28, 28)
-        btn_del.setStyleSheet("QPushButton{background:rgba(150,40,40,140);color:white;border-radius:6px;font-size:10px;}"
-                              "QPushButton:hover{background:rgba(190,60,60,200);}")
-        btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_del = GlassButton("", "ico")
+        btn_del.setGlyph("close"); btn_del.setToolTip("Usuń wiersz")
+        btn_del.setFixedSize(34, 34)
 
         row_lay.addWidget(inp_word)
         row_lay.addWidget(inp_tr)
@@ -3691,21 +4964,74 @@ class CustomSetWindow(_DraggableWindow):
 # ──────────────────────────────────────────────────────
 # OKNO WYBORU WŁASNEGO ZESTAWU
 # ──────────────────────────────────────────────────────
+class LibraryWindow(_DraggableWindow):
+    """Biblioteka — wybór: gotowe zestawy Eyelingo albo własne zestawy użytkownika."""
+    ANIM_DY = 14
+
+    def __init__(self, on_eyelingo, on_mine, on_back):
+        super().__init__()
+        self._on_eyelingo, self._on_mine, self._on_back = on_eyelingo, on_mine, on_back
+        _styled_window(self)
+        self.setFixedSize(420, 400)
+        self._build()
+        _right_third_pos(self)
+
+    def _choice(self, lay, title, hint, cb, glyph):
+        b = GlassButton(title, "tile", radius=16)
+        b.setGlyph(glyph); b.setTrail("play"); b.setFixedHeight(56)
+        b.clicked.connect(cb)
+        lay.addWidget(b)
+        h = QLabel(hint); h.setFont(_gfont(12)); h.setWordWrap(True)
+        h.setStyleSheet("color:rgba(238,242,255,170);background:transparent;")
+        h.setContentsMargins(6, 4, 6, 0)
+        lay.addWidget(h)
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 20, 24, 20)
+        lay.setSpacing(0)
+        t = QLabel("Biblioteka")
+        t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
+        lay.addWidget(t)
+        sub = QLabel("Skąd chcesz wziąć fiszki?")
+        sub.setFont(_gfont(13)); sub.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
+        lay.addWidget(sub)
+        lay.addSpacing(18)
+        self._choice(lay, "Zestawy Eyelingo", "Gotowe zestawy w 14 językach, poziomy A1\u2013C2.",
+                     lambda: (self.hide(), self._on_eyelingo()), "globe")
+        lay.addSpacing(14)
+        self._choice(lay, "Moje zestawy", "Twoje własne fiszki \u2014 z tematu, z pliku lub ze zdjęcia.",
+                     lambda: (self.hide(), self._on_mine()), "book")
+        lay.addStretch(1)
+        fr = QHBoxLayout(); fr.setSpacing(8)
+        bb = GlassButton("\u2190 Wróć", "ghost"); bb.setFixedHeight(42)
+        bb.clicked.connect(lambda: (self.hide(), self._on_back()))
+        bc = GlassButton("Zamknij", "ghost"); bc.setFixedHeight(42)
+        bc.clicked.connect(self.fade_hide)
+        fr.addWidget(bb, 1); fr.addWidget(bc, 1)
+        lay.addLayout(fr)
+
+    def paintEvent(self, e):
+        _paint_bg(self, e)
+
+
 class MySetsPicker(_DraggableWindow):
+    """Moje zestawy — lista własnych zestawów + „Stwórz nowy”. Zawsze widoczne wyjście."""
     set_picked = pyqtSignal(str, list)
 
     FREE_SET_LIMIT = 1
     FREE_CARD_LIMIT = 20
+    ANIM_DY = 14
 
     def __init__(self, on_back, on_create, on_browse_community=None):
         super().__init__()
         self.on_back   = on_back
         self.on_create = on_create
-        self.on_browse_community = on_browse_community
         self.sets      = []
         self._is_premium = False
         _styled_window(self)
-        self.setFixedSize(360, 460)
+        self.setFixedSize(420, 560)
         self._build()
         _right_third_pos(self)
 
@@ -3714,116 +5040,76 @@ class MySetsPicker(_DraggableWindow):
 
     def _build(self):
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(24, 20, 24, 20)
         lay.setSpacing(0)
 
-        # Pasek drag
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(16, 0, 16, 0)
         t = QLabel("Moje zestawy")
-        t.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        t.setStyleSheet("color:white;background:transparent;")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl.addWidget(t)
-        lay.addWidget(hdr)
+        t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
+        lay.addWidget(t)
+        lay.addSpacing(4)
 
-        inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        self.lay = QVBoxLayout(inner)
-        self.lay.setContentsMargins(20, 10, 20, 16)
-        self.lay.setSpacing(8)
-        lay.addWidget(inner, 1)
-
-        # Info o limicie
         self.lbl_limit = QLabel("")
-        self.lbl_limit.setFont(QFont("Segoe UI", 9))
-        self.lbl_limit.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
-        self.lbl_limit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_limit.setFont(_gfont(13))
+        self.lbl_limit.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
         self.lbl_limit.setWordWrap(True)
-        self.lay.addWidget(self.lbl_limit)
+        lay.addWidget(self.lbl_limit)
+        lay.addSpacing(14)
 
-        sep = QWidget(); sep.setFixedHeight(1)
-        sep.setStyleSheet("background:rgba(210,220,255,18);")
-        self.lay.addWidget(sep)
-
-        self.lbl_status = QLabel("Ładowanie...")
-        self.lbl_status.setFont(QFont("Segoe UI", 9))
-        self.lbl_status.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
-        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lay.addWidget(self.lbl_status)
+        self.lbl_status = QLabel("Ładowanie…")
+        self.lbl_status.setFont(_gfont(13))
+        self.lbl_status.setStyleSheet("color:rgba(238,242,255,160);background:transparent;")
+        lay.addWidget(self.lbl_status)
+        lay.addSpacing(8)
 
         _sa = QScrollArea(); _sa.setWidgetResizable(True)
+        _sa.setFrameShape(QScrollArea.Shape.NoFrame)
         _sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         _sa.setStyleSheet(
-            "QScrollArea { background: rgba(20,20,50,120); border: 1px solid rgba(120,135,190,70); border-radius: 10px; }"
-            "QScrollBar:vertical { background: rgba(255,255,255,0.05); width: 6px; border-radius: 3px; }"
-            "QScrollBar::handle:vertical { background: rgba(255,255,255,0.25); border-radius: 3px; }"
-            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
-        _sets_w = QWidget(); _sets_w.setStyleSheet("background:transparent;")
-        self.sets_lay = QVBoxLayout(_sets_w)
-        self.sets_lay.setContentsMargins(8, 8, 8, 8)
-        self.sets_lay.setSpacing(6)
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}"
+            "QScrollBar:vertical{width:6px;background:transparent;margin:2px;}"
+            "QScrollBar::handle:vertical{background:rgba(255,255,255,70);border-radius:3px;min-height:36px;}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+            "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}")
+        _w = QWidget(); _w.setStyleSheet("background:transparent;")
+        self.sets_lay = QVBoxLayout(_w)
+        self.sets_lay.setContentsMargins(0, 0, 8, 0)
+        self.sets_lay.setSpacing(8)
         self.sets_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
-        _sa.setWidget(_sets_w)
-        self.lay.addWidget(_sa, 1)
+        _sa.setWidget(_w)
+        lay.addWidget(_sa, 1)
+        lay.addSpacing(12)
 
-        # Przycisk nowego zestawu
-        self.btn_new = QPushButton("Stwórz nowy zestaw")
-        self.btn_new.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(120,135,190,150);
-                border-radius:10px; padding:9px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-            QPushButton:disabled { color:rgba(120,125,145,120);
-                border-left:3px solid rgba(80,80,100,60); }
-        """)
-        self.btn_new.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_new = GlassButton("Stwórz nowy zestaw", "cta", radius=16)
+        self.btn_new.setFixedHeight(50)
         self.btn_new.clicked.connect(self._on_create_clicked)
-        self.lay.addWidget(self.btn_new)
+        lay.addWidget(self.btn_new)
 
-        # Premium info (ukryty domyślnie)
         self.lbl_premium = QLabel("Subskrypcja odblokuje nieograniczone zestawy")
-        self.lbl_premium.setFont(QFont("Segoe UI", 9))
-        self.lbl_premium.setStyleSheet("color:rgba(150,120,230,200);background:transparent;")
+        self.lbl_premium.setFont(_gfont(12))
+        self.lbl_premium.setStyleSheet("color:%s;background:transparent;" % G_SOFT)
         self.lbl_premium.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_premium.setWordWrap(True)
         self.lbl_premium.hide()
-        self.lay.addWidget(self.lbl_premium)
+        lay.addSpacing(8)
+        lay.addWidget(self.lbl_premium)
 
-        # Przycisk lokalnego przeglądania zestawów w programie
-        btn_browse_local = QPushButton("Przeglądaj zestawy w programie")
-        btn_browse_local.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(120,135,190,150);
-                border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-        """)
-        btn_browse_local.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_browse_local.clicked.connect(self._on_browse_community)
-        self.lay.addWidget(btn_browse_local)
-
-        # Przycisk przeglądania na stronie www
-        btn_browse_www = QPushButton("Materiały na stronie eyelingo")
-        btn_browse_www.setStyleSheet("""
-            QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                border:1px solid rgba(80,85,120,80);
-                border-left:3px solid rgba(90,100,140,180);
-                border-radius:10px; padding:8px 16px; font-size:12px; text-align:left; }
-            QPushButton:hover { background:rgba(40,44,72,180); color:white; }
-        """)
-        btn_browse_www.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_browse_www.clicked.connect(lambda: webbrowser.open(f"{BASE}?page=community"))
-        self.lay.addWidget(btn_browse_www)
-
-        self.lay.addWidget(_back_btn("← Wróć do języków", self._go_back))
-        self.lay.addWidget(_close_btn(self))
+        lay.addSpacing(12)
+        fr = QHBoxLayout(); fr.setSpacing(8)
+        b_back = GlassButton("← Wróć", "ghost"); b_back.setFixedHeight(42)
+        b_back.clicked.connect(self._go_back)
+        b_close = GlassButton("Zamknij", "ghost"); b_close.setFixedHeight(42)
+        b_close.clicked.connect(self.fade_hide)
+        fr.addWidget(b_back, 1); fr.addWidget(b_close, 1)
+        lay.addLayout(fr)
 
     def load_sets(self):
-        self.lbl_status.setText("Ładowanie...")
+        self.lbl_status.setText("Ładowanie…")
         for i in reversed(range(self.sets_lay.count())):
             w = self.sets_lay.itemAt(i).widget()
-            if w: w.deleteLater()
+            if w:
+                w.deleteLater()
         self._loader = LoadSetsWorker()
         self._loader.done.connect(self._on_sets_loaded)
         self._loader.error.connect(lambda e: self.lbl_status.setText(f"Błąd: {e}"))
@@ -3833,127 +5119,31 @@ class MySetsPicker(_DraggableWindow):
         self.sets = sets
         count = len(sets)
         at_limit = not self._is_premium and count >= self.FREE_SET_LIMIT
-
-        if not sets:
-            self.lbl_status.setText("")
-            if not self._is_premium:
-                self.lbl_limit.setText(f"Możesz stworzyć 1 darmowy zestaw ({self.FREE_CARD_LIMIT} fiszek)")
-            else:
-                self.lbl_limit.setText("Nieograniczone zestawy ")
-        else:
-            self.lbl_status.setText(f"Twoje zestawy ({count}):")
-            if not self._is_premium:
-                self.lbl_limit.setText(f"Plan darmowy: {count}/{self.FREE_SET_LIMIT} zestaw")
-            else:
-                self.lbl_limit.setText(f"Plan Premium: {count} zestaw(ów) ")
-
-        for s in sets:
-            row = QWidget(); row.setStyleSheet("background:transparent;")
-            rl = QHBoxLayout(row); rl.setContentsMargins(0,0,0,0); rl.setSpacing(6)
-
-            btn = QPushButton(f"{s['name']}")
-            btn.setStyleSheet("""
-                QPushButton { background:rgba(30,32,60,160); color:rgba(220,225,255,210);
-                    border:1px solid rgba(80,85,120,80);
-                    border-left:3px solid rgba(120,135,190,150);
-                    border-radius:10px; padding:9px 16px; font-size:12px; text-align:left; }
-                QPushButton:hover { background:rgba(30,50,90,180); color:white; }
-            """)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(lambda _, sid=s["id"], sname=s.get("name","Zestaw"): self._pick_set(sid, sname))
-
-            # Przełącznik publiczny/prywatny
-            is_public = s.get("is_public", False)
-            btn_pub = QPushButton("Publiczny" if is_public else "Prywatny")
-            btn_pub.setFixedSize(34, 34)
-            btn_pub.setToolTip("Publiczny" if is_public else "Prywatny")
-            btn_pub.setStyleSheet(f"""
-                QPushButton {{ background:{'rgba(30,100,50,160)' if is_public else 'rgba(60,40,40,160)'};
-                    border:1px solid {'rgba(60,200,100,100)' if is_public else 'rgba(120,60,60,100)'};
-                    border-radius:8px; font-size:14px; }}
-                QPushButton:hover {{ background:rgba(60,60,90,200); }}
-            """)
-            btn_pub.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_pub.clicked.connect(lambda _, sid=s["id"], pub=is_public, b=btn_pub: self._toggle_public(sid, pub, b))
-
-            rl.addWidget(btn, 1)
-            rl.addWidget(btn_pub)
-            self.sets_lay.addWidget(row)
-
-        if at_limit:
-            self.btn_new.setEnabled(False)
-            self.btn_new.setText("Stwórz nowy zestaw  ·  limit osiągnięty")
-            self.lbl_premium.show()
-        else:
-            self.btn_new.setEnabled(True)
-            self.btn_new.setText("Stwórz nowy zestaw")
-            self.lbl_premium.setVisible(not self._is_premium)
-
-    def _toggle_public(self, set_id, currently_public, btn):
-        new_public = not currently_public
-        try:
-            supabase.from_("user_sets").update({"is_public": new_public}).eq("id", set_id).execute()
-            btn.setText("Publiczny" if new_public else "Prywatny")
-            btn.setToolTip("Publiczny" if new_public else "Prywatny")
-            btn.setStyleSheet(f"""
-                QPushButton {{ background:{'rgba(30,100,50,160)' if new_public else 'rgba(60,40,40,160)'};
-                    border:1px solid {'rgba(60,200,100,100)' if new_public else 'rgba(120,60,60,100)'};
-                    border-radius:8px; font-size:14px; }}
-                QPushButton:hover {{ background:rgba(60,60,90,200); }}
-            """)
-            # Aktualizuj referencję dla następnego kliknięcia
-            btn.clicked.disconnect()
-            btn.clicked.connect(lambda _, sid=set_id, pub=new_public, b=btn: self._toggle_public(sid, pub, b))
-        except Exception as e:
-            print(f"[TOGGLE PUBLIC] {e}")
-
-    def _on_browse_community(self):
-        if self.on_browse_community:
-            self.on_browse_community()
-
-    def _on_create_clicked(self):
-        count = len(self.sets)
-        if not self._is_premium and count >= self.FREE_SET_LIMIT:
-            self.lbl_premium.show()
-            return
-        self.on_create()
-        count = len(self.sets)
-        if not self._is_premium and count >= self.FREE_SET_LIMIT:
-            self.lbl_premium.show()
-            return
-        self.on_create()
-
-    def load_sets(self):
-        self.lbl_status.setText("Ładowanie...")
-        # wyczyść stare przyciski
-        for i in reversed(range(self.sets_lay.count())):
-            w = self.sets_lay.itemAt(i).widget()
-            if w:
-                w.deleteLater()
-
-        self._loader = LoadSetsWorker()
-        self._loader.done.connect(self._on_sets_loaded)
-        self._loader.error.connect(lambda e: self.lbl_status.setText(f"Błąd: {e}"))
-        self._loader.start()
-
-    def _on_sets_loaded(self, sets):
-        self.sets = sets
         if not sets:
             self.lbl_status.setText("Nie masz jeszcze żadnych zestawów.")
-            return
-        self.lbl_status.setText(f"Masz {len(sets)} zestaw(ów):")
-        for s in sets:
-            btn = QPushButton(f"{s['name']}")
-            btn.setStyleSheet("""
-                QPushButton { background:rgba(30,40,68,190); color:white;
-                    border:1px solid rgba(96,110,150,120);
-                    border-radius:10px; padding:9px; font-size:12px;
-                    text-align:left; }
-                QPushButton:hover { background:rgba(42,54,90,220); border-color:rgba(201,106,42,235); }
-            """)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.clicked.connect(lambda _, sid=s["id"], sname=s.get("name","Zestaw"): self._pick_set(sid, sname))
+            self.lbl_limit.setText(
+                f"Możesz stworzyć 1 darmowy zestaw ({self.FREE_CARD_LIMIT} fiszek)"
+                if not self._is_premium else "Plan PRO: nieograniczone zestawy")
+        else:
+            self.lbl_status.setText(f"Twoje zestawy ({count})")
+            self.lbl_limit.setText(
+                f"Plan darmowy: {count}/{self.FREE_SET_LIMIT} zestaw"
+                if not self._is_premium else f"Plan PRO: {count} zestawów")
+        for i, s in enumerate(sets):
+            btn = GlassButton(f"{s['name']}", "tile", radius=14)
+            btn.setFixedHeight(48); btn.setTrail("play")
+            btn.clicked.connect(lambda _, sid=s["id"], sname=s.get("name", "Zestaw"): self._pick_set(sid, sname))
             self.sets_lay.addWidget(btn)
+            btn.appear(min(i, 8) * 35)
+        self.btn_new.setEnabled(not at_limit)
+        self.btn_new.setText("Stwórz nowy zestaw" + ("  ·  limit osiągnięty" if at_limit else ""))
+        self.lbl_premium.setVisible(at_limit)
+
+    def _on_create_clicked(self):
+        if not self._is_premium and len(self.sets) >= self.FREE_SET_LIMIT:
+            self.lbl_premium.show()
+            return
+        self.on_create()
 
     def _pick_set(self, set_id, set_name="Mój zestaw"):
         self._current_set_name = set_name
@@ -4523,7 +5713,7 @@ class SettingsWindow(_DraggableWindow):
     def __init__(self):
         super().__init__()
         _styled_window(self)
-        self.setFixedSize(440, 560)
+        self.setFixedSize(500, 580)
         self._recording   = None
         self._record_hook = None
         self._saved_state = {}
@@ -4565,7 +5755,7 @@ class SettingsWindow(_DraggableWindow):
         def sec(t):
             l = QLabel(t)
             l.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-            l.setStyleSheet("color:rgba(160,185,255,210);margin-top:6px;")
+            l.setStyleSheet("color:rgba(238,242,255,170);margin-top:6px;")
             lay.addWidget(l)
 
         # Wygląd
@@ -4584,22 +5774,8 @@ class SettingsWindow(_DraggableWindow):
             ("glow_white", "Delikatne wyróżnienie nowego słowa"),
         ]
         self._fx_ids = [f[0] for f in FX]
-        self._fx_cb  = QComboBox()
-        self._fx_cb.setFont(QFont("Segoe UI",11))
-        self._fx_cb.setFixedHeight(30)
-        self._fx_cb.setStyleSheet("""
-            QComboBox{background:rgba(26,36,54,190);color:white;
-                border:1px solid rgba(70,130,105,150);border-radius:7px;padding:3px 10px;}
-            QComboBox:hover{background:rgba(40,52,70,220);}
-            QComboBox::drop-down{border:none;width:22px;}
-            QComboBox::down-arrow{width:0;height:0;
-                border-left:5px solid transparent;border-right:5px solid transparent;
-                border-top:6px solid rgba(200,210,255,200);}
-            QComboBox QAbstractItemView{background:rgba(20,28,44,245);color:white;
-                selection-background-color:rgba(120,140,215,205);
-                border:1px solid rgba(96,110,150,140);border-radius:6px;
-                padding:2px;outline:none;}
-        """)
+        self._fx_cb  = GlassCombo()
+        self._fx_cb.setFont(_gfont(14))
         cur = APP_SETTINGS.get("card_effect","none")
         for fid,flbl in FX:
             self._fx_cb.addItem(flbl, fid)
@@ -4633,7 +5809,7 @@ class SettingsWindow(_DraggableWindow):
         # Skróty
         sec("Skróty klawiszowe")
         hint = QLabel("Kliknij przycisk → naciśnij kombinację.  ✖ = wyłącz")
-        hint.setStyleSheet("color:rgba(160,185,255,160);font-size:10px;")
+        hint.setStyleSheet("color:rgba(238,242,255,130);font-size:10px;")
         hint.setWordWrap(True)
         lay.addWidget(hint)
 
@@ -4664,30 +5840,30 @@ class SettingsWindow(_DraggableWindow):
         # ── Pasek przycisków na dole ─────────────────────
         bar = QWidget()
         bar.setFixedHeight(52)
-        bar.setStyleSheet("background:rgba(12,15,45,230);"
-                          "border-top:1px solid rgba(210,220,255,20);")
+        bar.setStyleSheet("background:transparent;"
+                          "border-top:1px solid rgba(255,255,255,26);")
         bl = QHBoxLayout(bar); bl.setContentsMargins(14,8,14,8); bl.setSpacing(6)
 
         def mkb(text, bg, hover, slot, bold=False, border="rgba(255,255,255,30)"):
             b = QPushButton(text)
             b.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold if bold else QFont.Weight.Normal))
             b.setFixedHeight(34)
-            b.setStyleSheet(f"QPushButton{{background:{bg};color:white;"
-                            f"border:1px solid {border};border-radius:8px;padding:4px 8px;}}"
-                            f"QPushButton:hover{{background:{hover};border-color:rgba(201,106,42,235);}}")
+            b.setStyleSheet(f"QPushButton{{background:{bg};color:{'#1b1205' if bold else '#eef2ff'};"
+                            f"border:none;border-radius:12px;padding:4px 12px;}}"
+                            f"QPushButton:hover{{background:{hover};}}")
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(slot)
             return b
 
         # Wróć=granat, Zapis=zielony, Zamknij=szary, Domyślne=tekst
-        btn_back  = mkb("\u2190 Wr\u00F3\u0107", "rgba(60,66,92,210)", "rgba(82,90,120,235)", self._revert)
-        btn_save  = mkb("Zapisz",  "rgba(28,38,66,205)", "rgba(38,50,84,225)", self._save, True, "rgba(201,106,42,235)")
-        btn_close = mkb("Zamknij", "rgba(60,66,92,210)",   "rgba(82,90,120,235)",  self.hide)
+        btn_back  = mkb("\u2190 Wr\u00F3\u0107", "rgba(255,255,255,20)", "rgba(255,255,255,42)", self._revert)
+        btn_save  = mkb("Zapisz",  "qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f0924d, stop:1 #d8742e)", "qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f6a263, stop:1 #e0803a)", self._save, True)
+        btn_close = mkb("Zamknij", "rgba(255,255,255,20)", "rgba(255,255,255,42)",  self.hide)
         btn_def   = QPushButton("Przywróć domyślne")
         btn_def.setFont(QFont("Segoe UI", 9))
         btn_def.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_def.setStyleSheet("QPushButton{background:transparent;color:rgba(160,175,210,160);border:none;}"
-                              "QPushButton:hover{color:rgba(170,190,235,225);}")
+                              "QPushButton:hover{color:rgba(238,242,255,225);}")
         btn_def.clicked.connect(self._reset)
 
         bl.addWidget(btn_back)
@@ -4715,14 +5891,15 @@ class SettingsWindow(_DraggableWindow):
         sl.setMinimum(mn); sl.setMaximum(mx); sl.setValue(val)
         sl.setFixedHeight(22)
         sl.setStyleSheet("""
-            QSlider::groove:horizontal{height:4px;background:rgba(70,80,120,120);border-radius:2px;}
-            QSlider::handle:horizontal{width:13px;height:13px;margin:-5px 0;
-                background:rgb(120,140,215);border-radius:6px;}
-            QSlider::sub-page:horizontal{background:rgba(120,140,215,205);border-radius:2px;}
+            QSlider::groove:horizontal{height:4px;background:rgba(255,255,255,36);border-radius:2px;}
+            QSlider::handle:horizontal{width:15px;height:15px;margin:-6px 0;
+                background:#eef2ff;border-radius:7px;}
+            QSlider::handle:horizontal:hover{background:#ffffff;}
+            QSlider::sub-page:horizontal{background:rgb(224,128,58);border-radius:2px;}
         """)
         vl = QLabel(f"{val}{suffix}")
         vl.setFont(QFont("Segoe UI",11,QFont.Weight.Bold))
-        vl.setStyleSheet("color:rgba(150,168,240,235);"); vl.setFixedWidth(34)
+        vl.setStyleSheet("color:#ffb27a;"); vl.setFixedWidth(34)
         sl.valueChanged.connect(lambda v,l=vl,s=suffix: l.setText(f"{v}{s}"))
         row.addWidget(lb); row.addWidget(sl); row.addWidget(vl)
         lay.addLayout(row)
@@ -4730,12 +5907,12 @@ class SettingsWindow(_DraggableWindow):
 
     def _hk_style(self, active):
         if active:
-            return ("QPushButton{background:rgba(52,66,120,185);color:white;"
-                    "border:1px solid rgba(120,140,215,150);border-radius:7px;padding:3px;font-size:10px;}"
-                    "QPushButton:hover{background:rgba(66,82,150,220);}")
-        return ("QPushButton{background:rgba(38,38,58,140);color:rgba(255,255,255,70);"
-                "border:1px solid rgba(80,80,120,80);border-radius:7px;padding:3px;font-size:10px;}"
-                "QPushButton:hover{background:rgba(58,58,88,180);}")
+            return ("QPushButton{background:rgba(255,255,255,30);color:white;"
+                    "border:1px solid rgba(255,255,255,46);border-radius:10px;padding:3px;font-size:10px;}"
+                    "QPushButton:hover{background:rgba(255,255,255,52);}")
+        return ("QPushButton{background:rgba(255,255,255,14);color:rgba(255,255,255,90);"
+                "border:1px solid rgba(255,255,255,26);border-radius:10px;padding:3px;font-size:10px;}"
+                "QPushButton:hover{background:rgba(255,255,255,34);}")
 
     def _on_fx(self, i):
         APP_SETTINGS["card_effect"] = self._fx_ids[i]
@@ -4853,12 +6030,12 @@ def _similarity(a: str, b: str) -> float:
 
 
 class SegmentBar(QWidget):
-    """D5 — segmentowy pasek postępu: zaliczone / bieżące / pozostałe."""
+    """Segmentowy pasek postępu: zaliczone (zielony) / bieżące (akcent) / pozostałe (szkło)."""
     def __init__(self):
         super().__init__()
         self.total = 1
         self.current = 0
-        self.setFixedHeight(6)
+        self.setFixedHeight(4)
 
     def set_state(self, total, current):
         self.total = max(int(total), 1)
@@ -4866,28 +6043,28 @@ class SegmentBar(QWidget):
         self.update()
 
     def paintEvent(self, e):
-        from PyQt6.QtCore import QRectF
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(Qt.PenStyle.NoPen)
         n = self.total
-        gap = 3.0
+        gap = 4.0 if n <= 30 else 2.0
         w = (self.width() - gap * (n - 1)) / n if n > 0 else self.width()
         if w < 1:
             w = 1
         for idx in range(n):
             if idx < self.current:
-                c = QColor(90, 210, 140, 220)     # zaliczone
+                c = QColor(G_OK)
             elif idx == self.current:
-                c = QColor(235, 175, 90, 235)      # bieżące
+                c = QColor(G_ACC)
             else:
-                c = QColor(120, 128, 160, 90)       # pozostałe
+                c = QColor(255, 255, 255, 41)
             p.setBrush(c)
             p.drawRoundedRect(QRectF(idx * (w + gap), 0.0, w, float(self.height())), 2, 2)
 
 
 class TestWindow(_DraggableWindow):
     test_done = pyqtSignal(list)
+    HAS_CLOSE = True
 
     def __init__(self):
         super().__init__()
@@ -4898,95 +6075,96 @@ class TestWindow(_DraggableWindow):
         self.progress_key = ""
         self.save_progress = None
         _styled_window(self)
-        self.setFixedSize(440, 452)
+        self.setFixedSize(440, 548)
         self._build()
         sc = QApplication.primaryScreen().availableGeometry()
-        self.move(sc.center().x() - 220, sc.center().y() - 226)
+        self.move(sc.center().x() - 220, sc.center().y() - 274)
 
     def _build(self):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        # Pasek: tytuł + „X z Y"
-        hdr_w = QWidget(); hdr_w.setFixedHeight(32); hdr_w.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr_w); hl.setContentsMargins(16, 0, 16, 0)
+        # Pasek: tytuł + „X z Y” + zamknij
+        hdr_w = QWidget(); hdr_w.setFixedHeight(56); hdr_w.setStyleSheet("background:transparent;")
+        hl = QHBoxLayout(hdr_w); hl.setContentsMargins(24, 20, 20, 0); hl.setSpacing(10)
         self.lbl_title = QLabel("Tryb nauki")
-        self.lbl_title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        self.lbl_title.setStyleSheet("color:white;background:transparent;")
+        self.lbl_title.setFont(_gfont(16, QFont.Weight.DemiBold))
+        self.lbl_title.setStyleSheet("color:#eef2ff;background:transparent;")
         self.lbl_progress = QLabel("")
-        self.lbl_progress.setFont(QFont("Segoe UI", 10))
-        self.lbl_progress.setStyleSheet("color:rgba(200,210,255,180);background:transparent;")
-        self.lbl_progress.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        hl.addWidget(self.lbl_title); hl.addWidget(self.lbl_progress)
+        self.lbl_progress.setFont(_gfont(13))
+        self.lbl_progress.setStyleSheet("color:rgba(238,242,255,186);background:transparent;")
+        hl.addWidget(self.lbl_title); hl.addWidget(self.lbl_progress); hl.addStretch(1)
+        self.btn_x = GlassButton("", "ico"); self.btn_x.setGlyph("close"); self.btn_x.setToolTip("Zamknij (Esc)")
+        self.btn_x.clicked.connect(self.fade_hide)
+        hl.addWidget(self.btn_x)
         lay.addWidget(hdr_w)
 
         # Segmentowy pasek postępu
         seg_wrap = QWidget(); seg_wrap.setStyleSheet("background:transparent;")
-        sw = QVBoxLayout(seg_wrap); sw.setContentsMargins(16, 0, 16, 6)
+        sw = QVBoxLayout(seg_wrap); sw.setContentsMargins(24, 14, 24, 0)
         self.seg_bar = SegmentBar()
         sw.addWidget(self.seg_bar)
         lay.addWidget(seg_wrap)
 
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
         inner_lay = QVBoxLayout(inner)
-        inner_lay.setContentsMargins(28, 12, 28, 20)
+        inner_lay.setContentsMargins(24, 30, 24, 18)
         inner_lay.setSpacing(12)
         lay.addWidget(inner, 1)
 
-        self.lbl_prompt = QLabel("PRZET\u0141UMACZ")
-        self.lbl_prompt.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        self.lbl_prompt.setStyleSheet("color:rgba(150,165,205,170);background:transparent;letter-spacing:1px;")
+        self.lbl_prompt = QLabel("Przet\u0142umacz")
+        self.lbl_prompt.setFont(_gfont(13))
+        self.lbl_prompt.setStyleSheet("color:rgba(238,242,255,186);background:transparent;")
         self.lbl_prompt.setAlignment(Qt.AlignmentFlag.AlignCenter)
         inner_lay.addWidget(self.lbl_prompt)
 
         self.lbl_question = QLabel("")
-        self.lbl_question.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
-        self.lbl_question.setStyleSheet("color:white;background:transparent;")
+        self.lbl_question.setFont(_gfont(36, QFont.Weight.DemiBold))
+        self.lbl_question.setStyleSheet("color:#ffffff;background:transparent;")
         self.lbl_question.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_question.setWordWrap(True)
         inner_lay.addWidget(self.lbl_question)
 
-        self.lbl_hint = QLabel("Najpierw przypomnij sobie \u2014 potem wpisz:")
-        self.lbl_hint.setFont(QFont("Segoe UI", 9))
-        self.lbl_hint.setStyleSheet("color:rgba(200,210,255,160);background:transparent;")
+        self.lbl_hint = QLabel("Najpierw przypomnij sobie, potem wpisz. Enter zatwierdza.")
+        self.lbl_hint.setFont(_gfont(13))
+        self.lbl_hint.setWordWrap(True)
+        self.lbl_hint.setStyleSheet("color:rgba(238,242,255,138);background:transparent;")
         self.lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         inner_lay.addWidget(self.lbl_hint)
 
         self.inp = QLineEdit()
         self.inp.setPlaceholderText("wpisz s\u0142\u00F3wko...")
-        self.inp.setStyleSheet(INPUT_STYLE)
+        self.inp.setStyleSheet(INPUT_STYLE.replace("font-size: 14px;", "font-size: 20px;").replace("border-radius: 14px", "border-radius: 18px"))
+        self.inp.setFixedHeight(56)
         self.inp.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.inp.returnPressed.connect(self._check)
         inner_lay.addWidget(self.inp)
 
         self.lbl_feedback = QLabel("")
-        self.lbl_feedback.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        self.lbl_feedback.setFont(_gfont(17, QFont.Weight.DemiBold))
         self.lbl_feedback.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_feedback.setWordWrap(True)
         self.lbl_feedback.setStyleSheet("background:transparent;")
         inner_lay.addWidget(self.lbl_feedback)
 
         self.lbl_sched = QLabel("")
-        self.lbl_sched.setFont(QFont("Segoe UI", 9))
+        self.lbl_sched.setFont(_gfont(13))
         self.lbl_sched.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_sched.setWordWrap(True)
-        self.lbl_sched.setStyleSheet("color:rgba(170,185,225,180);background:transparent;")
+        self.lbl_sched.setStyleSheet("color:rgba(238,242,255,178);background:transparent;")
         inner_lay.addWidget(self.lbl_sched)
 
         inner_lay.addStretch(1)
 
-        self.btn_check = QPushButton("Sprawd\u017A \u2192")
-        self.btn_check.setStyleSheet(BTN_PRIMARY)
-        self.btn_check.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_check = GlassButton("Sprawd\u017A \u2192", "cta", radius=18)
+        self.btn_check.setFixedHeight(52)
+        self.btn_check.setPx(16)
         self.btn_check.clicked.connect(self._check)
         inner_lay.addWidget(self.btn_check)
 
-        self.btn_end = QPushButton("Zako\u0144cz sesj\u0119")
-        self.btn_end.setStyleSheet(
-            "QPushButton{background:transparent;color:rgba(170,180,215,170);"
-            "border:none;font-size:10px;} QPushButton:hover{color:rgba(220,228,255,220);}")
-        self.btn_end.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_end = GlassButton("Zako\u0144cz sesj\u0119", "quiet")
+        self.btn_end.setFixedHeight(30)
         self.btn_end.clicked.connect(self._end_session)
         inner_lay.addWidget(self.btn_end)
 
@@ -4997,7 +6175,7 @@ class TestWindow(_DraggableWindow):
                 lng = lang_label(self.cards[self.index].get("lang", "") or "")
         except Exception:
             lng = ""
-        self.lbl_prompt.setText("PRZET\u0141UMACZ" + (" NA: " + lng.upper() if lng else ""))
+        self.lbl_prompt.setText("Przet\u0142umacz" + (" na " + lng.lower() if lng else ""))
 
     def start_test(self, cards, n_review_from_other=0):
         seen = set(); unique = []
@@ -5062,6 +6240,7 @@ class TestWindow(_DraggableWindow):
         self.lbl_progress.setText("%d z %d" % (self.index + 1, len(self.cards)))
         self.seg_bar.set_state(len(self.cards), self.index)
         self.inp.setFocus()
+        _fade_in_widgets([self.lbl_prompt, self.lbl_question, self.inp], 300, 70)
 
     def _check(self):
         if self.answered: return
@@ -5077,17 +6256,17 @@ class TestWindow(_DraggableWindow):
         variants = [v for v in variants if v]
         sim = max(_similarity(answer, v) for v in variants)
         if sim >= 0.85:
-            self.lbl_feedback.setStyleSheet("color:rgba(100,255,150,230);")
+            self.lbl_feedback.setStyleSheet("color:#6fdca0;")
             self.lbl_feedback.setText("Zaliczone   (%s)" % correct)
             self.lbl_sched.setText("Odtworzone z pami\u0119ci \u2014 interwa\u0142 si\u0119 wyd\u0142u\u017Ca.")
             self._auto_rate(4); QTimer.singleShot(700, self._next); return
         elif sim >= 0.6:
-            self.lbl_feedback.setStyleSheet("color:rgba(255,200,50,230);")
+            self.lbl_feedback.setStyleSheet("color:#f0c060;")
             self.lbl_feedback.setText("Prawie   Poprawnie: %s" % correct)
             self.lbl_sched.setText("Blisko \u2014 wr\u00F3ci szybciej, \u017Ceby si\u0119 utrwali\u0142o.")
             self._auto_rate(3); QTimer.singleShot(1400, self._next)
         else:
-            self.lbl_feedback.setStyleSheet("color:rgba(255,100,100,230);")
+            self.lbl_feedback.setStyleSheet("color:#ff9a9a;")
             self.lbl_feedback.setText("Do powt\u00F3rki   Poprawnie: %s" % correct)
             self.lbl_sched.setText("Wr\u00F3ci nied\u0142ugo \u2014 bez presji, tak dzia\u0142a nauka.")
             self._shake()
@@ -5157,63 +6336,81 @@ class TestWindow(_DraggableWindow):
         try: self.btn_check.clicked.disconnect()
         except: pass
         self.btn_check.clicked.connect(self.hide)
+        _fade_in_widgets([self.lbl_question, self.lbl_hint, self.btn_check], 420, 120)
         self.test_done.emit(self.results)
 
     def paintEvent(self, e):
         _paint_bg(self, e)
 
 
-class TestOfferWindow(QWidget):
+class GlassDialog(_DraggableWindow):
+    """Komunikat w stylu Glass (zamiast systemowego QMessageBox): tytuł, treść i przyciski.
+    buttons = [(napis, rodzaj 'cta'|'ghost', callback_lub_None), ...]; ✕ i Esc zawsze zamykają."""
+    def __init__(self, title="", text="", buttons=None, width=380):
+        super().__init__()
+        _styled_window(self)
+        self.setFixedWidth(width)
+        self._lay = QVBoxLayout(self)
+        self._lay.setContentsMargins(26, 26, 26, 22)
+        self._lay.setSpacing(12)
+        self.lbl_t = QLabel(title); self.lbl_t.setFont(_gfont(18, QFont.Weight.DemiBold))
+        self.lbl_t.setStyleSheet("color:#eef2ff;background:transparent;")
+        self.lbl_t.setWordWrap(True)
+        self.lbl_x = QLabel(text); self.lbl_x.setFont(_gfont(14))
+        self.lbl_x.setStyleSheet("color:rgba(238,242,255,200);background:transparent;")
+        self.lbl_x.setWordWrap(True)
+        self._lay.addSpacing(6)
+        self._lay.addWidget(self.lbl_t); self._lay.addWidget(self.lbl_x)
+        self._lay.addSpacing(10)
+        self._brow = QVBoxLayout(); self._brow.setSpacing(10)
+        self._lay.addLayout(self._brow)
+        self.set_buttons(buttons or [])
+        self._pos_set = False
+
+    def set_buttons(self, buttons):
+        while self._brow.count():
+            it = self._brow.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+        for label, kind, cb in buttons:
+            b = GlassButton(label, kind, radius=16)
+            b.setFixedHeight(48 if kind == "cta" else 42)
+            def _go(_=None, cb=cb):
+                self.fade_hide()
+                if cb:
+                    QTimer.singleShot(120, cb)
+            b.clicked.connect(_go)
+            self._brow.addWidget(b)
+        self.adjustSize()
+
+    def present(self, title=None, text=None, buttons=None):
+        if title is not None: self.lbl_t.setText(title)
+        if text is not None: self.lbl_x.setText(text)
+        if buttons is not None: self.set_buttons(buttons)
+        self.adjustSize()
+        _right_third_pos(self)
+        self.show(); self.raise_(); self.activateWindow()
+
+    def paintEvent(self, e):
+        _paint_bg(self, e)
+
+
+class TestOfferWindow(GlassDialog):
     accepted = pyqtSignal()
     rejected = pyqtSignal()
 
     def __init__(self):
-        super().__init__()
-        _styled_window(self)
-        self.setFixedSize(360, 210)
+        super().__init__("Czas na test!", "", None, 360)
         self._cat_name = ""
-        self._build()
-        _right_third_pos(self)
 
     def show_for(self, cat_name):
         self._cat_name = cat_name
-        self.lbl_sub.setText(f'Obejrzałeś kategorię\n"{cat_name}" 15 razy.\nChcesz sprawdzić swoją wiedzę?')
-        self.show(); self.raise_(); self.activateWindow()
+        self.present(
+            "Czas na test!",
+            f'Obejrzałeś kategorię „{cat_name}” 15 razy.\nChcesz sprawdzić swoją wiedzę?',
+            [("Tak, sprawdźmy", "cta", self.accepted.emit),
+             ("Może później", "ghost", self.rejected.emit)])
 
-    def _build(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(24, 24, 24, 24)
-        lay.setSpacing(12)
-
-        title = QLabel("Czas na test!")
-        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        title.setStyleSheet("color:white;")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(title)
-
-        self.lbl_sub = QLabel("")
-        self.lbl_sub.setFont(QFont("Segoe UI", 10))
-        self.lbl_sub.setStyleSheet("color:rgba(200,210,255,180);")
-        self.lbl_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(self.lbl_sub)
-
-        btns = QHBoxLayout()
-        btn_tak = QPushButton("Tak!")
-        btn_tak.setStyleSheet(BTN_PRIMARY)
-        btn_tak.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_tak.clicked.connect(lambda: (self.hide(), self.accepted.emit()))
-
-        btn_nie = QPushButton("Może później")
-        btn_nie.setStyleSheet("QPushButton { background:rgba(60,60,100,160); color:rgba(200,210,255,200); border:1px solid rgba(96,110,150,120); border-radius:10px; padding:8px; } QPushButton:hover { background:rgba(72,82,128,200); border-color:rgba(201,106,42,235); }")
-        btn_nie.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_nie.clicked.connect(lambda: (self.hide(), self.rejected.emit()))
-
-        btns.addWidget(btn_tak)
-        btns.addWidget(btn_nie)
-        lay.addLayout(btns)
-
-    def paintEvent(self, e):
-        _paint_bg(self, e)
 
 # ──────────────────────────────────────────────────────
 # OKNO PROPOZYCJI TESTU SRS (przy zmianie kategorii)
@@ -5604,6 +6801,20 @@ def make_tray_icon() -> QIcon:
 # ──────────────────────────────────────────────────────
 # D3 — TRAY WINDOW (HUB)
 # ──────────────────────────────────────────────────────
+def _thread_alive(t):
+    """True, gdy wątek istnieje i jeszcze pracuje. Zakończony wątek Qt bywa już usunięty
+    (deleteLater) — wtedy isRunning() rzuca RuntimeError, co zamykało cały program."""
+    try:
+        return bool(t) and t.isRunning()
+    except RuntimeError:
+        return False
+
+
+_DUE_CAP = 100          # panel pokazuje „100+” — pobieranie 500 pełnych kart było powodem wolnego ładowania
+_DUE_CACHE = {}         # lang -> ostatnia znana liczba (pokazywana natychmiast)
+_KNOWN_CACHE = {}       # (lang, level, cat) -> ostatnia znana liczba
+
+
 class DueCountWorker(QThread):
     """Zlicza karty dojrzałe do powtórki (PULL) — realna liczba, nie streak."""
     done = pyqtSignal(int)
@@ -5614,19 +6825,15 @@ class DueCountWorker(QThread):
     def run(self):
         try:
             resp = supabase.rpc("get_due_cards_all",
-                                {"p_lang": self.lang, "p_limit": 500}).execute()
-            self.done.emit(len(resp.data or []))
+                                {"p_lang": self.lang, "p_limit": _DUE_CAP}).execute()
+            n = len(resp.data or [])
+            _DUE_CACHE[self.lang] = n
+            self.done.emit(n)
         except Exception as e:
             print(f"[DUE] {e}"); self.done.emit(0)
 
 
-_HUB_OUTLINE = """
-    QPushButton { background:rgba(60,65,110,90); color:rgba(210,222,255,220);
-        border:1px solid rgba(120,135,190,150); border-radius:10px;
-        padding:9px; font-size:12px; }
-    QPushButton:hover { background:rgba(80,90,150,150); border-color:rgba(201,106,42,235); }
-    QPushButton:pressed { background:rgba(50,56,100,170); border-color:rgba(168,86,32,255); }
-"""
+_HUB_OUTLINE = _GHOST_QSS
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -5926,15 +7133,7 @@ class HubWindow(_DraggableWindow):
     """D3 — trwałe okno traya. Lewy klik na ikonę traya otwiera/zamyka je.
     Menu kontekstowe (prawy klik) zostaje jako szybki dostęp."""
     ANIM_DY = 16
-
-    def fade_hide(self):
-        """Zamknięcie szybsze niż otwarcie (150 ms) — panel „odpływa”, nie znika skokiem."""
-        if not self.isVisible():
-            return
-        def _fin():
-            QWidget.hide(self)
-            self.setWindowOpacity(1.0)
-        _fade_window(self, 0.0, 150, QEasingCurve.Type.InCubic, then=_fin)
+    HAS_CLOSE = True
 
     def _count_to(self, lbl, n):
         try:
@@ -5954,17 +7153,11 @@ class HubWindow(_DraggableWindow):
         a.finished.connect(lambda: lbl.setText(str(n)))
         a.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
-    _PRESET_ON = ("QPushButton{background:rgba(120,140,215,215);color:white;border:none;"
-                  "border-radius:8px;padding:7px;font-size:11px;}")
-    _PRESET_OFF = ("QPushButton{background:rgba(55,60,100,140);color:rgba(200,212,245,200);"
-                   "border:1px solid rgba(90,100,160,90);border-radius:8px;padding:7px;font-size:11px;}"
-                   "QPushButton:hover{background:rgba(70,80,140,180);border-color:rgba(201,106,42,235);}")
-
     def __init__(self, app_ref):
         super().__init__()
         self.app_ref = app_ref
         _styled_window(self)
-        self.setFixedSize(360, 520)
+        self.setFixedSize(344, 384)
         self._build()
         self._mirror_timer = QTimer(self)
         self._mirror_timer.timeout.connect(self._tick)
@@ -5979,153 +7172,152 @@ class HubWindow(_DraggableWindow):
     # ── budowa ──
     def _build(self):
         lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0)
+        TXT = "color:#eef2ff;background:transparent;"
+        DIM = "color:rgba(238,242,255,186);background:transparent;"
 
-        # 1. PASEK STATUSU (strefa drag)
-        hdr = QWidget(); hdr.setFixedHeight(32); hdr.setStyleSheet("background:transparent;")
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(14, 0, 10, 0); hl.setSpacing(6)
-        self.lbl_status = QLabel("\u25CF  Aktywne")
-        self.lbl_status.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        self.lbl_status.setStyleSheet("color:rgba(120,225,160,230);background:transparent;")
-        hl.addWidget(self.lbl_status); hl.addStretch(1)
-        self.btn_audio = self._icon_btn("\u266A", "D\u017Awi\u0119k"); self.btn_audio.clicked.connect(self._toggle_audio)
-        self.btn_pause = self._icon_btn("\u23F8", "Wstrzymaj");       self.btn_pause.clicked.connect(self._toggle_pause)
-        self.btn_x     = self._icon_btn("\u2715", "Zamknij");         self.btn_x.clicked.connect(self.fade_hide)
-        for b in (self.btn_audio, self.btn_pause, self.btn_x): hl.addWidget(b)
-        lay.addWidget(hdr)
-
+        # Zawartość aktywna (chowana na czas pauzy)
         inner = QWidget(); inner.setStyleSheet("background:transparent;")
-        il = QVBoxLayout(inner); il.setContentsMargins(16, 8, 16, 16); il.setSpacing(12)
+        il = QVBoxLayout(inner); il.setContentsMargins(18, 16, 18, 14); il.setSpacing(0)
         lay.addWidget(inner, 1)
 
-        # 2. UCZYSZ SIĘ
-        il.addWidget(self._eyebrow("UCZYSZ SI\u0118"))
-        self.lbl_learn = QLabel("\u2014")
-        self.lbl_learn.setFont(QFont("Segoe UI", 11))
-        self.lbl_learn.setStyleSheet("color:rgba(225,235,255,220);background:transparent;")
-        self.lbl_learn.setWordWrap(True)
-        il.addWidget(self.lbl_learn)
-        self.btn_change = QPushButton("Zmie\u0144 nauk\u0119 \u2192")
-        self.btn_change.setStyleSheet(_HUB_OUTLINE); self.btn_change.setCursor(Qt.CursorShape.PointingHandCursor)
+        # 1. STATUS + ikony (strefa przeciągania u góry)
+        hl = QHBoxLayout(); hl.setContentsMargins(0, 0, 0, 0); hl.setSpacing(6)
+        self.dot = StatusDot()
+        self.lbl_status = QLabel("Aktywne"); self.lbl_status.setFont(_gfont(14, QFont.Weight.DemiBold))
+        self.lbl_status.setStyleSheet(TXT)
+        hl.addWidget(self.dot); hl.addWidget(self.lbl_status); hl.addStretch(1)
+        self.btn_audio = self._icon_btn("sound", "Dźwięk");     self.btn_audio.clicked.connect(self._toggle_audio)
+        self.btn_pause = self._icon_btn("pause", "Wstrzymaj");           self.btn_pause.clicked.connect(self._toggle_pause)
+        self.btn_x     = self._icon_btn("close", "Zamknij");             self.btn_x.clicked.connect(self.fade_hide)
+        for b in (self.btn_audio, self.btn_pause, self.btn_x): hl.addWidget(b)
+        il.addLayout(hl)
+        il.addSpacing(16)
+
+        # 2. UCZYSZ SIĘ + Zmień
+        row = QHBoxLayout(); row.setContentsMargins(0, 0, 0, 0)
+        col = QVBoxLayout(); col.setSpacing(0)
+        cap = QLabel("Uczysz się"); cap.setFont(_gfont(12)); cap.setStyleSheet(DIM)
+        self.lbl_lang = QLabel("—"); self.lbl_lang.setFont(_gfont(21, QFont.Weight.DemiBold)); self.lbl_lang.setStyleSheet(TXT)
+        self.lbl_sub = QLabel(""); self.lbl_sub.setFont(_gfont(13)); self.lbl_sub.setStyleSheet("color:rgba(238,242,255,178);background:transparent;")
+        self.lbl_sub.setWordWrap(False)
+        col.addWidget(cap); col.addWidget(self.lbl_lang); col.addWidget(self.lbl_sub)
+        row.addLayout(col, 1)
+        self.btn_change = GlassButton("Zmień", "ghost", radius=18)
+        self.btn_change.setFixedSize(84, 36); self.btn_change._strong = True
         self.btn_change.clicked.connect(lambda: (self.hide(), self.app_ref._show_lang()))
-        il.addWidget(self.btn_change)
+        row.addWidget(self.btn_change, 0, Qt.AlignmentFlag.AlignVCenter)
+        il.addLayout(row)
+        il.addSpacing(18)
 
-        # 3. TERAZ NA EKRANIE (mirror — bez ocen, świadomie)
-        il.addWidget(self._eyebrow("TERAZ NA EKRANIE"))
-        mir = QWidget(); mir.setStyleSheet(
-            "QWidget{background:rgba(30,32,60,140);border:1px solid rgba(80,85,120,80);border-radius:10px;}")
-        ml = QVBoxLayout(mir); ml.setContentsMargins(14, 12, 14, 12); ml.setSpacing(2)
-        self.mir_word = QLabel("\u2014"); self.mir_word.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        self.mir_word.setStyleSheet("color:rgba(255,255,255,240);background:transparent;")
-        self.mir_word.setAlignment(Qt.AlignmentFlag.AlignCenter); self.mir_word.setWordWrap(True)
-        self.mir_tr = QLabel(""); self.mir_tr.setFont(QFont("Segoe UI", 10))
-        self.mir_tr.setStyleSheet("color:rgba(200,220,255,200);background:transparent;")
-        self.mir_tr.setAlignment(Qt.AlignmentFlag.AlignCenter); self.mir_tr.setWordWrap(True)
-        self.mir_note = QLabel("Podgl\u0105d \u2014 oceniasz w trybie testu")
-        self.mir_note.setFont(QFont("Segoe UI", 8))
-        self.mir_note.setStyleSheet("color:rgba(150,160,200,150);background:transparent;")
-        self.mir_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ml.addWidget(self.mir_word); ml.addWidget(self.mir_tr); ml.addWidget(self.mir_note)
-        il.addWidget(mir)
+        # 3. STATYSTYKI — trzy liczby, bez ramek (rozdzielone cienką linią)
+        stats = QHBoxLayout(); stats.setContentsMargins(0, 0, 0, 0); stats.setSpacing(0)
+        self.cell_known, w1 = self._stat_cell("Znane", False)
+        self.cell_due,   w2 = self._stat_cell("Do powtórki", True)
+        self.cell_sess,  w3 = self._stat_cell("Dziś", True)
+        for w in (w1, w2, w3): stats.addWidget(w, 1)
+        il.addLayout(stats)
+        il.addSpacing(18)
 
-        # 4. STATYSTYKI (3 komórki — realne liczby, zero streaka)
-        stats = QWidget(); stats.setStyleSheet("background:transparent;")
-        sl = QHBoxLayout(stats); sl.setContentsMargins(0, 0, 0, 0); sl.setSpacing(8)
-        self.cell_known, w1 = self._stat_cell("Poznane")
-        self.cell_due,   w2 = self._stat_cell("Dojrza\u0142o do powt\u00F3rki")
-        self.cell_sess,  w3 = self._stat_cell("W tej sesji")
-        for w in (w1, w2, w3): sl.addWidget(w, 1)
-        il.addWidget(stats)
+        # (ukryty podgląd bieżącej fiszki — zostaje dla odświeżania, bez kafla na panelu)
+        self.mir_word = QLabel("", self); self.mir_tr = QLabel("", self)
+        self.mir_word.hide(); self.mir_tr.hide()
 
-        il.addStretch(1)
-
-        # 5. AKCJE
-        self.btn_test = QPushButton("Zr\u00F3b test"); self.btn_test.setStyleSheet(BTN_PRIMARY)
-        self.btn_test.setCursor(Qt.CursorShape.PointingHandCursor)
+        # 4. GŁÓWNA AKCJA
+        self.btn_test = GlassButton("Zrób test", "cta", radius=16)
+        self.btn_test.setFixedHeight(50)
         self.btn_test.clicked.connect(lambda: (self.hide(), self.app_ref._start_test()))
         il.addWidget(self.btn_test)
-        row = QWidget(); row.setStyleSheet("background:transparent;")
-        rl = QHBoxLayout(row); rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(8)
-        self.btn_lib = QPushButton("Biblioteka fiszek"); self.btn_lib.setStyleSheet(_HUB_OUTLINE)
-        self.btn_lib.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_lib.clicked.connect(lambda: (self.hide(), self.app_ref._show_my_sets()))
-        self.btn_set = QPushButton("Ustawienia"); self.btn_set.setStyleSheet(_HUB_OUTLINE)
-        self.btn_set.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_set.clicked.connect(lambda: (self.hide(), self.app_ref.win_settings.show(), self.app_ref.win_settings.raise_()))
-        rl.addWidget(self.btn_lib, 1); rl.addWidget(self.btn_set, 1)
-        il.addWidget(row)
+        il.addSpacing(10)
 
-        # 6. FOOTER
-        self.lbl_footer = QPushButton("")
-        self.lbl_footer.setFont(QFont("Segoe UI", 9))
+        # 5. BIBLIOTEKA / USTAWIENIA
+        r2 = QHBoxLayout(); r2.setContentsMargins(0, 0, 0, 0); r2.setSpacing(8)
+        self.btn_lib = GlassButton("Biblioteka", "ghost", radius=14); self.btn_lib.setGlyph("book"); self.btn_lib.setFixedHeight(42)
+        self.btn_lib.clicked.connect(lambda: (self.hide(), self.app_ref._show_library()))
+        self.btn_set = GlassButton("Ustawienia", "ghost", radius=14); self.btn_set.setGlyph("sliders"); self.btn_set.setFixedHeight(42)
+        self.btn_set.clicked.connect(lambda: (self.hide(), self.app_ref.win_settings.show(), self.app_ref.win_settings.raise_()))
+        r2.addWidget(self.btn_lib, 1); r2.addWidget(self.btn_set, 1)
+        il.addLayout(r2)
+        il.addStretch(1)
+
+        # 6. PLAN
+        fr = QHBoxLayout(); fr.setContentsMargins(0, 8, 0, 0)
+        self.lbl_plan = QLabel("Plan FREE"); self.lbl_plan.setFont(_gfont(12)); self.lbl_plan.setStyleSheet("color:rgba(238,242,255,140);background:transparent;")
+        self.lbl_footer = QPushButton("Ulepsz do PRO")
+        self.lbl_footer.setFont(_gfont(12, QFont.Weight.Medium))
         self.lbl_footer.setCursor(Qt.CursorShape.PointingHandCursor)
         self.lbl_footer.setStyleSheet(
-            "QPushButton{background:transparent;color:rgba(160,175,210,180);border:none;}"
-            "QPushButton:hover{color:rgba(170,190,235,235);}")
+            "QPushButton{background:transparent;color:%s;border:none;padding:2px 0;}"
+            "QPushButton:hover{color:#ffd0ad;}" % G_SOFT)
         self.lbl_footer.clicked.connect(self._footer_click)
-        il.addWidget(self.lbl_footer)
+        fr.addWidget(self.lbl_plan); fr.addStretch(1); fr.addWidget(self.lbl_footer)
+        il.addLayout(fr)
 
-        # ── D4: PANEL PAUZY (nakładka na treść aktywną) ──
+        # ── PANEL PAUZY (zastępuje zawartość) ──
         self._active_content = inner
         self.pause_panel = QWidget(); self.pause_panel.setStyleSheet("background:transparent;")
-        pl = QVBoxLayout(self.pause_panel); pl.setContentsMargins(24, 20, 24, 20); pl.setSpacing(8)
-        pl.addStretch(1)
-        gl = QLabel("\u23F8"); gl.setFont(QFont("Segoe UI", 40))
-        gl.setStyleSheet("color:rgba(235,190,110,220);background:transparent;")
-        gl.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addWidget(gl)
-        tt = QLabel("Fiszki wstrzymane"); tt.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        tt.setStyleSheet("color:rgba(255,255,255,235);background:transparent;")
-        tt.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addWidget(tt)
-        self.lbl_countdown = QLabel(""); self.lbl_countdown.setFont(QFont("Segoe UI", 10))
-        self.lbl_countdown.setStyleSheet("color:rgba(200,215,255,190);background:transparent;")
-        self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addWidget(self.lbl_countdown)
-        pl.addSpacing(6)
-        btn_resume = QPushButton("Wzn\u00F3w teraz"); btn_resume.setStyleSheet(BTN_PRIMARY)
-        btn_resume.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_resume.clicked.connect(self._resume); pl.addWidget(btn_resume)
-        prc = QLabel("Wr\u00F3ci automatycznie za:"); prc.setFont(QFont("Segoe UI", 8))
-        prc.setStyleSheet("color:rgba(150,165,205,170);background:transparent;")
-        prc.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addSpacing(4); pl.addWidget(prc)
-        prow = QWidget(); prow.setStyleSheet("background:transparent;")
-        prl = QHBoxLayout(prow); prl.setContentsMargins(0, 0, 0, 0); prl.setSpacing(6)
+        pl = QVBoxLayout(self.pause_panel); pl.setContentsMargins(22, 26, 22, 22); pl.setSpacing(0)
+        ph = QHBoxLayout(); ph.setContentsMargins(0, 0, 0, 0)
+        tt = QLabel("Fiszki wstrzymane"); tt.setFont(_gfont(21, QFont.Weight.DemiBold)); tt.setStyleSheet(TXT)
+        ph.addWidget(tt, 1)
+        px = self._icon_btn("close", "Zamknij (Esc)"); px.clicked.connect(self.fade_hide)
+        ph.addWidget(px, 0, Qt.AlignmentFlag.AlignTop)
+        pl.addLayout(ph)
+        self.lbl_countdown = QLabel(""); self.lbl_countdown.setFont(_gfont(14))
+        self.lbl_countdown.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
+        pl.addSpacing(4); pl.addWidget(self.lbl_countdown)
+        pl.addSpacing(18)
+        prow = QHBoxLayout(); prow.setContentsMargins(0, 0, 0, 0)
+        pcol = QVBoxLayout(); pcol.setSpacing(0)
+        pcap = QLabel("Uczysz się"); pcap.setFont(_gfont(12)); pcap.setStyleSheet(DIM)
+        self.lbl_lang_p = QLabel("—"); self.lbl_lang_p.setFont(_gfont(17, QFont.Weight.DemiBold)); self.lbl_lang_p.setStyleSheet(TXT)
+        self.lbl_sub_p = QLabel(""); self.lbl_sub_p.setFont(_gfont(13))
+        self.lbl_sub_p.setStyleSheet("color:rgba(238,242,255,178);background:transparent;")
+        pcol.addWidget(pcap); pcol.addWidget(self.lbl_lang_p); pcol.addWidget(self.lbl_sub_p)
+        prow.addLayout(pcol, 1)
+        pchg = GlassButton("Zmień", "ghost", radius=18); pchg.setFixedSize(84, 36)
+        pchg.clicked.connect(lambda: (self.hide(), self.app_ref._show_lang()))
+        prow.addWidget(pchg, 0, Qt.AlignmentFlag.AlignVCenter)
+        pl.addLayout(prow)
+        pl.addSpacing(18)
+        prc = QLabel("Wrócą same za:"); prc.setFont(_gfont(12)); prc.setStyleSheet(DIM)
+        pl.addWidget(prc); pl.addSpacing(8)
+        prl = QHBoxLayout(); prl.setSpacing(6)
         self._preset_btns = {}
         for key, label, mins in (("5", "5 min", 5), ("30", "30 min", 30),
                                  ("60", "1 godz", 60), ("d", "Do jutra", None)):
-            b = QPushButton(label); b.setCursor(Qt.CursorShape.PointingHandCursor)
-            b.setStyleSheet(self._PRESET_OFF)
+            b = GlassButton(label, "ghost", radius=12); b.setFixedHeight(38)
             b.clicked.connect(lambda _, m=mins, k=key: self._set_preset(k, m))
             self._preset_btns[key] = b; prl.addWidget(b, 1)
-        pl.addWidget(prow)
-        hint = QLabel("Snooze, nie zamykaj \u2014 wr\u00F3c\u0105 same."); hint.setFont(QFont("Segoe UI", 8))
-        hint.setStyleSheet("color:rgba(140,150,190,150);background:transparent;")
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter); pl.addSpacing(4); pl.addWidget(hint)
+        pl.addLayout(prl)
         pl.addStretch(1)
+        btn_resume = GlassButton("Wznów teraz", "cta", radius=16); btn_resume.setFixedHeight(50)
+        btn_resume.clicked.connect(self._resume)
+        pl.addWidget(btn_resume)
+        pl.addSpacing(8)
+        prow = QHBoxLayout(); prow.setSpacing(10)
+        btn_pback = GlassButton("\u2190 Wróć", "ghost", radius=14); btn_pback.setFixedHeight(42)
+        btn_pback.setToolTip("Wróć do panelu (pauza trwa)")
+        btn_pback.clicked.connect(self.exit_pause_view)
+        btn_pclose = GlassButton("Zamknij", "ghost", radius=14); btn_pclose.setFixedHeight(42)
+        btn_pclose.clicked.connect(self.fade_hide)
+        prow.addWidget(btn_pback, 1); prow.addWidget(btn_pclose, 1)
+        pl.addLayout(prow)
         self.pause_panel.hide(); lay.addWidget(self.pause_panel, 1)
 
     # ── helpery UI ──
-    def _eyebrow(self, text):
-        l = QLabel(text); l.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        l.setStyleSheet("color:rgba(140,155,200,170);background:transparent;letter-spacing:1px;")
-        return l
-
     def _icon_btn(self, glyph, tip):
-        b = QPushButton(glyph); b.setToolTip(tip); b.setFixedSize(26, 22)
-        b.setCursor(Qt.CursorShape.PointingHandCursor)
-        b.setStyleSheet(
-            "QPushButton{background:rgba(60,65,110,120);color:rgba(220,230,255,210);"
-            "border:1px solid rgba(120,135,190,120);border-radius:6px;font-size:12px;}"
-            "QPushButton:hover{background:rgba(80,90,150,180);border-color:rgba(201,106,42,235);}")
+        b = GlassButton("", "ico"); b.setGlyph(glyph); b.setToolTip(tip)
         return b
 
-    def _stat_cell(self, label):
-        w = QWidget(); w.setStyleSheet(
-            "QWidget{background:rgba(30,32,60,140);border:1px solid rgba(80,85,120,80);border-radius:10px;}")
-        cl = QVBoxLayout(w); cl.setContentsMargins(8, 10, 8, 10); cl.setSpacing(2)
-        val = QLabel("\u2013"); val.setFont(QFont("Segoe UI", 17, QFont.Weight.Bold))
-        val.setStyleSheet("color:rgba(220,235,255,235);background:transparent;")
-        val.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lab = QLabel(label); lab.setFont(QFont("Segoe UI", 8)); lab.setWordWrap(True)
-        lab.setStyleSheet("color:rgba(160,175,210,180);background:transparent;")
-        lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    def _stat_cell(self, label, sep):
+        w = QWidget(); w.setObjectName("statcol")
+        w.setStyleSheet("#statcol{background:transparent;%s}" %
+                        ("border-left:1px solid rgba(255,255,255,26);" if sep else ""))
+        cl = QVBoxLayout(w); cl.setContentsMargins(16 if sep else 0, 0, 0, 0); cl.setSpacing(0)
+        val = QLabel("–"); val.setFont(_gfont(24, QFont.Weight.DemiBold))
+        val.setStyleSheet("color:#eef2ff;background:transparent;border:none;")
+        lab = QLabel(label); lab.setFont(_gfont(11))
+        lab.setStyleSheet("color:rgba(238,242,255,186);background:transparent;border:none;")
         cl.addWidget(val); cl.addWidget(lab)
         return val, w
 
@@ -6156,29 +7348,32 @@ class HubWindow(_DraggableWindow):
     def _refresh_status(self):
         active = getattr(self.app_ref, "visible", True)
         if active:
-            self.lbl_status.setText("\u25CF  Aktywne")
-            self.lbl_status.setStyleSheet("color:rgba(120,225,160,230);background:transparent;")
-            self.btn_pause.setText("\u23F8"); self.btn_pause.setToolTip("Wstrzymaj")
+            self.lbl_status.setText("Aktywne"); self.dot.set_color(G_OK, True)
+            self.btn_pause.setGlyph("pause"); self.btn_pause.setToolTip("Wstrzymaj")
         else:
-            self.lbl_status.setText("\u25CF  Wstrzymane")
-            self.lbl_status.setStyleSheet("color:rgba(235,190,110,230);background:transparent;")
-            self.btn_pause.setText("\u25B6"); self.btn_pause.setToolTip("Wzn\u00F3w")
+            self.lbl_status.setText("Wstrzymane"); self.dot.set_color(G_WARN, False)
+            self.btn_pause.setGlyph("play"); self.btn_pause.setToolTip("Wzn\u00F3w")
         aud = bool(APP_SETTINGS.get("audio_enabled", False))
-        col = "rgba(220,230,255,210)" if aud else "rgba(120,128,160,150)"
-        self.btn_audio.setStyleSheet(
-            "QPushButton{background:rgba(60,65,110,120);color:%s;"
-            "border:none;border-radius:6px;font-size:12px;}"
-            "QPushButton:hover{background:rgba(80,90,150,180);}" % col)
+        self.btn_audio.setGlyph("sound" if aud else "soundoff")
         self.btn_audio.setToolTip("D\u017Awi\u0119k: " + ("w\u0142." if aud else "wy\u0142."))
 
     def _refresh_learn(self):
         ov = self.app_ref.overlay
         if getattr(ov, "_is_custom", False):
-            self.lbl_learn.setText("W\u0142asny zestaw \u00B7 " + (ov.cat or "\u2014"))
+            self.lbl_lang.setText("W\u0142asny zestaw"); self.lbl_sub.setText(ov.cat or "\u2014")
         elif ov.cat:
-            self.lbl_learn.setText("%s \u00B7 %s \u00B7 %s" % (lang_label(ov.lang), ov.level, ov.cat))
+            label = next((c.get("label") for c in CATEGORIES if c.get("code") == ov.cat), None) or ov.cat
+            self.lbl_lang.setText(lang_label(ov.lang))
+            self.lbl_sub.setText("%s \u00B7 %s" % (ov.level, label))
+        elif ov.cards and 0 <= ov.index < len(ov.cards):
+            # fiszki lecą bez wybranej kategorii (np. powtórka SRS po starcie) — nie pisz „Nie wybrano”
+            c = ov.cards[ov.index]
+            self.lbl_lang.setText(lang_label(ov.lang) if ov.lang else "Powt\u00F3rka")
+            self.lbl_sub.setText("Powt\u00F3rka \u00B7 %s" % (c.get("category") or "fiszki do powt\u00F3rki")
+                                 if c.get("srs") else "Fiszki w toku")
         else:
-            self.lbl_learn.setText("Nie wybrano \u2014 kliknij \u201EZmie\u0144 nauk\u0119\u201D")
+            self.lbl_lang.setText("Nie wybrano"); self.lbl_sub.setText("Kliknij \u201EZmie\u0144\u201D")
+        self.lbl_lang_p.setText(self.lbl_lang.text()); self.lbl_sub_p.setText(self.lbl_sub.text())
 
     def _refresh_live(self):
         ov = self.app_ref.overlay
@@ -6191,12 +7386,12 @@ class HubWindow(_DraggableWindow):
 
     def _refresh_footer(self):
         if getattr(self.app_ref, "_is_premium", False):
-            self.lbl_footer.setText("Plan: PRO")
-            self.lbl_footer.setCursor(Qt.CursorShape.ArrowCursor)
+            self.lbl_plan.setText("Plan PRO")
+            self.lbl_footer.hide()
             self._footer_upgradable = False
         else:
-            self.lbl_footer.setText("Plan: FREE  \u00B7  Ulepsz do PRO")
-            self.lbl_footer.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.lbl_plan.setText("Plan FREE")
+            self.lbl_footer.show()
             self._footer_upgradable = True
 
     def _footer_click(self):
@@ -6208,17 +7403,44 @@ class HubWindow(_DraggableWindow):
         ov = self.app_ref.overlay
         self.cell_sess.setText(str(getattr(ov, "_cards_shown", 0)))
         if ov.lang and ov.cat and not getattr(ov, "_is_custom", False):
-            self._kw = KnownWordsWorker(ov.lang, ov.level, ov.cat)
-            self._kw.done.connect(lambda n: self._count_to(self.cell_known, n))
-            self._kw.start()
+            ck = (ov.lang, ov.level, ov.cat)
+            if ck in _KNOWN_CACHE:
+                self.cell_known.setText(str(_KNOWN_CACHE[ck]))      # od razu, bez czekania na sieć
+            if not _thread_alive(getattr(self, "_kw", None)):
+                self._kw = KnownWordsWorker(ov.lang, ov.level, ov.cat)
+                self._kw.done.connect(lambda n: self._count_to(self.cell_known, n))
+                self._kw.start()
         else:
             self.cell_known.setText("\u2013")
         if ov.lang:
-            self._dw = DueCountWorker(ov.lang)
-            self._dw.done.connect(lambda n: self._count_to(self.cell_due, n))
-            self._dw.start()
+            if ov.lang in _DUE_CACHE:
+                self.cell_due.setText(self._due_txt(_DUE_CACHE[ov.lang]))
+            if not _thread_alive(getattr(self, "_dw", None)):
+                self._dw = DueCountWorker(ov.lang)
+                self._dw.done.connect(self._on_due)
+                self._dw.start()
         else:
             self.cell_due.setText("\u2013")
+
+    @staticmethod
+    def _due_txt(n):
+        return "%d+" % _DUE_CAP if n >= _DUE_CAP else str(n)
+
+    def _on_due(self, n):
+        if n >= _DUE_CAP:
+            self.cell_due.setText(self._due_txt(n))
+        else:
+            self._count_to(self.cell_due, n)
+
+    def prefetch(self):
+        """Rozgrzewka po zalogowaniu: liczby są gotowe, zanim ktoś otworzy panel."""
+        try:
+            ov = self.app_ref.overlay
+            if ov.lang:
+                if not _thread_alive(getattr(self, "_pre_dw", None)):
+                    self._pre_dw = DueCountWorker(ov.lang); self._pre_dw.start()
+        except Exception as ex:
+            print(f"[prefetch] {ex}")
 
     # ── akcje paska statusu ──
     def _toggle_pause(self):
@@ -6236,6 +7458,7 @@ class HubWindow(_DraggableWindow):
         self._refresh_status()
 
     def _tick(self):
+        self._refresh_status()
         if self.pause_panel.isVisible():
             self._update_countdown()
         else:
@@ -6244,15 +7467,35 @@ class HubWindow(_DraggableWindow):
     def _enter_pause(self):
         self._set_preset("30", 30)   # domyślnie 30 min
 
+    def _swap_panels(self, hide_w, show_w):
+        """Przełączenie paneli w hubie: nowy panel wpływa miękko (240 ms)."""
+        hide_w.hide()
+        was = show_w.isVisible()
+        show_w.show()
+        if was or not UI_MOTION or not self.isVisible():
+            return
+        try:
+            from PyQt6.QtWidgets import QGraphicsOpacityEffect
+            eff = QGraphicsOpacityEffect(show_w)
+            eff.setOpacity(0.0)
+            show_w.setGraphicsEffect(eff)
+            a = QPropertyAnimation(eff, b"opacity", eff)
+            a.setDuration(240); a.setStartValue(0.0); a.setEndValue(1.0)
+            a.setEasingCurve(QEasingCurve.Type.OutCubic)
+            a.finished.connect(lambda: show_w.setGraphicsEffect(None))
+            a.start()
+        except Exception as ex:
+            print(f"[motion] {ex}")
+
     def _set_preset(self, key, mins):
         self.app_ref.pause_for(mins)
-        self._active_content.hide(); self.pause_panel.show()
+        self._swap_panels(self._active_content, self.pause_panel)
         for k, b in self._preset_btns.items():
-            b.setStyleSheet(self._PRESET_ON if k == key else self._PRESET_OFF)
+            b.setSelected(k == key)
         self._refresh_status(); self._update_countdown()
 
     def exit_pause_view(self):
-        self.pause_panel.hide(); self._active_content.show()
+        self._swap_panels(self.pause_panel, self._active_content)
         if self.isVisible():
             self._refresh_status(); self._refresh_stats()
 
@@ -6280,6 +7523,125 @@ class HubWindow(_DraggableWindow):
 
     def paintEvent(self, e):
         _paint_bg(self, e)
+
+
+
+class _TrayRow(QWidget):
+    """Wiersz menu traya: ikona + podpis, najazd rozjaśnia tło, klik wykonuje akcję."""
+    def __init__(self, icon, text, danger=False, parent=None):
+        super().__init__(parent)
+        self._icon, self._text, self._danger = icon, text, danger
+        self._h = 0.0
+        self._cb = None
+        self.setFixedSize(236, 42)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._anim = QVariantAnimation(self)
+        self._anim.setDuration(130)
+        self._anim.valueChanged.connect(self._set_h)
+
+    def _set_h(self, v):
+        self._h = float(v); self.update()
+
+    def set_content(self, icon, text):
+        self._icon, self._text = icon, text; self.update()
+
+    def _go(self, on):
+        self._anim.stop()
+        self._anim.setStartValue(self._h)
+        self._anim.setEndValue(1.0 if on else 0.0)
+        self._anim.start()
+
+    def enterEvent(self, e):
+        self._go(True); super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._go(False); super().leaveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self._cb:
+            self._cb()
+        super().mouseReleaseEvent(e)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(6, 2, -6, -2)
+        if self._h > 0:
+            base = QColor(255, 120, 120, int(46 * self._h)) if self._danger \
+                else QColor(224, 128, 58, int(58 * self._h))
+            p.setPen(Qt.PenStyle.NoPen); p.setBrush(base)
+            p.drawRoundedRect(r, 12, 12)
+        col = QColor(G_BAD) if self._danger else (QColor(G_SOFT) if self._h > .5 else QColor(G_INK))
+        _draw_glyph(p, self._icon, 28, self.height() / 2, 17,
+                    QColor(G_BAD) if self._danger else QColor(G_SOFT), 1.7)
+        p.setPen(col); p.setFont(_gfont(14))
+        p.drawText(QRectF(48, 0, self.width() - 56, self.height()),
+                   int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), self._text)
+
+
+class _TraySep(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(236, 9)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setPen(QColor(255, 255, 255, 28))
+        p.drawLine(18, 4, self.width() - 18, 4)
+
+
+class _TrayToggle:
+    """Zastępnik dawnego QAction: TrayApp zmienia tylko podpis „Ukryj / Pokaż fiszki”."""
+    def __init__(self, row):
+        self._row = row
+
+    def setText(self, t):
+        show = "Pokaż" in t
+        self._row.set_content("play" if show else "pause", "Pokaż fiszki" if show else "Ukryj fiszki")
+
+
+class GlassTrayMenu(QMenu):
+    """Menu ikony w zasobniku w stylu Glass: ciemne szkło, zaokrąglenia, ikony, miękkie wejście."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint |
+                            Qt.WindowType.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setStyleSheet("QMenu{background:transparent;border:none;padding:8px 4px;}")
+
+    def add_row(self, icon, text, callback, danger=False):
+        row = _TrayRow(icon, text, danger, self)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(row)
+        def _run():
+            self.hide()
+            QTimer.singleShot(0, callback)
+        row._cb = _run
+        self.addAction(act)
+        return row
+
+    def add_sep(self):
+        sp = _TraySep(self)
+        act = QWidgetAction(self); act.setDefaultWidget(sp); self.addAction(act)
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        try:
+            _pop_in(self, 8, 220)
+        except Exception as ex:
+            print(f"[motion] {ex}")
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(14, 21, 44, 238))
+        p.drawRoundedRect(r, 20, 20)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(255, 255, 255, 48), 1))
+        p.drawRoundedRect(r, 20, 20)
 
 
 class TrayApp:
@@ -6318,36 +7680,38 @@ class TrayApp:
         self.win_offer   = TestOfferWindow()
         self.win_offer.accepted.connect(self._start_test)
         self.win_offer.rejected.connect(lambda: None)
-        self.win_lang    = LanguageWindow(self._on_lang)
+        self.win_lang    = PickerWindow(self._on_cat, self._on_lang, self._toggle_hub_open)
+        self.win_lang.open_purchase.connect(self._show_purchase)
         self.win_lvl     = LevelWindow(self._on_lvl, self._back_to_lang)
         self.win_lvl.open_purchase.connect(self._show_purchase)
         self.win_cat     = CategoryWindow(self._on_cat, self._back_to_lvl)
         self.win_purchase = PurchaseWindow()
         self.win_purchase.purchased.connect(self._on_purchase_done)
-        self.win_my_sets = MySetsPicker(self._show_lang, self._show_custom_create, self._show_public_sets)
+        self.win_library = LibraryWindow(self._show_lang, self._show_my_sets, self._toggle_hub_open)
+        self.win_my_sets = MySetsPicker(self._show_library, self._show_custom_create)
         self.win_custom  = CustomSetWindow(self._show_my_sets)
-        self.win_public_sets = PublicSetsWindow()
-        self.win_public_sets.set_imported.connect(self._show_my_sets)
-        self.win_public_sets.set_back_callback(self._show_my_sets)
         self.win_custom.set_created.connect(self._on_custom_set_created)
         self.win_my_sets.set_picked.connect(self._on_custom_set_picked)
 
         self.win_hub = HubWindow(self)
         self.win_update = UpdateWindow()
+        # „←” w każdym oknie bez własnego „Wróć”: cofa do panelu głównego
+        for _w in (self.win_stats, self.win_test, self.win_purchase,
+                   self.win_premium, self.win_update):
+            _w.set_back(self._toggle_hub_open)
 
         self.tray = QSystemTrayIcon(make_tray_icon())
         self.tray.setToolTip("Fiszki w tle")
 
-        menu = QMenu()
-        self.act_toggle = menu.addAction("⏸  Ukryj fiszki")
-        self.act_toggle.triggered.connect(self._toggle)
-        menu.addAction("Otwórz panel").triggered.connect(self._toggle_hub)  # awaryjne wejście
-        menu.addSeparator()
-        menu.addAction("Sprawdź aktualizacje").triggered.connect(
-            lambda: self.check_updates(manual=True))
-        menu.addSeparator()
-        menu.addAction("Wyloguj").triggered.connect(self._logout)
-        menu.addAction("✖  Zamknij").triggered.connect(self._quit)
+        menu = GlassTrayMenu()
+        self.act_toggle = _TrayToggle(menu.add_row("pause", "Ukryj fiszki", self._toggle))
+        menu.add_row("sliders", "Otwórz panel", self._toggle_hub)  # awaryjne wejście
+        menu.add_sep()
+        menu.add_row("refresh", "Sprawdź aktualizacje", lambda: self.check_updates(manual=True))
+        menu.add_row("logout", "Wyloguj", self._logout)
+        menu.add_sep()
+        menu.add_row("close", "Zamknij Eyelingo", self._quit, danger=True)
+        self._tray_menu = menu
 
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(
@@ -6359,27 +7723,32 @@ class TrayApp:
         # zeby nie konkurowac z ladowaniem sesji i fiszek o pierwsze sekundy.
         QTimer.singleShot(6000, lambda: self.check_updates(manual=False))
 
+    def _toggle_hub_open(self):
+        if not self.win_hub.isVisible():
+            self.win_hub.open()
+
     def _toggle_hub(self):
-        if self.win_hub.isVisible():
+        if self.win_hub.isVisible() and not self.win_hub._closing:
             self.win_hub.fade_hide()
         else:
             self.win_hub.open()
 
     def _show_lang(self):
         self.win_cat.hide(); self.win_lvl.hide()
-        self.win_lang.show(); self.win_lang.raise_(); self.win_lang.activateWindow()
+        ov = self.overlay
+        self.win_lang.present(getattr(ov, "lang", None), getattr(ov, "level", None),
+                              None if getattr(ov, "_is_custom", False) else (getattr(ov, "cat", None) or None))
 
     def _show_subscription_required(self):
-        """Pokaż okno informujące o wymogu subskrypcji."""
-        msg = QMessageBox()
-        msg.setWindowTitle("Funkcja Premium")
-        msg.setText("Własne zestawy fiszek\n\nTa funkcja dostępna jest tylko w subskrypcji Premium.\n\n39 zł/mies lub 329 zł/rok · wszystkie poziomy + własne fiszki")
-        msg.setIcon(QMessageBox.Icon.Information)
-        btn_sub = msg.addButton("Kup subskrypcję", QMessageBox.ButtonRole.AcceptRole)
-        msg.addButton("Zamknij", QMessageBox.ButtonRole.RejectRole)
-        msg.exec()
-        if msg.clickedButton() == btn_sub:
-            self._show_purchase_subscription()
+        """Własne zestawy to funkcja Premium – komunikat w stylu Glass z drogą do zakupu."""
+        if not hasattr(self, "_dlg_premium"):
+            self._dlg_premium = GlassDialog("Funkcja Premium", "", None, 380)
+        self._dlg_premium.present(
+            "Własne zestawy fiszek",
+            "Ta funkcja jest dostępna w subskrypcji Premium.\n\n"
+            "39 zł/mies lub 329 zł/rok · wszystkie poziomy + własne fiszki",
+            [("Kup subskrypcję", "cta", self._show_purchase_subscription),
+             ("Wróć", "ghost", None)])
 
     def _show_purchase_subscription(self):
         """Otwórz okno zakupu subskrypcji."""
@@ -6501,8 +7870,33 @@ class TrayApp:
         self.win_lang.hide(); self.win_lvl.hide()
         self._on_lvl(lang, lvl)
 
+    def _back_to_hub_if_paused(self):
+        if not self.visible:
+            QTimer.singleShot(250, self.win_hub.open)
+
+    def _fly_picker_to_card(self):
+        """Wybór kategorii: okno wyboru „zapada się” i leci w miejsce fiszki."""
+        try:
+            src = next((w for w in (self.win_lang, self.win_cat)
+                        if w.isVisible() and not w._closing), None)
+            if src is None:
+                return
+            ov = self.overlay
+            # fiszka stoi w lewym górnym rogu (kotwica) i ma stałą wysokość CARD_H
+            sc = QApplication.primaryScreen().availableGeometry()
+            ow = ov.width() if 120 < ov.width() < 700 else 320
+            dst = QRect(ov.x() if ov.isVisible() else sc.left() + 20,
+                        ov.y() if ov.isVisible() else sc.top() + 20, ow, CARD_H)
+            ov._fly_landing = True          # fiszka wejdzie w to miejsce bez odbicia
+            QTimer.singleShot(1500, lambda: setattr(ov, "_fly_landing", False))
+            src._fx_fly(dst, ov)
+        except Exception as ex:
+            print(f"[motion] fly: {ex}")
+
     def _on_cat(self, lang, lvl, cat):
+        self._fly_picker_to_card()
         self.overlay.load_from_supabase(lang, lvl, cat)
+        self._back_to_hub_if_paused()
         self._track_views(lang, lvl, cat)
         _session.track("category_selected", {
             "language": lang, "level": lvl, "category": cat
@@ -6670,6 +8064,7 @@ class TrayApp:
             self.win_lvl.set_premium(is_premium)
             self.win_lvl.set_bought_levels(levels_bought)
             self.win_cat.set_premium(is_premium, levels_bought)
+            self.win_lang.set_premium(is_premium, levels_bought)
         except Exception as e:
             print(f"[PREMIUM] propagacja: {e}")
         lang  = self.overlay.lang or "en"
@@ -6679,6 +8074,7 @@ class TrayApp:
         self._known_worker.done.connect(self.overlay.set_known_words)
         self._known_worker.start()
         self._load_completed_cats(self.overlay.lang or "en")
+        self.win_hub.prefetch()
 
     def _load_profile(self):
         """Odśwież profil użytkownika po zakupie."""
@@ -6704,6 +8100,7 @@ class TrayApp:
             self._levels_bought = levels_bought
             self.win_lvl.set_premium(is_premium)
             self.win_lvl.set_bought_levels(levels_bought)
+            self.win_lang.set_premium(is_premium, levels_bought)
 
         self._refresh_worker = ProfileWorker()
         self._refresh_worker.done.connect(_refresh_after_load)
@@ -6757,6 +8154,10 @@ class TrayApp:
         setup_hotkeys(self.app, self)
         self._restart_timer()
 
+    def _show_library(self):
+        self.win_my_sets.hide()
+        self.win_library.show(); self.win_library.raise_(); self.win_library.activateWindow()
+
     def _show_my_sets(self):
         self.win_my_sets.set_premium(getattr(self, '_is_premium', False))
         self.win_custom.hide()
@@ -6782,11 +8183,6 @@ class TrayApp:
             self.win_custom.raise_()
             self.win_custom.activateWindow()
 
-    def _show_public_sets(self):
-        self.win_public_sets.set_premium(getattr(self, '_is_premium', False))
-        self.win_my_sets.hide()
-        self.win_public_sets.show_and_load()
-
     def _show_custom_create(self):
         self.win_my_sets.hide()
         self.win_custom.set_premium(getattr(self, '_is_premium', False))
@@ -6798,6 +8194,7 @@ class TrayApp:
 
     def _on_custom_set_picked(self, name, cards):
         self.overlay.load_custom(name, cards)
+        self._back_to_hub_if_paused()
         self._custom_sets_cache = self.win_my_sets.sets if hasattr(self.win_my_sets, 'sets') else []
 
     def _back_to_lang(self):
@@ -6811,13 +8208,21 @@ class TrayApp:
     def _toggle(self):
         if self.visible:
             self.overlay.hide()
+            self.overlay._rotation_pause()
+            self.overlay._suspended = True
+            tts_mute(True)
             self.act_toggle.setText("▶  Pokaż fiszki")
             _session.slides_stopped()
             _session.track("slides_hidden")
         else:
             self._pause_until = None
             if hasattr(self, "_pause_timer"): self._pause_timer.stop()
+            tts_mute(False)
+            self.overlay._suspended = False
             self.overlay.show()
+            self.overlay._rotation_resume()
+            if not self.overlay.timer.isActive():
+                self.overlay._rotation_restart()
             self.act_toggle.setText("⏸  Ukryj fiszki")
             if self.overlay.cat:
                 _session.slides_started(self.overlay.lang, self.overlay.level, self.overlay.cat)
@@ -6836,8 +8241,11 @@ class TrayApp:
         else:
             secs = int(minutes) * 60
         self._pause_until = _t.time() + secs
+        self.overlay._suspended = True
+        tts_mute(True)                       # żadnego czytania w trakcie pauzy
         if self.visible:
             self.overlay.hide()
+            self.overlay._rotation_pause()   # zegar rotacji staje (zapamiętuje resztę czasu)
             self.visible = False
             self.act_toggle.setText("▶  Pokaż fiszki")
             _session.slides_stopped()
@@ -6854,8 +8262,13 @@ class TrayApp:
         self._pause_until = None
         if hasattr(self, "_pause_timer"):
             self._pause_timer.stop()
+        tts_mute(False)
+        self.overlay._suspended = False
         if not self.visible:
             self.overlay.show()
+            self.overlay._rotation_resume()
+            if not self.overlay.timer.isActive():
+                self.overlay._rotation_restart()
             self.visible = True
             self.act_toggle.setText("⏸  Ukryj fiszki")
             if self.overlay.cat:
@@ -6988,6 +8401,7 @@ class TrayApp:
             key = f"{lang}_{level}_{code}"
             self._done_categories.add(key)
             self.win_cat.mark_done(code)
+            self.win_lang.mark_done(code)
 
     def _save_test_progress(self, key, idx, results):
         self._test_progress[key] = {"index": idx, "results": results}
@@ -7002,18 +8416,20 @@ class TrayApp:
         save_settings(APP_SETTINGS)
         if hasattr(self.win_settings, 'chk_audio'):
             self.win_settings.chk_audio.setChecked(enabled)
+        info_prev = self.overlay.lbl_info.text()
         if enabled:
             self.overlay.lbl_info.setText("Audio włączone")
             if self.overlay.cards:
                 card = self.overlay.cards[self.overlay.index]
                 word = card.get("word", "")
-                lang = self.overlay.lang or "en"
+                lang = _tts_lang_for(card, self.overlay.lang)
                 if lang == "jp" and "(" in word:
                     word = word.split("(")[0].strip()
-                speak_word(word, lang)
+                speak_word(word, lang)          # jedno czytanie na włączenie
         else:
             self.overlay.lbl_info.setText("Audio wyłączone")
-        QTimer.singleShot(2000, lambda: self.overlay._update())
+        # Tylko przywracamy etykietę. NIE wołamy _update(): ono też czyta słowo → dwukrotne odtworzenie.
+        QTimer.singleShot(2000, lambda: self.overlay.lbl_info.setText(info_prev))
 
     def _reload_cat_without_known(self, lang, level, cat, known_ids):
         if not self.overlay.cards: return
@@ -7201,7 +8617,40 @@ def _apply_font_substitutions():
         pass
 
 
+def _install_crash_guard():
+    """Siatka bezpieczeństwa: w PyQt6 niezłapany wyjątek w dowolnym slocie zamyka całą
+    aplikację. Zamiast tego zapisujemy go do ~/.eyelingo_crash.log i pracujemy dalej.
+    faulthandler zapisuje też ślad przy twardym crashu."""
+    import traceback, threading, datetime
+    log = Path.home() / ".eyelingo_crash.log"
+
+    def _write(txt):
+        try:
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(f"\n--- {datetime.datetime.now():%Y-%m-%d %H:%M:%S} ---\n{txt}")
+        except Exception:
+            pass
+
+    def _hook(et, ev, tb):
+        txt = "".join(traceback.format_exception(et, ev, tb))
+        print("[BŁĄD – aplikacja działa dalej]\n" + txt)
+        _write(txt)
+
+    sys.excepthook = _hook
+    try:
+        threading.excepthook = lambda a: _hook(a.exc_type, a.exc_value, a.exc_traceback)
+    except Exception:
+        pass
+    try:
+        import faulthandler
+        _fh = open(Path.home() / ".eyelingo_fault.log", "a", encoding="utf-8")
+        faulthandler.enable(file=_fh)
+    except Exception:
+        pass
+
+
 def main():
+    _install_crash_guard()
     _dbg_reset()
     _dbg("=== APP START ===")
     _dbg(f"[SESSION] plik sesji: {SESSION_FILE}")
