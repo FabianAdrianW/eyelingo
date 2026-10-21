@@ -129,6 +129,19 @@
      +'.tmd-b.p{background:var(--navy,#1a2340);color:#fff;border-color:var(--navy,#1a2340)}.tmd-b.o{background:var(--orange,#c96a2a);color:#fff;border-color:var(--orange,#c96a2a)}.tmd-b.d{color:#b3261e;border-color:#e3b4b0}'
      +'.tmd-b[disabled]{opacity:.5;cursor:default}'
      +'.tmd-code{font-size:32px;font-weight:700;letter-spacing:5px;text-align:center;padding:12px;border-radius:14px;background:rgba(26,35,64,.06);margin:8px 0;user-select:all}'
+     +'#tutor-scan{position:fixed;inset:0;z-index:100000;background:#0b1020;display:flex;flex-direction:column;color:#fff}'
+     +'.tsc-top{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 12px;font-size:16px}'
+     +'.tsc-x{width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;font-size:24px;line-height:1;cursor:pointer}'
+     +'.tsc-view{position:relative;flex:1;min-height:0;overflow:hidden}.tsc-view video{width:100%;height:100%;object-fit:cover}'
+     +'.tsc-frame{position:absolute;left:50%;top:50%;width:min(68vw,320px);aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid #fff;border-radius:22px;box-shadow:0 0 0 100vmax rgba(5,8,18,.55)}'
+     +'.tsc-msg{margin:0;padding:16px 20px calc(env(safe-area-inset-bottom,0px) + 18px);text-align:center;font-size:14px;color:rgba(255,255,255,.85)}'
+     +'#mat-sidebar.tutor-on #mat-sb-continue,#mat-sidebar.tutor-on #mat-sb-catalogs{display:none!important}'
+     +'#tutor-sb .tsb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}#tutor-sb .tsb-head .eyl-sbl{margin:0!important}'
+     +'#tutor-sb .tsb-plus{width:24px;height:24px;border-radius:50%;border:0;background:var(--orange,#c96a2a);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}#tutor-sb .tsb-plus svg{width:13px;height:13px}'
+     +'#tutor-sb .eyl-sbt{font:inherit}#tutor-sb .tsb-av{font-size:13px;font-weight:700;color:var(--navy,#1a2340)}#tutor-sb .eyl-sbt.is-accent .tsb-av{color:#fff}'
+     +'#tutor-sb .eyl-sbt-ic svg{width:15px;height:15px}'
+     +'#tutor-sb .tsb-empty{font-size:12.5px;line-height:1.5;color:var(--dim2,#646c80);margin:10px 2px 0}'
+     +'@media(max-width:768px){#tutor-sb .tsb-list{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}#tutor-sb .tsb-list::-webkit-scrollbar{display:none}#tutor-sb .eyl-sbt{flex:0 0 auto;width:auto!important;min-width:150px;max-width:200px;margin:0!important}}'
      +'.tmd-qr{display:flex;justify-content:center;margin:10px 0}.tmd-qr svg{width:190px;height:190px}'
      +'.tmd-err{color:#b3261e;font-size:13px;margin-top:8px;min-height:16px}'
      +'.tmd-chk{display:flex;align-items:center;gap:10px;padding:10px 6px;border-bottom:1px solid rgba(26,35,64,.08);font-size:14px;cursor:pointer}'
@@ -232,6 +245,7 @@
     more:'<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
     unlink:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     info:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>',
+    users:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c.6-3.6 3.2-5.6 6.5-5.6s5.9 2 6.5 5.6M16 4.8a3.2 3.2 0 010 6.2M18.5 14.6c1.7.7 2.8 2.4 3 5.4"/></svg>',
     card:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>'
   };
 
@@ -262,7 +276,7 @@
     var p=$('tutor-pill'); if(p) p.style.display = on ? 'flex' : 'none';
     if(on){ _view='list'; _cur=null; renderPanel(); }
     else {
-      _pending=null;
+      _pending=null; renderSb();
       if(!opts.silent && !IS_PWA){ try{ if(typeof window.switchMatTab==='function') window.switchMatTab(window._matTab||'mine'); }catch(e){} }
     }
   };
@@ -329,12 +343,46 @@
   function plCards(n){ var d=n%10,h=n%100; return n+' '+(n===1?'fiszka':(d>=2&&d<=4&&!(h>=12&&h<=14))?'fiszki':'fiszek'); }
   function note(t){ return '<div class="tp-note">'+IC.info+'<span>'+t+'</span></div>'; }
 
+  // ── sidebar (web): w trybie nauczyciela zamiast katalogów — lista uczniów ──
+  function renderSb(){
+    if(IS_PWA) return;
+    var sb=$('mat-sidebar'), inner=$('mat-sidebar-inner'); if(!sb||!inner) return;
+    var on=T.on();
+    sb.classList.toggle('tutor-on',on);
+    var box=$('tutor-sb');
+    if(!on){ if(box) box.remove(); return; }
+    css();
+    if(!box){ box=document.createElement('div'); box.id='tutor-sb'; inner.insertBefore(box,inner.firstChild);
+      box.addEventListener('click',function(ev){
+        var el=ev.target.closest&&ev.target.closest('[data-sb]'); if(!el) return;
+        var a=el.getAttribute('data-sb');
+        if(a==='add') return T.newCode();
+        if(a==='all'){ _view='list'; _cur=null; _pending=null; return renderPanel(); }
+        _view='student'; _cur=el.getAttribute('data-l'); _studyAt=Date.now();
+        try{ var m=$('mat-main-content'); if(m&&m.scrollIntoView&&window.innerWidth<=768) m.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){}
+        return renderPanel();
+      });
+    }
+    var tot=_students.length;
+    var h='<div class="tsb-head"><div class="eyl-sbl">Uczniowie</div><button type="button" class="tsb-plus" data-sb="add" title="Dodaj ucznia" aria-label="Dodaj ucznia">'+IC.plus+'</button></div>'
+      +'<div class="tsb-list">'
+      +'<button type="button" class="eyl-sbt'+(_view==='list'?' is-accent':'')+'" data-sb="all"><span class="eyl-sbt-ic">'+IC.users+'</span><span class="eyl-sbt-tx"><span class="eyl-sbt-t">Wszyscy uczniowie</span><span class="eyl-sbt-s">'+(tot?tot+' '+(tot===1?'osoba':(tot%10>=2&&tot%10<=4&&!(tot%100>=12&&tot%100<=14))?'osoby':'osób'):'brak połączonych')+'</span></span></button>'
+      +_students.map(function(x){
+        var act=_view==='student'&&_cur===x.link_id;
+        return '<button type="button" class="eyl-sbt'+(act?' is-accent':'')+'" data-sb="student" data-l="'+esc(x.link_id)+'"><span class="eyl-sbt-ic tsb-av">'+ini(x)+'</span><span class="eyl-sbt-tx"><span class="eyl-sbt-t">'+esc(nm(x))+'</span><span class="eyl-sbt-s">'+plSets(x.sets.length)+'</span></span></button>';
+      }).join('')
+      +'</div>'
+      +(tot?'':'<p class="tsb-empty">Dodaj ucznia kodem lub QR — jego konto połączy się z Twoim.</p>');
+    box.innerHTML=h;
+  }
+
   async function renderPanel(){
     if(!ensureChrome()) return;
     var p=$('tutor-panel'); if(!p || !T.on()) return;
     p.onclick=onPanelClick;
     if(!p.firstChild) p.innerHTML='<div class="tp-empty">Ładuję…</div>';
     try{ await loadStudents(); }catch(e){ p.innerHTML=note(esc(e.message)); return; }
+    renderSb();
     if(_view==='student' && _cur){ var c=_students.filter(function(s){return s.link_id===_cur;})[0]; if(c){ return renderStudent(c); } _view='list'; _cur=null; _pending=null; }
     var html=note('Nauka i przeglądanie w trybie nauczyciela <b>nie zapisują się</b> do Twoich powtórek.')
       +'<div class="tp-bar"><div><div class="tp-h">Twoi uczniowie</div>'+(_students.length?'<div class="tp-sub">'+_students.length+' '+(_students.length===1?'uczeń':(_students.length%10>=2&&_students.length%10<=4&&!(_students.length%100>=12&&_students.length%100<=14))?'uczniów':'uczniów')+' · kliknij, aby otworzyć katalog</div>':'')+'</div>'
@@ -437,7 +485,7 @@
   }
 
   async function renderStudent(s){
-    var p=$('tutor-panel');
+    var p=$('tutor-panel'); renderSb();
     var sets=[]; try{ sets=await fetchSets(s.sets); }catch(e){}
     _curSets=sets;
     if(!IS_PWA){ try{ var u=await uid(); window._matMyUid=u; }catch(e){} mergeIntoMat(sets,null); }
@@ -536,8 +584,8 @@
   }
   // do czasu wdrożenia migracji funkcja jest niewidoczna (brak przycisków i paska)
   function hideFeature(){
-    ['tutor-toggle-btn','tutor-seg','tutor-student-bar','tutor-panel','tutor-pill'].forEach(function(id){ var el=$(id); if(el) el.remove(); });
-    var mc=root(); if(mc) mc.classList.remove('tutor-on');
+    ['tutor-toggle-btn','tutor-seg','tutor-student-bar','tutor-panel','tutor-pill','tutor-sb'].forEach(function(id){ var el=$(id); if(el) el.remove(); });
+    var mc=root(); if(mc) mc.classList.remove('tutor-on'); var msb=$('mat-sidebar'); if(msb) msb.classList.remove('tutor-on');
     window._tutorMode=false; try{ sessionStorage.setItem(SS,'0'); }catch(e){}
   }
 
@@ -545,7 +593,7 @@
     var m=modal('<h3>Kod od nauczyciela</h3><p>Wpisz kod otrzymany od nauczyciela. Po połączeniu zobaczysz materiały, które dla Ciebie przygotował.</p>'
       +'<input class="tmd-in" id="tmd-c" maxlength="12" placeholder="XXXX-XXXX" autocomplete="off" autocapitalize="characters" inputmode="text">'
       +'<div class="tmd-err" id="tmd-e"></div>'
-      +'<div class="tmd-row"><button class="tmd-b" id="tmd-scan" style="display:none">Skanuj QR</button><button class="tmd-b" id="tmd-no">Anuluj</button><button class="tmd-b p" id="tmd-go">Dalej</button></div>');
+      +'<div class="tmd-row"><button class="tmd-b" id="tmd-scan" style="display:none">&#128247; Skanuj QR</button><button class="tmd-b" id="tmd-no">Anuluj</button><button class="tmd-b p" id="tmd-go">Dalej</button></div>');
     var inp=m.q('#tmd-c'), err=m.q('#tmd-e');
     if(prefill) inp.value=T.fmtCode(T.normCode(prefill));
     inp.addEventListener('input',function(){ var c=T.normCode(inp.value).slice(0,8); inp.value=T.fmtCode(c); err.textContent=''; });
@@ -553,7 +601,7 @@
     m.q('#tmd-no').addEventListener('click',m.close);
     inp.addEventListener('keydown',function(e){ if(e.key==='Enter') go(); });
     m.q('#tmd-go').addEventListener('click',go);
-    if(window.BarcodeDetector && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
       var sb=m.q('#tmd-scan'); sb.style.display='inline-block'; sb.addEventListener('click',function(){ scan(m,function(code){ inp.value=T.fmtCode(T.normCode(code)); go(); }); });
     }
     async function go(){
@@ -579,21 +627,55 @@
     }
   };
 
+  // skaner QR: BarcodeDetector (Chrome/Android), a gdy go brak (iOS Safari, Firefox) — jsQR z vendor/
+  var _jsqrP=null;
+  function loadJsQR(){
+    if(window.jsQR) return Promise.resolve(window.jsQR);
+    if(_jsqrP) return _jsqrP;
+    _jsqrP=new Promise(function(res,rej){
+      var s=document.createElement('script'); s.src='vendor/jsqr.min.js';
+      s.onload=function(){ window.jsQR?res(window.jsQR):rej(); }; s.onerror=function(){ _jsqrP=null; rej(); };
+      document.head.appendChild(s);
+    });
+    return _jsqrP;
+  }
   function scan(m,onCode){
-    var wrap=document.createElement('div');
-    wrap.innerHTML='<video playsinline muted style="width:100%;border-radius:12px;margin-top:10px"></video><div class="tmd-row"><button class="tmd-b" type="button">Zamknij kamerę</button></div>';
-    m.box.appendChild(wrap);
-    var v=wrap.querySelector('video'), stream=null, stop=false;
-    function end(){ stop=true; try{ if(stream) stream.getTracks().forEach(function(t){t.stop();}); }catch(e){} try{ wrap.remove(); }catch(e){} }
-    wrap.querySelector('button').addEventListener('click',end);
-    navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(s){
-      stream=s; v.srcObject=s; v.play();
-      var det=new window.BarcodeDetector({formats:['qr_code']});
-      (function loop(){
-        if(stop) return;
-        det.detect(v).then(function(r){ if(r&&r.length){ var c=T.normCode(r[0].rawValue); if(c.length===8){ end(); onCode(c); return; } } setTimeout(loop,250); },function(){ setTimeout(loop,400); });
-      })();
-    },function(){ end(); toast('Brak dostępu do kamery — wpisz kod ręcznie.'); });
+    css();
+    var ov=document.createElement('div'); ov.id='tutor-scan';
+    ov.innerHTML='<div class="tsc-top"><b>Zeskanuj kod QR</b><button type="button" class="tsc-x" aria-label="Zamknij">×</button></div>'
+      +'<div class="tsc-view"><video playsinline muted autoplay></video><div class="tsc-frame"></div></div>'
+      +'<p class="tsc-msg">Skieruj aparat na kod QR od nauczyciela.</p>';
+    document.body.appendChild(ov);
+    var v=ov.querySelector('video'), msg=ov.querySelector('.tsc-msg'), stream=null, stop=false, det=null, cv=document.createElement('canvas'), cx=cv.getContext('2d',{willReadFrequently:true});
+    function end(){ stop=true; try{ if(stream) stream.getTracks().forEach(function(t){t.stop();}); }catch(e){} try{ v.srcObject=null; }catch(e){} try{ ov.remove(); }catch(e){} }
+    ov.querySelector('.tsc-x').addEventListener('click',end);
+    function fail(t){ end(); toast(t); }
+    function hit(raw){ var c=T.normCode(raw); if(c.length===8){ end(); onCode(c); return true; } return false; }
+    if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){ return fail('Ta przeglądarka nie udostępnia aparatu — wpisz kod ręcznie.'); }
+    if(window.BarcodeDetector){ try{ det=new window.BarcodeDetector({formats:['qr_code']}); }catch(e){ det=null; } }
+    navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false}).then(function(s){
+      if(stop){ s.getTracks().forEach(function(t){t.stop();}); return; }
+      stream=s; v.srcObject=s; var pl=v.play(); if(pl&&pl.catch) pl.catch(function(){});
+      var ready = det ? Promise.resolve() : loadJsQR();
+      ready.then(function(){
+        (function loop(){
+          if(stop) return;
+          if(v.readyState<2||!v.videoWidth){ return setTimeout(loop,150); }
+          if(det){
+            det.detect(v).then(function(r){ if(r&&r.length&&hit(r[0].rawValue)) return; setTimeout(loop,200); },function(){ det=null; setTimeout(loop,100); if(!window.jsQR) loadJsQR(); });
+          } else if(window.jsQR){
+            var w=v.videoWidth, h=v.videoHeight, k=Math.min(1,640/Math.max(w,h));
+            cv.width=Math.round(w*k); cv.height=Math.round(h*k);
+            cx.drawImage(v,0,0,cv.width,cv.height);
+            var id=cx.getImageData(0,0,cv.width,cv.height), r=window.jsQR(id.data,id.width,id.height,{inversionAttempts:'dontInvert'});
+            if(r&&r.data&&hit(r.data)) return;
+            setTimeout(loop,120);
+          } else setTimeout(loop,200);
+        })();
+      },function(){ fail('Nie udało się uruchomić skanera — wpisz kod ręcznie.'); });
+    },function(e){
+      fail(e&&(e.name==='NotAllowedError'||e.name==='SecurityError') ? 'Brak zgody na aparat. Zezwól na dostęp w ustawieniach przeglądarki lub wpisz kod ręcznie.' : 'Nie znaleziono aparatu — wpisz kod ręcznie.');
+    });
   }
 
   // odśwież listę zestawów (web: loadMySets, PWA: loadMine)
