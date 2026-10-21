@@ -2339,7 +2339,7 @@ function eylPrefLoad(){
         +'<div id="eylc-done-body" style="display:'+(dOpen?'block':'none')+';margin-top:12px">'+_gO+doneIds.map(_catCardHtml).join('')+_gC+'</div></div>';
     }
     html+='<div class="eylc-secth">Kategorie ('+actIds.length+')</div>';
-    if(actIds.length){ html+=_gO+actIds.map(_catCardHtml).join('')+_gC; }
+    if(actIds.length){ html+=(typeof window.eylCatPager==='function') ? window.eylCatPager(actIds.map(_catCardHtml),'display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px',_eylSeg.level?100000:20) : (_gO+actIds.map(_catCardHtml).join('')+_gC); }
     else if(doneIds.length){ html+='<div style="padding:8px 2px;color:var(--dim2);font-size:13.5px">Ca\u0142y materia\u0142 na tym poziomie masz opanowany \u2713 \u2014 rozwi\u0144 sekcj\u0119 wy\u017cej, by powt\u00f3rzy\u0107.</div>'; }
     box.innerHTML=html;
   }
@@ -20487,7 +20487,7 @@ if ('serviceWorker' in navigator) {
         +'<div id="lex-tr-done-body" style="display:'+(dOpen?'block':'none')+';margin-top:10px"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'+doneIds.map(card).join('')+'</div></div></div>';
     }
     html+='<div class="eylc-secth"'+(doneIds.length?'':' style="margin-top:20px"')+'>Kategorie ('+actIds.length+')</div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'+actIds.map(card).join('')+'</div>';
+    html+=(typeof window.eylCatPager==='function') ? window.eylCatPager(actIds.map(card),'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px',_level?100000:20) : ('<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'+actIds.map(card).join('')+'</div>');
     b.innerHTML=html;
   }
 
@@ -25853,9 +25853,28 @@ input[type="search"]:focus,input[type="number"]:focus{
 /* tor poziomu — ta sama wysokość i promień co kafelki języków */
 .eylc-chiprow:not(.eylc-langrow){border-radius:var(--sbt-r)!important;padding:4px!important;border-color:var(--sbt-line)!important}
 .eylc-chiprow:not(.eylc-langrow) .eylc-chip{height:36px;padding:0 16px!important;border-radius:9px!important;font-family:'Inter',-apple-system,'DM Sans',sans-serif!important;font-size:14px!important}
+.eylc-more-wrap{display:flex;justify-content:center;margin:18px 0 8px}
+.eylc-more{display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 22px;border-radius:var(--sbt-r);border:1px solid var(--sbt-line);background:#fff;color:var(--sbt-ink);font:600 14px 'Inter',-apple-system,'DM Sans',sans-serif;cursor:pointer;box-shadow:0 1px 2px rgba(22,32,60,.04);transition:border-color .15s}
+.eylc-more:hover{border-color:rgba(26,35,64,.30)}
+.eylc-more span{color:var(--sbt-dim);font-weight:500}
 .eylc-flabel{font-size:11px!important;font-weight:600!important;letter-spacing:.09em!important;color:var(--sbt-dim)!important}
 </style>
 <script>
+/* Katalog Eyelingo (Zestawy + Trener AI): przy poziomie „Wszystkie" renderujemy 20 kategorii, resztę dokłada „Pokaż więcej". */
+(function(){
+  var n=0; window._eylPg=window._eylPg||{};
+  window.eylCatPager=function(cards,gridStyle,cap){
+    cap=cap||20; var id='eylc-pg-'+(++n), first=cards.slice(0,cap), rest=cards.slice(cap);
+    window._eylPg[id]={rest:rest,cap:cap};
+    return '<div id="'+id+'" style="'+gridStyle+'">'+first.join('')+'</div>'
+      +(rest.length?'<div class="eylc-more-wrap" id="'+id+'-m"><button type="button" class="eylc-more" onclick="eylCatMore(\''+id+'\')">Pokaż więcej <span>('+rest.length+')</span></button></div>':'');
+  };
+  window.eylCatMore=function(id){
+    var q=window._eylPg[id], g=document.getElementById(id), w=document.getElementById(id+'-m'); if(!q||!g) return;
+    g.insertAdjacentHTML('beforeend',q.rest.splice(0,q.cap).join(''));
+    if(!q.rest.length){ if(w) w.remove(); delete window._eylPg[id]; } else if(w){ var sp=w.querySelector('span'); if(sp) sp.textContent='('+q.rest.length+')'; }
+  };
+})();
 /* Kafel „Kontynuuj" w tym samym komponencie co reszta sidebaru (nadpisuje wcześniejszą wersję). */
 (function(){
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
