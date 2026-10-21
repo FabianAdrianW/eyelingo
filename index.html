@@ -5232,7 +5232,7 @@ window.matSetLangApply=async function(setId, code){
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div onclick="matToggleCatalogs()" style="display:flex;align-items:center;gap:7px;cursor:pointer;flex:1;min-width:0;user-select:none">
           <span id="mat-cat-arrow" style="font-size:10px;color:var(--dim2);transition:transform .2s;flex-shrink:0">▼</span>
-          <div style="font-family:DM Sans,sans-serif;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-3)">Katalogi</div>
+          <div class="eyl-sbl" style="font-family:DM Sans,sans-serif;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-3)">Katalogi</div>
         </div>
         <button onclick="event.stopPropagation();openCreateCollection()" style="background:var(--orange);border:none;color:#fff;width:26px;height:26px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:500;flex-shrink:0" title="Nowy katalog">+</button>
       </div>
@@ -5712,7 +5712,7 @@ async function initToFixPage(){
     <div style="padding:var(--page-top) 14px var(--page-bottom) 14px;min-width:0">
 
       <!-- Tryby — kompaktowe przyciski nawigacji -->
-      <div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 10px 2px">Tryb</div>
+      <div class="eyl-sbl" style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2);margin:0 0 10px 2px">Tryb</div>
       <div id="teacher-nav-teacher" onclick="teacherShowTab('teacher')" style="background:var(--paper2);border:1.5px solid var(--orange);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:6px;transition:.2s;display:flex;align-items:center;gap:9px" onmouseover="if(!this.dataset.active){this.style.background='var(--paper2)'}" onmouseout="if(!this.dataset.active){this.style.background='var(--white)'}">
         <div style="width:28px;height:28px;border-radius:7px;background:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"></path><path d="M6 12.5V17c0 1 2.5 2.2 6 2.2s6-1.2 6-2.2v-4.5"></path></svg></div>
         <div>
@@ -5731,7 +5731,7 @@ async function initToFixPage(){
       <!-- Historia rozmów (AI Partner) -->
       <div id="teacher-sb-chat-history" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 10px 2px">
-          <div style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2)">Historia rozmów</div>
+          <div class="eyl-sbl" style="font-size:11px;font-weight:600;letter-spacing:1.1px;text-transform:uppercase;color:var(--dim2)">Historia rozmów</div>
           <button onclick="teacherNewConversation()" style="background:var(--orange);border:none;color:#fff;width:24px;height:24px;border-radius:50%;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;flex-shrink:0" title="Nowa rozmowa">+</button>
         </div>
         <div id="teacher-history-list" style="display:flex;flex-direction:column;gap:6px"></div>
@@ -10101,7 +10101,7 @@ window.loadCollections = async function loadCollections(){
       nameDiv.textContent = col.name;
       nameDiv.style.cssText = 'font-family:DM Sans,sans-serif;font-size:15px;font-weight:500;color:var(--navy);margin-bottom:3px';
       var countDiv = document.createElement('div');
-      countDiv.textContent = (col.sets||[]).length + ' zestawów';
+      countDiv.textContent = (function(n){ var d=n%10,h=n%100; return n+' '+(n===1?'zestaw':(d>=2&&d<=4&&!(h>=12&&h<=14))?'zestawy':'zestawów'); })((col.sets||[]).length);
       countDiv.style.cssText = 'font-size:12px;color:var(--dim2)';
       btn.appendChild(nameDiv);
       btn.appendChild(countDiv);
@@ -25727,5 +25727,149 @@ input[type="search"]:focus,input[type="number"]:focus{
 }
 </style>
 
+<!-- ═══ EYELINGO — Spójny sidebar + kafelki języków (Zestawy + Trener AI), 2026-10-21 ═══
+     Jeden komponent wiersza (.eyl-sbt) dla: Kontynuuj, Katalogi, Tryb (Ailex/Rozmowa), Historia rozmów.
+     Sidebar sięga do dołu strony (tło), treść przykleja się do góry ekranu.
+     Kafelki języków: równa siatka, flaga + nazwa wyrównane do lewej, ta sama wysokość co tor poziomu.
+     REVERT = usuń ten blok (style + script). Bez zmian w silniku Lex. -->
+<style id="eyl-ui-consistency">
+:root{--sbt-r:12px;--sbt-line:var(--border,#E6E0D0);--sbt-ink:var(--navy,#1A2340);--sbt-dim:var(--dim2,#646C80);--sbt-acc:var(--orange,#C96A2A)}
+
+/* ── Sidebar: pełna wysokość, przyklejona treść ── */
+@media (min-width:769px){
+  #mat-sidebar,#teacher-sidebar{
+    align-self:stretch!important;height:auto!important;min-height:100vh;
+    overflow:visible!important;position:relative!important;
+    background:var(--paper2,#F0EEE9)!important;border-right:1px solid var(--sbt-line)!important;
+  }
+  /* overflow:hidden na stronie łamał position:sticky — clip przycina tak samo, ale nie tworzy kontenera przewijania */
+  #page-community,#page-teacher,#page-teacher > div:first-child{overflow:clip!important}
+  #mat-sidebar-inner,#teacher-sidebar > div{
+    position:sticky!important;top:0;max-height:100vh;overflow-y:auto;scrollbar-width:thin;
+    padding-left:14px!important;padding-right:14px!important;
+  }
+}
+
+@media (min-width:1024px){ #mat-sidebar,#teacher-sidebar{width:248px!important} }
+
+/* ── Nagłówki sekcji ── */
+.eyl-sbl,#mat-sb-continue > .eyl-sbl,#lex-sb-resume > .eyl-sbl{
+  font-family:'Inter',-apple-system,'DM Sans',sans-serif!important;
+  font-size:11px!important;font-weight:600!important;letter-spacing:.09em!important;
+  text-transform:uppercase!important;color:var(--sbt-dim)!important;margin:0 0 8px 2px!important;
+}
+.lex-sb-h > span:first-child{font-size:11px!important;font-weight:600!important;letter-spacing:.09em!important}
+#mat-sb-continue{margin-bottom:22px!important}
+#mat-sb-catalogs > div:first-child{margin-bottom:8px!important}
+#mat-sb-catalogs > div:first-child .eyl-sbl{margin:0!important}
+#mat-sb-catalogs > div:first-child button{width:24px!important;height:24px!important;font-size:15px!important;box-shadow:none!important}
+#lex-sb-resume{margin:22px 0 4px!important}
+
+/* ── Wiersz sidebaru — jeden wzór wszędzie ── */
+.eyl-sbt,
+#teacher-nav-teacher,#teacher-nav-chat,
+#mat-sidebar-collections .sb-catalog-tile{
+  display:grid!important;grid-template-columns:30px minmax(0,1fr);grid-auto-rows:auto;align-items:center;column-gap:10px;row-gap:1px;
+  width:100%!important;box-sizing:border-box!important;min-height:54px;
+  padding:10px 12px!important;margin:0 0 6px!important;
+  border-radius:var(--sbt-r)!important;border:1px solid var(--sbt-line)!important;
+  background:#fff!important;color:var(--sbt-ink)!important;text-align:left!important;
+  box-shadow:0 1px 2px rgba(22,32,60,.04)!important;transform:none!important;
+  font-family:'Inter',-apple-system,'DM Sans',sans-serif!important;cursor:pointer;position:relative;
+  transition:border-color .15s ease,box-shadow .15s ease!important;
+}
+.eyl-sbt:hover,#teacher-nav-teacher:hover,#teacher-nav-chat:hover,
+#mat-sidebar-collections .sb-catalog-tile:hover,#teacher-history-list > div[onclick]:hover{border-color:rgba(26,35,64,.30)!important}
+.eyl-sbt.is-accent,
+#teacher-nav-teacher[data-active],#teacher-nav-chat[data-active],
+#mat-sidebar-collections .sb-catalog-tile[data-active]{
+  border-color:rgba(201,106,42,.55)!important;
+  box-shadow:inset 3px 0 0 var(--sbt-acc),0 1px 3px rgba(22,32,60,.06)!important;
+}
+#teacher-nav-chat{margin-bottom:22px!important}
+#teacher-history-list{gap:6px!important}
+#teacher-history-list > div[onclick]{border-radius:var(--sbt-r)!important;border-width:1px!important;padding:10px 12px!important;background:#fff!important;box-shadow:0 1px 2px rgba(22,32,60,.04)!important;font-family:'Inter',-apple-system,'DM Sans',sans-serif!important}
+#teacher-history-list > div[onclick] > div:first-child > div{font-family:inherit!important;font-size:13.5px!important;font-weight:600!important}
+#teacher-history-list > div[onclick] > div:last-child{font-size:12px!important;padding-left:19px}
+
+/* ikona */
+.eyl-sbt-ic,#teacher-nav-teacher > div:first-child,#teacher-nav-chat > div:first-child{
+  grid-row:1 / span 2;width:30px!important;height:30px!important;border-radius:8px!important;
+  display:flex!important;align-items:center;justify-content:center;
+  background:rgba(26,35,64,.06)!important;color:var(--sbt-ink);
+}
+.eyl-sbt.is-accent .eyl-sbt-ic,#teacher-nav-teacher[data-active] > div:first-child,#teacher-nav-chat[data-active] > div:first-child{background:var(--sbt-ink)!important;color:#fff}
+#teacher-nav-teacher svg,#teacher-nav-chat svg{stroke:var(--sbt-ink)!important}
+#teacher-nav-teacher[data-active] svg,#teacher-nav-chat[data-active] svg{stroke:#fff!important}
+.eyl-sbt-ic svg{width:12px;height:12px}
+
+/* tekst */
+.eyl-sbt-tx{min-width:0;display:flex;flex-direction:column;gap:1px}
+.eyl-sbt-t,#teacher-nav-teacher > div:last-child > div:first-child,#teacher-nav-chat > div:last-child > div:first-child,
+#mat-sidebar-collections .sb-catalog-tile > div:first-child{
+  display:block!important;-webkit-line-clamp:unset!important;min-height:0!important;padding-right:18px!important;
+  font-family:inherit!important;font-size:13.5px!important;font-weight:600!important;color:var(--sbt-ink)!important;
+  line-height:1.3!important;margin:0!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.eyl-sbt-s,#teacher-nav-teacher > div:last-child > div:last-child,#teacher-nav-chat > div:last-child > div:last-child,
+#mat-sidebar-collections .sb-catalog-tile > div:nth-child(2){
+  font-size:12px!important;color:var(--sbt-dim)!important;line-height:1.35!important;margin:0!important;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#teacher-nav-teacher > div:last-child,#teacher-nav-chat > div:last-child{min-width:0}
+#teacher-nav-teacher span[style*="PRO"],#teacher-nav-teacher > div:last-child span{font-size:9px!important;font-weight:600;letter-spacing:.04em;vertical-align:1px}
+
+/* katalogi: ikona z pseudo-elementu, tekst w drugiej kolumnie */
+#mat-sidebar-collections{gap:0!important}
+#mat-sidebar-collections .sb-catalog-tile::before{
+  content:'';grid-column:1;grid-row:1 / span 2;width:30px;height:30px;border-radius:8px;
+  background:rgba(26,35,64,.06) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231A2340' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z'/%3E%3C/svg%3E") center/16px no-repeat;
+}
+#mat-sidebar-collections .sb-catalog-tile:first-child::before{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231A2340' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7' rx='1.5'/%3E%3Crect x='14' y='3' width='7' height='7' rx='1.5'/%3E%3Crect x='3' y='14' width='7' height='7' rx='1.5'/%3E%3Crect x='14' y='14' width='7' height='7' rx='1.5'/%3E%3C/svg%3E");
+}
+#mat-sidebar-collections .sb-catalog-tile[data-active]::before{background-color:rgba(201,106,42,.14)}
+#mat-sidebar-collections .sb-catalog-tile > div{grid-column:2}
+#mat-sidebar-collections .sb-catalog-tile > div:first-child svg{display:none}
+#mat-sidebar-collections .sb-catalog-tile > span{top:50%!important;right:10px!important;transform:translateY(-50%);font-size:15px!important}
+#mat-sidebar-collections .sb-catalog-tile.cat-drop-over,#mat-sidebar-collections .sb-catalog-tile.drop-over{border-color:var(--sbt-acc)!important;background:rgba(201,106,42,.06)!important}
+#mat-sidebar-collections > div:not(.sk-stack){font-size:12px!important;color:var(--sbt-dim)!important;line-height:1.45!important;padding:4px 2px 0!important}
+
+/* ── Kafelki języków (Zestawy + Trener AI) ── */
+.eylc-chiprow.eylc-langrow{
+  display:grid!important;grid-template-columns:repeat(auto-fill,minmax(152px,1fr))!important;
+  gap:8px!important;max-width:880px;
+}
+.eylc-chiprow.eylc-langrow .eylc-chip{
+  width:auto!important;min-width:0!important;height:44px;justify-content:flex-start!important;gap:10px!important;
+  padding:0 14px!important;border-radius:var(--sbt-r)!important;border:1px solid var(--sbt-line)!important;
+  font-family:'Inter',-apple-system,'DM Sans',sans-serif!important;font-size:14px!important;font-weight:500!important;
+  box-shadow:0 1px 2px rgba(22,32,60,.04)!important;overflow:hidden;text-overflow:ellipsis;
+}
+.eylc-chiprow.eylc-langrow .eylc-chip:hover{border-color:rgba(26,35,64,.30)!important;background:#fff!important}
+.eylc-chiprow.eylc-langrow .eylc-chip.on{background:var(--sbt-ink)!important;border-color:var(--sbt-ink)!important;color:#fff!important;box-shadow:0 2px 8px -2px rgba(26,35,64,.35)!important}
+.eylc-chiprow.eylc-langrow .eylc-chip svg,.eylc-chiprow.eylc-langrow .eylc-chip img{width:22px!important;height:16px!important;border-radius:3px!important;margin:0!important;object-fit:cover}
+.eylc-chiprow.eylc-langrow .eylc-chip .eyl-flag{margin:0!important}
+/* tor poziomu — ta sama wysokość i promień co kafelki języków */
+.eylc-chiprow:not(.eylc-langrow){border-radius:var(--sbt-r)!important;padding:4px!important;border-color:var(--sbt-line)!important}
+.eylc-chiprow:not(.eylc-langrow) .eylc-chip{height:36px;padding:0 16px!important;border-radius:9px!important;font-family:'Inter',-apple-system,'DM Sans',sans-serif!important;font-size:14px!important}
+.eylc-flabel{font-size:11px!important;font-weight:600!important;letter-spacing:.09em!important;color:var(--sbt-dim)!important}
+</style>
+<script>
+/* Kafel „Kontynuuj" w tym samym komponencie co reszta sidebaru (nadpisuje wcześniejszą wersję). */
+(function(){
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  var PLAY='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="7 4 20 12 7 20"/></svg>';
+  window.sbContinueTile=function(o){ o=o||{};
+    return '<button type="button" class="eyl-sbt'+(o.accent?' is-accent':'')+'" onclick="'+(o.onclick||'')+'" title="Wróć do przerwanej nauki">'
+      +'<span class="eyl-sbt-ic">'+PLAY+'</span>'
+      +'<span class="eyl-sbt-tx"><span class="eyl-sbt-t">'+esc(o.title||'Lekcja')+'</span>'+(o.sub?'<span class="eyl-sbt-s">'+esc(o.sub)+'</span>':'')+'</span></button>';
+  };
+  window.sbContinueBlock=function(items){ if(!items||!items.length) return '';
+    return '<div class="eyl-sbl">Kontynuuj</div>'+items.map(function(it,i){ return window.sbContinueTile({onclick:it.onclick,title:it.title,sub:it.sub,accent:(i===0)}); }).join('');
+  };
+})();
+</script>
+
 <script src="vendor/qrcode-generator.min.js" defer></script>
-<script src="tutor-mode.js?v=4" defer></script>
+<script src="tutor-mode.js?v=5" defer></script>

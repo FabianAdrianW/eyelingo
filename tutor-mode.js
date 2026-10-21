@@ -136,7 +136,13 @@
      +'.tmd-menu{display:flex;flex-direction:column;gap:8px;margin-top:10px}.tmd-menu .tmd-b{width:100%;text-align:center;padding:13px}'
      +'@media (max-width:600px){.tmd-ov{align-items:flex-end;padding:0}.tmd{max-width:none;border-radius:20px 20px 0 0;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px))}}'
      +'#tutor-panel{display:none}'
-     +'#mat-main-content .page-head-row > div:last-child{margin-left:auto}'
+     /* nagłówek „Moje fiszki”: rząd 1 = tytuł + przełącznik, rząd 2 = pasek narzędzi (szukaj po lewej, tworzenie po prawej) */
+     +'#mat-main-content > .page-head{display:grid!important;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"t s" "a a";align-items:start!important;column-gap:24px;row-gap:20px}'
+     +'#mat-main-content > .page-head > div:first-child{grid-area:t;min-width:0}'
+     +'#mat-main-content > .page-head > .tsw{grid-area:s;align-self:start;margin-top:6px}'
+     +'#mat-main-content > .page-head > div:nth-child(2){grid-area:a;display:flex!important;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}'
+     +'#mat-main-content > .page-head #mat-search{flex:0 1 340px;width:auto!important;min-width:180px;margin-right:auto}'
+     +'#mat-main-content.tutor-on > .page-head > div:nth-child(2){display:none!important}'
      +'#mat-main-content.tutor-on > *:not(.page-head):not(#tutor-panel){display:none !important}'
      +'#mat-main-content.tutor-on #tutor-panel{display:block}'
      +'#mat-main-content.tutor-on #mat-search,#mat-main-content.tutor-on #mat-create-btn,#mat-main-content.tutor-on #mat-create-ai-btn{display:none !important}'
@@ -301,7 +307,7 @@
         if(host){
           var b=document.createElement('button'); b.id='tutor-toggle-btn'; b.type='button'; b.className='tsw'; b.setAttribute('role','switch'); b.setAttribute('aria-checked','false');
           b.innerHTML='<span class="tsw-lbl">Tryb nauczyciela</span><span class="tsw-track"><span class="tsw-knob"></span></span>';
-          b.addEventListener('click',T.toggle); host.appendChild(b);   // ostatni w grupie akcji, która jest przy prawej krawędzi — stałe miejsce w obu trybach
+          b.addEventListener('click',T.toggle); (head||host).appendChild(b);   // 1. rząd nagłówka, po prawej — to samo miejsce w obu trybach
         }
       }
     }
