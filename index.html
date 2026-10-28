@@ -1951,8 +1951,8 @@ var EYL_LOAD_TXT={
 /* ═══ NAWIGACJA POMOCNICZA ════════════════════════════════════════════════
    Przy dziesieciu ekranach czytelnik traci orientacje. Cienki pasek postepu
    u gory + kotwice, ktore pojawiaja sie po opuszczeniu hero.               */
-.lp-prog{position:fixed;top:0;left:0;height:2px;background:var(--acc);width:0;z-index:60;
-  transition:width .1s linear;pointer-events:none}
+.lp-prog{position:fixed;top:0;left:0;height:2px;background:var(--acc);width:100%;z-index:60;
+  transform:scaleX(0);transform-origin:0 50%;will-change:transform;pointer-events:none}
 
 </style>
 
@@ -2980,16 +2980,18 @@ function eylPrefLoad(){
   // ── pasek postepu czytania ──────────────────────────────────────────────
   if(!reduce){
     var bar=document.createElement('div'); bar.className='lp-prog'; root.appendChild(bar);
-    var tick=false;
-    window.addEventListener('scroll',function(){
+    var tick=false, phS=document.getElementById('page-home');
+    var onProg=function(){
       if(tick) return; tick=true;
       requestAnimationFrame(function(){
-        var d=document.documentElement;
+        var d=(phS && phS.scrollHeight>phS.clientHeight+1) ? phS : document.documentElement;
         var max=(d.scrollHeight-d.clientHeight)||1;
-        bar.style.width=Math.min(d.scrollTop/max*100,100)+'%';
+        bar.style.transform='scaleX('+Math.min(d.scrollTop/max,1).toFixed(4)+')';
         tick=false;
       });
-    },{passive:true});
+    };
+    window.addEventListener('scroll',onProg,{passive:true});
+    if(phS) phS.addEventListener('scroll',onProg,{passive:true});
   }
 
   // ── wideo: start przy pierwszym pokazaniu sie w oknie ───────────────────
@@ -3033,14 +3035,24 @@ function eylPrefLoad(){
       if(p<P[4]) return Z-(Z-1)*ez((p-P[3])/(P[4]-P[3]));
       return 1;
     };
+    var zOn=false, zRaf=null, zLast='';
     var loopZ=function(){
+      zRaf=null;
+      if(!zOn || document.hidden || hero.paused) return;
       var d=hero.duration;
       if(d && isFinite(d) && d>0){
-        hero.style.transform='scale('+phase((hero.currentTime%d)/d).toFixed(4)+')';
+        var v='scale('+phase((hero.currentTime%d)/d).toFixed(3)+')';
+        if(v!==zLast){ hero.style.transform=v; zLast=v; }
       }
-      requestAnimationFrame(loopZ);
+      zRaf=requestAnimationFrame(loopZ);
     };
-    requestAnimationFrame(loopZ);
+    var zKick=function(){ if(zOn && !zRaf) zRaf=requestAnimationFrame(loopZ); };
+    if('IntersectionObserver' in window){
+      new IntersectionObserver(function(es){ zOn=es[0].isIntersecting; zKick(); },{threshold:0}).observe(hero);
+    } else { zOn=true; }
+    hero.addEventListener('play',zKick);
+    document.addEventListener('visibilitychange',zKick);
+    zKick();
   }
 
   // ── plynne przewijanie do kotwic landingu ───────────────────────────────
@@ -24291,8 +24303,8 @@ body:has(#page-home.active) .nav-top{
   width:min(1180px,calc(100% - 32px));margin-inline:auto;
   padding:11px 14px 11px 22px;border-radius:999px;min-height:0;
   background:linear-gradient(180deg,rgba(40,52,84,.86),rgba(22,31,56,.90));
-  -webkit-backdrop-filter:blur(20px) saturate(1.4);
-  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(8px);
+  backdrop-filter:blur(8px);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.16),      /* krawedz swietlna u gory   */
     inset 0 -1px 0 rgba(0,0,0,.34),           /* faza u dolu               */
@@ -24366,9 +24378,9 @@ body.nav-shrunk:has(#page-home.active) .btn{padding:9px 18px}
   transition:transform .5s var(--ease),box-shadow .35s var(--ease);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.9),
              0 2px 4px rgba(22,32,60,.06),
-             var(--sx) 34px 62px -34px rgba(22,32,60,.46);
+             0 34px 62px -34px rgba(22,32,60,.46);
 }
-.lp-screen.is-tilt{transition:transform .12s linear,box-shadow .12s linear}
+.lp-screen.is-tilt{transition:transform .12s linear}
 .lp-screen::before{content:'';position:absolute;inset:0;border-radius:inherit;
   pointer-events:none;z-index:2;box-shadow:inset 0 0 0 1px rgba(255,255,255,.55)}
 @media(prefers-reduced-motion:reduce){
@@ -24663,14 +24675,19 @@ select::-ms-expand{display:none}
   /* 1. Pasek nawigacji na landingu zweza sie po zjechaniu w dol.
         Landing przewija sie wewnatrz #page-home, wiec sluchamy obu zrodel. */
   var ph=document.getElementById('page-home');
-  function navScroll(){
-    var y=(document.scrollingElement?document.scrollingElement.scrollTop:0)||window.pageYOffset||0;
-    if(ph && ph.scrollTop) y=Math.max(y,ph.scrollTop);
-    document.body.classList.toggle('nav-shrunk', y>48);
+  /* odczyt scrollTop tylko w rAF (bez wymuszonego layoutu w handlerze),
+     klasa zmieniana tylko przy realnej zmianie stanu */
+  var navOn=null, navRaf=null;
+  function navApply(){
+    navRaf=null;
+    var y=(ph && ph.scrollTop) || window.pageYOffset || 0;
+    var on=y>48;
+    if(on!==navOn){ navOn=on; document.body.classList.toggle('nav-shrunk', on); }
   }
+  function navScroll(){ if(!navRaf) navRaf=requestAnimationFrame(navApply); }
   window.addEventListener('scroll',navScroll,{passive:true});
   if(ph) ph.addEventListener('scroll',navScroll,{passive:true});
-  navScroll();
+  navApply();
 
   /* 2. Przechyl nagrania w hero. Tylko mysz, tylko desktop, tylko jeden
         obiekt na stronie. Cien idzie w przeciwna strone niz obrot.        */
