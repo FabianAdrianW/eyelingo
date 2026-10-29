@@ -18,6 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="i18n.js?v=1"></script>
 <style>
   :root{--navy:#1a2340;--navy2:#0f1729;--orange:#c96a2a;--orange2:#e07830;--paper:#f8f7f4;--paper2:#f0eee9;--white:#fff;
     --dim:#5b6478;--dim2:#646c80;--line:#e7e3da;--line2:#d9d4c8;--success:#0F6E56;--error:#A32D2D;--r:14px;--r-sm:10px;
@@ -606,6 +607,7 @@ if(document.readyState!=='loading')eylInitSpinners();else document.addEventListe
     <img class="mk" src="eyelingo-mark.png" alt="Eyelingo">
     <h1 id="login-title">Zaloguj się</h1>
     <p id="login-sub">Tym samym kontem co na stronie — Twoje fiszki są już tutaj.</p>
+    <div data-eyl-native-switch style="display:flex;justify-content:center;margin:-4px 0 14px"></div>
     <input class="inp" id="li-email" type="email" inputmode="email" autocapitalize="off" autocomplete="email" placeholder="E-mail" enterkeyhint="next" onkeydown="if(event.key==='Enter'){event.preventDefault();var p=document.getElementById('li-pass');if(p)p.focus();}">
     <input class="inp" id="li-pass" type="password" autocomplete="current-password" placeholder="Hasło" enterkeyhint="go" onkeydown="if(event.key==='Enter'){event.preventDefault();doAuth();}">
     <input class="inp hide" id="li-name" type="text" placeholder="Nazwa użytkownika">
@@ -1094,6 +1096,8 @@ async function askLogout(){
   function _link(label,href){ var a=document.createElement('a'); a.textContent=label; a.href=href;
     a.target='_blank'; a.rel='noopener'; a.style.cssText=_ST.row; return a; }
 
+  sheet.appendChild(_sec('Język interfejsu'));
+  (function(){ var w=document.createElement('div'); w.style.cssText='padding:4px 2px 8px'; w.innerHTML=(typeof window.eylNativeSwitchHTML==='function')?window.eylNativeSwitchHTML():''; sheet.appendChild(w); })();
   sheet.appendChild(_sec('Aplikacja'));
   sheet.appendChild(_btn('Otwórz pełną wersję strony','row',function(){ ov.remove(); location.href='index.html?web=1'; }));
 

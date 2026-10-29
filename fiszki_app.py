@@ -98,7 +98,7 @@ def _jp_tts_word(word):
 LANG_TTS_MAP = {
     "en": "en", "es": "es", "de": "de", "fr": "fr", "it": "it",
     "nl": "nl", "pt": "pt", "no": "no", "ru": "ru", "uk": "uk",
-    "ar": "ar", "jp": "ja", "zh": "zh-CN", "ko": "ko",
+    "ar": "ar", "jp": "ja", "zh": "zh-CN", "ko": "ko", "pl": "pl",
 }
 
 # Jezyki o pismie nielatynskim — pokazujemy transliteracje (kolumna romaji), tak jak w japonskim
@@ -354,6 +354,270 @@ else:
     print("[SUPABASE] OSTRZEZENIE: brak ClientOptions - auto_refresh_token zostaje "
           "WLACZONY. Mozliwe uniewaznianie sesji. Sprawdz wersje biblioteki supabase.")
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+# ══════════════════════════════════════════════════════════════════
+# JĘZYK OJCZYSTY (pl | en) — ten sam model co web/PWA (i18n.js)
+#  • wybór zapisany w ~/.eyelingo_native.json, po zalogowaniu synchronizowany z profiles.native_lang
+#  • dane: flashcards.translation → translation_en, categories/levels.label → label_en
+#  • interfejs: słownik i18n/en.json (ten sam plik co web) nakładany na teksty widżetów Qt
+#  • słowa fiszek (pole word) nigdy nie są tłumaczone
+# ══════════════════════════════════════════════════════════════════
+import re as _eyl_re
+_EYL_NATIVE_FILE = Path.home() / ".eyelingo_native.json"
+
+def _eyl_native_load():
+    try:
+        v = json.loads(_EYL_NATIVE_FILE.read_text(encoding="utf-8")).get("native")
+        if v in ("pl", "en"):
+            return v
+    except Exception:
+        pass
+    return "pl"
+
+EYL_NATIVE = _eyl_native_load()
+EYL_EN = EYL_NATIVE == "en"
+
+def eyl_native_save(v):
+    if v not in ("pl", "en"):
+        return
+    try:
+        _EYL_NATIVE_FILE.write_text(json.dumps({"native": v}), encoding="utf-8")
+    except Exception:
+        pass
+
+_EYL_DICT = {}
+_EYL_CARD_WORDS = set()
+_EYL_FRAG = None
+_EYL_PL_CHARS = _eyl_re.compile(r"[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]")
+
+def _eyl_load_dict():
+    global _EYL_DICT, _EYL_FRAG
+    data = None
+    try:
+        p = _resource_path(os.path.join("i18n", "en.json"))
+        if os.path.exists(p):
+            data = json.loads(open(p, encoding="utf-8").read())
+    except Exception:
+        data = None
+    if data is None:
+        try:
+            with urllib.request.urlopen("https://www.eyelingo.app/i18n/en.json", timeout=8) as r:
+                data = json.loads(r.read().decode("utf-8"))
+        except Exception as e:
+            print("[i18n] brak słownika:", e)
+            data = {}
+    data.pop("__rich", None)
+    _EYL_DICT = {k: v for k, v in data.items() if isinstance(v, str) and v}
+    keys = sorted((k for k in _EYL_DICT if len(k) >= 3), key=len, reverse=True)[:4000]
+    if keys:
+        parts = []
+        for k in keys:
+            a = r"(?<![\w])" if _eyl_re.match(r"\w", k[0]) else ""
+            z = r"(?![\w])" if _eyl_re.match(r"\w", k[-1]) else ""
+            parts.append(a + _eyl_re.escape(k) + z)
+        try:
+            _EYL_FRAG = _eyl_re.compile("|".join(parts))
+        except Exception:
+            _EYL_FRAG = None
+
+def eyl_tr(s):
+    """Tłumaczy tekst interfejsu na angielski (tylko native=en)."""
+    if not EYL_EN or not isinstance(s, str) or not s or not _EYL_DICT:
+        return s
+    t = s.strip()
+    if not t or len(t) > 4000:
+        return s
+    n = _eyl_re.sub(r"[\u00a0\u202f\s]+", " ", t)
+    if n.lower() in _EYL_CARD_WORDS:
+        return s
+    hit = _EYL_DICT.get(n)
+    if hit:
+        lead = s[: len(s) - len(s.lstrip())]
+        trail = s[len(s.rstrip()):]
+        return lead + hit + trail
+    if not _EYL_FRAG:
+        return s
+    out = _EYL_FRAG.sub(lambda m: _EYL_DICT.get(m.group(0), m.group(0)), s.replace("\u00a0", " "))
+    if _EYL_PL_CHARS.search(out):
+        return s          # pół-polskie zdanie — zostawiamy oryginał
+    return out
+
+# ── dane Supabase ──
+def _eyl_aug(cols, keys):
+    for k in keys:
+        cols = _eyl_re.sub(r"(^|[,(\s])" + k + r"(?![_\w])", r"\g<1>" + k + "," + k + "_en", cols)
+    return cols
+
+def _eyl_augment(table, cols):
+    if not EYL_EN or not isinstance(cols, str) or "*" in cols:
+        return cols
+    if table == "flashcards":
+        cols = _eyl_aug(cols, ["translation"])
+    elif table in ("categories", "languages", "levels"):
+        cols = _eyl_aug(cols, ["label", "description"])
+    def nested(c, name, keys):
+        return _eyl_re.sub(name + r"(\([^()]*\))", lambda m: name + _eyl_aug(m.group(1), keys), c)
+    cols = nested(cols, "flashcards", ["translation"])
+    cols = nested(cols, "categories", ["label"])
+    return cols
+
+def _eyl_map(o):
+    if isinstance(o, list):
+        for x in o:
+            _eyl_map(x)
+        return
+    if not isinstance(o, dict):
+        return
+    w = o.get("word")
+    if isinstance(w, str) and len(w) < 80:
+        _EYL_CARD_WORDS.add(w.strip().lower())
+    if EYL_EN:
+        for k in ("translation", "label", "description"):
+            ke = k + "_en"
+            if ke in o:
+                if o.get(ke):
+                    o[k] = o[ke]
+                o.pop(ke, None)
+    for v in list(o.values()):
+        if isinstance(v, (dict, list)):
+            _eyl_map(v)
+
+class _EylQuery:
+    """Pośrednik wokół buildera supabase-py: rozszerza select i mapuje wynik execute()."""
+    def __init__(self, inner, table):
+        self._i = inner
+        self._t = table
+    def select(self, *a, **kw):
+        if a and isinstance(a[0], str):
+            a = (_eyl_augment(self._t, a[0]),) + tuple(a[1:])
+        return _EylQuery(self._i.select(*a, **kw), self._t)
+    def execute(self, *a, **kw):
+        res = self._i.execute(*a, **kw)
+        try:
+            data = getattr(res, "data", None)
+            if self._t == "languages" and isinstance(data, list):
+                res.data = [r for r in data if not (isinstance(r, dict) and r.get("code") == EYL_NATIVE)]
+                data = res.data
+            _eyl_map(data)
+        except Exception:
+            pass
+        return res
+    def __getattr__(self, name):
+        attr = getattr(self._i, name)
+        if callable(attr):
+            def _w(*a, **kw):
+                r = attr(*a, **kw)
+                return _EylQuery(r, self._t) if hasattr(r, "execute") else r
+            return _w
+        return attr
+
+try:
+    _eyl_table_orig = supabase.table
+    def _eyl_table(name):
+        return _EylQuery(_eyl_table_orig(name), name)
+    supabase.table = _eyl_table
+except Exception as _e:
+    print("[i18n] nie udało się owinąć supabase.table:", _e)
+
+def eyl_sync_native_from_profile():
+    """Po zalogowaniu: jeśli profil ma inny język niż urządzenie i na urządzeniu nic nie wybrano — przyjmij profil."""
+    try:
+        uid = current_uid()
+        if not uid:
+            return None
+        r = supabase.table("profiles").select("native_lang").eq("user_id", uid).limit(1).execute()
+        p = (r.data or [{}])[0].get("native_lang")
+        if p in ("pl", "en") and not _EYL_NATIVE_FILE.exists():
+            eyl_native_save(p)
+            return p
+        if p in ("pl", "en") and p != EYL_NATIVE and _EYL_NATIVE_FILE.exists():
+            eyl_native_save(p)
+            return p
+        return None
+    except Exception:
+        return None
+
+def eyl_set_native(v):
+    """Zmiana języka z menu — zapis lokalnie i w profilu; działa po ponownym uruchomieniu."""
+    eyl_native_save(v)
+    try:
+        uid = current_uid()
+        if uid:
+            supabase.table("profiles").update({"native_lang": v}).eq("user_id", uid).execute()
+    except Exception:
+        pass
+
+# ── teksty widżetów Qt ──
+def _eyl_install_qt_i18n(app):
+    if not EYL_EN:
+        return
+    _eyl_load_dict()
+    from PyQt6.QtWidgets import (QLabel as _L, QAbstractButton as _B, QLineEdit as _E, QGroupBox as _G,
+                                 QWidget as _W, QMessageBox as _M, QComboBox as _C, QMenu as _MN)
+    from PyQt6.QtGui import QAction as _A
+    from PyQt6.QtCore import QObject as _O, QEvent as _EV
+
+    def _patch(cls, meth):
+        orig = getattr(cls, meth, None)
+        if orig is None or getattr(orig, "_eyl", False):
+            return
+        def w(self, *a, **kw):
+            if a and isinstance(a[0], str):
+                a = (eyl_tr(a[0]),) + tuple(a[1:])
+            return orig(self, *a, **kw)
+        w._eyl = True
+        try:
+            setattr(cls, meth, w)
+        except Exception as e:
+            print("[i18n] patch", cls.__name__, meth, e)
+    for cls, meth in ((_L, "setText"), (_B, "setText"), (_E, "setPlaceholderText"), (_G, "setTitle"),
+                      (_W, "setWindowTitle"), (_W, "setToolTip"), (_A, "setText"), (_M, "setText"),
+                      (_M, "setInformativeText"), (_MN, "setTitle")):
+        _patch(cls, meth)
+    for meth in ("addItem",):
+        orig = getattr(_C, meth)
+        def w(self, *a, _o=orig, **kw):
+            a = list(a)
+            for i, x in enumerate(a):
+                if isinstance(x, str):
+                    a[i] = eyl_tr(x)
+                    break
+            return _o(self, *a, **kw)
+        try: setattr(_C, meth, w)
+        except Exception: pass
+    for meth in ("information", "warning", "critical", "question"):
+        orig = getattr(_M, meth)
+        def w(*a, _o=orig, **kw):
+            a = [eyl_tr(x) if isinstance(x, str) else x for x in a]
+            return _o(*a, **kw)
+        try: setattr(_M, meth, staticmethod(w))
+        except Exception: pass
+
+    class _Fix(_O):
+        """Teksty podane w konstruktorze (QLabel("…")) — poprawiamy przy pierwszym pokazaniu."""
+        def eventFilter(self, obj, ev):
+            try:
+                if ev.type() in (_EV.Type.Show, _EV.Type.Polish):
+                    if isinstance(obj, (_L, _B)):
+                        t = obj.text()
+                        n = eyl_tr(t)
+                        if n != t:
+                            obj.setText(n)
+                    if isinstance(obj, _E):
+                        t = obj.placeholderText(); n = eyl_tr(t)
+                        if n != t: obj.setPlaceholderText(n)
+                    if isinstance(obj, _G):
+                        t = obj.title(); n = eyl_tr(t)
+                        if n != t: obj.setTitle(n)
+                    if isinstance(obj, _W) and obj.isWindow():
+                        t = obj.windowTitle(); n = eyl_tr(t)
+                        if n != t: obj.setWindowTitle(n)
+            except Exception:
+                pass
+            return False
+    app._eyl_fix = _Fix()
+    app.installEventFilter(app._eyl_fix)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -834,7 +1098,16 @@ LANGUAGES = [
     {"code": "ko", "label": "Koreański",    "flag": "🇰🇷", "available": True},
     {"code": "ar", "label": "Arabski",      "flag": "🇸🇦", "available": True},
     {"code": "no", "label": "Norweski",     "flag": "🇳🇴", "available": True},
+    {"code": "pl", "label": "Polski",       "flag": "🇵🇱", "available": True},
 ]
+# Język ojczysty nie jest językiem do nauki (Polak nie widzi polskiego, anglojęzyczny — angielskiego).
+LANGUAGES = [l for l in LANGUAGES if l["code"] != EYL_NATIVE]
+if EYL_EN:
+    _EYL_LANG_EN = {"en": "English", "es": "Spanish", "jp": "Japanese", "nl": "Dutch", "de": "German",
+                    "fr": "French", "it": "Italian", "pt": "Portuguese", "ru": "Russian", "uk": "Ukrainian",
+                    "zh": "Chinese", "ko": "Korean", "ar": "Arabic", "no": "Norwegian", "pl": "Polish"}
+    for _l in LANGUAGES:
+        _l["label"] = _EYL_LANG_EN.get(_l["code"], _l["label"])
 LEVELS = [
     {"code": "A1", "label": "A1", "desc": "Początkujący",        "free": True},
     {"code": "A2", "label": "A2", "desc": "Podstawowy",          "free": False},
@@ -7709,6 +7982,7 @@ class TrayApp:
         menu.add_sep()
         menu.add_row("refresh", "Sprawdź aktualizacje", lambda: self.check_updates(manual=True))
         menu.add_row("logout", "Wyloguj", self._logout)
+        menu.add_row("refresh", ("Language: English → Polski" if EYL_EN else "Język: Polski → English"), self._toggle_native)
         menu.add_sep()
         menu.add_row("close", "Zamknij Eyelingo", self._quit, danger=True)
         self._tray_menu = menu
@@ -8469,6 +8743,15 @@ class TrayApp:
         self._on_lang(prev_lang)
 
 
+    def _toggle_native(self):
+        nv = "pl" if EYL_EN else "en"
+        eyl_set_native(nv)
+        try:
+            QMessageBox.information(None, "Eyelingo",
+                "Restart Eyelingo to switch the language." if nv == "en" else "Uruchom Eyelingo ponownie, aby zmienić język.")
+        except Exception:
+            pass
+
     def _logout(self):
         clear_session()
         try:
@@ -8655,6 +8938,14 @@ def main():
     _dbg("=== APP START ===")
     _dbg(f"[SESSION] plik sesji: {SESSION_FILE}")
     app = QApplication(sys.argv)
+    try:
+        _eyl_install_qt_i18n(app)
+    except Exception as _e:
+        print('[i18n] Qt:', _e)
+    try:
+        QTimer.singleShot(8000, lambda: threading.Thread(target=eyl_sync_native_from_profile, daemon=True).start())
+    except Exception:
+        pass
     app.setQuitOnLastWindowClosed(False)
 
     # Ikona aplikacji = TEN SAM znak, co w zasobniku (biało-pomarańczowy, base64 w kodzie).

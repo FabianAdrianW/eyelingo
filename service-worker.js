@@ -19,7 +19,7 @@
  * ──────────────────────────────────────────────────────────────────────────
  */
 
-const CACHE = 'eyelingo-shell-v6';   // bump wersji => stary, zepsuty cache zostaje wyczyszczony
+const CACHE = 'eyelingo-shell-v7';   // bump wersji => stary, zepsuty cache zostaje wyczyszczony
 
 // Pliki shellu (ścieżki względne — działają też pod /repo/ na GitHub Pages)
 const SHELL = [
@@ -30,7 +30,9 @@ const SHELL = [
   './favicon.ico',
   './icon192.png',
   './icon512.png',
-  './apple-touch-icon-180.png'
+  './apple-touch-icon-180.png',
+  './i18n.js',
+  './i18n/en.json'
 ];
 
 // INSTALL — wrzuć shell do cache i aktywuj od razu
