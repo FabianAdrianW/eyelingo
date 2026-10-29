@@ -19,7 +19,7 @@
  * ──────────────────────────────────────────────────────────────────────────
  */
 
-const CACHE = 'eyelingo-shell-v16';   // bump wersji => stary, zepsuty cache zostaje wyczyszczony
+const CACHE = 'eyelingo-shell-v17';   // bump wersji => stary, zepsuty cache zostaje wyczyszczony
 
 // Pliki shellu (ścieżki względne — działają też pod /repo/ na GitHub Pages)
 const SHELL = [
@@ -32,6 +32,7 @@ const SHELL = [
   './icon512.png',
   './apple-touch-icon-180.png',
   './i18n.js',
+  './eyl-settle.js',
   './i18n/en.json'
 ];
 
