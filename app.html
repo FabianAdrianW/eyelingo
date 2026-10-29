@@ -6217,6 +6217,7 @@ async function alexSend(){
       var sid=ins.data.id;
       var cr=await db.from('user_set_cards').insert(cards.map(function(c){ return {set_id:sid,word:c.word,translation:c.translation}; }));
       if(cr.error) throw cr.error;
+      try{ if(typeof window.eylTutorSetCreated==='function') await window.eylTutorSetCreated(sid); }catch(_te){}
       window.eylNewSetClose();
       go('mine'); loadMine();
       /* Koniec to następny krok, nie ślepa uliczka (Flow §RZ-14) — lądujemy
@@ -9321,6 +9322,6 @@ window.eylPagedFetch = async function(makeQuery, opts){
 </script>
 
 <script src="vendor/qrcode-generator.min.js" defer></script>
-<script src="tutor-mode.js?v=7" defer></script>
+<script src="tutor-mode.js?v=8" defer></script>
 </body>
 </html>

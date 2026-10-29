@@ -4709,6 +4709,7 @@ window.saveNewSet = async function saveNewSet(){
     var set=insRes.data, error=insRes.error;
     if(error||!set) throw error||new Error('Błąd');
     if(cards.length) await db.from('user_set_cards').insert(cards.map(function(c){return Object.assign({},c,{set_id:set.id});}));
+    try{ if(typeof window.eylTutorSetCreated==='function') await window.eylTutorSetCreated(set.id); }catch(_te){}
     closeMatModal();
     typeof showToast!=='undefined'&&showToast('Zestaw "'+name+'" utworzony!','success');
     // If created from within a collection, assign it there
@@ -25909,4 +25910,4 @@ input[type="search"]:focus,input[type="number"]:focus{
 </script>
 
 <script src="vendor/qrcode-generator.min.js" defer></script>
-<script src="tutor-mode.js?v=7" defer></script>
+<script src="tutor-mode.js?v=8" defer></script>

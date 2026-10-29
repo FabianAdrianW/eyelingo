@@ -235,7 +235,7 @@
   /* ═══════ 3. NAUCZYCIEL ═══════ */
   var _students=[];            // [{link_id,student_id,label,student_name,sets:[ids]}]
   var _view='list', _cur=null; // 'list' | 'student'
-  var _curSets=[], _pending=null, _studyAt=0;
+  var _curSets=[], _pending=null, _target=null, _studyAt=0;
 
   var IC={
     chev:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>',
@@ -502,8 +502,8 @@
   /* — nowy zestaw prosto do katalogu ucznia (ręcznie / z AI) — */
   async function startCreate(s,kind){
     var u=await uid(); if(!u) return;
-    var r=await DB().from('user_sets').select('id').eq('user_id',u);
-    _pending={link:s.link_id,ids:((r&&r.data)||[]).map(function(x){return x.id;}),t:Date.now(),name:nm(s)};
+    /* Jawny cel: kreator po zapisie woła window.eylTutorSetCreated(id) — bez zgadywania po liście. */
+    _target={link:s.link_id,t:Date.now(),name:nm(s)};
     try{
       if(IS_PWA){
         if(typeof window.eylNewSetOpen!=='function'){ toast('Kreator zestawów niedostępny.'); return; }
@@ -514,20 +514,32 @@
       else toast('Kreator zestawów niedostępny.');
     }catch(e){}
   }
-  async function autoAssign(){
-    if(!_pending) return;
-    if(Date.now()-_pending.t>30*60*1000){ _pending=null; return; }
+  async function autoAssign(){ /* zastąpione przez eylTutorSetCreated (v8) */ }
+  /* Wywoływane przez kreator (web: saveNewSet, PWA: zapis nowego zestawu) zaraz po insercie user_sets. */
+  window.eylTutorSetCreated=async function(setId){
+    var tg=_target; _target=null;
+    if(!tg || !setId) return false;
+    if(Date.now()-tg.t>60*60*1000) return false;
     try{
-      var u=await uid(); if(!u) return;
-      var r=await DB().from('user_sets').select('id,name').eq('user_id',u).order('id',{ascending:false}).limit(10);
-      var fresh=((r&&r.data)||[]).filter(function(x){ return _pending.ids.indexOf(x.id)<0; });
-      if(!fresh.length) return;
-      var pd=_pending; _pending=null;
-      var ins=await DB().from('tutor_link_sets').insert(fresh.map(function(x){ return {link_id:pd.link,set_id:x.id}; }));
-      if(ins.error){ toast(mapErr(ins.error)); return; }
-      toast('Dodano do katalogu: '+pd.name);
-    }catch(e){}
+      var ins=await DB().from('tutor_link_sets').insert({link_id:tg.link,set_id:Number(setId)});
+      if(ins.error){ infoBox('Zestaw zapisany, ale nie trafił do ucznia',mapErr(ins.error)+' Przypnij go ręcznie: „Przypisz istniejący”.'); return false; }
+      toast('Dodano do katalogu: '+tg.name);
+      return true;
+    }catch(e){ infoBox('Zestaw zapisany, ale nie trafił do ucznia','Przypnij go ręcznie: „Przypisz istniejący”.'); return false; }
+  };
+  /* Zamknięcie kreatora bez zapisu anuluje cel (zapis woła hook przed zamknięciem). */
+  window.eylTutorCancelTarget=function(){ _target=null; };
+  /* Kreator otwarty spoza panelu ucznia (zwykły „Nowy zestaw”) kasuje stary cel. */
+  function guardCreators(){
+    ['openCreateSet','openCreateSetAI','eylNewSetOpen'].forEach(function(k){
+      var f=window[k]; if(typeof f!=='function' || f.__tutorGuard) return;
+      var g=function(){ if(_target && Date.now()-_target.t>5000) _target=null; return f.apply(this,arguments); };
+      g.__tutorGuard=true; window[k]=g;
+    });
+    var c=window.eylNewSetClose;
+    if(typeof c==='function' && !c.__tutorGuard){ var gc=function(){ _target=null; return c.apply(this,arguments); }; gc.__tutorGuard=true; window.eylNewSetClose=gc; }
   }
+  (function waitG(){ var n=0; (function tick(){ guardCreators(); if(n++<60) setTimeout(tick,1000); })(); })();
   async function unpinSet(s,set){
     if(!(await confirmBox('Odpiąć zestaw od ucznia?','„'+(set.name||'Zestaw')+'” zniknie z aplikacji ucznia. Zestaw zostaje na Twoim koncie.','Odepnij',true))) return;
     var r=await DB().from('tutor_link_sets').delete().eq('link_id',s.link_id).eq('set_id',set.id);
