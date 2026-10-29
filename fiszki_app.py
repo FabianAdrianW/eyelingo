@@ -432,10 +432,17 @@ def eyl_tr(s):
     if n.lower() in _EYL_CARD_WORDS:
         return s
     hit = _EYL_DICT.get(n)
+    lead = s[: len(s) - len(s.lstrip())]
+    trail = s[len(s.rstrip()):]
     if hit:
-        lead = s[: len(s) - len(s.lstrip())]
-        trail = s[len(s.rstrip()):]
         return lead + hit + trail
+    # szablony z liczbami: „do 20 fiszek” ↔ klucz „do # fiszek” (jak w i18n.js)
+    if _eyl_re.search(r"\d", n):
+        nums = _eyl_re.findall(r"\d+(?:[.,]\d+)?", n)
+        tv = _EYL_DICT.get(_eyl_re.sub(r"\d+(?:[.,]\d+)?", "#", n))
+        if tv:
+            it = iter(nums)
+            return lead + _eyl_re.sub("#", lambda m: next(it, ""), tv) + trail
     if not _EYL_FRAG:
         return s
     out = _EYL_FRAG.sub(lambda m: _EYL_DICT.get(m.group(0), m.group(0)), s.replace("\u00a0", " "))
@@ -586,6 +593,16 @@ def _eyl_install_qt_i18n(app):
             return _o(self, *a, **kw)
         try: setattr(_C, meth, w)
         except Exception: pass
+    try:
+        from PyQt6.QtWidgets import QSystemTrayIcon as _T
+        _patch(_T, "setToolTip")
+        _o_sm = _T.showMessage
+        def _sm(self, *a, _o=_o_sm, **kw):
+            a = [eyl_tr(x) if isinstance(x, str) else x for x in a]
+            return _o(self, *a, **kw)
+        _T.showMessage = _sm
+    except Exception as e:
+        print("[i18n] tray", e)
     for meth in ("information", "warning", "critical", "question"):
         orig = getattr(_M, meth)
         def w(*a, _o=orig, **kw):
@@ -7803,7 +7820,7 @@ class _TrayRow(QWidget):
     """Wiersz menu traya: ikona + podpis, najazd rozjaśnia tło, klik wykonuje akcję."""
     def __init__(self, icon, text, danger=False, parent=None):
         super().__init__(parent)
-        self._icon, self._text, self._danger = icon, text, danger
+        self._icon, self._text, self._danger = icon, eyl_tr(text), danger
         self._h = 0.0
         self._cb = None
         self.setFixedSize(236, 42)
@@ -7817,7 +7834,7 @@ class _TrayRow(QWidget):
         self._h = float(v); self.update()
 
     def set_content(self, icon, text):
-        self._icon, self._text = icon, text; self.update()
+        self._icon, self._text = icon, eyl_tr(text); self.update()
 
     def _go(self, on):
         self._anim.stop()
@@ -8744,13 +8761,35 @@ class TrayApp:
 
 
     def _toggle_native(self):
+        """Zmiana języka: zapis (lokalnie + profil) i samoczynny restart aplikacji w nowym języku."""
         nv = "pl" if EYL_EN else "en"
         eyl_set_native(nv)
         try:
-            QMessageBox.information(None, "Eyelingo",
-                "Restart Eyelingo to switch the language." if nv == "en" else "Uruchom Eyelingo ponownie, aby zmienić język.")
-        except Exception:
-            pass
+            import subprocess
+            env = {k: v for k, v in os.environ.items() if not k.startswith(("_MEI", "_PYI"))}
+            env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+            if getattr(sys, "frozen", False):
+                exe = sys.executable
+                if sys.platform == "darwin" and ".app/" in exe:
+                    cmd = ["open", "-n", exe.split(".app/")[0] + ".app"]
+                else:
+                    cmd = [exe] + sys.argv[1:]
+            else:
+                cmd = [sys.executable, os.path.abspath(sys.argv[0])] + sys.argv[1:]
+            kw = {"env": env, "close_fds": True}
+            if sys.platform == "win32":
+                kw["creationflags"] = 0x00000008 | 0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+            else:
+                kw["start_new_session"] = True
+            subprocess.Popen(cmd, **kw)
+            self._quit()
+        except Exception as e:
+            print("[i18n] restart:", e)
+            try:
+                QMessageBox.information(None, "Eyelingo",
+                    "Restart Eyelingo to switch the language." if nv == "en" else "Uruchom Eyelingo ponownie, aby zmienić język.")
+            except Exception:
+                pass
 
     def _logout(self):
         clear_session()

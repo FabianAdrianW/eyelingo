@@ -23,7 +23,23 @@ for k,v in list(out.items()):
         out[k]=v.replace('Polish','English')
     if v=='Lesson: PL': out[k]='Lesson: EN'
 manual.update({"Polski":"English","polski":"English","PL":"EN","Kierunek:":"Direction:","Kierunek":"Direction","Obcy":"Foreign","obcy":"foreign"})
+manual.update({
+ "PRO odblokowuje wszystkie poziomy.":"PRO unlocks all levels.",
+ "PRO odblokowuje wszystkie poziomy i funkcje":"PRO unlocks all levels and features",
+ "Plan darmowy: do # fiszek w zestawie · Subskrypcja = bez limitu":"Free plan: up to # cards per set · Subscription = unlimited",
+ "Subskrypcja odblokuje nieograniczone zestawy":"A subscription unlocks unlimited sets",
+ "Odblokuj poziom":"Unlock level",
+ "Subskrypcja":"Subscription",
+ "Subskrypcja roczna · # zł/rok":"Annual subscription · # PLN/year",
+ "Subskrypcja miesięczna · # zł/mies":"Monthly subscription · # PLN/month",
+ "Subskrypcja odnawia się automatycznie co miesiąc (# zł) lub co rok (# zł), dopóki jej nie anulujesz. Anulować możesz w każdej chwili — napisz na eyelingo.app@gmail.com lub użyj panelu płatności.":"The subscription renews automatically every month (# PLN) or every year (# PLN) until you cancel it. You can cancel at any time — write to eyelingo.app@gmail.com or use the billing portal.",
+ "Poprzednia kategoria":"Previous category",
+ "Kliknij przycisk → naciśnij kombinację. ✖ = wyłącz":"Click a button → press the key combination. ✖ = disable",
+ "[ naciśnij kombinację… ]":"[ press the combination… ]",
+ "Masz najnowszą wersję":"You have the latest version",
+})
 out.update(manual)
+out.update(json.load(open('manual_extra.json')))   # ręczne poprawki naniesione wcześniej wprost na en.json
 rich=json.load(open('rich_raw.json'))
 out['__rich']={k:v for k,v in rich.items() if v and k!=v}
 json.dump(out,open(sys.argv[1],'w'),ensure_ascii=False,separators=(',',':'),sort_keys=True)

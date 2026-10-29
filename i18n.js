@@ -12,7 +12,7 @@
    Słowa z fiszek (pole word) nigdy nie są tłumaczone przez słownik. */
 (function(){
   'use strict';
-  var KEY='eyl_native', V='5';
+  var KEY='eyl_native', V='6';
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 
