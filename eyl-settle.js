@@ -13,7 +13,7 @@
   if(window.__eylSettle) return; window.__eylSettle=true;
 
   var MAX_MS=3500, QUIET_MS=240, SPIN_AFTER=380;
-  var EXCLUDE='[id^="tryb-card"],#tryb-answer-input,#tryb-confetti,[id^="srs-"],[id^="lex-"],[id^="lexx"],#page-teacher,#imm-lex,#imm-alex,#imm-powt,'
+  var EXCLUDE='nav,.nav,#nav,[id^="tryb-card"],#tryb-answer-input,#tryb-confetti,[id^="srs-"],[id^="lex-"],[id^="lexx"],#page-teacher,#imm-lex,#imm-alex,#imm-powt,'
     +'#eyl-sw-cover,#eyl-nav-gate,#eyl-boot-gate,#eyl-settle-spin,.toast,[role="tooltip"],[data-nosettle]';
   var ROOTS={HTML:1,BODY:1,HEAD:1}, NOHOLD={STYLE:1,SCRIPT:1,LINK:1,META:1,TITLE:1,NOSCRIPT:1,TEMPLATE:1};
 
@@ -82,18 +82,40 @@
     var w=win; if(!w || w.done || (!w.pending && !w.used)) return;   // działanie bez zapytań — zmiany idą od razu
     w.last=Date.now();
     if(window.__eylSettleTrace) window.__eylSettleTrace.push([Date.now()-w.t0,muts.length,muts[0].target.id||muts[0].target.className||muts[0].target.nodeName]);
+    /* Pełna podmiana zawartości na identyczną (np. panel boczny, licznik rysowany od nowa) — nie wstrzymujemy,
+       bo nic się wizualnie nie zmienia. Pamiętamy stan sprzed okna: gdy wróci identyczny, zdejmujemy wstrzymanie. */
+    var seen=new Map();
     for(var i=0;i<muts.length;i++){
       var m=muts[i], t=m.target;
-      if(m.type==='characterData'){ if(t.parentNode && !big(t.parentNode)) hold(w,t.parentNode); continue; }
+      if(m.type==='characterData'){
+        var pe=t.parentNode; if(!pe || big(pe)) continue;
+        if(m.oldValue===t.nodeValue) continue;
+        if(!w.prev.has(pe)) w.prev.set(pe,null);
+        hold(w,pe); continue;
+      }
       if(m.type!=='childList' || t.nodeType!==1) continue;
-      if(t.classList && t.classList.contains('eyl-hold')) continue;
       if(big(t)){
         for(var j=0;j<m.addedNodes.length;j++){ var a=m.addedNodes[j]; if(a.nodeType===1 && !big(a)) hold(w,a); }
-      } else hold(w,t);
+        continue;
+      }
+      var rec=seen.get(t); if(!rec){ rec={rem:[],first:!w.prev.has(t)}; seen.set(t,rec); }
+      for(var k=0;k<m.removedNodes.length;k++) rec.rem.push(m.removedNodes[k]);
     }
+    seen.forEach(function(rec,t){
+      if(rec.first){
+        var old=''; for(var k=0;k<rec.rem.length;k++){ var n=rec.rem[k]; old+=n.nodeType===1?n.outerHTML:(n.nodeType===3?n.nodeValue:''); }
+        w.prev.set(t, rec.rem.length ? old : null);
+      }
+      var pv=w.prev.get(t);
+      if(pv!=null && t.innerHTML===pv){
+        if(w.held.has(t)){ w.held.delete(t); t.classList.remove('eyl-hold'); }
+        return;
+      }
+      if(!(t.classList && t.classList.contains('eyl-hold'))) hold(w,t);
+    });
     schedule(w);
   });
-  function startObs(){ try{ mo.observe(document.documentElement,{childList:true,subtree:true,characterData:true}); }catch(e){} }
+  function startObs(){ try{ mo.observe(document.documentElement,{childList:true,subtree:true,characterData:true,characterDataOldValue:true}); }catch(e){} }
   if(document.documentElement) startObs();
 
   /* ── spinner przy dłuższym czekaniu ── */
@@ -143,7 +165,7 @@
       // kolejne kliknięcie w trakcie — wstrzymane fragmenty zostają, licznik trwa (jedno odsłonięcie na końcu)
       win.t0=Date.now(); win.last=Date.now(); schedule(win); return;
     }
-    var w={t0:Date.now(),last:Date.now(),pending:0,used:false,held:new Set(),done:false,tm:null,spinT:null};
+    var w={t0:Date.now(),last:Date.now(),pending:0,used:false,held:new Set(),prev:new Map(),done:false,tm:null,spinT:null};
     w.cap=setTimeout(function(){ release(w); },MAX_MS+100);
     win=w; schedule(w);
   }
