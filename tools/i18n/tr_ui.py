@@ -1,5 +1,5 @@
 import json,sys,urllib.request,concurrent.futures as cf,os
-T=open('../.tok').read().strip()
+T=os.environ['EYL_JOB_TOKEN']  # admin_jobs.translate_token
 U='https://sntlgkhktscezxpxrchl.supabase.co/functions/v1/translate-native'
 src=sys.argv[1]; dst=sys.argv[2]
 c=json.load(open(src))
