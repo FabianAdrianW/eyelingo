@@ -376,6 +376,7 @@
      Prompty w aplikacji są pisane pod Polaka. Dla native=en każde wywołanie super-endpoint dostaje
      na początku nadrzędną instrukcję: wszystko, co miało być po polsku, ma być po angielsku.
      Klucze JSON zostają bez zmian (np. translation_pl niesie wtedy tekst angielski). */
+  var INFLIGHT=0, INF_T=0;
   var AI_NOTE='LANGUAGE OVERRIDE (highest priority): the learner\'s native language is ENGLISH, not Polish. '
     +'Wherever the instructions below ask for Polish (translations, meanings, titles, notes, explanations, feedback, "po polsku", "polskie tłumaczenie", "na polski"), write it in natural English instead. '
     +'Words "in the target language" stay in the target language. Never output Polish. Keep every JSON key and format exactly as requested.';
@@ -394,7 +395,15 @@
           }
         }
       }catch(e){}
-      return _f.call(this,input,init);
+      var pr=_f.call(this,input,init);
+      /* Licznik odczytów w toku — zasłona po zmianie języka odsłania stronę dopiero, gdy dane doszły. */
+      try{
+        var u2=(typeof input==='string')?input:(input&&input.url)||'', m2=((init&&init.method)||(input&&input.method)||'GET').toUpperCase();
+        if(/\/rest\/v1\//.test(u2) && (m2==='GET' || /\/rpc\/(get|catalog|list|usrs|my|search|fetch)/i.test(u2))){
+          INFLIGHT++; var dn=function(){ INFLIGHT=Math.max(0,INFLIGHT-1); INF_T=Date.now(); }; pr.then(dn,dn);
+        }
+      }catch(e){}
+      return pr;
     };
   }
 
@@ -454,19 +463,19 @@
     cvcss.textContent='#eyl-sw-cover{position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483000;background:var(--paper,#f8f7f4);opacity:0;transition:opacity .16s ease;pointer-events:none}'
       +'#eyl-sw-cover.on{opacity:1;pointer-events:auto}'
       +'#eyl-sw-cover i{position:absolute;left:50%;top:50%;display:block;width:var(--eyl-sw-s);height:var(--eyl-sw-s);transform:translate(-50%,-50%);opacity:0;transition:opacity .25s ease .25s}'
-      +'#eyl-sw-cover{--eyl-sw-s:clamp(200px,58vmin,380px)}'
-      +'#eyl-sw-cover.web{--eyl-sw-s:clamp(96px,20vmin,128px)}'
+      +'#eyl-sw-cover{--eyl-sw-s:clamp(72px,19vmin,128px)}'
+      +'#eyl-sw-cover.now i{opacity:1;transition:none}'
       +'#eyl-sw-cover i>span,#eyl-sw-cover i svg{width:100%!important;height:100%!important}'
-      +'#eyl-sw-cover i.ring{border-radius:50%;border:max(4px,calc(var(--eyl-sw-s)*.045)) solid rgba(26,35,64,.1);border-top-color:#c96a2a;box-sizing:border-box;animation:eylsw .9s linear infinite}'
       +'#eyl-sw-cover.on i{opacity:1}@keyframes eylsw{to{transform:translate(-50%,-50%) rotate(360deg)}}'
       +'@keyframes eyelingo-ring-spin{to{transform:rotate(360deg)}}'
       +'::view-transition-old(root),::view-transition-new(root){animation-duration:.18s}';
     (document.head||document.documentElement).appendChild(cvcss); }catch(e){}
   function cover(bg,instant){
     var c=document.getElementById('eyl-sw-cover');
-    if(!c){ c=document.createElement('div'); c.id='eyl-sw-cover'; c.innerHTML='<i class="ring"></i>'; c.setAttribute('aria-hidden','true'); if(!IS_PWA) c.classList.add('web'); document.documentElement.appendChild(c); fillSpin(c); }
+    if(!c){ c=document.createElement('div'); c.id='eyl-sw-cover'; c.innerHTML='<i></i>'; c.setAttribute('aria-hidden','true'); document.documentElement.appendChild(c); fillSpin(c); }
     if(bg) c.style.background=bg;
-    if(instant){ c.style.transition='none'; c.classList.add('on'); void c.offsetWidth; c.style.transition=''; }
+    /* Po przeładowaniu spinner jest widoczny od razu — kontynuacja tego ze starej strony, bez drugiego „wejścia”. */
+    if(instant){ c.style.transition='none'; c.classList.add('on','now'); void c.offsetWidth; c.style.transition=''; }
     else c.classList.add('on');
     return c;
   }
@@ -474,7 +483,10 @@
      go nie zdefiniuje (zasłona po przeładowaniu powstaje w <head>), kręci się zwykłe kółko. */
   function fillSpin(c,n){
     var i=c.querySelector('i'); if(!i) return;
-    if(typeof window.eyelingoSpinner==='function'){ try{ i.className=''; i.innerHTML=window.eyelingoSpinner(256); return; }catch(e){} }
+    if(i.firstChild) return;
+    /* Ten sam spinner co na starej stronie, od pierwszej klatki nowej (kod spinnera jeszcze się nie wczytał). */
+    if(!n){ try{ var cached=sessionStorage.getItem('eyl_sw_spin'); if(cached){ i.innerHTML=cached; return; } }catch(e){} }
+    if(typeof window.eyelingoSpinner==='function'){ try{ i.innerHTML=window.eyelingoSpinner(256); return; }catch(e){} }
     if((n||0)<60 && c.isConnected!==false) setTimeout(function(){ fillSpin(c,(n||0)+1); },50);
   }
   function pageBg(){
@@ -499,6 +511,7 @@
         var ap=document.querySelector('.page.active'); st.ps=(st.page===cp && ap)?ap.scrollTop:0;
       }
       sessionStorage.setItem(SW_KEY,JSON.stringify(st));
+      if(typeof window.eyelingoSpinner==='function') sessionStorage.setItem('eyl_sw_spin',window.eyelingoSpinner(256));
     }catch(e){}
     cover(st.bg);
     try{ var url=new URL(location.href); if(url.searchParams.has('lang')){ url.searchParams.delete('lang'); history.replaceState(null,'',url.toString()); } }catch(e){}
@@ -621,7 +634,8 @@
         var navGate=document.getElementById('eyl-nav-gate');
         var ready=(!EN || document.documentElement.classList.contains('eyl-i18n-ready'))
           && !(navGate && navGate.classList.contains('on'))
-          && (Date.now()-lastMut>250 || Date.now()-tR>1200);
+          && INFLIGHT===0 && Date.now()-INF_T>300
+          && (Date.now()-lastMut>250 || Date.now()-tR>1200) && Date.now()-tR>350;
         if(ready || el>8000){ reveal(); return; }
       }
       setTimeout(tick,50);

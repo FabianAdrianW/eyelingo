@@ -81,6 +81,7 @@
   var mo=new MutationObserver(function(muts){
     var w=win; if(!w || w.done || (!w.pending && !w.used)) return;   // działanie bez zapytań — zmiany idą od razu
     w.last=Date.now();
+    if(gateOn()){ w.gateSeen=true; return; }   // brama strony zasłania całość — ona decyduje o momencie odsłonięcia
     if(window.__eylSettleTrace) window.__eylSettleTrace.push([Date.now()-w.t0,muts.length,muts[0].target.id||muts[0].target.className||muts[0].target.nodeName]);
     /* Pełna podmiana zawartości na identyczną (np. panel boczny, licznik rysowany od nowa) — nie wstrzymujemy,
        bo nic się wizualnie nie zmienia. Pamiętamy stan sprzed okna: gdy wróci identyczny, zdejmujemy wstrzymanie. */
@@ -119,13 +120,25 @@
   if(document.documentElement) startObs();
 
   /* ── spinner przy dłuższym czekaniu ── */
+  function gateOn(){ var g=document.getElementById('eyl-nav-gate'); return !!(g && g.classList.contains('on')); }
+  /* Czy na ekranie już kręci się inny spinner (brama strony, zasłona zmiany języka, loader w treści)? */
+  function otherSpinnerVisible(){
+    var g=document.getElementById('eyl-nav-gate'); if(g && g.classList.contains('on')) return true;
+    if(document.getElementById('eyl-sw-cover') || document.getElementById('eyl-boot-gate')) return true;
+    var gs=document.querySelectorAll('svg g[style*="eyelingo-ring-spin"], .spinner, .loader, [data-eyl-spin]');
+    for(var i=0;i<gs.length;i++){
+      var el=gs[i]; if(el.closest('#eyl-settle-spin') || el.closest('.eyl-hold')) continue;
+      var r=el.getBoundingClientRect(); if(r.width>0 && r.height>0 && r.bottom>0 && r.top<innerHeight) return true;
+    }
+    return false;
+  }
   function spin(on){
     var s=document.getElementById('eyl-settle-spin');
     if(on){
+      if(otherSpinnerVisible()) return;          // jeden spinner na ekranie — nigdy dwa naraz
       if(!s){
         s=document.createElement('div'); s.id='eyl-settle-spin'; s.setAttribute('aria-hidden','true');
-        var big=/app\.html/.test(location.pathname)||!!document.getElementById('app-root');
-        s.innerHTML=(typeof window.eyelingoSpinner==='function')?window.eyelingoSpinner(big?96:72):'';
+        s.innerHTML=(typeof window.eyelingoSpinner==='function')?window.eyelingoSpinner(64):'';
         (document.body||document.documentElement).appendChild(s);
       }
       requestAnimationFrame(function(){ s.classList.add('on'); });
@@ -139,8 +152,9 @@
     var now=Date.now();
     if(now-w.t0>=MAX_MS){ release(w); return; }
     if(w.held.size && !w.spinT) w.spinT=setTimeout(function(){ if(!w.done && w.held.size) spin(true); },SPIN_AFTER);
-    var g=document.getElementById('eyl-nav-gate');
-    if(g && g.classList.contains('on')){ w.last=now; w.tm=setTimeout(function(){ schedule(w); },80); return; }   // brama strony aplikacji jeszcze trzyma — czekamy razem z nią
+    if(gateOn()){ w.gateSeen=true; w.last=now; w.tm=setTimeout(function(){ schedule(w); },40); return; }
+    /* Brama właśnie zeszła: to, co wstrzymane, pokazujemy w tej samej chwili (bez drugiego „wejścia”). */
+    if(w.gateSeen && !w.pending){ release(w); return; }
     var wait=w.pending ? 120 : Math.max(0,QUIET_MS-(now-w.last));
     if(!w.pending && wait===0 && w.used){ release(w); return; }
     if(!w.pending && !w.used && now-w.t0>400){ release(w); return; }   // działanie bez zapytań — zamykamy okno
