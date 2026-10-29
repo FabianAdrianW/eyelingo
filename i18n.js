@@ -12,7 +12,7 @@
    Słowa z fiszek (pole word) nigdy nie są tłumaczone przez słownik. */
 (function(){
   'use strict';
-  var KEY='eyl_native', V='3';
+  var KEY='eyl_native', V='4';
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 
@@ -426,6 +426,7 @@
     var b=function(v,l){ var on=NATIVE===v; return '<button type="button" data-noi18n onclick="eylSetNative(\''+v+'\')" aria-pressed="'+on+'" style="border:0;padding:5px 10px;border-radius:999px;font:600 12px/1 DM Sans,system-ui,sans-serif;cursor:pointer;background:'+(on?'var(--navy,#1a2340)':'transparent')+';color:'+(on?'#fff':'var(--navy,#1a2340)')+'">'+l+'</button>'; };
     return '<span class="eyl-native-sw" data-noi18n role="group" aria-label="Language" style="display:inline-flex;gap:2px;padding:2px;border:1px solid rgba(26,35,64,.18);border-radius:999px;background:rgba(255,255,255,.6)">'+b('pl','PL')+b('en','EN')+'</span>';
   };
+  try{ var swcss=document.createElement('style'); swcss.textContent='@media (max-width:640px){nav [data-eyl-native-switch]{display:none!important}}'; (document.head||document.documentElement).appendChild(swcss); }catch(e){}
   function mountSwitches(){
     var els=document.querySelectorAll('[data-eyl-native-switch]:not([data-mounted])');
     for(var i=0;i<els.length;i++){ els[i].innerHTML=window.eylNativeSwitchHTML(); els[i].setAttribute('data-mounted','1'); }
