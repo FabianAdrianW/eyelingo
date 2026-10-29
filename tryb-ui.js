@@ -89,7 +89,10 @@
   }
 
   function setName(){
-    try{ var n=(typeof stripEmoji==='function')?stripEmoji(_trybExternalName||''):(_trybExternalName||''); return n||'Sesja nauki'; }catch(e){ return 'Sesja nauki'; }
+    var n='Sesja nauki';
+    try{ n=((typeof stripEmoji==='function')?stripEmoji(_trybExternalName||''):(_trybExternalName||''))||n; }catch(e){}
+    try{ if(typeof window.eylT==='function') n=window.eylT(n); }catch(e){}
+    return n;
   }
   function langLabel(){
     var t=target(); if(!t) return '';
