@@ -350,10 +350,12 @@
     try{
       var c=client(); if(c && c.auth){
         var u=(await c.auth.getUser()).data.user;
-        if(u) await c.from('profiles').update({native_lang:v}).eq('user_id',u.id);
+        if(u) await Promise.race([c.rpc('set_native_lang',{p_lang:v}), new Promise(function(r){ setTimeout(r,2500); })]);
       }
     }catch(e){}
-    try{ var url=new URL(location.href); url.searchParams.delete('lang'); location.replace(url.toString()); }catch(e){ location.reload(); }
+    /* replace() na ten sam adres z #hash nie przeładowuje strony — stąd jawny reload. */
+    try{ var url=new URL(location.href); if(url.searchParams.has('lang')){ url.searchParams.delete('lang'); history.replaceState(null,'',url.toString()); } }catch(e){}
+    location.reload();
   };
   /* Po zalogowaniu: profil ma pierwszeństwo, gdy użytkownik nie wybrał nic na tym urządzeniu.
      Gdy wybrał (localStorage), a profil ma domyślne pl — zapisujemy wybór do profilu. */
@@ -366,7 +368,7 @@
       var local=lsGet(KEY);
       if(!local && p && p!==NATIVE){ lsSet(KEY,p); location.reload(); return true; }
       if(local && p && p!==local){
-        if(local==='en' && p==='pl'){ await c.from('profiles').update({native_lang:'en'}).eq('user_id',u.id); }
+        if(local==='en' && p==='pl'){ await c.rpc('set_native_lang',{p_lang:'en'}); }
         else { lsSet(KEY,p); location.reload(); }
       }
       if(!local) lsSet(KEY,p||'pl');

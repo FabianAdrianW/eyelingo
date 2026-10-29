@@ -544,7 +544,7 @@ def eyl_set_native(v):
     try:
         uid = current_uid()
         if uid:
-            supabase.table("profiles").update({"native_lang": v}).eq("user_id", uid).execute()
+            supabase.rpc("set_native_lang", {"p_lang": v}).execute()
     except Exception:
         pass
 
