@@ -19,7 +19,7 @@
  * ──────────────────────────────────────────────────────────────────────────
  */
 
-const CACHE = 'eyelingo-shell-v13';   // bump wersji => stary, zepsuty cache zostaje wyczyszczony
+const CACHE = 'eyelingo-shell-v14';   // bump wersji => stary, zepsuty cache zostaje wyczyszczony
 
 // Pliki shellu (ścieżki względne — działają też pod /repo/ na GitHub Pages)
 const SHELL = [
