@@ -15,7 +15,7 @@
   var MAX_MS=3500, QUIET_MS=240, SPIN_AFTER=380;
   var EXCLUDE='[id^="tryb-card"],#tryb-answer-input,#tryb-confetti,[id^="srs-"],[id^="lex-"],[id^="lexx"],#page-teacher,#imm-lex,#imm-alex,#imm-powt,'
     +'#eyl-sw-cover,#eyl-nav-gate,#eyl-boot-gate,#eyl-settle-spin,.toast,[role="tooltip"],[data-nosettle]';
-  var ROOTS={HTML:1,BODY:1,HEAD:1};
+  var ROOTS={HTML:1,BODY:1,HEAD:1}, NOHOLD={STYLE:1,SCRIPT:1,LINK:1,META:1,TITLE:1,NOSCRIPT:1,TEMPLATE:1};
 
   /* ── śledzenie zapytań odczytu ── */
   var win=null;                         // bieżące okno działania użytkownika
@@ -73,7 +73,7 @@
     return false;
   }
   function hold(w,el){
-    if(!el || el.nodeType!==1 || w.held.has(el)) return;
+    if(!el || el.nodeType!==1 || w.held.has(el) || NOHOLD[el.tagName]) return;
     if(excluded(el) || focusedInside(el)) return;
     for(var p=el.parentNode; p && p.nodeType===1; p=p.parentNode){ if(w.held.has(p)) return; }   // przodek już wstrzymany
     w.held.add(el); el.classList.add('eyl-hold');
