@@ -110,6 +110,16 @@
       }catch(e){}
       return qb;
     };
+    /* RPC katalogu/fiszek przyjmują p_native — goście bez profilu też dostają angielski. */
+    var NATIVE_RPC={catalog_categories:1,catalog_level_keys:1,get_flashcards:1,get_due_cards_all:1,get_categories_for_lang_level:1};
+    if(EN && typeof c.rpc==='function'){
+      var rpc=c.rpc;
+      c.rpc=function(fn,args){
+        var a=[].slice.call(arguments);
+        if(NATIVE_RPC[fn]){ a[1]=Object.assign({},args||{},{p_native:'en'}); }
+        return rpc.apply(c,a);
+      };
+    }
     c.__eylI18n=true;
     if(!window.__eylDb) window.__eylDb=c;
     return c;
