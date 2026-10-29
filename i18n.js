@@ -12,7 +12,7 @@
    Słowa z fiszek (pole word) nigdy nie są tłumaczone przez słownik. */
 (function(){
   'use strict';
-  var KEY='eyl_native', V='1';
+  var KEY='eyl_native', V='2';
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 
@@ -174,20 +174,27 @@
     });
     try{ FRAG=parts.length?new RegExp(parts.join('|'),'gu'):null; }catch(e){ FRAG=null; console.warn('[i18n] regex',e); }
   }
+  function sing(x){ return x.replace(/(^|[^\d.,])1 (cards|sets|words|days|minutes|categories|reviews|students|lessons)\b/g,function(m,a,w){ return a+'1 '+w.replace(/ies$/,'y').replace(/s$/,''); }); }
   function tr(s){
     if(!DICT || typeof s!=='string') return s;
     var t=s.trim(); if(!t || t.length>4000) return s;
     var n=t.replace(/[\u00a0\u202f\s]+/g,' ');
     if(CARD_WORDS[n.toLowerCase()]) return s;
+    var lead=s.match(/^\s*/)[0], trail=s.match(/\s*$/)[0];
     var hit=DICT[n];
-    if(typeof hit==='string' && hit){ var lead=s.match(/^\s*/)[0], trail=s.match(/\s*$/)[0]; return lead+hit+trail; }
-    if(!FRAG || !PLRX.test(n)) return s;
+    if(typeof hit==='string' && hit){ return lead+hit+trail; }
+    /* Szablony z liczbami: „14 fiszek · 0 opanowanych” ↔ klucz „# fiszek · # opanowanych”. */
+    if(/\d/.test(n)){
+      var nums=n.match(/\d+(?:[.,]\d+)?/g)||[], tk=n.replace(/\d+(?:[.,]\d+)?/g,'#'), tv=DICT[tk];
+      if(typeof tv==='string' && tv){ var k=0; return lead+sing(tv.replace(/#/g,function(){ return nums[k++]||''; }))+trail; }
+    }
+    if(!FRAG || (n.length>400 && !PLRX.test(n))) return s;
     var norm=s.replace(/[\u00a0\u202f]/g,' ');
     FRAG.lastIndex=0;
     var out=norm.replace(FRAG,function(m){ var v=DICT[m]; return (typeof v==='string'&&v)?v:m; });
     /* Pół-polskie zdanie wygląda gorzej niż polskie — wtedy zostawiamy oryginał i notujemy brak. */
     if(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/.test(out)){ MISS[n]=1; return s; }
-    return out===norm?s:out;
+    return out===norm?s:sing(out);
   }
   window.eylT=function(s){ return EN?tr(s):s; };
   window.__eylWalk=function(){ walk(document.body); };
@@ -250,11 +257,31 @@
   }
   function translateTitle(){ try{ var t=tr(document.title); if(t!==document.title) document.title=t; }catch(e){} }
 
+  /* Nazwy kategorii z bazy (label → label_en) trafiają do słownika: działa to także dla nazw
+     zapisanych wcześniej po polsku (np. „Kontynuuj” w pasku bocznym, ostatnie zestawy). */
+  function loadCategoryNames(){
+    var tries=0;
+    (function go(){ var c=window.__eylDb; if(!c){ if(tries++<40) setTimeout(go,250); return; } fetchCatPairs(c); })();
+  }
+  function fetchCatPairs(c){
+    try{
+      var url=(c.supabaseUrl||c.restUrl||'').replace(/\/$/,'');
+      var key=c.supabaseKey||'';
+      if(!url||!key){ return; }
+      fetch(url+'/rest/v1/categories?select=label,label_en',{headers:{apikey:key,Authorization:'Bearer '+key}})
+        .then(function(r){ return r.ok?r.json():[]; })
+        .then(function(rows){
+          var added=0;
+          (rows||[]).forEach(function(x){ if(x && x.label && x.label_en && !DICT[x.label]){ DICT[x.label]=x.label_en; added++; } });
+          if(added && document.body){ walk(document.body); }
+        }).catch(function(){});
+    }catch(e){}
+  }
   function loadDict(){
     var base=(document.currentScript&&document.currentScript.src)||'';
     var url='i18n/en.json?v='+V;
     return fetch(url,{cache:'force-cache'}).then(function(r){ return r.ok?r.json():{}; }).catch(function(){ return {}; })
-      .then(function(d){ d=d||{}; var r=d.__rich||{}; delete d.__rich; RICH={}; for(var k in r) RICH[richNorm(k)]=r[k]; DICT=d; buildFrag(); });
+      .then(function(d){ d=d||{}; var r=d.__rich||{}; delete d.__rich; RICH={}; for(var k in r) RICH[richNorm(k)]=r[k]; DICT=d; buildFrag(); loadCategoryNames(); });
   }
 
   if(EN){
