@@ -12,7 +12,7 @@
    Słowa z fiszek (pole word) nigdy nie są tłumaczone przez słownik. */
 (function(){
   'use strict';
-  var KEY='eyl_native', V='2';
+  var KEY='eyl_native', V='3';
   function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 
@@ -273,7 +273,7 @@
         .then(function(rows){
           var added=0;
           (rows||[]).forEach(function(x){ if(x && x.label && x.label_en && !DICT[x.label]){ DICT[x.label]=x.label_en; added++; } });
-          if(added && document.body){ walk(document.body); }
+          if(added){ buildFrag(); if(document.body) walk(document.body); }
         }).catch(function(){});
     }catch(e){}
   }
