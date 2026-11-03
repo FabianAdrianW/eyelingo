@@ -1155,6 +1155,29 @@ def _premium_active(profile):
             return False
     return False
 CATEGORIES = []  # ładowane z bazy po wyborze języka/poziomu
+_CAT_LABELS = {}     # code → etykieta (label / label_en wg języka ojczystego)
+_CAT_LABELS_ALL = False
+
+def cat_label(code):
+    """Nazwa kategorii do wyświetlenia — nigdy surowy kod (np. 'spoleczenstwo')."""
+    global _CAT_LABELS_ALL
+    if not code:
+        return code
+    v = _CAT_LABELS.get(code)
+    if v:
+        return v
+    if not _CAT_LABELS_ALL:
+        _CAT_LABELS_ALL = True
+        try:
+            for r in (supabase.table("categories").select("code,label").execute().data or []):
+                if r.get("code") and r.get("label"):
+                    _CAT_LABELS.setdefault(r["code"], r["label"])
+        except Exception as e:
+            print("[CATEGORIES] etykiety:", e)
+        v = _CAT_LABELS.get(code)
+        if v:
+            return v
+    return code.replace("_", " ").capitalize()
 
 def _jwt_refresh_sync():
     """Synchroniczne odświeżenie tokena JWT (+ sync postgrest, persystencja)."""
@@ -1173,6 +1196,7 @@ def load_categories(lang=None, level=None, _retry=True):
                     CATEGORIES = [{"code": r["code"], "label": r.get("label", r["code"]),
                                    "icon": r.get("icon", "")}
                                   for r in resp.data]
+                    _CAT_LABELS.update({c["code"]: c["label"] for c in CATEGORIES if c.get("label")})
                     print(f"[CATEGORIES] RPC {lang}/{level}: {len(CATEGORIES)} kategorii")
                     return
             except Exception as e:
@@ -3322,7 +3346,7 @@ class FlashcardOverlay(QWidget):
             _last.write_text(json.dumps({"lang": lang, "level": level, "cat": cat}), encoding="utf-8")
         except Exception:
             pass
-        self.lbl_info.setText(f"{cat}  ·  {level}  ·  {lang_label(lang)}")
+        self.lbl_info.setText(f"{cat_label(cat)}  ·  {level}  ·  {lang_label(lang)}")
         self.lbl_word.setText("Ładowanie...")
         self.lbl_tr.setText("")
         # Zestaw z bazy od razu zdejmuje tryb „własny” i stare karty — inaczej do czasu
@@ -3432,10 +3456,10 @@ class FlashcardOverlay(QWidget):
         if getattr(self, "_is_custom", False):
             out.append(f"Własny · {self.cat}")
         else:
-            out.append(f"{self.cat}  ·  {self.level}  ·  {lang_label(self.lang)}")
+            out.append(f"{cat_label(self.cat)}  ·  {self.level}  ·  {lang_label(self.lang)}")
         for c in self.cards:
             if c.get("srs"):
-                out.append(f"Powtórka · {c.get('category', 'poprzednia kategoria')}")
+                out.append(f"Powtórka · {cat_label(c.get('category')) or 'poprzednia kategoria'}")
         return out
 
     def _max_card_w(self) -> int:
@@ -3608,12 +3632,12 @@ class FlashcardOverlay(QWidget):
         QTimer.singleShot(50, self._play_word_effect)
         # Etykieta SRS / własny zestaw
         if c.get("srs"):
-            cat_label = c.get("category", "poprzednia kategoria")
-            self._set_info(f"Powtórka · {cat_label}")
+            _cl = cat_label(c.get("category")) or "poprzednia kategoria"
+            self._set_info(f"Powtórka · {_cl}")
         elif getattr(self, "_is_custom", False):
             self._set_info(f"Własny · {self.cat}")
         else:
-            self._set_info(f"{self.cat}  ·  {self.level}  ·  {lang_label(self.lang)}")
+            self._set_info(f"{cat_label(self.cat)}  ·  {self.level}  ·  {lang_label(self.lang)}")
         # Auto-czytanie TTS — nigdy „w próżnię”: gdy fiszka jest schowana
         # pod kursorem (hover), użytkownik jej nie widzi, więc jej nie czytamy.
         if APP_SETTINGS.get("audio_enabled", False) and not getattr(self, "_hover_hidden", False):
@@ -8778,7 +8802,13 @@ class TrayApp:
                 cmd = [sys.executable, os.path.abspath(sys.argv[0])] + sys.argv[1:]
             kw = {"env": env, "close_fds": True}
             if sys.platform == "win32":
-                kw["creationflags"] = 0x00000008 | 0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP — DETACHED_PROCESS sprawiał, że launcher venv
+                # (python.exe) uruchamiał właściwy interpreter w NOWYM oknie konsoli
+                kw["creationflags"] = 0x08000000 | 0x00000200
+                if not getattr(sys, "frozen", False):
+                    pw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+                    if os.path.exists(pw):
+                        cmd[0] = pw
             else:
                 kw["start_new_session"] = True
             subprocess.Popen(cmd, **kw)
