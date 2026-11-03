@@ -158,7 +158,7 @@ class _TTSBridge(_QObject):
             # Odtwarzacz trzymał urządzenie z chwili startu aplikacji. Przy każdym
             # słowie wskazujemy aktualne domyślne wyjście (słuchawki podłączone później).
             _tts_audioout.setDevice(QMediaDevices.defaultAudioOutput())
-            _tts_audioout.setVolume(1.0)
+            _tts_audioout.setVolume(_tts_volume_linear())
             _tts_player.setSource(_QUrl.fromLocalFile(path))
             _tts_player.play()
             _tts_tmp.append(path)
@@ -168,6 +168,33 @@ class _TTSBridge(_QObject):
                 os.unlink(path)
             except Exception:
                 pass
+
+
+def _tts_volume_linear(pct=None):
+    """Głośność 0–100 (ustawienie) → skala liniowa Qt (krzywa percepcyjna)."""
+    try:
+        v = APP_SETTINGS.get("audio_volume", 100) if pct is None else pct
+        v = max(0.0, min(1.0, float(v) / 100.0))
+    except Exception:
+        v = 1.0
+    return v * v          # krzywa kwadratowa: równe kroki suwaka ≈ równe kroki słyszalne
+
+
+def set_audio_volume(pct, save=True):
+    """Ustawia głośność od razu (także dla właśnie granego słowa) i zapisuje."""
+    pct = int(max(0, min(100, round(pct))))
+    APP_SETTINGS["audio_volume"] = pct
+    try:
+        if _tts_audioout is not None:
+            _tts_audioout.setVolume(_tts_volume_linear(pct))
+    except Exception:
+        pass
+    if save:
+        try:
+            save_settings(APP_SETTINGS)
+        except Exception:
+            pass
+    return pct
 
 
 _tts_gen = 0   # numer ostatniego żądania; spóźnione MP3 ze starszych słówek są odrzucane
@@ -1291,6 +1318,7 @@ DEFAULT_SETTINGS = {
     "opacity":      0.57,
     "text_alpha":   240,
     "audio_enabled": False,
+    "audio_volume": 100,
     "display_time": 8,
     "card_effect":  "none",
     "hotkeys": {
@@ -6142,6 +6170,15 @@ class SettingsWindow(_DraggableWindow):
             self.chk_audio.setEnabled(False)
             self.chk_audio.setText("Audio niedostępne w tej wersji")
         lay.addWidget(self.chk_audio)
+        self.sl_vol, _ = self._mk_slider(lay, "Głośność:", 0, 100,
+                                         int(APP_SETTINGS.get("audio_volume", 100)), "%")
+        self.sl_vol.setEnabled(bool(_tts_available))
+        self.sl_vol.valueChanged.connect(lambda v: set_audio_volume(v, save=False))
+        self.sl_vol.sliderReleased.connect(self._vol_preview)
+        vh = QLabel("Szybko: kółko myszy nad ikoną głośnika w panelu.")
+        vh.setStyleSheet("color:rgba(238,242,255,130);font-size:10px;")
+        vh.setWordWrap(True)
+        lay.addWidget(vh)
 
         # Skróty
         sec("Skróty klawiszowe")
@@ -6242,6 +6279,19 @@ class SettingsWindow(_DraggableWindow):
         lay.addLayout(row)
         return sl, vl
 
+    def _vol_preview(self):
+        """Po puszczeniu suwaka: zapis + krótki odsłuch na bieżącym słowie."""
+        set_audio_volume(self.sl_vol.value())
+        try:
+            if not self.chk_audio.isChecked():
+                return
+            ov = getattr(QApplication.instance(), "_eyl_overlay", None)
+            c = ov.cards[ov.index] if ov is not None and ov.cards else None
+            if c and c.get("word"):
+                speak_word(c["word"], _tts_lang_for(c, ov.lang))
+        except Exception as e:
+            print("[vol] podgląd:", e)
+
     def _hk_style(self, active):
         if active:
             return ("QPushButton{background:rgba(255,255,255,30);color:white;"
@@ -6318,6 +6368,7 @@ class SettingsWindow(_DraggableWindow):
         APP_SETTINGS["text_alpha"]    = int(self.sl_txt.value() / 100 * 255)
         APP_SETTINGS["display_time"]  = self.sl_time.value()
         APP_SETTINGS["audio_enabled"] = self.chk_audio.isChecked()
+        APP_SETTINGS["audio_volume"]  = self.sl_vol.value()
         APP_SETTINGS["card_effect"]   = self._fx_ids[self._fx_cb.currentIndex()]
         save_settings(APP_SETTINGS)
         self.settings_changed.emit(APP_SETTINGS)
@@ -7524,6 +7575,7 @@ class HubWindow(_DraggableWindow):
         self.lbl_status.setStyleSheet(TXT)
         hl.addWidget(self.dot); hl.addWidget(self.lbl_status); hl.addStretch(1)
         self.btn_audio = self._icon_btn("sound", "Dźwięk");     self.btn_audio.clicked.connect(self._toggle_audio)
+        self.btn_audio.installEventFilter(self)
         self.btn_pause = self._icon_btn("pause", "Wstrzymaj");           self.btn_pause.clicked.connect(self._toggle_pause)
         self.btn_x     = self._icon_btn("close", "Zamknij");             self.btn_x.clicked.connect(self.fade_hide)
         for b in (self.btn_audio, self.btn_pause, self.btn_x): hl.addWidget(b)
@@ -7691,8 +7743,15 @@ class HubWindow(_DraggableWindow):
             self.lbl_status.setText("Wstrzymane"); self.dot.set_color(G_WARN, False)
             self.btn_pause.setGlyph("play"); self.btn_pause.setToolTip("Wzn\u00F3w")
         aud = bool(APP_SETTINGS.get("audio_enabled", False))
-        self.btn_audio.setGlyph("sound" if aud else "soundoff")
-        self.btn_audio.setToolTip("D\u017Awi\u0119k: " + ("w\u0142." if aud else "wy\u0142."))
+        vol = int(APP_SETTINGS.get("audio_volume", 100))
+        self.btn_audio.setGlyph("sound" if (aud and vol > 0) else "soundoff")
+        if EYL_EN:
+            _tt = ("Sound: on \u00B7 %d%%" % vol if aud else "Sound: off") + "\nClick: on/off \u00B7 Mouse wheel: volume"
+        else:
+            _tt = (("D\u017Awi\u0119k: w\u0142. \u00B7 %d%%" % vol if aud else "D\u017Awi\u0119k: wy\u0142.")
+                   + "\nKliknij: w\u0142./wy\u0142. \u00B7 K\u00F3\u0142ko myszy: g\u0142o\u015Bno\u015B\u0107")
+        _EYL_NO_TR.add(_tt)
+        self.btn_audio.setToolTip(_tt)
 
     def _refresh_learn(self):
         ov = self.app_ref.overlay
@@ -7787,6 +7846,27 @@ class HubWindow(_DraggableWindow):
             self.app_ref.resume_now()
         else:
             self._enter_pause()
+
+    def eventFilter(self, obj, ev):
+        try:
+            if obj is getattr(self, "btn_audio", None) and ev.type() == QEvent.Type.Wheel:
+                step = 5 if ev.angleDelta().y() > 0 else -5
+                if ev.angleDelta().y() == 0:
+                    return True
+                vol = set_audio_volume(int(APP_SETTINGS.get("audio_volume", 100)) + step)
+                if not APP_SETTINGS.get("audio_enabled", False) and step > 0:
+                    APP_SETTINGS["audio_enabled"] = True
+                    try: save_settings(APP_SETTINGS)
+                    except Exception: pass
+                self._refresh_status()
+                from PyQt6.QtWidgets import QToolTip
+                bars = int(round(vol / 10))
+                QToolTip.showText(obj.mapToGlobal(QPoint(obj.width() // 2, obj.height() + 4)),
+                                  "\U0001F50A  %d%%   %s" % (vol, "\u2588" * bars + "\u2591" * (10 - bars)), obj)
+                return True
+        except Exception as e:
+            print("[vol] kółko:", e)
+        return super().eventFilter(obj, ev)
 
     def _toggle_audio(self):
         APP_SETTINGS["audio_enabled"] = not bool(APP_SETTINGS.get("audio_enabled", False))
@@ -9058,6 +9138,10 @@ def main():
     _apply_macos_accessory()
 
     overlay      = FlashcardOverlay()
+    try:
+        QApplication.instance()._eyl_overlay = overlay   # odsłuch przy zmianie głośności
+    except Exception:
+        pass
     overlay.hide()
     login_window = LoginWindow()
 
