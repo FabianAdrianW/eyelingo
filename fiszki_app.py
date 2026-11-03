@@ -808,6 +808,52 @@ def srs_declare_seen(card):
         print(f"[SRS] deklaracja: {e}")
 
 
+def srs_mark_known(card):
+    """„Znam tę fiszkę” z overlayu. Zwraca poprzedni wiersz srs_progress (do cofnięcia)
+    albo {} gdy go nie było. Nowe słowo → stan WIDZIANE (srs_declare_seen, 7 dni);
+    słowo już w powtórkach → ocena 5 (SM-2 wydłuża przerwę, nigdy jej nie skraca)."""
+    word = str(card.get("word") or "").strip()
+    tr   = str(card.get("translation") or "").strip()
+    try:
+        uid = current_uid()
+    except Exception:
+        uid = None
+    if not word or not tr or not uid:
+        return None
+    prev = {}
+    try:
+        r = (supabase.table("srs_progress")
+             .select("card_key,word,translation,lang,source,flashcard_id,ease_factor,repetitions,interval_days,next_review")
+             .eq("user_id", uid).eq("card_key", _srs_card_key(word, tr)).limit(1).execute())
+        if r.data:
+            prev = r.data[0]
+    except Exception:
+        return None
+    if prev and (prev.get("repetitions") or 0) >= 1:
+        srs_upsert(card, 5)
+    else:
+        srs_declare_seen(card)
+    return prev
+
+
+def srs_restore(card, prev):
+    """Cofnięcie srs_mark_known: przywraca poprzedni stan albo usuwa świeży wpis."""
+    try:
+        uid = current_uid()
+        word = str(card.get("word") or "").strip()
+        tr   = str(card.get("translation") or "").strip()
+        if not uid or not word or not tr or prev is None:
+            return
+        key = _srs_card_key(word, tr)
+        if prev:
+            row = dict(prev); row["user_id"] = uid; row["card_key"] = key
+            supabase.table("srs_progress").upsert(row, on_conflict="user_id,card_key").execute()
+        else:
+            supabase.table("srs_progress").delete().eq("user_id", uid).eq("card_key", key).execute()
+    except Exception as e:
+        print(f"[SRS] cofnięcie: {e}")
+
+
 import time as _time_dbg
 # Audyt bezp. DESK-2: log debugowy WYŁĄCZONY domyślnie (w produkcji rósłby u użytkownika
 # i mógłby zawierać dane diagnostyczne). Włącz świadomie: EYELINGO_DEBUG=1
@@ -1331,6 +1377,8 @@ DEFAULT_SETTINGS = {
         "show_settings": "alt+u",
         "read_card":     "alt+r",
         "show_cats":     "alt+k",
+        "mark_known":    "alt+z",
+        "undo_known":    "alt+shift+z",
     }
 }
 
@@ -1344,6 +1392,8 @@ HOTKEY_LABELS = {
     "show_settings": "Otwórz ustawienia",
     "read_card":     "Czytaj słówko (TTS)",
     "show_cats":     "Kategorie (bieżący język i poziom)",
+    "mark_known":    "Znam tę fiszkę (nie pokazuj)",
+    "undo_known":    "Cofnij „Znam”",
 }
 
 def load_settings() -> dict:
@@ -3396,8 +3446,45 @@ class FlashcardOverlay(QWidget):
         self._worker.error.connect(lambda msg, s=seq: self._on_error(msg) if s == self._load_seq else None)
         self._worker.start()
 
+    # ── „Znam tę fiszkę”: pomijanie w bieżącej kategorii ─────────────
+    _SKIP_FILE = Path.home() / ".eyelingo_known_skip.json"
+
+    def _skip_scope(self):
+        if getattr(self, "_is_custom", False):
+            return "custom|%s" % (self.cat or "")
+        return "%s|%s|%s" % (self.lang or "", self.level or "", self.cat or "")
+
+    def _skip_all(self):
+        try:
+            d = json.loads(self._SKIP_FILE.read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            return {}
+
+    def _skip_write(self, scope, keys):
+        d = self._skip_all()
+        if keys:
+            d[scope] = sorted(keys)
+        else:
+            d.pop(scope, None)
+        try:
+            self._SKIP_FILE.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _apply_skip(self, cards):
+        self._cards_full = list(cards)
+        keys = set(self._skip_all().get(self._skip_scope(), []))
+        if not keys:
+            return cards
+        left = [c for c in cards if _srs_card_key(c.get("word"), c.get("translation")) not in keys]
+        if not left:                       # wszystko oznaczone → kategoria od nowa
+            self._skip_write(self._skip_scope(), set())
+            return cards
+        return left
+
     def _on_loaded(self, cards):
-        self.cards = cards
+        self.cards = self._apply_skip(cards)
         self.index = 0
         self._is_custom = False
         self._fit_to_cards()
@@ -3422,6 +3509,7 @@ class FlashcardOverlay(QWidget):
                        "romaji": "", "flashcard_id": i, "custom": True, "set_name": short_name,
                        "lang": set_lang}
                       for i, c in enumerate(cards)]
+        self.cards = self._apply_skip(self.cards)
         self.index = 0
         self._fit_to_cards()
         if not self._suspended:
@@ -3799,6 +3887,15 @@ class FlashcardOverlay(QWidget):
             QTimer.singleShot(450, lambda: (getattr(self, "_fx_token", 0) == token) and anim.start())
         except Exception as ex:
             print(f"[motion] {ex}")
+
+    def _update_info_only(self):
+        c = self.cards[self.index] if self.cards and 0 <= self.index < len(self.cards) else {}
+        if c.get("srs"):
+            self._set_info(f"Powtórka · {cat_label(c.get('category')) or 'poprzednia kategoria'}")
+        elif getattr(self, "_is_custom", False):
+            self._set_info(f"Własny · {self.cat}")
+        else:
+            self._set_info(f"{cat_label(self.cat)}  ·  {self.level}  ·  {lang_label(self.lang)}")
 
     def _set_info(self, text: str):
         """Pasek górny nie może rozpychać karty ani się urywać w pół litery —
@@ -8123,6 +8220,7 @@ class TrayApp:
         menu = GlassTrayMenu()
         self.act_toggle = _TrayToggle(menu.add_row("pause", "Ukryj fiszki", self._toggle))
         menu.add_row("sliders", "Otwórz panel", self._toggle_hub)  # awaryjne wejście
+        menu.add_row("check", "Znam tę fiszkę", self.mark_known_current)
         menu.add_sep()
         menu.add_row("refresh", "Sprawdź aktualizacje", lambda: self.check_updates(manual=True))
         menu.add_row("logout", "Wyloguj", self._logout)
@@ -8849,6 +8947,81 @@ class TrayApp:
         # Tylko przywracamy etykietę. NIE wołamy _update(): ono też czyta słowo → dwukrotne odtworzenie.
         QTimer.singleShot(2000, lambda: self.overlay.lbl_info.setText(info_prev))
 
+    def mark_known_current(self):
+        """ALT+Z — bieżąca fiszka znika z rotacji tej kategorii; zostają trudniejsze słowa.
+        Stan trafia też do srs_progress (web/PWA widzą to samo), słowo wróci w Powtórkach."""
+        ov = self.overlay
+        if not ov.cards or not (0 <= ov.index < len(ov.cards)):
+            return
+        card = ov.cards[ov.index]
+        scope = ov._skip_scope()
+        key = _srs_card_key(card.get("word"), card.get("translation"))
+        keys = set(ov._skip_all().get(scope, [])); keys.add(key)
+        ov._skip_write(scope, keys)
+        idx = ov.index
+        ov.cards.pop(idx)
+        srs_card = {"word": card.get("word", ""), "translation": card.get("translation", ""),
+                    "lang": card.get("lang") or ov.lang,
+                    "flashcard_id": None if card.get("custom") else card.get("flashcard_id")}
+        entry = {"card": card, "index": idx, "scope": scope, "key": key, "prev": None, "srs": srs_card}
+        self._known_undo = entry
+        import threading
+        def _bg(e=entry):
+            e["prev"] = srs_mark_known(e["srs"])
+        entry["thread"] = threading.Thread(target=_bg, daemon=True); entry["thread"].start()
+        _session.track("card_marked_known", {"language": ov.lang, "category": ov.cat})
+        left = len(ov.cards)
+        undo_hk = (APP_SETTINGS.get("hotkeys", {}).get("undo_known") or "").upper()
+        if left == 0:
+            ov._skip_write(scope, set())
+            if getattr(ov, "_is_custom", False) or not ov.cat:
+                ov.cards = list(getattr(ov, "_cards_full", None) or [card]); ov.index = 0
+                ov._update(); ov._rotation_restart()
+            else:
+                QTimer.singleShot(1400, self.next_category)
+            self._flash_info("✓ All words known" if EYL_EN
+                             else "✓ Znasz całą kategorię", 3000)
+            return
+        ov.index = idx % left
+        ov._update()
+        ov._rotation_restart()
+        if EYL_EN:
+            self._flash_info("✓ Known · %d left" % left + (" · %s undo" % undo_hk if undo_hk else ""))
+        else:
+            self._flash_info("✓ Znane · zostało %d" % left + (" · %s cofa" % undo_hk if undo_hk else ""))
+
+    def undo_known(self):
+        """ALT+SHIFT+Z — przywraca ostatnio oznaczoną fiszkę (rotacja i srs_progress)."""
+        e = getattr(self, "_known_undo", None)
+        ov = self.overlay
+        if not e or e["scope"] != ov._skip_scope():
+            return
+        self._known_undo = None
+        keys = set(ov._skip_all().get(e["scope"], [])); keys.discard(e["key"])
+        ov._skip_write(e["scope"], keys)
+        if all(_srs_card_key(c.get("word"), c.get("translation")) != e["key"] for c in ov.cards):
+            ov.cards.insert(min(e["index"], len(ov.cards)), e["card"])
+        ov.index = min(e["index"], len(ov.cards) - 1)
+        ov._update(); ov._rotation_restart()
+        import threading
+        def _bg():
+            t = e.get("thread")
+            if t is not None:
+                t.join(timeout=15)
+            srs_restore(e["srs"], e.get("prev"))
+        threading.Thread(target=_bg, daemon=True).start()
+        self._flash_info("↺ Card restored" if EYL_EN else "↺ Przywrócono fiszkę")
+
+    def _flash_info(self, text, ms=2400):
+        ov = self.overlay
+        self._flash_seq = getattr(self, "_flash_seq", 0) + 1
+        seq = self._flash_seq
+        ov._set_info(text)
+        def _back():
+            if seq == self._flash_seq and ov.cards and 0 <= ov.index < len(ov.cards):
+                ov._update_info_only() if hasattr(ov, "_update_info_only") else None
+        QTimer.singleShot(ms, _back)
+
     def _reload_cat_without_known(self, lang, level, cat, known_ids):
         if not self.overlay.cards: return
         filtered = [c for c in self.overlay.cards if c.get("flashcard_id", 0) not in known_ids]
@@ -8982,6 +9155,8 @@ class HotkeySignals(QObject):
     show_settings = pyqtSignal()
     read_card     = pyqtSignal()
     show_cats     = pyqtSignal()
+    mark_known    = pyqtSignal()
+    undo_known    = pyqtSignal()
 
 _hotkey_signals = HotkeySignals()
 
@@ -8993,7 +9168,8 @@ def setup_hotkeys(app_ref, tray_ref):
     # Rozłącz stare połączenia żeby nie nakładały się przy przeładowaniu
     for sig in [s.next_cat, s.prev_cat,
                 s.toggle, s.pause, s.show_sel,
-                s.start_test, s.show_settings, s.read_card, s.show_cats]:
+                s.start_test, s.show_settings, s.read_card, s.show_cats,
+                s.mark_known, s.undo_known]:
         try: sig.disconnect()
         except Exception: pass
     s.next_cat.connect(tray_ref.next_category)
@@ -9005,6 +9181,8 @@ def setup_hotkeys(app_ref, tray_ref):
     s.show_settings.connect(lambda: (tray_ref.win_settings.show(), tray_ref.win_settings.raise_()))
     s.read_card.connect(tray_ref._read_current_card)
     s.show_cats.connect(tray_ref._show_cats_current)
+    s.mark_known.connect(tray_ref.mark_known_current)
+    s.undo_known.connect(tray_ref.undo_known)
 
     hk = APP_SETTINGS["hotkeys"]
     signal_map = {
@@ -9017,6 +9195,8 @@ def setup_hotkeys(app_ref, tray_ref):
         "show_settings":s.show_settings,
         "read_card":    s.read_card,
         "show_cats":    s.show_cats,
+        "mark_known":   s.mark_known,
+        "undo_known":   s.undo_known,
     }
     for key, sig in signal_map.items():
         combo = hk.get(key, "")
