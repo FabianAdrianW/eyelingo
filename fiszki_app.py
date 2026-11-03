@@ -421,9 +421,13 @@ def _eyl_load_dict():
         except Exception:
             _EYL_FRAG = None
 
+_EYL_NO_TR = {"Language: English \u2192 Polski", "J\u0119zyk: Polski \u2192 English"}
+
 def eyl_tr(s):
     """Tłumaczy tekst interfejsu na angielski (tylko native=en)."""
     if not EYL_EN or not isinstance(s, str) or not s or not _EYL_DICT:
+        return s
+    if s.strip() in _EYL_NO_TR:
         return s
     t = s.strip()
     if not t or len(t) > 4000:
@@ -3263,7 +3267,9 @@ class FlashcardOverlay(QWidget):
         self._hover_hidden = False
         self._hover_paused_rotation = False
         self._init_hover_hide()
-        self._adapt_light = False        # czy tło pod fiszką jest jasne
+        self._adapt_light = False        # czy tło pod fiszką jest jasne (mix > 0.5)
+        self._adapt_mix   = 0.0          # 0 = ciemne tło, 1 = jasne — płynnie
+        self._adapt_ema   = None
         self._adapt_hits  = 0            # licznik potwierdzeń zmiany stanu
         self._init_adaptive_opacity()
 
@@ -3656,16 +3662,19 @@ class FlashcardOverlay(QWidget):
             from PyQt6.QtWidgets import QGraphicsOpacityEffect
             self._fx_token = getattr(self, "_fx_token", 0) + 1
             token = self._fx_token
-            self._word_reveal(token)
-            n = len(self.lbl_word.text())
-            for i, lbl in enumerate((self.lbl_romaji, self.lbl_tr)):
+            old = getattr(self, "_rev_anim", None)
+            if old is not None:
+                try: old.stop()
+                except Exception: pass
+            # Cała treść fiszki (słowo + transliteracja + tłumaczenie) wchodzi JEDNOCZEŚNIE
+            for lbl in (self.lbl_word, self.lbl_romaji, self.lbl_tr):
                 if lbl.isHidden():
                     continue
                 eff = QGraphicsOpacityEffect(lbl)
                 eff.setOpacity(0.0)
                 lbl.setGraphicsEffect(eff)
                 a = QPropertyAnimation(eff, b"opacity", eff)
-                a.setDuration(500)
+                a.setDuration(380)
                 a.setStartValue(0.0)
                 a.setEndValue(1.0)
                 a.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -3677,7 +3686,7 @@ class FlashcardOverlay(QWidget):
                         except Exception:
                             pass
                 a.finished.connect(_done)
-                QTimer.singleShot(200 + min(n, 24) * 30 + i * 60, a.start)
+                a.start()
         except Exception as ex:
             print(f"[motion] {ex}")
 
@@ -3859,14 +3868,14 @@ class FlashcardOverlay(QWidget):
         # przychodzi z ustawienia „Przezroczystość” (windowOpacity).
         rr = r.adjusted(0.5, 0.5, -0.5, -0.5)
         g = QLinearGradient(rr.topLeft(), rr.bottomLeft())
-        if getattr(self, "_adapt_light", False):
-            # jasne tło pod fiszką → ciemniejsze, bardziej kryjące wypełnienie
-            g.setColorAt(0.0, QColor(24, 32, 62, 208))
-            g.setColorAt(1.0, QColor(10, 15, 32, 228))
-        else:
-            # ciemne tło → jaśniejsze, bardziej przezroczyste szkło
-            g.setColorAt(0.0, QColor(52, 66, 112, 92))
-            g.setColorAt(1.0, QColor(30, 40, 78, 112))
+        # Wypełnienie przechodzi PŁYNNIE między wariantem „ciemne tło” a „jasne tło”
+        # (dawniej skok 92→208 alfy + dodatkowe przyciemnienie okna = raz prawie
+        # przezroczysta, raz prawie czarna fiszka).
+        k = max(0.0, min(1.0, float(getattr(self, "_adapt_mix", 0.0))))
+        def _mx(a, b):
+            return QColor(*[int(round(x + (y - x) * k)) for x, y in zip(a, b)])
+        g.setColorAt(0.0, _mx((46, 60, 104, 128), (26, 34, 66, 176)))
+        g.setColorAt(1.0, _mx((28, 38, 74, 146), (14, 20, 40, 192)))
         p.setBrush(QBrush(g))
         p.setPen(QPen(QColor(255, 255, 255, 44), 1))
         p.drawRoundedRect(rr, 16, 16)
@@ -3919,8 +3928,8 @@ class FlashcardOverlay(QWidget):
         mocniejsza (baza + ADAPT_DELTA) — ciemna karta czytelna na jasnym; na ciemnym
         wraca do bazy, a samo wypełnienie karty jest lżejsze (patrz paintEvent)."""
         v = self._base_opacity()
-        if getattr(self, "_adapt_light", False):
-            v = v + ADAPT_DELTA
+        # łagodna korekta proporcjonalna do jasności tła (bez skoku)
+        v = v + ADAPT_DELTA * 0.5 * float(getattr(self, "_adapt_mix", 0.0))
         return min(1.0, max(0.05, v))
 
     _ov_closing = False
@@ -4099,22 +4108,36 @@ class FlashcardOverlay(QWidget):
         ratio = self._sample_ring_light_ratio()
         if ratio is None:
             return
-        # histereza: wejście na jasne przy >=75%, wyjście dopiero przy <=60%
-        want = self._adapt_light
-        if not self._adapt_light and ratio >= ADAPT_ENTER_RATIO:
-            want = True
-        elif self._adapt_light and ratio <= ADAPT_EXIT_RATIO:
-            want = False
-        if want == self._adapt_light:
-            self._adapt_hits = 0
+        # Wygładzanie (EMA) + mapowanie udziału jasnych pikseli na 0..1 — bez progów i skoków
+        ema = ratio if self._adapt_ema is None else (self._adapt_ema * 0.6 + ratio * 0.4)
+        self._adapt_ema = ema
+        target = max(0.0, min(1.0, (ema - 0.30) / 0.50))
+        if abs(target - self._adapt_mix) < 0.04:
             return
-        # zmiana stanu musi się potwierdzić N razy z rzędu (odporność na scroll/animacje)
-        self._adapt_hits += 1
-        if self._adapt_hits < ADAPT_CONFIRM_HITS:
-            return
-        self._adapt_hits = 0
-        self._adapt_light = want
-        self.apply_opacity()   # jasno → baza − ADAPT_DELTA; ciemno → powrót do bazy
+        self._adapt_animate(target)
+
+    def _adapt_animate(self, target):
+        _ui_anim_stop(self, "_adapt_anim")
+        a = QVariantAnimation(self)
+        a.setDuration(700)
+        a.setStartValue(float(self._adapt_mix))
+        a.setEndValue(float(target))
+        a.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        def _f(v):
+            self._adapt_mix = float(v)
+            self._adapt_light = self._adapt_mix > 0.5
+            _oa = getattr(self, "_op_anim", None)
+            _busy = False
+            try:
+                _busy = _oa is not None and _oa.state() == QAbstractAnimation.State.Running
+            except Exception:
+                pass
+            if not getattr(self, "_hover_hidden", False) and not _busy:
+                self.setWindowOpacity(self._cur_opacity())
+            self.update()
+        a.valueChanged.connect(_f)
+        self._adapt_anim = a
+        a.start()
 
 
 # ──────────────────────────────────────────────────────
