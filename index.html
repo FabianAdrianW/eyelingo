@@ -2828,7 +2828,7 @@ function eylPrefLoad(){
           <li>Nakładka na komputer i aplikacja na telefon</li>
           <li>Powtórki z algorytmem SM-2</li>
           <li>Rozmowa z AI</li>
-          <li>Własne fiszki — do 5 zestawów, wpisywane ręcznie</li>
+          <li>Własne fiszki — do 5 zestawów po 40 fiszek, wpisywane ręcznie</li>
           <li class="no">Bez poziomów A2–C2</li>
           <li class="no">Bez tworzenia zestawów z AI i ze zdjęcia</li>
           <li class="no">Bez lekcji z Ailexem</li>
@@ -4569,6 +4569,17 @@ async function eylCanCreateSet(){
   if(await eylIsPremium()) return true;
   return (await eylSetCount()) < 5;
 }
+/* Plan Free: do 40 fiszek w zestawie (parytet: PWA, desktop MAX_CARDS). Zestaw, który już
+   ma więcej (sprzed limitu), można edytować, ale nie powiększać. */
+window.EYL_FREE_CARDS=40;
+async function eylCardLimitOk(count, prevCount){
+  if(count<=window.EYL_FREE_CARDS) return true;
+  if(prevCount && count<=prevCount) return true;
+  if(await eylIsPremium()) return true;
+  eylUpgradeModal('Limit fiszek w zestawie','W wersji darmowej zestaw może mieć do '+window.EYL_FREE_CARDS+' fiszek (masz '+count+'). Usuń nadmiar albo przejdź na PRO, aby tworzyć zestawy bez limitu.');
+  return false;
+}
+window.eylCardLimitOk=eylCardLimitOk;
 function eylUpgradeModal(title,msg){
   try{track('pro_recommended',{surface:'web'});}catch(_e){}
   var old=document.getElementById('eyl-upgrade-ov'); if(old) old.remove();
@@ -4699,6 +4710,7 @@ window.saveNewSet = async function saveNewSet(){
     var t=(inputs[1]?inputs[1].value:'').trim();
     if(w&&t){ var _im=r._elImg||null; cards.push(_im&&_im.url?{word:w,translation:t,image_url:_im.url,image_attr:_im.attr||''}:{word:w,translation:t}); }
   });
+  if(!(await eylCardLimitOk(cards.length,0))) return;
   try{
     var sess=(await db.auth.getSession()).data.session;
     if(!sess){typeof showToast!=='undefined'&&showToast('Zaloguj się','');return;}
@@ -4757,6 +4769,7 @@ window.openEditSet = async function openEditSet(id){
   modal.style.display='flex';
   var cards=s.user_set_cards||[];
   try{ var _fr=await db.from('user_set_cards').select('word,translation,image_url,image_attr').eq('set_id',id); if(_fr&&_fr.data) cards=_fr.data; }catch(e){}
+  window._editSetOrigCount=cards.length;
   if(cards.length){ cards.forEach(function(c){ window.addEditSetRow(c.word||'', c.translation||'', false, (c.image_url?{url:c.image_url,attr:c.image_attr||''}:null)); }); }
   else { window.addEditSetRow('','',false); window.addEditSetRow('','',false); window.addEditSetRow('','',false); }
 };
@@ -4803,6 +4816,7 @@ window.saveEditSet = async function saveEditSet(id){
     var tr=(inps[1]?inps[1].value:'').trim();
     if(w&&tr){ var _im=r._elImg||null; cards.push(_im&&_im.url?{word:w,translation:tr,set_id:id,image_url:_im.url,image_attr:_im.attr||''}:{word:w,translation:tr,set_id:id}); }
   });
+  if(!(await eylCardLimitOk(cards.length, window._editSetOrigCount||0))) return;
   try{
     await db.from('user_sets').update({name}).eq('id',id);
     await db.from('user_set_cards').delete().eq('set_id',id);

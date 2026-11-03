@@ -5219,7 +5219,7 @@ class SRSUpdateWorker(QThread):
 # ──────────────────────────────────────────────────────
 # OKNO TWORZENIA WŁASNYCH FISZEK
 # ──────────────────────────────────────────────────────
-MAX_CARDS = 20  # darmowy limit
+MAX_CARDS = 40  # darmowy limit (jak na stronie i w PWA)
 
 class CustomSetWindow(_DraggableWindow):
     set_created = pyqtSignal(str, list)
@@ -5483,7 +5483,7 @@ class MySetsPicker(_DraggableWindow):
     set_picked = pyqtSignal(str, list)
 
     FREE_SET_LIMIT = 5          # jak na stronie i w PWA (eylCanCreateSet)
-    FREE_CARD_LIMIT = 20
+    FREE_CARD_LIMIT = 40
     ANIM_DY = 14
 
     def __init__(self, on_back, on_create, on_browse_community=None):
