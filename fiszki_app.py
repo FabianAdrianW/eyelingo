@@ -5463,7 +5463,7 @@ class LibraryWindow(_DraggableWindow):
         self._choice(lay, "Zestawy Eyelingo", "Gotowe zestawy w 14 językach, poziomy A1\u2013C2.",
                      lambda: (self.hide(), self._on_eyelingo()), "globe")
         lay.addSpacing(14)
-        self._choice(lay, "Moje zestawy", "Twoje własne fiszki \u2014 z tematu, z pliku lub ze zdjęcia.",
+        self._choice(lay, "Moje zestawy", "Twoje własne fiszki \u2014 wpisane ręcznie albo stworzone z AI na eyelingo.app.",
                      lambda: (self.hide(), self._on_mine()), "book")
         lay.addStretch(1)
         fr = QHBoxLayout(); fr.setSpacing(8)
@@ -5482,7 +5482,7 @@ class MySetsPicker(_DraggableWindow):
     """Moje zestawy — lista własnych zestawów + „Stwórz nowy”. Zawsze widoczne wyjście."""
     set_picked = pyqtSignal(str, list)
 
-    FREE_SET_LIMIT = 1
+    FREE_SET_LIMIT = 5          # jak na stronie i w PWA (eylCanCreateSet)
     FREE_CARD_LIMIT = 20
     ANIM_DY = 14
 
@@ -5547,6 +5547,12 @@ class MySetsPicker(_DraggableWindow):
         self.btn_new.setFixedHeight(50)
         self.btn_new.clicked.connect(self._on_create_clicked)
         lay.addWidget(self.btn_new)
+        lay.addSpacing(8)
+        self.btn_ai = GlassButton("Stwórz z AI na eyelingo.app", "ghost", radius=16)
+        self.btn_ai.setGlyph("globe"); self.btn_ai.setTrail("play"); self.btn_ai.setFixedHeight(44)
+        self.btn_ai.setToolTip("Z tematu, z listy słów lub ze zdjęcia (PRO). Zestaw pojawi się tutaj sam.")
+        self.btn_ai.clicked.connect(self._open_ai_web)
+        lay.addWidget(self.btn_ai)
 
         self.lbl_premium = QLabel("Subskrypcja odblokuje nieograniczone zestawy")
         self.lbl_premium.setFont(_gfont(12))
@@ -5584,12 +5590,12 @@ class MySetsPicker(_DraggableWindow):
         if not sets:
             self.lbl_status.setText("Nie masz jeszcze żadnych zestawów.")
             self.lbl_limit.setText(
-                f"Możesz stworzyć 1 darmowy zestaw ({self.FREE_CARD_LIMIT} fiszek)"
+                f"Plan darmowy: do {self.FREE_SET_LIMIT} zestawów"
                 if not self._is_premium else "Plan PRO: nieograniczone zestawy")
         else:
             self.lbl_status.setText(f"Twoje zestawy ({count})")
             self.lbl_limit.setText(
-                f"Plan darmowy: {count}/{self.FREE_SET_LIMIT} zestaw"
+                f"Plan darmowy: {count}/{self.FREE_SET_LIMIT} zestawów"
                 if not self._is_premium else f"Plan PRO: {count} zestawów")
         for i, s in enumerate(sets):
             btn = GlassButton(f"{s['name']}", "tile", radius=14)
@@ -5600,6 +5606,40 @@ class MySetsPicker(_DraggableWindow):
         self.btn_new.setEnabled(not at_limit)
         self.btn_new.setText("Stwórz nowy zestaw" + ("  ·  limit osiągnięty" if at_limit else ""))
         self.lbl_premium.setVisible(at_limit)
+
+    def _open_ai_web(self):
+        """Kreator AI żyje na stronie (jeden generator dla wszystkich platform).
+        Zestaw zapisuje się w user_sets — po powrocie lista odświeża się sama."""
+        from PyQt6.QtGui import QDesktopServices
+        url = "https://www.eyelingo.app/?lang=%s&create=ai#community" % EYL_NATIVE
+        QDesktopServices.openUrl(_QUrl(url))
+        _session.track("ai_set_web_opened", {"surface": "desktop"})
+        self._ai_watch_left = 40          # ~10 min co 15 s
+        if not hasattr(self, "_ai_watch"):
+            self._ai_watch = QTimer(self)
+            self._ai_watch.setInterval(15000)
+            self._ai_watch.timeout.connect(self._ai_watch_tick)
+        self._ai_watch.start()
+
+    def _ai_watch_tick(self):
+        self._ai_watch_left -= 1
+        if self._ai_watch_left <= 0:
+            self._ai_watch.stop(); return
+        if not self.isVisible():
+            return
+        w = LoadSetsWorker()
+        def _got(sets, me=self):
+            if len(sets) != len(me.sets):
+                me._ai_watch.stop()
+                me.load_sets()
+        w.done.connect(_got)
+        self._ai_probe = w
+        w.start()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        if getattr(self, "_ai_watch", None) is not None and self._ai_watch.isActive():
+            QTimer.singleShot(300, self.load_sets)
 
     def _on_create_clicked(self):
         if not self._is_premium and len(self.sets) >= self.FREE_SET_LIMIT:

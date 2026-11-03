@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="i18n.js?v=12"></script>
+<script src="i18n.js?v=13"></script>
 <script src="eyl-settle.js?v=4"></script>
 <style>
   :root{--navy:#1a2340;--navy2:#0f1729;--orange:#c96a2a;--orange2:#e07830;--paper:#f8f7f4;--paper2:#f0eee9;--white:#fff;
@@ -6002,6 +6002,10 @@ async function alexSend(){
     return out;
   }
   async function proxy(content,maxTok){
+    if(typeof window.eylSetPromptNative==='function'){
+      if(typeof content==='string') content=window.eylSetPromptNative(content);
+      else if(Array.isArray(content)) content=content.map(function(p){ return (p&&p.type==='text')?{type:'text',text:window.eylSetPromptNative(p.text)}:p; });
+    }
     var tok=''; try{ tok=(await db.auth.getSession()).data.session.access_token||''; }catch(e){}
     var res=await fetch(LEX_PROXY,{method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':SUPABASE_KEY},

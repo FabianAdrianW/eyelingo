@@ -23,6 +23,21 @@
   var EN = NATIVE==='en';
   window.eylNative=function(){ return NATIVE; };
   window.eylIsEnNative=function(){ return EN; };
+  /* Generator zestawów AI (web + PWA): prompt pisany pod polskiego ucznia —
+     dla native=en tłumaczenia, tytuł i notatka mają być po angielsku. */
+  window.eylSetPromptNative=function(t){
+    if(!EN || typeof t!=='string') return t;
+    return t
+      .split('"translation" = ZAWSZE po polsku').join('"translation" = ZAWSZE po angielsku (język ojczysty uczącego się)')
+      .split('"translation" po polsku').join('"translation" po angielsku')
+      .split('a "translation" to polski oryginał').join('a "translation" to angielski oryginał')
+      .split('Jeśli pozycja jest po polsku').join('Jeśli pozycja jest po angielsku')
+      .split('mogą być po polsku lub po').join('mogą być po angielsku lub po')
+      .split('Jeśli materiał jest po polsku').join('Jeśli materiał jest po angielsku')
+      .split('dorosły Polak').join('dorosły anglojęzyczny')
+      .split('nazwa zestawu po polsku').join('nazwa zestawu po angielsku')
+      .split('"note":"po polsku').join('"note":"po angielsku');
+  };
   function setMode(v){
     NATIVE=v; EN=v==='en';
     try{ var h=document.documentElement; h.lang=NATIVE; h.classList.toggle('eyl-en',EN); if(EN) h.classList.add('eyl-i18n-ready'); }catch(e){}

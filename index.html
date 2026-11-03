@@ -193,7 +193,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="i18n.js?v=12"></script>
+<script src="i18n.js?v=13"></script>
 <script src="eyl-settle.js?v=4"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -22207,6 +22207,13 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   }
 
   async function proxy(messages,maxTok){
+    if(typeof window.eylSetPromptNative==='function'){
+      messages=messages.map(function(m){
+        if(typeof m.content==='string') return {role:m.role,content:window.eylSetPromptNative(m.content)};
+        if(Array.isArray(m.content)) return {role:m.role,content:m.content.map(function(p){ return (p&&p.type==='text')?{type:'text',text:window.eylSetPromptNative(p.text)}:p; })};
+        return m;
+      });
+    }
     var sess=(await db.auth.getSession()).data.session, tok=sess?sess.access_token:'';
     var res=await fetch(AI_PROXY_URL,{method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok,'apikey':APIKEY_CONST},
@@ -25913,6 +25920,44 @@ input[type="search"]:focus,input[type="number"]:focus{
 })();
 </script>
 
+<script>
+/* Deep-link z programu desktop: eyelingo.app/?create=ai#community → „Moje zestawy” + kreator AI.
+   Działa też, gdy trzeba się najpierw zalogować (flaga w sessionStorage czeka do 10 min). */
+(function(){
+  try{
+    var q=new URLSearchParams(location.search);
+    if(q.get('create')==='ai'){
+      sessionStorage.setItem('eylCreateAI',String(Date.now()));
+      q.delete('create'); var qs=q.toString();
+      history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+location.hash);
+    }
+  }catch(e){}
+  function pending(){
+    try{ var t=+sessionStorage.getItem('eylCreateAI')||0; if(t && Date.now()-t<600000) return true; sessionStorage.removeItem('eylCreateAI'); }catch(e){}
+    return false;
+  }
+  async function tick(){
+    if(!pending()) return;
+    try{
+      if(typeof db!=='undefined' && db && typeof window.openCreateSetAI==='function' && typeof window.setMatSegment==='function'){
+        var s=(await db.auth.getSession()).data.session;
+        if(s){
+          var pc=document.getElementById('page-community');
+          if(!pc || !pc.classList.contains('active')){ window._matSeg='mine'; showPage('community'); }
+          else{
+            sessionStorage.removeItem('eylCreateAI');
+            window.setMatSegment('mine');
+            setTimeout(function(){ window.openCreateSetAI(); }, 350);
+            return;
+          }
+        }
+      }
+    }catch(e){}
+    setTimeout(tick, 500);
+  }
+  tick();
+})();
+</script>
 <script src="vendor/qrcode-generator.min.js" defer></script>
 <script src="tutor-mode.js?v=8" defer></script>
 <script src="tryb-ui.js?v=2" defer></script>
