@@ -5430,11 +5430,12 @@ class LibraryWindow(_DraggableWindow):
     """Biblioteka — wybór: gotowe zestawy Eyelingo albo własne zestawy użytkownika."""
     ANIM_DY = 14
 
-    def __init__(self, on_eyelingo, on_mine, on_back):
+    def __init__(self, on_eyelingo, on_mine, on_back, on_community=None):
         super().__init__()
         self._on_eyelingo, self._on_mine, self._on_back = on_eyelingo, on_mine, on_back
+        self._on_community = on_community
         _styled_window(self)
-        self.setFixedSize(420, 400)
+        self.setFixedSize(420, 500 if on_community else 400)
         self._build()
         _right_third_pos(self)
 
@@ -5465,6 +5466,10 @@ class LibraryWindow(_DraggableWindow):
         lay.addSpacing(14)
         self._choice(lay, "Moje zestawy", "Twoje własne fiszki \u2014 wpisane ręcznie albo stworzone z AI na eyelingo.app.",
                      lambda: (self.hide(), self._on_mine()), "book")
+        if self._on_community:
+            lay.addSpacing(14)
+            self._choice(lay, "Społeczność", "Zestawy innych — np. do podręcznika i unitu. Ucz się od razu.",
+                         lambda: (self.hide(), self._on_community()), "globe")
         lay.addStretch(1)
         fr = QHBoxLayout(); fr.setSpacing(8)
         bb = GlassButton("\u2190 Wróć", "ghost"); bb.setFixedHeight(42)
@@ -5473,6 +5478,185 @@ class LibraryWindow(_DraggableWindow):
         bc.clicked.connect(self.fade_hide)
         fr.addWidget(bb, 1); fr.addWidget(bc, 1)
         lay.addLayout(fr)
+
+    def paintEvent(self, e):
+        _paint_bg(self, e)
+
+
+class CommunityWorker(QThread):
+    """Zestawy Społeczności (RPC community_sets — ten sam ranking co strona i PWA)."""
+    done  = pyqtSignal(list)
+    error = pyqtSignal(str)
+
+    def __init__(self, q="", lang=""):
+        super().__init__()
+        self.finished.connect(self.deleteLater)
+        self.q, self.lang = q, lang
+
+    def run(self):
+        try:
+            r = supabase.rpc("community_sets", {
+                "p_q": self.q or None, "p_lang": self.lang or None, "p_level": None,
+                "p_sort": "top", "p_limit": 40, "p_offset": 0, "p_native": EYL_NATIVE}).execute()
+            self.done.emit(r.data or [])
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class CommunityPicker(_DraggableWindow):
+    """Społeczność — zestawy udostępnione przez innych; wybór = nauka od razu w tle (bez kopiowania)."""
+    set_picked = pyqtSignal(str, list)
+    ANIM_DY = 14
+
+    def __init__(self, on_back):
+        super().__init__()
+        self.on_back = on_back
+        self.items = []
+        _styled_window(self)
+        self.setFixedSize(440, 600)
+        self._build()
+        _right_third_pos(self)
+        self._tmr = QTimer(self); self._tmr.setSingleShot(True); self._tmr.setInterval(350)
+        self._tmr.timeout.connect(self.load)
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 20, 24, 20)
+        lay.setSpacing(0)
+        t = QLabel("Społeczność")
+        t.setFont(_gfont(20, QFont.Weight.DemiBold))
+        t.setStyleSheet("color:#eef2ff;background:transparent;")
+        lay.addWidget(t)
+        sub = QLabel("Zestawy innych użytkowników — najlepiej oceniane na górze.")
+        sub.setFont(_gfont(13)); sub.setWordWrap(True)
+        sub.setStyleSheet("color:rgba(238,242,255,184);background:transparent;")
+        lay.addWidget(sub)
+        lay.addSpacing(12)
+        self.inp_q = QLineEdit()
+        self.inp_q.setPlaceholderText("Szukaj: temat, podręcznik, unit…")
+        self.inp_q.setMinimumHeight(36)
+        self.inp_q.setStyleSheet(INPUT_STYLE)
+        self.inp_q.textChanged.connect(lambda _t: self._tmr.start())
+        lay.addWidget(self.inp_q)
+        lay.addSpacing(8)
+        self.cb_lang = GlassCombo()
+        self.cb_lang.setFont(_gfont(13))
+        self.cb_lang.addItem("Wszystkie języki", "")
+        for l in LANGUAGES:
+            self.cb_lang.addItem(l.get("label", l["code"]), l["code"])
+        self.cb_lang.currentIndexChanged.connect(lambda _i: self.load())
+        lay.addWidget(self.cb_lang)
+        lay.addSpacing(10)
+        self.lbl_status = QLabel("")
+        self.lbl_status.setFont(_gfont(12)); self.lbl_status.setWordWrap(True)
+        self.lbl_status.setStyleSheet("color:rgba(238,242,255,160);background:transparent;")
+        lay.addWidget(self.lbl_status)
+        lay.addSpacing(6)
+        _sa = QScrollArea(); _sa.setWidgetResizable(True)
+        _sa.setFrameShape(QScrollArea.Shape.NoFrame)
+        _sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        _sa.setStyleSheet(
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:transparent;}"
+            "QScrollBar:vertical{width:6px;background:transparent;margin:2px;}"
+            "QScrollBar::handle:vertical{background:rgba(255,255,255,70);border-radius:3px;min-height:36px;}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+            "QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{background:transparent;}")
+        _w = QWidget(); _w.setStyleSheet("background:transparent;")
+        self.list_lay = QVBoxLayout(_w)
+        self.list_lay.setContentsMargins(0, 0, 8, 0)
+        self.list_lay.setSpacing(10)
+        self.list_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+        _sa.setWidget(_w)
+        lay.addWidget(_sa, 1)
+        lay.addSpacing(10)
+        self.btn_share = GlassButton("Udostępnij swój zestaw", "ghost", radius=16)
+        self.btn_share.setGlyph("globe"); self.btn_share.setFixedHeight(42)
+        self.btn_share.setToolTip("Otwiera eyelingo.app — wybierasz zestaw, język i (opcjonalnie) podręcznik i unit.")
+        self.btn_share.clicked.connect(self._share_web)
+        lay.addWidget(self.btn_share)
+        lay.addSpacing(8)
+        fr = QHBoxLayout(); fr.setSpacing(8)
+        bb = GlassButton("\u2190 Wróć", "ghost"); bb.setFixedHeight(42)
+        bb.clicked.connect(lambda: (self.hide(), self.on_back()))
+        bc = GlassButton("Zamknij", "ghost"); bc.setFixedHeight(42)
+        bc.clicked.connect(self.fade_hide)
+        fr.addWidget(bb, 1); fr.addWidget(bc, 1)
+        lay.addLayout(fr)
+
+    def _share_web(self):
+        from PyQt6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(_QUrl("https://www.eyelingo.app/?lang=%s&com=share#community" % EYL_NATIVE))
+
+    @staticmethod
+    def _fmt_avg(v):
+        try:
+            x = "%.1f" % float(v or 0)
+        except Exception:
+            x = "0.0"
+        return x if EYL_EN else x.replace(".", ",")
+
+    def load(self):
+        self.lbl_status.setText("Ładowanie…")
+        for i in reversed(range(self.list_lay.count())):
+            w = self.list_lay.itemAt(i).widget()
+            if w:
+                w.deleteLater()
+        self._seq = getattr(self, "_seq", 0) + 1
+        seq = self._seq
+        w = CommunityWorker(self.inp_q.text().strip(), self.cb_lang.currentData() or "")
+        w.done.connect(lambda rows, s=seq: self._on_loaded(rows) if s == self._seq else None)
+        w.error.connect(lambda e, s=seq: self.lbl_status.setText("Nie udało się wczytać. Sprawdź połączenie.") if s == self._seq else None)
+        self._worker = w
+        w.start()
+
+    def _on_loaded(self, rows):
+        self.items = rows
+        if not rows:
+            self.lbl_status.setText("Jeszcze nic tu nie ma. Udostępnij własny zestaw — pomożesz innym uczniom i nauczycielom."
+                                    if not (self.inp_q.text().strip() or self.cb_lang.currentData()) else
+                                    "Nic nie znaleziono dla tych filtrów.")
+            return
+        self.lbl_status.setText("")
+        for i, r in enumerate(rows):
+            box = QWidget(); box.setStyleSheet("background:transparent;")
+            bl = QVBoxLayout(box); bl.setContentsMargins(0, 0, 0, 0); bl.setSpacing(3)
+            name = str(r.get("name") or "Zestaw")
+            btn = GlassButton(name if len(name) <= 38 else name[:37] + "…", "tile", radius=14)
+            btn.setFixedHeight(46); btn.setTrail("play")
+            btn.setToolTip((r.get("description") or "") or name)
+            btn.clicked.connect(lambda _, row=r: self._pick(row))
+            bl.addWidget(btn)
+            n = int(r.get("cards_count") or 0)
+            parts = [lang_label(r.get("lang") or "")] if r.get("lang") else []
+            if r.get("level"):
+                parts.append(str(r["level"]))
+            if EYL_EN:
+                parts.append("%d card%s" % (n, "" if n == 1 else "s"))
+            else:
+                _t, _h = n % 10, n % 100
+                parts.append("%d %s" % (n, "fiszka" if n == 1 else ("fiszki" if 2 <= _t <= 4 and not 12 <= _h <= 14 else "fiszek")))
+            rc = int(r.get("rating_count") or 0)
+            parts.append(("★ %s (%d)" % (self._fmt_avg(r.get("rating_avg")), rc)) if rc else ("No ratings yet" if EYL_EN else "Brak ocen"))
+            if r.get("book"):
+                parts.append(str(r["book"]))
+            meta = QLabel("  ·  ".join(eyl_tr(x) for x in parts))
+            _EYL_NO_TR.add(meta.text())
+            meta.setFont(_gfont(11)); meta.setWordWrap(True)
+            meta.setStyleSheet("color:rgba(238,242,255,150);background:transparent;")
+            meta.setContentsMargins(6, 0, 6, 0)
+            bl.addWidget(meta)
+            self.list_lay.addWidget(box)
+            btn.appear(min(i, 8) * 35)
+
+    def _pick(self, row):
+        self.lbl_status.setText("Ładowanie zestawu…")
+        w = LoadSetCardsWorker(row["id"])
+        w.done.connect(lambda cards, nm=str(row.get("name") or "Zestaw"): (self.hide(), self.set_picked.emit(nm, cards)))
+        w.error.connect(lambda e: self.lbl_status.setText("Nie udało się wczytać zestawu."))
+        self._card_worker = w
+        _session.track("community_set_learn", {"surface": "desktop", "language": row.get("lang") or ""})
+        w.start()
 
     def paintEvent(self, e):
         _paint_bg(self, e)
@@ -8241,7 +8425,9 @@ class TrayApp:
         self.win_cat     = CategoryWindow(self._on_cat, self._back_to_lvl)
         self.win_purchase = PurchaseWindow()
         self.win_purchase.purchased.connect(self._on_purchase_done)
-        self.win_library = LibraryWindow(self._show_lang, self._show_my_sets, self._toggle_hub_open)
+        self.win_library = LibraryWindow(self._show_lang, self._show_my_sets, self._toggle_hub_open, self._show_community)
+        self.win_community = CommunityPicker(self._show_library)
+        self.win_community.set_picked.connect(self._on_custom_set_picked)
         self.win_my_sets = MySetsPicker(self._show_library, self._show_custom_create)
         self.win_custom  = CustomSetWindow(self._show_my_sets)
         self.win_custom.set_created.connect(self._on_custom_set_created)
@@ -8712,7 +8898,14 @@ class TrayApp:
 
     def _show_library(self):
         self.win_my_sets.hide()
+        try: self.win_community.hide()
+        except Exception: pass
         self.win_library.show(); self.win_library.raise_(); self.win_library.activateWindow()
+
+    def _show_community(self):
+        self.win_library.hide()
+        self.win_community.load()
+        self.win_community.show(); self.win_community.raise_(); self.win_community.activateWindow()
 
     def _show_my_sets(self):
         self.win_my_sets.set_premium(getattr(self, '_is_premium', False))

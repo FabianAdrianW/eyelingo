@@ -1,7 +1,7 @@
 /* ═══ EYELINGO — SPOŁECZNOŚĆ (zestawy udostępnione przez użytkowników) ═══
    Wspólne dla strony (index.html) i PWA (app.html). Desktop ma własny widok w fiszki_app.py.
    Dane: user_sets (is_public, level, book, description, hidden) + RPC:
-     community_sets · toggle_set_like · copy_community_set (limit Free 5 zestawów na serwerze),
+     community_sets · rate_community_set · copy_community_set (limit Free 5 zestawów na serwerze),
    zgłoszenia: set_reports (3 zgłoszenia → zestaw ukryty, właściciel nie zdejmie ukrycia).
    Zestawu społeczności można się uczyć bez kopiowania; kopia wlicza się do limitu zestawów. */
 (function(){
@@ -31,7 +31,8 @@
     list: async function(o){
       o=o||{};
       var r=await dbc().rpc('community_sets',{p_q:(o.q||null),p_lang:(o.lang||null),p_level:(o.level||null),
-        p_sort:(o.sort||'popular'),p_limit:(o.limit||24),p_offset:(o.offset||0)});
+        p_sort:(o.sort||'top'),p_limit:(o.limit||24),p_offset:(o.offset||0),
+        p_native:(typeof window.eylNative==='function'?window.eylNative():null)});
       if(r.error) throw r.error;
       return r.data||[];
     },
@@ -41,7 +42,12 @@
       if(r.error) throw r.error;
       return (r.data||[]).filter(function(c){ return c.word && c.translation; });
     },
-    like: async function(id){ var r=await dbc().rpc('toggle_set_like',{p_set:id}); if(r.error) throw r.error; return r.data; },
+    rate: async function(id,stars){ var r=await dbc().rpc('rate_community_set',{p_set:id,p_stars:stars}); if(r.error) throw r.error; return (r.data&&r.data[0])||null; },
+    mySets: async function(){
+      var s=(await dbc().auth.getSession()).data.session; if(!s) return [];
+      var r=await dbc().from('user_sets').select('id,name,lang,is_public,hidden').eq('user_id',s.user.id).order('created_at',{ascending:false});
+      return (r&&r.data)||[];
+    },
     copy: async function(id){
       var r=await dbc().rpc('copy_community_set',{p_set:id});
       if(r.error){ var m=String(r.error.message||''); var e=new Error(/free_set_limit/.test(m)?'limit':m); throw e; }
@@ -154,21 +160,60 @@
    +'.ecl-act{display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap}'
    +'.ecl-b{border:1.5px solid var(--border2,#d9d4c7);background:transparent;color:var(--navy,#1a2340);border-radius:100px;padding:6px 12px;font:500 12.5px DM Sans,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:5px}'
    +'.ecl-b.pri{border-color:var(--navy,#1a2340);background:var(--navy,#1a2340);color:#fff}'
-   +'.ecl-b.like.on{color:#c2410c;border-color:rgba(194,65,12,.4)}'
+   +'.ecl-rate{white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--navy,#1a2340);font-weight:600}'
+   +'.ecl-rate .n{font-weight:400;color:var(--dim2,#7a8099)}.ecl-star{color:#e0a100}'
+   +'.ecl-rate.none{font-weight:400;color:var(--dim2,#7a8099)}'
+   +'.ecl-top{display:flex;justify-content:space-between;align-items:center;gap:10px}'
+   +'.ecl-share{border:1.5px solid var(--orange,#A94C13);color:var(--orange,#A94C13);background:transparent;border-radius:100px;padding:9px 15px;font:600 13px DM Sans,system-ui,sans-serif;cursor:pointer;white-space:nowrap}'
+   +'.ecr-stars{display:flex;gap:6px;justify-content:center;margin:6px 0 4px}.ecr-stars button{border:none;background:transparent;font-size:34px;line-height:1;cursor:pointer;color:#d9d4c7;padding:2px;transition:transform .1s}.ecr-stars button.on{color:#e0a100}.ecr-stars button:hover{transform:scale(1.12)}'
    +'.ecl-more{margin-left:auto;border:none;background:transparent;color:var(--dim2,#7a8099);cursor:pointer;font-size:12px;padding:6px}'
    +'.ecl-empty{text-align:center;color:var(--dim2,#7a8099);font-size:14px;line-height:1.6;padding:34px 12px;border:1px dashed var(--border2,#d9d4c7);border-radius:16px}'
    +'.ecl-load{display:block;margin:16px auto 0}'
    +'@media(max-width:560px){.ecl-grid{grid-template-columns:1fr}}';
-  var HEART='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
+  function fmtAvg(v){ var n=Math.round((+v||0)*10)/10; return EN()?n.toFixed(1):n.toFixed(1).replace('.',','); }
+  function ratingsTxt(n){ return EN()?(n+' '+(n===1?'rating':'ratings')):(n+' '+plural(n,'ocena','oceny','ocen')); }
+  function rateHtml(s){
+    if(!s.rating_count) return '<span class="ecl-rate none">'+T('Brak ocen','No ratings yet')+'</span>';
+    return '<span class="ecl-rate"><span class="ecl-star">★</span>'+fmtAvg(s.rating_avg)+' <span class="n">('+ratingsTxt(s.rating_count)+')</span></span>';
+  }
+  function rateDialog(s, done){
+    var cur=s.my_stars||0;
+    var ov=modal('<div class="ecm-h" style="text-align:center">'+T('Oceń zestaw','Rate this set')+'</div>'
+      +'<div class="ecm-p" style="text-align:center;margin-bottom:4px">'+esc(s.name)+'</div>'
+      +'<div class="ecr-stars">'+[1,2,3,4,5].map(function(k){ return '<button type="button" data-k="'+k+'" aria-label="'+k+'">★</button>'; }).join('')+'</div>'
+      +'<div class="ecm-p" data-h style="text-align:center;min-height:20px;margin:0">'+(cur?T('Twoja ocena: ','Your rating: ')+cur+'/5':T('Jak przydatny jest ten zestaw?','How useful is this set?'))+'</div>'
+      +'<div class="ecm-row" style="justify-content:space-between">'+(cur?'<button class="ecm-btn" data-del>'+T('Usuń ocenę','Remove rating')+'</button>':'<span></span>')+'<button class="ecm-btn" data-x>'+T('Zamknij','Close')+'</button></div>');
+    var btns=ov.querySelectorAll('.ecr-stars button');
+    function paint(n){ Array.prototype.forEach.call(btns,function(b){ b.classList.toggle('on', +b.getAttribute('data-k')<=n); }); }
+    paint(cur);
+    Array.prototype.forEach.call(btns,function(b){
+      var k=+b.getAttribute('data-k');
+      b.onmouseenter=function(){ paint(k); }; b.onmouseleave=function(){ paint(cur); };
+      b.onclick=function(){ send(k); };
+    });
+    async function send(k){
+      try{
+        var r=await API.rate(s.id,k);
+        if(r){ s.rating_avg=r.rating_avg; s.rating_count=r.rating_count; s.my_stars=r.my_stars; }
+        ov.remove(); toast(k?T('Dziękujemy za ocenę','Thanks for rating'):T('Ocena usunięta','Rating removed'));
+        try{ if(k && typeof window.track==='function') window.track('community_set_rated',{stars:k}); }catch(e){}
+        if(done) done();
+      }catch(e){ toast(T('Nie udało się zapisać oceny','Could not save the rating')); }
+    }
+    ov.querySelector('[data-x]').onclick=function(){ ov.remove(); };
+    var d=ov.querySelector('[data-del]'); if(d) d.onclick=function(){ send(0); };
+  }
 
   function renderBrowser(root, opts){
     ensureCss('ecl-css',LCSS);
-    var st={q:'',lang:opts.lang||'',level:'',sort:'popular',offset:0,items:[],busy:false,done:false};
-    root.innerHTML='<div class="ecl-bar">'
+    var st={q:'',lang:opts.lang||'',level:'',sort:'top',offset:0,items:[],busy:false,done:false};
+    root.innerHTML='<div class="ecl-top" style="margin:0 0 12px"><div class="ecm-p" style="margin:0">'+T('Najlepiej oceniane są na górze. Ocenić możesz każdy zestaw, z którego się uczysz.','Top-rated sets come first. You can rate any set you learn from.')+'</div>'
+      +'<button class="ecl-share" data-share>'+T('+ Udostępnij swój zestaw','+ Share your set')+'</button></div>'
+      +'<div class="ecl-bar">'
       +'<input type="search" data-q placeholder="'+esc(T('Szukaj: temat, podręcznik, unit…','Search: topic, textbook, unit…'))+'">'
       +'<select data-lang><option value="">'+T('Wszystkie języki','All languages')+'</option>'+LANGS.map(function(c){ return '<option value="'+c+'"'+(c===st.lang?' selected':'')+'>'+esc(lname(c))+'</option>'; }).join('')+'</select>'
       +'<select data-lvl><option value="">'+T('Każdy poziom','Any level')+'</option>'+LEVELS.map(function(l){ return '<option>'+l+'</option>'; }).join('')+'</select>'
-      +'<select data-sort><option value="popular">'+T('Najpopularniejsze','Most popular')+'</option><option value="new">'+T('Najnowsze','Newest')+'</option></select>'
+      +'<select data-sort><option value="top">'+T('Najlepiej oceniane','Top rated')+'</option><option value="new">'+T('Najnowsze','Newest')+'</option></select>'
       +'</div><div class="ecl-grid" data-g></div><button class="ecl-b ecl-load" data-more style="display:none">'+T('Pokaż więcej','Show more')+'</button>';
     var g=root.querySelector('[data-g]'), more=root.querySelector('[data-more]');
     var tmr=null;
@@ -177,11 +222,12 @@
     root.querySelector('[data-lvl]').onchange=function(e){ st.level=e.target.value; reload(); };
     root.querySelector('[data-sort]').onchange=function(e){ st.sort=e.target.value; reload(); };
     more.onclick=function(){ load(); };
+    root.querySelector('[data-share]').onclick=function(){ shareDialog(null, reload); };
 
     function card(s, i){
       var meta=flag(s.lang,13)+' <span>'+esc(lname(s.lang))+'</span>'+(s.level?'<span>· '+esc(s.level)+'</span>':'')+'<span>· '+cardsTxt(s.cards_count||0)+'</span><span>· '+esc(T('od ','by '))+esc(s.author||'')+'</span>';
       return '<div class="ecl-card" data-i="'+i+'">'
-        +'<div class="ecl-name" title="'+esc(s.name)+'">'+esc(s.name)+'</div>'
+        +'<div class="ecl-top"><div class="ecl-name" title="'+esc(s.name)+'">'+esc(s.name)+'</div>'+rateHtml(s)+'</div>'
         +(s.book?'<div class="ecl-book" title="'+esc(s.book)+'">'+esc(s.book)+'</div>':'')
         +'<div class="ecl-meta">'+meta+'</div>'
         +(s.description?'<div class="ecl-desc">'+esc(s.description)+'</div>':'')
@@ -189,7 +235,7 @@
           +'<button class="ecl-b pri" data-a="learn">'+T('Ucz się','Learn')+'</button>'
           +'<button class="ecl-b" data-a="prev">'+T('Podgląd','Preview')+'</button>'
           +(s.is_mine?'':'<button class="ecl-b" data-a="copy">'+T('Kopiuj','Copy')+'</button>')
-          +'<button class="ecl-b like'+(s.liked?' on':'')+'" data-a="like"'+(s.is_mine?' disabled style="opacity:.6;cursor:default"':'')+'>'+HEART+'<span>'+(s.likes_count||0)+'</span></button>'
+          +(s.is_mine?'<button class="ecl-b" data-a="edit">'+T('Udostępnianie','Sharing')+'</button>':'<button class="ecl-b" data-a="rate">'+(s.my_stars?('★ '+s.my_stars+'/5'):T('Oceń','Rate'))+'</button>')
           +(s.is_mine?'<span class="ecl-more" style="cursor:default">'+T('Twój zestaw','Your set')+'</span>':'<button class="ecl-more" data-a="rep" title="'+esc(T('Zgłoś','Report'))+'">'+T('Zgłoś','Report')+'</button>')
         +'</div></div>';
     }
@@ -201,18 +247,18 @@
       else if(a==='prev') preview(s);
       else if(a==='copy') copySet(s, opts.onCopied);
       else if(a==='rep') reportDialog(s);
-      else if(a==='like'){
-        if(s.is_mine) return;
-        if(!(await API.loggedIn())){ toast(T('Zaloguj się, aby polubić','Log in to like')); return; }
-        try{ var n=await API.like(s.id); s.liked=!s.liked; s.likes_count=n; b.classList.toggle('on',s.liked); b.querySelector('span').textContent=n; }catch(err){}
+      else if(a==='edit') shareDialog({id:s.id,name:s.name}, reload);
+      else if(a==='rate'){
+        if(!(await API.loggedIn())){ toast(T('Zaloguj się, aby ocenić','Log in to rate')); return; }
+        rateDialog(s, function(){ el.outerHTML=card(s, +el.getAttribute('data-i')); });
       }
     });
     function emptyHtml(){
       var filt=st.q||st.lang||st.level;
       return '<div class="ecl-empty" style="grid-column:1/-1">'
         +(filt?T('Nic nie znaleziono dla tych filtrów.','Nothing found for these filters.')+'<br>':'')
-        +T('Społeczność dopiero rośnie. Udostępnij własny zestaw: <b>Moje zestawy → Edytuj → Udostępnij w Społeczności</b> — pomożesz innym uczniom i nauczycielom.',
-           'The community is just getting started. Share your own set: <b>My sets → Edit → Share with the community</b> — you\'ll help other learners and teachers.')
+        +T('Społeczność dopiero rośnie. Udostępnij własny zestaw przyciskiem <b>„+ Udostępnij swój zestaw”</b> — pomożesz innym uczniom i nauczycielom.',
+           'The community is just getting started. Share your own set with <b>“+ Share your set”</b> — you\'ll help other learners and teachers.')
         +'</div>';
     }
     async function load(){
@@ -254,6 +300,109 @@
       level:(document.getElementById('ecs-lvl')||{}).value||null,
       book:((document.getElementById('ecs-book')||{}).value||'').trim().slice(0,80)||null,
       description:((document.getElementById('ecs-desc')||{}).value||'').trim().slice(0,300)||null};
+  }
+  /* ── Okno „Udostępnij w Społeczności” — dostępne z zakładki Społeczność, z kafla zestawu i z PWA ── */
+  async function shareDialog(set, after){
+    if(!(await API.loggedIn())){ toast(T('Zaloguj się, aby udostępnić zestaw','Log in to share a set')); return; }
+    var sets=[], info=null;
+    if(!set){
+      sets=await API.mySets();
+      if(!sets.length){ var o0=modal('<div class="ecm-h">'+T('Nie masz jeszcze zestawów','You have no sets yet')+'</div><div class="ecm-p">'+T('Najpierw stwórz zestaw w „Moich zestawach” — ręcznie, z tematu albo ze zdjęcia.','First create a set in “My sets” — by hand, from a topic or from a photo.')+'</div><div class="ecm-row"><button class="ecm-btn pri" data-x>OK</button></div>'); o0.querySelector('[data-x]').onclick=function(){ o0.remove(); }; return; }
+    }
+    var ov=modal('<div class="ecm-h">'+T('Udostępnij w Społeczności','Share with the community')+'</div><div data-b class="ecm-p">…</div>');
+    async function fill(id){
+      info=await API.shareInfo(id);
+      var b=ov.querySelector('[data-b]'); if(!info){ b.textContent=T('Nie udało się wczytać zestawu.','Could not load the set.'); return; }
+      var pub=!!info.is_public, needRules=!pub && !rulesAccepted();
+      b.className=''; b.innerHTML=
+        (sets.length?'<label class="ecm-p" style="display:block;margin:0 0 4px">'+T('Zestaw','Set')+'</label><select data-set class="ecm-ta" style="min-height:0;margin-bottom:10px">'+sets.map(function(x){ return '<option value="'+x.id+'"'+(String(x.id)===String(id)?' selected':'')+'>'+esc(x.name||'')+(x.is_public?' · '+T('udostępniony','shared'):'')+'</option>'; }).join('')+'</select>':'<div class="ecm-p" style="font-weight:600;color:var(--navy,#1a2340);margin-bottom:8px">'+esc((set&&set.name)||'')+'</div>')
+        +(pub?'<div class="ecm-p" style="color:#16794c;margin-bottom:10px">✓ '+T('Zestaw jest udostępniony — inni mogą się z niego uczyć i go oceniać.','This set is shared — others can learn from it and rate it.')+'</div>':'<div class="ecm-p">'+T('Inni użytkownicy będą mogli uczyć się z tego zestawu, oceniać go i kopiować. Zmiany w zestawie od razu widać u wszystkich.','Other users can learn from this set, rate it and copy it. Your edits are visible to everyone right away.')+'</div>')
+        +(info.hidden?'<div class="ecm-p" style="color:#b42318">'+T('Zestaw został ukryty po zgłoszeniach i czeka na sprawdzenie.','This set was hidden after reports and is waiting for review.')+'</div>':'')
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+          +'<select data-lang class="ecm-ta" style="min-height:0"><option value="">'+T('Język zestawu','Set language')+'</option>'+LANGS.map(function(c){ return '<option value="'+c+'"'+(info.lang===c?' selected':'')+'>'+esc(lname(c))+'</option>'; }).join('')+'</select>'
+          +'<select data-lvl class="ecm-ta" style="min-height:0"><option value="">'+T('Poziom (opcjonalnie)','Level (optional)')+'</option>'+LEVELS.map(function(l){ return '<option'+(info.level===l?' selected':'')+'>'+l+'</option>'; }).join('')+'</select>'
+          +'<input data-book class="ecm-ta" style="min-height:0;grid-column:1/-1" maxlength="80" placeholder="'+esc(T('Podręcznik i unit (opcjonalnie), np. Repetytorium 8 · Unit 10','Textbook and unit (optional), e.g. Grade 8 review · Unit 10'))+'" value="'+esc(info.book||'')+'">'
+          +'<textarea data-desc class="ecm-ta" style="grid-column:1/-1" maxlength="300" placeholder="'+esc(T('Krótki opis (opcjonalnie): dla kogo, czego dotyczy','Short description (optional): who it is for, what it covers'))+'">'+esc(info.description||'')+'</textarea>'
+        +'</div>'
+        +(needRules?'<label class="ecm-chk" style="margin-top:10px"><input type="checkbox" data-rules> <span>'+T('Udostępniam tylko własną pracę: nie przepisuję 1:1 cudzych materiałów (np. list słówek z podręcznika z ich tłumaczeniami i przykładami) i nie używam logo ani znaków wydawców. Treści nie są obraźliwe.','I only share my own work: I don\'t copy other people\'s material 1:1 (e.g. a textbook\'s word lists with its translations and examples) and I don\'t use publishers\' logos or trademarks. The content isn\'t offensive.')+'</span></label>':'')
+        +'<div class="ecm-p" data-err style="color:#b42318;margin:8px 0 0;min-height:0"></div>'
+        +'<div class="ecm-row" style="justify-content:space-between">'
+          +(pub?'<button class="ecm-btn" data-off>'+T('Wycofaj ze Społeczności','Remove from community')+'</button>':'<span></span>')
+          +'<span style="display:flex;gap:8px"><button class="ecm-btn" data-x>'+T('Anuluj','Cancel')+'</button><button class="ecm-btn pri" data-ok>'+(pub?T('Zapisz','Save'):T('Udostępnij','Share'))+'</button></span>'
+        +'</div>';
+      var sel=b.querySelector('[data-set]'); if(sel) sel.onchange=function(){ fill(sel.value); };
+      b.querySelector('[data-x]').onclick=function(){ ov.remove(); };
+      var off=b.querySelector('[data-off]');
+      if(off) off.onclick=async function(){ try{ await API.share(info.id,{is_public:false}); ov.remove(); toast(T('Zestaw wycofany ze Społeczności','Set removed from the community')); if(after) after(); }catch(e){ toast(T('Nie udało się zapisać','Could not save')); } };
+      b.querySelector('[data-ok]').onclick=async function(){
+        var err=b.querySelector('[data-err]'), lang=b.querySelector('[data-lang]').value;
+        if(!lang){ err.textContent=T('Wybierz język zestawu — po nim inni go znajdą.','Choose the set language — that is how others find it.'); return; }
+        var rc=b.querySelector('[data-rules]');
+        if(rc && !rc.checked){ err.textContent=T('Zaznacz zgodę na zasady udostępniania.','Please accept the sharing rules.'); return; }
+        if(rc){ try{ localStorage.setItem(RULES_KEY,'1'); }catch(e){} }
+        try{
+          await API.share(info.id,{is_public:true,lang:lang,level:b.querySelector('[data-lvl]').value||null,
+            book:b.querySelector('[data-book]').value.trim().slice(0,80)||null,
+            description:b.querySelector('[data-desc]').value.trim().slice(0,300)||null});
+          ov.remove();
+          toast(pub?T('Zapisano','Saved'):T('Zestaw udostępniony w Społeczności','Set shared with the community'));
+          try{ if(!pub && typeof window.track==='function') window.track('community_set_shared',{lang:lang}); }catch(e){}
+          if(after) after();
+        }catch(e){ err.textContent=T('Nie udało się zapisać. Spróbuj ponownie.','Could not save. Try again.'); }
+      };
+    }
+    fill(set?set.id:sets[0].id);
+  }
+  window.EylCom.shareDialog=shareDialog;
+
+  /* Kafle „Moje zestawy” na stronie: przycisk „Udostępnij” / „W Społeczności ✓” przy każdym zestawie */
+  var _pubCache={ts:0,map:{}};
+  async function pubMap(force){
+    if(!force && Date.now()-_pubCache.ts<15000) return _pubCache.map;
+    var m={}; (await API.mySets()).forEach(function(x){ m[x.id]=x; }); _pubCache={ts:Date.now(),map:m}; return m;
+  }
+  function decorateWebMine(){
+    var grid=document.getElementById('mat-grid'); if(!grid || window._matSeg==='com' || window._matSeg==='eyl') return;
+    var cards=grid.querySelectorAll('.mat-card'); if(!cards.length) return;
+    pubMap().then(function(m){
+      Array.prototype.forEach.call(cards,function(c){
+        if(c.querySelector('.ecs-chip')) return;
+        var mm=/openSet\((\d+)\)/.exec(c.getAttribute('onclick')||''); if(!mm) return;
+        var id=+mm[1], st=m[id]; if(!st) return;                       // tylko własne zestawy
+        var row=c.querySelector('div[onclick="event.stopPropagation()"]') || c;
+        var bt=document.createElement('button'); bt.type='button'; bt.className='ecs-chip';
+        bt.style.cssText='display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:100px;border:1.5px solid '+(st.is_public?'rgba(22,121,76,.45)':'var(--border2)')+';background:transparent;color:'+(st.is_public?'#16794c':'var(--dim)')+';font-size:12px;font-family:DM Sans,sans-serif;cursor:pointer';
+        bt.textContent=st.is_public?T('W Społeczności ✓','In community ✓'):T('Udostępnij','Share');
+        bt.title=T('Udostępnij w Społeczności','Share with the community');
+        bt.onclick=function(e){ e.stopPropagation(); shareDialog({id:id,name:st.name}, function(){ _pubCache.ts=0; c.querySelector('.ecs-chip').remove(); decorateWebMine(); }); };
+        row.appendChild(bt);
+      });
+    }).catch(function(){});
+  }
+  function watchWebMine(){
+    var grid=document.getElementById('mat-grid'); if(!grid || grid._ecsObs) return;
+    var t=null; var obs=new MutationObserver(function(){ clearTimeout(t); t=setTimeout(decorateWebMine,120); });
+    obs.observe(grid,{childList:true}); grid._ecsObs=obs; decorateWebMine();
+  }
+
+  /* PWA: wiersz „Udostępnij w Społeczności” w ekranie własnego zestawu */
+  function pwaShareRow(){
+    var sec=document.querySelector('#s-set .set-sec'); if(!sec || document.getElementById('ecs-pwa-row')) return !!document.getElementById('ecs-pwa-row');
+    var r=document.createElement('button'); r.className='set-row'; r.id='ecs-pwa-row';
+    r.innerHTML='<span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M15 20c0-2.2 1.3-4 3-4.6"/></svg></span>'
+      +'<span class="bd"><span class="lb">'+T('Udostępnij w Społeczności','Share with the community')+'</span><span class="vl" id="ecs-pwa-val">'+T('Niech inni też się z niego uczą','Let others learn from it too')+'</span></span>'
+      +'<svg class="cv" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
+    sec.parentNode.insertBefore(r, sec.nextSibling);
+    r.onclick=function(){ try{ shareDialog({id:+curSetId,name:curSetName}, refreshPwaRow); }catch(e){} };
+    return true;
+  }
+  async function refreshPwaRow(){
+    var r=document.getElementById('ecs-pwa-row'); if(!r) return;
+    var own=false, pub=false;
+    try{ own=(typeof curSetKind!=='undefined' && curSetKind==='set' && window._ecsPwaKind!=='community'); }catch(e){}
+    r.style.display=own?'':'none'; if(!own) return;
+    try{ var i=await API.shareInfo(+curSetId); pub=!!(i&&i.is_public); }catch(e){}
+    var v=document.getElementById('ecs-pwa-val'); if(v) v.textContent=pub?T('Udostępniony ✓ — inni mogą go oceniać','Shared ✓ — others can rate it'):T('Niech inni też się z niego uczą','Let others learn from it too');
   }
   window.EylCom.sharePanelHtml=sharePanelHtml;
   window.EylCom.readSharePanel=readSharePanel;
@@ -373,7 +522,7 @@
     };
     if(typeof window.openSet==='function' && !window.openSet._ecs){
       var oo=window.openSet;
-      var no=function(){ window._ecsPwaKind=''; return oo.apply(this,arguments); };
+      var no=function(){ window._ecsPwaKind=''; var r=oo.apply(this,arguments); try{ pwaShareRow(); setTimeout(refreshPwaRow,0); }catch(e){} return r; };
       no._ecs=true; window.openSet=no;
     }
     if(typeof window.setBack==='function' && !window.setBack._ecs){
@@ -388,6 +537,7 @@
       if(typeof window.openSet!=='function') return;
       window.openSet(String(s.id), s.name||'', s.cards_count||0, s.lang||'en');
       window._ecsPwaKind='community';
+      try{ refreshPwaRow(); }catch(e){}
       var bl=document.getElementById('set-back-label'); if(bl) bl.textContent=T('Społeczność','Community');
       try{ if(typeof window.track==='function') window.track('community_set_learn',{lang:s.lang||'',surface:'mobile'}); }catch(e){}
     }catch(e){}
@@ -397,12 +547,40 @@
     var tries=0;
     (function tick(){
       var isWeb=!!document.getElementById('mat-segment'), isPwa=!!document.getElementById('app-main');
-      if(isWeb){ initWeb(); hookWebEditor(); }
+      if(isWeb){ initWeb(); hookWebEditor(); watchWebMine(); }
       if(isPwa) initPwa();
       var done=(isWeb && document.getElementById('mseg-com') && window.openEditSet && window.openEditSet._ecs)
              || (isPwa && document.getElementById('s-community'));
       if(!done && ++tries<60) setTimeout(tick,500);
     })();
   }
+  /* Deep-link z programu desktop: eyelingo.app/?com=1 (przeglądaj) lub ?com=share (okno udostępniania) */
+  try{
+    var q=new URLSearchParams(location.search), cv=q.get('com');
+    if(cv==='1'||cv==='share'){
+      sessionStorage.setItem('eylComLink',cv+'|'+Date.now());
+      q.delete('com'); var qs=q.toString(); history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+location.hash);
+    }
+  }catch(e){}
+  function comLinkTick(n){
+    var v=''; try{ v=sessionStorage.getItem('eylComLink')||''; }catch(e){}
+    var parts=v.split('|'); if(!v || Date.now()-(+parts[1]||0)>600000){ try{ sessionStorage.removeItem('eylComLink'); }catch(e){} return; }
+    (async function(){
+      try{
+        if(dbc() && document.getElementById('mseg-com') && await API.loggedIn()){
+          var pc=document.getElementById('page-community');
+          if(!pc || !pc.classList.contains('active')){ window._matSeg='mine'; if(typeof showPage==='function') showPage('community'); }
+          else{
+            sessionStorage.removeItem('eylComLink');
+            window.setMatSegment('com');
+            if(parts[0]==='share') setTimeout(function(){ shareDialog(null,null); },400);
+            return;
+          }
+        }
+      }catch(e){}
+      if(n<1200) setTimeout(function(){ comLinkTick(n+1); },500);
+    })();
+  }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+  comLinkTick(0);
 })();
