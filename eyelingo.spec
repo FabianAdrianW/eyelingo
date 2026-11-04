@@ -28,6 +28,10 @@ for res in ("eyelingomark.png", "logo_transparent_navy.png", "logo_navy.png", ".
     if os.path.exists(res):
         datas.append((res, "."))
 
+# słownik interfejsu angielskiego (ten sam plik co web)
+if os.path.exists(os.path.join("i18n", "en.json")):
+    datas.append((os.path.join("i18n", "en.json"), "i18n"))
+
 # supabase + zależności HTTP potrafią gubić submoduły przy zamrażaniu — zbieramy jawnie.
 for pkg in ("supabase", "gotrue", "supabase_auth", "postgrest", "realtime",
             "storage3", "supafunc", "httpx", "httpcore", "h11", "h2", "gtts",
