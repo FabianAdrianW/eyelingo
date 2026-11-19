@@ -1013,8 +1013,10 @@ async function doReset(){
   if(!email){ showLoginErr('Wpisz najpierw swój e-mail — wyślemy na niego link.'); return; }
   var a=document.querySelector('#li-reset a'); if(a) a.textContent='Wysyłam…';
   try{
-    var r=await db.auth.resetPasswordForEmail(email);
-    if(r && r.error){ showLoginErr('Nie udało się wysłać linku. Napisz do nas: eyelingo.app@gmail.com'); }
+    /* redirectTo → strona www: tam jest ekran „Ustaw nowe hasło” (po zmianie wracamy do apki) */
+    try{ localStorage.setItem('eyl_recovery_pending',String(Date.now())); }catch(_e){}
+    var r=await db.auth.resetPasswordForEmail(email,{redirectTo:'https://www.eyelingo.app/'});
+    if(r && r.error){ showLoginErr((r.error.status===429||r.error.code==='over_email_send_rate_limit')?'Za dużo prób. Spróbuj ponownie za kilka minut.':'Nie udało się wysłać linku. Napisz do nas: eyelingo.app@gmail.com'); }
     else { showLoginErr(''); if(a) a.textContent='Link wysłany — sprawdź skrzynkę'; return; }
   }catch(e){ showLoginErr('Brak połączenia. Spróbuj ponownie.'); }
   if(a) a.textContent='Nie pamiętam hasła';
@@ -5909,7 +5911,7 @@ async function alexSend(){
       +'<div id="ns-adv" style="display:none;padding-bottom:6px">'
         +'<div class="ns-lab">Poziom słów</div><div class="ns-chips" id="ns-lvl"></div>'
         +'<div class="ns-lab" style="margin-top:18px">Liczba słów</div>'
-        +'<input class="inp" id="ns-num" type="number" min="5" max="40" value="'+topicCount+'" style="margin-bottom:0">'
+        +'<input class="inp" id="ns-num" type="number" min="5" max="80" value="'+topicCount+'" style="margin-bottom:0">'
       +'</div>'
       +'<div class="ns-msg" id="ns-msg"></div>'
       +'<button class="ns-btn pri" id="ns-go" onclick="_nsGenTopic()">Dobierz słowa</button></div>';
@@ -6024,7 +6026,7 @@ async function alexSend(){
   window._nsGenTopic=async function(){
     var topic=clean(($('ns-topic')||{}).value||'').replace(/\s+/g,' ').trim().slice(0,TOPIC_MAX);
     var lang=($('ns-lang')||{}).value||'en';
-    var num=Math.max(5,Math.min(40,parseInt(($('ns-num')||{}).value||topicCount,10)||topicCount));
+    var num=Math.max(5,Math.min(80,parseInt(($('ns-num')||{}).value||topicCount,10)||topicCount));
     topicCount=num;
     var m=$('ns-msg'), go=$('ns-go'), langName=LN[lang]||LN.en;
     if(!topic){ if(m) m.textContent='Napisz, czego chcesz się uczyć.'; return; }
@@ -6037,7 +6039,7 @@ async function alexSend(){
       +'\n\nSCHEMAT ODPOWIEDZI (nic poza nim):\n{"title":"nazwa zestawu po polsku, 2–4 słowa","cards":[{"word":"...","translation":"..."}]}';
     go.disabled=true; go.textContent='Dobieram słowa…'; if(m) m.textContent='AI dobiera słownictwo…';
     try{
-      var r=parseOut(await proxy(prompt,2200));
+      var r=parseOut(await proxy(prompt,Math.min(4000,Math.max(2200,500+num*45))));
       if(r.reject){ if(m) m.textContent='To nie wygląda na temat do nauki słówek. Opisz go w kilku słowach, np. „rozmowa o pracę".'; go.disabled=false; go.textContent='Dobierz słowa'; return; }
       if(!r.cards.length){ if(m) m.textContent='Nie udało się dobrać słów. Spróbuj innego sformułowania.'; go.disabled=false; go.textContent='Dobierz słowa'; return; }
       r.title=r.title||(topic.charAt(0).toUpperCase()+topic.slice(1,40));

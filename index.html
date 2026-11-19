@@ -3163,6 +3163,7 @@ function eylPrefLoad(){
       <div class="fg"><label class="fl">E-mail</label><input type="email" id="auth-email" class="fi" placeholder="twoj@email.com"></div>
       <div class="fg" id="fg-username" style="display:none"><label class="fl">Jak mamy się do Ciebie zwracać?</label><input type="text" id="auth-username" class="fi" placeholder="np. Anna" maxlength="20"><div style="font-size:12px;color:var(--dim2);margin-top:6px;line-height:1.5">Tego imienia użyjemy w całej aplikacji. Dla nas jesteś konkretną osobą, nie pozycją w tabeli — Eyelingo dopasowuje naukę pod Ciebie.</div></div>
       <div class="fg"><label class="fl">Hasło</label><input type="password" id="auth-password" class="fi" placeholder="min. 8 znaków"></div>
+      <div id="auth-forgot" style="text-align:right;font-size:13px;margin:-4px 0 6px"><a onclick="eylForgotPassword()" style="color:var(--navy);cursor:pointer;text-decoration:underline">Nie pamiętasz hasła?</a></div>
       <button class="btn btn-orange btn-full btn-lg" id="auth-btn" onclick="submitAuth()" style="margin-top:8px"><span id="auth-btn-text">Zaloguj się</span></button>
       <div id="auth-legal" style="display:none;font-size:12px;color:var(--dim2);margin-top:10px;line-height:1.55;text-align:center">Zakładając konto, akceptujesz <a href="regulamin.html" target="_blank" rel="noopener" style="color:var(--orange)">Regulamin</a> i <a href="prywatnosc.html" target="_blank" rel="noopener" style="color:var(--orange)">Politykę Prywatności</a>.</div>
       <div class="aswitch" id="auth-switch">Nie masz konta? <a onclick="toggleAuthMode()">Zarejestruj się za darmo</a></div>
@@ -3441,15 +3442,18 @@ async function eylHandleAuthCallback(){
       try{ await db.auth.setSession({access_token:atok,refresh_token:rtok}); }
       catch(_e){ return {handled:true,error:'setSession'}; }
       try{ history.replaceState(null,'',location.pathname); }catch(_e){}
-      if(type==='signup'||type==='') window._eylJustConfirmed=true;
+      if(type==='recovery') window._eylRecovery=true;
+      else if(type==='signup'||type==='') window._eylJustConfirmed=true;
       return {handled:true,type:type};
     }
     if(code){
       try{ await db.auth.exchangeCodeForSession(code); }
       catch(_e){ return {handled:true,error:'code'}; }
       try{ history.replaceState(null,'',location.pathname); }catch(_e){}
-      window._eylJustConfirmed=true;
-      return {handled:true,type:type||'signup'};
+      var _rp=0; try{ _rp=Number(localStorage.getItem('eyl_recovery_pending')||0); }catch(_e){}
+      if(type==='recovery' || (_rp && Date.now()-_rp<7200000)){ window._eylRecovery=true; try{ localStorage.removeItem('eyl_recovery_pending'); }catch(_e){} }
+      else window._eylJustConfirmed=true;
+      return {handled:true,type:type||(window._eylRecovery?'recovery':'signup')};
     }
     return {handled:false};
   }catch(e){ return {handled:false}; }
@@ -3480,6 +3484,7 @@ function eylGoMobileApp(opts){
     // Przekierowanie JUŻ w locie (np. zdarzenie SIGNED_IN wyprzedziło zwrot
     // z signInWithPassword). Zwracamy TRUE, żeby wywołujący przerwał swoją
     // ścieżkę i nie odpalał showPage('dash') w trakcie trwającej nawigacji.
+    if(window._eylRecovery) return false;   // reset hasła: najpierw ekran nowego hasła, dopiero potem app.html
     if(window._eylRouting) return true;
     if(!eylIsMobileUA()) return false;
     if(eylWebForced()) return false;
@@ -3540,7 +3545,8 @@ window.eylGoMobileApp = eylGoMobileApp;
           try{ window._eylBoot(); }catch(_e){}
           try{
             var _c=window._eylAuthCb||{};
-            if(_c.error){ setTimeout(function(){ if(typeof eylAuthToast==='function') eylAuthToast('Link wygasł lub został już użyty. Zaloguj się lub poproś o nowy.', false); }, 300); }
+            if(window._eylRecovery){ setTimeout(function(){ try{ eylShowNewPasswordModal(); }catch(_e){} }, 500); }
+            else if(_c.error){ setTimeout(function(){ if(typeof eylAuthToast==='function') eylAuthToast('Link wygasł lub został już użyty. Zaloguj się lub poproś o nowy.', false); }, 300); }
             else if(window._eylJustConfirmed){ setTimeout(function(){ if(typeof eylAuthToast==='function') eylAuthToast('E-mail potwierdzony \u2713 Witaj w Eyelingo!', true); }, 600); }
           }catch(_e){}
         });
@@ -3603,6 +3609,7 @@ function updateAuthUI(){
     :'Masz już konto? <a onclick="toggleAuthMode()">Zaloguj się</a>';
   document.getElementById('fg-username').style.display=l?'none':'block';
   var _al=document.getElementById('auth-legal'); if(_al)_al.style.display=l?'none':'block';
+  var _af=document.getElementById('auth-forgot'); if(_af)_af.style.display=l?'block':'none';
 }
 function showMsg(id,t,tp){const e=document.getElementById(id);e.textContent=t;e.className='amsg '+tp+' show'}
 async function eylDeleteAccount(){
@@ -3745,6 +3752,71 @@ function eylAuthInAppHint(){
   }catch(e){}
 }
 window.eylAuthInAppHint = eylAuthInAppHint;
+
+/* ── Reset hasła ────────────────────────────────────────────────────────────
+   1) „Nie pamiętasz hasła?” → resetPasswordForEmail (mail przez Resend/SMTP Supabase).
+   2) Link z maila wraca na stronę z #…type=recovery → eylHandleAuthCallback ustawia
+      window._eylRecovery → eylShowNewPasswordModal() → db.auth.updateUser({password}).
+   Komunikat po wysłaniu jest zawsze taki sam (nie ujawniamy, czy konto istnieje). */
+async function eylForgotPassword(){
+  var em=(document.getElementById('auth-email').value||'').trim();
+  if(!em){ showMsg('auth-msg','Wpisz e-mail, na który mamy wysłać link do zmiany hasła.','error'); return; }
+  showMsg('auth-msg','Wysyłamy link…','success');
+  try{
+    try{ localStorage.setItem('eyl_recovery_pending',String(Date.now())); }catch(_e){}
+    var r=await db.auth.resetPasswordForEmail(em,{redirectTo:'https://www.eyelingo.app/'});
+    if(r&&r.error){
+      var st=Number(r.error.status||0), cd=String(r.error.code||'');
+      if(st===429||cd==='over_email_send_rate_limit') showMsg('auth-msg','Za dużo prób. Spróbuj ponownie za kilka minut.','error');
+      else showMsg('auth-msg','Nie udało się wysłać linku. Napisz do nas: eyelingo.app@gmail.com','error');
+      return;
+    }
+    showMsg('auth-msg','Jeśli konto z tym adresem istnieje, wysłaliśmy na nie link do ustawienia nowego hasła. Sprawdź też spam.','success');
+  }catch(e){ showMsg('auth-msg','Brak połączenia. Spróbuj ponownie.','error'); }
+}
+window.eylForgotPassword=eylForgotPassword;
+
+function eylShowNewPasswordModal(){
+  if(document.getElementById('eyl-newpass')) return;
+  var ov=document.createElement('div');
+  ov.id='eyl-newpass';
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(26,35,64,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML=
+    '<div style="background:#fff;width:100%;max-width:420px;border-radius:18px;padding:24px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
+   +'<h2 style="margin:0 0 6px;font-size:20px;color:#1a2340">Ustaw nowe hasło</h2>'
+   +'<p style="margin:0 0 14px;font-size:14px;color:#6b7394;line-height:1.5">Wybierz hasło, którego nie używasz nigdzie indziej.</p>'
+   +'<div id="eyl-np-msg" class="amsg"></div>'
+   +'<div class="fg"><label class="fl">Nowe hasło</label><input type="password" id="eyl-np-1" class="fi" autocomplete="new-password" placeholder="min. 8 znaków"></div>'
+   +'<div class="fg"><label class="fl">Powtórz nowe hasło</label><input type="password" id="eyl-np-2" class="fi" autocomplete="new-password"></div>'
+   +'<button class="btn btn-orange btn-full btn-lg" id="eyl-np-btn" style="margin-top:8px">Zapisz hasło</button>'
+   +'<div style="text-align:center;margin-top:12px;font-size:13px"><a id="eyl-np-skip" style="color:#6b7394;cursor:pointer;text-decoration:underline">Zrobię to później</a></div>'
+   +'</div>';
+  document.body.appendChild(ov);
+  var $=function(i){ return document.getElementById(i); };
+  function close(){ window._eylRecovery=false; try{ ov.remove(); }catch(_e){} }
+  $('eyl-np-skip').onclick=function(){ close(); if(typeof eylGoMobileApp==='function') eylGoMobileApp({force:true}); };
+  async function save(){
+    var a=$('eyl-np-1').value, b=$('eyl-np-2').value;
+    if(a.length<8){ showMsg('eyl-np-msg','Hasło musi mieć co najmniej 8 znaków.','error'); return; }
+    if(a!==b){ showMsg('eyl-np-msg','Hasła nie są takie same.','error'); return; }
+    var btn=$('eyl-np-btn'); btn.disabled=true;
+    try{
+      var r=await db.auth.updateUser({password:a});
+      if(r&&r.error){
+        var m=String(r.error.message||'').toLowerCase();
+        showMsg('eyl-np-msg', (m.indexOf('different')>=0||m.indexOf('same')>=0) ? 'Nowe hasło musi się różnić od poprzedniego.' : eylAuthErrText(r.error,'login'),'error');
+        btn.disabled=false; return;
+      }
+      close();
+      if(typeof eylAuthToast==='function') eylAuthToast('Hasło zmienione ✓',true);
+      if(typeof eylGoMobileApp==='function') eylGoMobileApp({force:true});
+    }catch(e){ showMsg('eyl-np-msg','Brak połączenia. Spróbuj ponownie.','error'); btn.disabled=false; }
+  }
+  $('eyl-np-btn').onclick=save;
+  ['eyl-np-1','eyl-np-2'].forEach(function(i){ $(i).addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); save(); } }); });
+  try{ $('eyl-np-1').focus(); }catch(_e){}
+}
+window.eylShowNewPasswordModal=eylShowNewPasswordModal;
 
 async function submitAuth(){
   const email=document.getElementById('auth-email').value.trim();
@@ -19586,7 +19658,7 @@ async function lexInit(){
      +'<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
        +'<div style="flex:1;min-width:130px"><label class="ai-lab">Język</label><select id="ai-set-lang" class="fi" style="width:100%">'+langOpts+'</select></div>'
        +'<div id="ai-level-wrap" style="flex:1;min-width:110px"><label class="ai-lab">Poziom</label><select id="ai-set-level" class="fi" style="width:100%"><option>A1</option><option>A2</option><option selected>B1</option><option>B2</option><option>C1</option></select></div>'
-       +'<div id="ai-count-wrap" style="width:110px"><label class="ai-lab">Liczba słów</label><input id="ai-set-count" class="fi" type="number" min="3" max="40" value="15" style="width:100%;box-sizing:border-box"></div>'
+       +'<div id="ai-count-wrap" style="width:110px"><label class="ai-lab">Liczba słów</label><input id="ai-set-count" class="fi" type="number" min="3" max="80" value="15" style="width:100%;box-sizing:border-box"></div>'
      +'</div>'
      +'<div id="ai-mode-topic"><label class="ai-lab">Temat</label><input id="ai-set-topic" class="fi" placeholder="np. słownictwo w restauracji, rozmowa o pracę" style="width:100%;box-sizing:border-box"></div>'
      +'<div id="ai-mode-paste" style="display:none"><label class="ai-lab">Słowa (po polsku lub w języku docelowym, jedno na linię)</label><textarea id="ai-set-paste" class="fi" rows="6" placeholder="kot&#10;pies&#10;dzień dobry" style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>'
@@ -19660,7 +19732,7 @@ async function lexInit(){
   window.aiGenerateSetPreview=async function(){
     var lang=val('ai-set-lang'), mode=window._aiSetMode;
     if(mode==='image'){ return window._aiGenerateFromImage(); }
-    var count=Math.max(3,Math.min(40,parseInt(val('ai-set-count')||'15',10)||15));
+    var count=Math.max(3,Math.min(80,parseInt(val('ai-set-count')||'15',10)||15));
     var msg=document.getElementById('ai-gen-msg'), btn=document.getElementById('ai-gen-btn');
     var langName={en:'English',es:'Spanish',de:'German',fr:'French',nl:'Dutch',jp:'Japanese'}[lang]||'English';
     var prompt='', defaultName='';
@@ -19698,7 +19770,7 @@ async function lexInit(){
 
   window._aiGenerateFromImage=async function(){
     var lang=val('ai-set-lang');
-    var count=Math.max(3,Math.min(40,parseInt(val('ai-set-count')||'15',10)||15));
+    var count=Math.max(3,Math.min(80,parseInt(val('ai-set-count')||'15',10)||15));
     var msg=document.getElementById('ai-gen-msg'), btn=document.getElementById('ai-gen-btn');
     var langName={en:'English',es:'Spanish',de:'German',fr:'French',nl:'Dutch',jp:'Japanese'}[lang]||'English';
     if(!window._aiImageData){ if(msg) msg.textContent='Najpierw dodaj zdjęcie.'; return; }
@@ -22022,7 +22094,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
      +'<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
        +'<div style="flex:1;min-width:140px"><label class="ai-lab">Język</label><select id="ai-set-lang" class="fi" style="width:100%" onchange="try{localStorage.setItem(\'eyl_aiset_lang\',this.value)}catch(e){}">'+langOptions()+'</select></div>'
        +'<div id="ai-level-wrap" style="flex:1;min-width:110px"><label class="ai-lab">Poziom</label><select id="ai-set-level" class="fi" style="width:100%"><option>A1</option><option>A2</option><option selected>B1</option><option>B2</option><option>C1</option><option>C2</option></select></div>'
-       +'<div id="ai-count-wrap" style="width:118px"><label class="ai-lab">Liczba słów</label><input id="ai-set-count" class="fi" type="number" min="3" max="40" value="15" style="width:100%;box-sizing:border-box"></div>'
+       +'<div id="ai-count-wrap" style="width:118px"><label class="ai-lab">Liczba słów</label><input id="ai-set-count" class="fi" type="number" min="3" max="80" value="15" style="width:100%;box-sizing:border-box"></div>'
      +'</div>'
      +'<div id="ai-mode-topic"><label class="ai-lab">Temat</label><input id="ai-set-topic" class="fi" maxlength="'+TOPIC_MAX+'" placeholder="np. słownictwo w restauracji, rozmowa o pracę" style="width:100%;box-sizing:border-box"></div>'
      +'<div id="ai-mode-paste" style="display:none"><label class="ai-lab">Słowa (po polsku lub w języku docelowym, jedno na linię)</label><textarea id="ai-set-paste" class="fi" rows="6" maxlength="'+TEXT_MAX+'" placeholder="kot&#10;pies&#10;dzień dobry" style="width:100%;box-sizing:border-box;resize:vertical"></textarea></div>'
@@ -22265,7 +22337,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
   window.aiGenerateSetPreview=async function(){
     var lang=val('ai-set-lang'), mode=window._aiSetMode;
     if(mode==='image') return window._aiGenerateFromImage();
-    var count=Math.max(3,Math.min(40,parseInt(val('ai-set-count')||'15',10)||15));
+    var count=Math.max(3,Math.min(80,parseInt(val('ai-set-count')||'15',10)||15));
     var msg=el('ai-gen-msg'), btn=el('ai-gen-btn'), langName=langNameOf(lang);
     var n=nonce(), task='', defaultName='', owned=null, want=count;
     if(mode==='text'){
@@ -22274,7 +22346,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       var lvlT=val('ai-set-level');
       owned=await ownedWords();
       /* Zapas na słowa, które uczący się już ma — odsiewamy je po stronie klienta. */
-      want=Math.min(50, count+(owned.n?10:0));
+      want=Math.min(90, count+(owned.n?10:0));
       task='ZADANIE: uczący się (dorosły Polak, uczy się '+langName+') wkleił własne notatki lub materiały z zajęć. Wybierz z nich '+want+' słów lub krótkich wyrażeń najbardziej wartych nauki na poziomie '+lvlT+' i wyżej: terminy kluczowe dla tematu materiału, słownictwo specjalistyczne, typowe kolokacje.\n'
         +'• Bierz TYLKO słownictwo, które występuje w materiale — nie dopisuj słów „z tematu".\n'
         +'• Podawaj formę podstawową (bezokolicznik, mianownik liczby pojedynczej), a tłumaczenie w znaczeniu użytym w materiale.\n'
@@ -22304,7 +22376,7 @@ button.ms-flag:hover{outline:2px solid var(--orange);outline-offset:2px;border-r
       +'\n\nSCHEMAT ODPOWIEDZI (nic poza nim):\n'+((mode==='text')?'{"title":"nazwa zestawu po polsku, 2–4 słowa, od tematu materiału","source_lang":"en","cards":[{"word":"...","translation":"...","lang":"en","concrete":true,"image_query":"..."}]}':(mode==='paste')?'{"source_lang":"en","cards":[{"word":"...","translation":"...","lang":"en","concrete":true,"image_query":"..."}]}':'{"cards":[{"word":"...","translation":"...","concrete":true,"image_query":"..."}]}');
     btn.disabled=true; var oldT=btn.textContent; btn.textContent='Generuję…'; msg.textContent='AI tworzy fiszki…';
     try{
-      var r=parseCards(await proxy([{role:'user',content:prompt}],(mode==='text')?4000:1800));
+      var r=parseCards(await proxy([{role:'user',content:prompt}],(mode==='text')?4000:Math.min(4000,Math.max(1800,500+count*45))));
       if(r.reject||!r.cards.length){ msg.textContent=r.reject?rejectMsg(mode):'Nie udało się wygenerować. Spróbuj ponownie.'; btn.disabled=false; btn.textContent=oldT; return; }
       var had=0;
       if(mode==='text'){
